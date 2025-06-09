@@ -4,7 +4,8 @@ from datetime import datetime
 from typing import Any
 
 import dotenv
-from langchain.globals import set_llm_cache
+
+# from langchain.globals import set_llm_cache
 # from langchain_community.cache import SQLiteCache
 from langchain_core.messages import HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
@@ -46,10 +47,13 @@ class CustomAgentState(AgentState):
 def prompt(state):
     """准备发送给 LLM 的消息"""
     store = get_store()
+    query = state["messages"][-1].content[-1]
+    if isinstance(query, dict):
+        query = query.get("text", "")
     try:
         memories = store.search(
             ("memories",),
-            query=state["messages"][-1].content[-1].get("text", ""),
+            query=query,
         )
     except Exception as e:
         logger.error(f"💥 记忆搜索失败: {str(e)}")
@@ -261,7 +265,7 @@ async def intelligent_agent(messages, max_messages: int = 10):
             state_schema=CustomAgentState,
             store=store,
             pre_model_hook=pre_model_hook,  # 添加消息修剪钩子
-            debug=True,
+            debug=os.getenv("AGENT_DEBUG_MODE", "false").lower() == "true",
         )
 
         logger.info("🤖 开始执行智能 Agent...")

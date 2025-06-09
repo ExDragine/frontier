@@ -1,11 +1,12 @@
 """
-Aqua AI插件主文件
+AI插件主文件
 包含NoneBot插件的注册和处理逻辑
 """
 
 import base64
 
 import httpx
+from git import Repo
 from nonebot import logger, on_command, on_message
 
 # from nonebot.adapters.onebot.v11 import MessageEvent, Message, MessageSegment
@@ -18,8 +19,16 @@ from plugins.frontier.markdown_render import markdown_to_image
 from .cognitive import react_agent
 
 # 注册命令处理器
-trigger = on_command("测试", aliases={"test"}, priority=5)
-trigger2 = on_message(priority=5)
+updater = on_command("更新", aliases={"update"}, priority=0, block=True)
+trigger = on_command("测试", aliases={"test"}, priority=1, block=True)
+common = on_message(priority=5)
+
+
+@updater.handle()
+async def handle_updater(event: MessageEvent):
+    repo = Repo(".")
+    repo.git.pull(rebase=True)
+    await updater.finish("正在更新...")
 
 
 @trigger.handle()
@@ -34,7 +43,7 @@ async def handle_trigger(event: MessageEvent, args: Message = CommandArg()):
     await trigger.finish(MessageSegment.text(f"收到参数: {arg_str}"))
 
 
-@trigger2.handle()
+@common.handle()
 async def handle_trigger2(event: MessageEvent):
     message = event.get_message()
 
