@@ -26,6 +26,7 @@ dependencies = [
     "nb-cli",
     "nonebot-adapter-onebot",
     "nonebot-adapter-qq",
+    "nonebot-plugin-alconna>=0.58.3",
     "nonebot2",
     "openai",
     "pandas-stubs>=2.2.3.250527",

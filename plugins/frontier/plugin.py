@@ -7,44 +7,60 @@ import base64
 
 import httpx
 from git import Repo
-from nonebot import logger, on_command, on_message
+from nonebot import logger, on_message, require
 
-# from nonebot.adapters.onebot.v11 import MessageEvent, Message, MessageSegment
-from nonebot.adapters.qq import Message, MessageEvent, MessageSegment
+from nonebot.adapters.qq import MessageEvent, MessageSegment
 from nonebot.adapters.qq.exception import ActionFailed
-from nonebot.params import CommandArg
-
 from plugins.frontier.markdown_render import markdown_to_image
 
 from .cognitive import react_agent
 
-# 注册命令处理器
-updater = on_command("更新", aliases={"update"}, priority=0, block=True)
-trigger = on_command("测试", aliases={"test"}, priority=1, block=True)
+require("nonebot_plugin_alconna")
+from nonebot_plugin_alconna import on_alconna, Alconna, UniMessage, Args
+
+
+# 注册命令处理器 - 使用正确的 Alconna 语法
+updater = on_alconna(
+    Alconna("更新", ["update"]),
+    priority=0,
+    block=True
+)
+
+debugger = on_alconna(
+    Alconna("测试", Args["content", str, "请输入测试内容"], ["test"]),
+    priority=1,
+    block=True
+)
+
 common = on_message(priority=5)
 
 
 @updater.handle()
 async def handle_updater(event: MessageEvent):
-    repo = Repo(".")
-    repo.git.pull(rebase=True)
-    await updater.finish("正在更新...")
+    """处理更新命令"""
+    try:
+        repo = Repo(".")
+        repo.git.pull(rebase=True)
+        await UniMessage.text("✅ 正在更新...").send(at_sender=False, reply_to=True)
+    except Exception as e:
+        logger.error(f"更新失败: {e}")
+        await UniMessage.text(f"❌ 更新失败: {str(e)}").send(at_sender=False, reply_to=True)
 
 
-@trigger.handle()
-async def handle_trigger(event: MessageEvent, args: Message = CommandArg()):
-    if not args:
-        await trigger.finish("请输入参数")
+@debugger.handle()
+async def handle_debugger(event: MessageEvent, content: str = Args["content"]):
+    """处理测试命令"""
+    if not content:
+        await UniMessage.text("请输入测试内容").send(at_sender=False, reply_to=True)
+        return
 
-    # 将消息转换为字符串
-    arg_str = args.extract_plain_text()
-    print(f"收到参数: {arg_str}")
-    # 使用 MessageSegment 构建回复消息
-    await trigger.finish(MessageSegment.text(f"收到参数: {arg_str}"))
+    logger.info(f"收到测试参数: {content}")
+    await UniMessage.text(f"收到参数: {content}").send(at_sender=False, reply_to=True)
 
 
 @common.handle()
-async def handle_trigger2(event: MessageEvent):
+async def handle_common(event: MessageEvent):
+    """处理普通消息"""
     message = event.get_message()
 
     texts = event.get_message().extract_plain_text()
@@ -62,7 +78,7 @@ async def handle_trigger2(event: MessageEvent):
                             }
                         )
     messages = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
-    await trigger.send("正在烧烤🔮")
+    await common.send("正在烧烤🔮")
 
     try:
         result = await react_agent(messages)
@@ -78,15 +94,11 @@ async def handle_trigger2(event: MessageEvent):
                 tools_used = ", ".join(tool_calls_summary.get("tools_used", []))
                 logger.info(f"🎯 本次对话使用了 {tool_calls_summary['total_tool_calls']} 个工具: {tools_used}")
 
-                # 可选：向用户显示工具调用信息
-                # tool_info = f"🛠️ 使用了工具: {tools_used}"
-                # await trigger.send(tool_info)
-
             # 首先发送所有的 MessageSegment 工件（图片、视频等）
             if message_segments:
                 logger.info(f"📤 发送 {len(message_segments)} 个媒体工件")
                 for segment in message_segments:
-                    await trigger.send(segment)
+                    await common.send(segment)
 
             # 然后发送文本响应
             if "messages" in response and response["messages"]:
@@ -96,24 +108,24 @@ async def handle_trigger2(event: MessageEvent):
                         try:
                             result = await markdown_to_image(last_message.content)
                             if result:
-                                await trigger.finish(MessageSegment.file_image(result), at_sender=False)
+                                await common.finish(MessageSegment.file_image(result), at_sender=False)
                         except ActionFailed:
-                            await trigger.finish("貌似出了点问题")
+                            await common.finish("貌似出了点问题")
                     else:
                         try:
-                            await trigger.finish(MessageSegment.text(last_message.content))
+                            await common.finish(MessageSegment.text(last_message.content))
                         except ActionFailed:
                             result = await markdown_to_image(last_message.content)
                             if result:
-                                await trigger.finish(MessageSegment.file_image(result))
+                                await common.finish(MessageSegment.file_image(result))
                 elif not message_segments:  # 只有在没有媒体工件时才发送"没有返回内容"
-                    await trigger.finish("处理完成，但没有返回内容")
+                    await common.finish("处理完成，但没有返回内容")
             elif not message_segments:  # 只有在没有媒体工件时才发送"没有返回内容"
-                await trigger.finish("处理完成，但没有返回内容")
+                await common.finish("处理完成，但没有返回内容")
 
         # 兼容旧的返回值格式（字符串）
         elif isinstance(result, str):
-            await trigger.finish(result)
+            await common.finish(result)
 
         # 兼容旧的返回值格式（直接的响应对象）
         else:
@@ -122,13 +134,13 @@ async def handle_trigger2(event: MessageEvent):
                 if messages_list:  # 确保列表不为空
                     last_message = messages_list[-1]
                     if hasattr(last_message, "content"):
-                        await trigger.finish(MessageSegment.text(last_message.content))
+                        await common.finish(MessageSegment.text(last_message.content))
                     else:
-                        await trigger.finish("处理完成，但没有返回内容")
+                        await common.finish("处理完成，但没有返回内容")
                 else:
-                    await trigger.finish("处理完成，但没有返回内容")
+                    await common.finish("处理完成，但没有返回内容")
             else:
-                await trigger.finish("处理完成，但返回格式异常")
+                await common.finish("处理完成，但返回格式异常")
 
     except ActionFailed:
-        await trigger.finish("貌似什么东西坏了")
+        await common.finish("貌似什么东西坏了")
