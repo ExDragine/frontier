@@ -18,13 +18,12 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.chat_agent_executor import AgentState
 from langgraph.store.memory import InMemoryStore
 from langmem import create_manage_memory_tool
-from nonebot import logger
-
-# from nonebot.adapters.onebot.v11.message import MessageSegment
-from nonebot.adapters.qq.message import MessageSegment
+from nonebot import logger, require
 from pydantic import SecretStr
 
 from plugins.frontier.tools import ModuleTools
+
+require("nonebot_plugin_alconna")
 
 dotenv.load_dotenv()
 # set_llm_cache(SQLiteCache(database_path="cache.db"))
@@ -151,26 +150,14 @@ def process_artifacts(artifacts):
         artifact = artifact_info["artifact"]
         tool_name = artifact_info["tool_name"]
 
-        if isinstance(artifact, MessageSegment):
-            # 如果是 MessageSegment，直接返回
-            processed_item = {
-                "tool_name": tool_name,
-                "type": "message_segment",
-                "content": artifact_info["content"],
-                "message_segment": artifact,
-            }
-            processed.append(processed_item)
-            logger.info(f"✨ 处理工件: {tool_name} - MessageSegment 类型")
-        else:
-            # 其他类型的工件
-            processed_item = {
-                "tool_name": tool_name,
-                "type": type(artifact).__name__,
-                "content": artifact_info["content"],
-                "artifact": artifact,
-            }
-            processed.append(processed_item)
-            logger.info(f"✨ 处理工件: {tool_name} - {type(artifact).__name__} 类型")
+        processed_item = {
+            "tool_name": tool_name,
+            "type": "uni_message",
+            "content": artifact_info["content"],
+            "uni_message": artifact,
+        }
+        processed.append(processed_item)
+        logger.info(f"✨ 处理工件: {tool_name}")
 
     return processed
 
@@ -180,11 +167,11 @@ def get_message_segments(processed_artifacts):
     message_segments = []
 
     for item in processed_artifacts:
-        if item["type"] == "message_segment":
-            message_segments.append(item["message_segment"])
-            logger.info(f"📤 提取 MessageSegment: {item['tool_name']}")
+        if item["type"] == "uni_message":
+            message_segments.append(item["uni_message"])
+            logger.info(f"📤 提取 UniMessage: {item['tool_name']}")
 
-    logger.info(f"📨 总共提取到 {len(message_segments)} 个 MessageSegment")
+    logger.info(f"📨 总共提取到 {len(message_segments)} 个 UniMessage")
     return message_segments
 
 
@@ -302,7 +289,7 @@ async def intelligent_agent(messages, max_messages: int = 10):
             # "tool_calls_summary": tool_calls_info,
             "artifacts": artifacts,
             "processed_artifacts": processed_artifacts,
-            "message_segments": message_segments,
+            "uni_messages": message_segments,
             "memory_info": {
                 "max_messages": max_messages,
                 "current_messages": len(response.get("messages", [])),
@@ -324,7 +311,7 @@ async def intelligent_agent(messages, max_messages: int = 10):
             "tool_calls_summary": {"total_tool_calls": 0, "tools_used": [], "detailed_calls": []},
             "artifacts": [],
             "processed_artifacts": [],
-            "message_segments": [],
+            "uni_messages": [],
             "error": str(e),
         }
 

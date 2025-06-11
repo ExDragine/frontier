@@ -1,14 +1,18 @@
+import time
+from typing import Any, Optional
+
 import httpx
 from bs4 import BeautifulSoup
 from langchain_core.tools import tool
-from typing import Optional, Any
-from nonebot.adapters.qq.message import MessageSegment
-from nonebot import logger
-import time
+from nonebot import logger, require
+
+require("nonebot_plugin_alconna")
+from nonebot_plugin_alconna import UniMsg  # noqa: E402
+from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def get_static_china_radar(area: str) -> tuple[Any, Optional[MessageSegment]]:
+async def get_static_china_radar(area: str) -> tuple[Any, Optional[UniMsg]]:
     """获取静态中国雷达图
 
     Args:
@@ -26,7 +30,7 @@ async def get_static_china_radar(area: str) -> tuple[Any, Optional[MessageSegmen
 
         if result:
             logger.info(f"✅ 工具执行成功: get_static_china_radar (耗时: {end_time - start_time:.2f}s)")
-            return f"成功获取{area}地区的雷达图", MessageSegment.image(result)
+            return f"成功获取{area}地区的雷达图", UniMessage.image(url=result)
         else:
             logger.info(f"❌ 工具执行失败: get_static_china_radar - 地区不存在 (耗时: {end_time - start_time:.2f}s)")
             return f"抱歉，找不到{area}地区的雷达图数据", None

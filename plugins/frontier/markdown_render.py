@@ -83,6 +83,9 @@ async def markdown_to_image(markdown_text, width=800, css=None):
         min-height: 100vh;
         margin: 0;
         padding: 0;
+        font-family: 'MiSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'SimSun', Roboto, Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
     .markdown-body {
         background: #fff;
@@ -91,12 +94,14 @@ async def markdown_to_image(markdown_text, width=800, css=None):
         border-radius: 0;
         box-shadow: none;
         padding: 40px 36px 32px 36px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'SimSun', Roboto, Helvetica, Arial, sans-serif;
+        font-family: 'MiSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'SimSun', Roboto, Helvetica, Arial, sans-serif;
         color: #23272f;
         font-size: 18px;
         line-height: 1.85;
         word-break: break-word;
         box-sizing: border-box;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
     @media (max-width: 600px) {
         .markdown-body {
@@ -229,6 +234,7 @@ async def markdown_to_image(markdown_text, width=800, css=None):
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Markdown Rendered</title>
+        <link rel="stylesheet" href="https://font.sec.miui.com/font/css?family=MiSans:400,600:MiSans">
         <style>
             {style_content}
         </style>

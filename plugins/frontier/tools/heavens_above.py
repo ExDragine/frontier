@@ -1,10 +1,16 @@
+from typing import Optional
+
 import httpx
 from langchain_core.tools import tool
-from nonebot.adapters.qq.message import MessageSegment
+from nonebot import require
+
+require("nonebot_plugin_alconna")
+from nonebot_plugin_alconna import UniMsg  # noqa: E402
+from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def station_location(name):
+async def station_location(name) -> tuple[str, Optional[UniMsg]]:
     """
     获取空间站位置图像
 
@@ -20,6 +26,6 @@ async def station_location(name):
     )
     content = httpx.get(ENDPOINT, timeout=30).content
     if content:
-        return "空间站位置获取成功", MessageSegment.file_image(content)
+        return "空间站位置获取成功", UniMessage.image(raw=content)
     else:
         return "空间站位置获取失败", None

@@ -1,14 +1,18 @@
-from langchain_core.tools import tool
-from typing import Optional
-from nonebot.adapters.qq.message import MessageSegment
-from nonebot import logger
 import time
-import httpx
+from typing import Optional
 from urllib.parse import quote
+
+import httpx
+from langchain_core.tools import tool
+from nonebot import logger, require
+
+require("nonebot_plugin_alconna")
+from nonebot_plugin_alconna import UniMsg  # noqa: E402
+from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def paint(prompt: str) -> tuple[str, Optional[MessageSegment]]:
+async def paint(prompt: str) -> tuple[str, Optional[UniMsg]]:
     """生成图片
 
     Args:
@@ -25,7 +29,7 @@ async def paint(prompt: str) -> tuple[str, Optional[MessageSegment]]:
             f"https://image.pollinations.ai/prompt/{quote(prompt)}?width=1440&height=900&model=flux&nologo=true&enhance=true",
             timeout=30,
         )
-        result = MessageSegment.file_image(response.content)
+        result = UniMessage.image(raw=response.content)
         end_time = time.time()
         logger.info(f"✅ 工具执行成功: paint (耗时: {end_time - start_time:.2f}s)")
         return f"成功生成图片，提示词：{prompt}", result

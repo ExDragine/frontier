@@ -3,12 +3,15 @@ from typing import Literal, Optional
 
 import httpx
 from langchain_core.tools import tool
-from nonebot import logger
-from nonebot.adapters.qq.message import MessageSegment
+from nonebot import logger, require
+
+require("nonebot_plugin_alconna")
+from nonebot_plugin_alconna import UniMsg  # noqa: E402
+from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, Optional[MessageSegment]]:
+async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, Optional[UniMsg]]:
     """获取卫星云图
 
     Args:
@@ -53,7 +56,7 @@ async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, Optional[MessageSe
     try:
         url = f"https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/VIDEO/FY4B.{area}.{t}.mp4"
         file = httpx.get(url).content
-        result = MessageSegment.file_video(file)
+        result = UniMessage.video(raw=file)
         end_time = time.time()
         logger.info(f"✅ 工具执行成功: get_fy4b_cloud_map (耗时: {end_time - start_time:.2f}s)")
         return f"成功获取{area}地区的卫星云图动画（最近3小时）", result
@@ -61,6 +64,7 @@ async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, Optional[MessageSe
         end_time = time.time()
         logger.error(f"💥 工具执行异常: get_fy4b_cloud_map - {str(e)} (耗时: {end_time - start_time:.2f}s)")
         return f"获取{area}地区云图失败: {str(e)}", None
+
 
 @tool(response_format="content_and_artifact")
 async def get_fy4b_geos_cloud_map(
@@ -91,12 +95,13 @@ async def get_fy4b_geos_cloud_map(
             response.raise_for_status()
             video_bytes: bytes = response.content
             if video_bytes:
-                return "成功获取FY4B卫星全地球视角云图视频", MessageSegment.file_video(video_bytes)
+                return "成功获取FY4B卫星全地球视角云图视频", UniMessage.video(raw=video_bytes)
     except httpx.HTTPError:
         return "获取FY4B卫星全地球视角云图视频失败", None
 
+
 @tool(response_format="content_and_artifact")
-async def get_himawari_satellite_image() -> tuple[str, Optional[MessageSegment]]:
+async def get_himawari_satellite_image() -> tuple[str, Optional[UniMsg]]:
     """获取Himawari静止气象卫星最新可见光合成图像
 
     Returns:
@@ -105,8 +110,8 @@ async def get_himawari_satellite_image() -> tuple[str, Optional[MessageSegment]]
     start_time = time.time()
     logger.info("🛠️ 调用工具: get_himawari_satellite_image")
     try:
-        result = MessageSegment.image(
-            "https://www.storm-chasers.cn/wp-content/uploads/satimgs/Composite_TVIS_FDLK.jpg"
+        result = UniMessage.image(
+            url="https://www.storm-chasers.cn/wp-content/uploads/satimgs/Composite_TVIS_FDLK.jpg"
         )
         end_time = time.time()
         logger.info(f"✅ 工具执行成功: get_himawari_satellite_image (耗时: {end_time - start_time:.2f}s)")
