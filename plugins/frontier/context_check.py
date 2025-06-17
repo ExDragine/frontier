@@ -1,7 +1,4 @@
-import asyncio
-
 import torch
-from PIL import Image
 from transformers import AutoModelForImageClassification, ViTImageProcessor
 
 

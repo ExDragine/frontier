@@ -9,7 +9,7 @@ import os
 import httpx
 from git import Repo
 from nonebot import logger, on_message, require
-from nonebot.adapters.qq import MessageEvent
+from nonebot.internal.adapter import Event
 
 from plugins.frontier.markdown_render import markdown_to_image
 
@@ -71,7 +71,7 @@ async def handle_updater():
 
 
 @common.handle()
-async def handle_common(event: MessageEvent):
+async def handle_common(event: Event):
     """处理普通消息"""
     message = event.get_message()
 

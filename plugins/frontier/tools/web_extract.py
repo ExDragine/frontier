@@ -1,10 +1,10 @@
-from langchain_chroma import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_docling.loader import DoclingLoader, ExportType
 from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 from docling_core.transforms.chunker.tokenizer.huggingface import HuggingFaceTokenizer
-from langchain_core.tools import tool, create_retriever_tool
+from langchain_chroma import Chroma
 from langchain_community.document_loaders import WebBaseLoader
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.tools import create_retriever_tool, tool
+from langchain_docling.loader import DoclingLoader, ExportType
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
@@ -30,10 +30,10 @@ async def base_web_extract(url):
 @tool(response_format="content")
 async def web_extract(url: str) -> str:
     """
-    从网页提取基本信息
+    从网页或PDF链接中提取信息
 
     Args:
-        url: 网页URL
+        url: 网页URL或PDF链接
 
     Returns:
         提取的信息
