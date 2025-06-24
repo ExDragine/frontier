@@ -18,7 +18,6 @@ from .cognitive import react_agent
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import (  # noqa: E402
     Alconna,
-    SerializeFailed,
     UniMessage,
     on_alconna,
 )
@@ -124,13 +123,13 @@ async def handle_common(event: Event):
                             if result:
                                 await UniMessage.image(raw=result).send()
                                 # await common.finish(MessageSegment.file_image(result), at_sender=False)
-                        except (SerializeFailed, TypeError):
+                        except Exception:
                             await common.finish("貌似出了点问题")
                     else:
                         try:
                             await UniMessage.text(last_message.content).send()
                             # await common.finish(MessageSegment.text(last_message.content))
-                        except (SerializeFailed, TypeError):
+                        except Exception:
                             result = await markdown_to_image(last_message.content)
                             if result:
                                 await UniMessage.image(raw=result).send()
@@ -160,5 +159,5 @@ async def handle_common(event: Event):
             else:
                 await common.finish("处理完成，但返回格式异常")
 
-    except (SerializeFailed, TypeError):
+    except Exception:
         await common.finish("貌似什么东西坏了")

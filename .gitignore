@@ -319,3 +319,4 @@ node_modules/
 package-lock.json
 *.db
 .idea
+mcp.json
