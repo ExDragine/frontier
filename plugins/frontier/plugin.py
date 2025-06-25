@@ -122,19 +122,16 @@ async def handle_common(event: Event):
                             result = await markdown_to_image(last_message.content)
                             if result:
                                 await UniMessage.image(raw=result).send()
-                                # await common.finish(MessageSegment.file_image(result), at_sender=False)
                         except Exception as e:
                             await UniMessage.text(f"貌似出了点问题: {e}").send()
                     else:
                         try:
                             await UniMessage.text(last_message.content).send()
-                            # await common.finish(MessageSegment.text(last_message.content))
                         except Exception as e:
                             await UniMessage.text(f"貌似出了点问题: {e}").send()
                             result = await markdown_to_image(last_message.content)
                             if result:
                                 await UniMessage.image(raw=result).send()
-                                # await common.finish(MessageSegment.file_image(result))
                 elif not artifacts:  # 只有在没有媒体工件时才发送"没有返回内容"
                     await common.finish("处理完成，但没有返回内容")
             elif not artifacts:  # 只有在没有媒体工件时才发送"没有返回内容"
@@ -152,7 +149,6 @@ async def handle_common(event: Event):
                     last_message = messages_list[-1]
                     if hasattr(last_message, "content"):
                         await UniMessage.text(last_message.content).send()
-                        # await common.finish(MessageSegment.text(last_message.content))
                     else:
                         await common.finish("处理完成，但没有返回内容")
                 else:

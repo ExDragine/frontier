@@ -1,6 +1,6 @@
+import html
 import os
 import re
-import html
 
 from markdown_it import MarkdownIt
 from playwright.async_api import async_playwright
@@ -57,7 +57,7 @@ def process_math_in_markdown(text):
     return text
 
 
-async def markdown_to_image(markdown_text, width=1440, css=None):
+async def markdown_to_image(markdown_text, width=1280, css=None):
     """
     将 Markdown 文本渲染为图片
 
@@ -89,210 +89,19 @@ async def markdown_to_image(markdown_text, width=1440, css=None):
         flags=re.DOTALL,
     )
 
-    # 准备完整的 HTML 文档
-    default_css = """
-    body {
-        background: #f4f6fb;
-        min-height: 100vh;
-        margin: 0;
-        padding: 0;
-        font-family: 'MiSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'SimSun', Roboto, Helvetica, Arial, sans-serif;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-    }
-    .markdown-body {
-        background: #fff;
-        max-width: 820px;
-        margin: 0 auto;
-        border-radius: 0;
-        box-shadow: none;
-        padding: 40px 36px 32px 36px;
-        font-family: 'MiSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'SimSun', Roboto, Helvetica, Arial, sans-serif;
-        color: #23272f;
-        font-size: 18px;
-        line-height: 1.85;
-        word-break: break-word;
-        box-sizing: border-box;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-    }
-    @media (max-width: 600px) {
-        .markdown-body {
-            padding: 16px 2vw;
-            margin: 0;
-            border-radius: 0;
-            box-shadow: none;
-        }
-    }
-    h1, h2, h3, h4, h5, h6 { 
-        margin-top: 2.2em; 
-        margin-bottom: 1em; 
-        font-weight: 700; 
-        line-height: 1.25;
-        color: #1a1a1a;
-        letter-spacing: 0.01em;
-    }
-    h1 { font-size: 2.2em; border-bottom: 2px solid #eaecef; padding-bottom: .3em; }
-    h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
-    h3 { font-size: 1.2em; }
-    h4 { font-size: 1em; }
-    p { margin-bottom: 1.2em; }
-    a { color: #2563eb; text-decoration: none; border-bottom: 1px dotted #b3d3f6; transition: color 0.2s; }
-    a:hover { color: #174ea6; border-bottom: 1px solid #2563eb; }
-    code {
-        font-family: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
-        background: #f3f4f6;
-        border-radius: 5px;
-        font-size: 95%;
-        padding: .18em .5em;
-        color: #d6336c;
-    }
-    pre {
-        background: #23272e;
-        color: #f8f8f2;
-        border-radius: 10px;
-        overflow-x: auto;
-        padding: 18px 16px;
-        margin: 1.5em 0;
-        font-size: 15px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-    }
-    pre code {
-        background: none;
-        color: inherit;
-        padding: 0;
-        border-radius: 0;
-    }
-    blockquote {
-        border-left: 5px solid #b3d3f6;
-        background: #f3f8fd;
-        color: #555;
-        padding: 0.8em 1.2em;
-        margin: 1.5em 0;
-        border-radius: 8px;
-        font-style: italic;
-    }
-    table { 
-        border-collapse: collapse; 
-        margin: 1.5em 0;
-        width: 100%;
-        background: #fafbfc;
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-    }
-    th, td { 
-        border: 1px solid #eaecef; 
-        padding: 12px 18px; 
-        text-align: left;
-    }
-    th {
-        background: #f3f4f6;
-        font-weight: 600;
-    }
-    img { max-width: 100%; height: auto; border-radius: 8px; }
-    ul, ol {
-        margin: 1.2em 0 1.2em 1.5em;
-        padding-left: 1.2em;
-    }
-    li {
-        margin: 6px 0;
-    }
-    hr {
-        border: none;
-        border-top: 1.5px solid #eaecef;
-        margin: 2em 0;
-    }
-    /* 数学公式样式 */
-    .katex { 
-        font-size: 1.13em !important; 
-    }
-    .katex-display { 
-        text-align: center !important; 
-        margin: 1.8em 0 !important; 
-        overflow-x: auto;
-        overflow-y: hidden;
-    }
-    .katex-html {
-        white-space: nowrap;
-    }
-    .math-display {
-        text-align: center;
-        margin: 1.8em 0;
-        overflow-x: auto;
-    }
-    .math-inline {
-        display: inline;
-    }
-    .math-inline, .math-display {
-        font-family: 'KaTeX_Main', 'Times New Roman', serif;
-    }
-    /* 滚动条美化 */
-    ::-webkit-scrollbar {
-        width: 8px;
-        background: #f3f4f6;
-    }
-    ::-webkit-scrollbar-thumb {
-        background: #e0e0e0;
-        border-radius: 4px;
-    }
-    """
+    # 选择样式：如未指定自定义css，则引用外部css文件（用绝对路径，确保本地加载）
+    if css is None:
+        css_abs_path = os.path.abspath("./resources/markdown_render.css")
+        style_block = f'<link rel="stylesheet" href="file://{css_abs_path}">'  # 绝对路径
+    else:
+        style_block = f"<style>{css}</style>"
 
-    style_content = default_css if css is None else css
+    # 读取 HTML 模板
+    template_path = "./resources/markdown_render.html"
+    with open(template_path, "r", encoding="utf-8") as f:
+        template_html = f.read()
 
-    full_html = f"""
-    <!DOCTYPE html>
-    <html lang="zh-CN">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Markdown Rendered</title>
-        <link rel="stylesheet" href="https://font.sec.miui.com/font/css?family=MiSans:400,600:MiSans">
-        <style>
-            {style_content}
-        </style>
-        <!-- KaTeX 配置和加载 -->
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
-        <script>
-            document.addEventListener("DOMContentLoaded", function() {{
-                renderMathInElement(document.body, {{
-                    delimiters: [
-                        {{left: '$$', right: '$$', display: true}},
-                        {{left: '$', right: '$', display: false}},
-                        {{left: '\\\\(', right: '\\\\)', display: false}},
-                        {{left: '\\\\[', right: '\\\\]', display: true}}
-                    ],
-                    throwOnError: false,
-                    errorColor: '#cc0000',
-                    strict: false,
-                    trust: true,
-                    macros: {{
-                        "\\\\RR": "\\\\mathbb{{R}}",
-                        "\\\\NN": "\\\\mathbb{{N}}",
-                        "\\\\ZZ": "\\\\mathbb{{Z}}",
-                        "\\\\QQ": "\\\\mathbb{{Q}}",
-                        "\\\\CC": "\\\\mathbb{{C}}"
-                    }}
-                }});
-                
-                // 标记渲染完成
-                window.mathRenderComplete = true;
-                console.log("KaTeX rendering completed");
-            }});
-        </script>
-        <!-- Mermaid 配置和加载 -->
-        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-        <script>mermaid.initialize({{startOnLoad:true, theme:"default"}});</script>
-    </head>
-    <body>
-        <div class="markdown-body" id="markdown-content">
-            {html_content}
-        </div>
-    </body>
-    </html>
-    """
+    full_html = template_html.format(style_block=style_block, html_content=html_content)
 
     # 创建临时 HTML 文件
     temp_html_path = "./cache/temp_markdown.html"
@@ -322,7 +131,9 @@ async def markdown_to_image(markdown_text, width=1440, css=None):
 
         # 等待 Mermaid 渲染完成
         try:
-            await page.wait_for_function("typeof mermaid !== 'undefined' && document.querySelectorAll('svg').length > 0", timeout=1000)
+            await page.wait_for_function(
+                "typeof mermaid !== 'undefined' && document.querySelectorAll('svg').length > 0", timeout=1000
+            )
             await page.wait_for_timeout(500)
             print("✅ Mermaid 渲染完成")
         except Exception as e:
