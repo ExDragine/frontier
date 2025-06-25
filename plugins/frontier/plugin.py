@@ -123,13 +123,14 @@ async def handle_common(event: Event):
                             if result:
                                 await UniMessage.image(raw=result).send()
                                 # await common.finish(MessageSegment.file_image(result), at_sender=False)
-                        except Exception:
-                            await common.finish("貌似出了点问题")
+                        except Exception as e:
+                            await UniMessage.text(f"貌似出了点问题: {e}").send()
                     else:
                         try:
                             await UniMessage.text(last_message.content).send()
                             # await common.finish(MessageSegment.text(last_message.content))
-                        except Exception:
+                        except Exception as e:
+                            await UniMessage.text(f"貌似出了点问题: {e}").send()
                             result = await markdown_to_image(last_message.content)
                             if result:
                                 await UniMessage.image(raw=result).send()
@@ -159,5 +160,5 @@ async def handle_common(event: Event):
             else:
                 await common.finish("处理完成，但返回格式异常")
 
-    except Exception:
-        await common.finish("貌似什么东西坏了")
+    except Exception as e:
+        await UniMessage.text(f"貌似什么东西坏了: {e}").send()

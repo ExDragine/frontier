@@ -1,5 +1,6 @@
 import os
 import re
+import html
 
 from markdown_it import MarkdownIt
 from playwright.async_api import async_playwright
@@ -56,7 +57,7 @@ def process_math_in_markdown(text):
     return text
 
 
-async def markdown_to_image(markdown_text, width=800, css=None):
+async def markdown_to_image(markdown_text, width=1440, css=None):
     """
     将 Markdown 文本渲染为图片
 
@@ -75,6 +76,18 @@ async def markdown_to_image(markdown_text, width=800, css=None):
     md = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"])
 
     html_content = md.render(markdown_text)
+
+    # 处理 Mermaid 图表代码块，将其转换为可由 Mermaid.js 渲染的 <div class="mermaid"> 元素
+    def replace_mermaid(match):
+        code_content = html.unescape(match.group(1))  # 反转义 HTML 实体
+        return f'<div class="mermaid">{code_content}</div>'
+
+    html_content = re.sub(
+        r"<pre><code class=\"language-mermaid\">(.*?)</code></pre>",
+        replace_mermaid,
+        html_content,
+        flags=re.DOTALL,
+    )
 
     # 准备完整的 HTML 文档
     default_css = """
@@ -269,6 +282,9 @@ async def markdown_to_image(markdown_text, width=800, css=None):
                 console.log("KaTeX rendering completed");
             }});
         </script>
+        <!-- Mermaid 配置和加载 -->
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({{startOnLoad:true, theme:"default"}});</script>
     </head>
     <body>
         <div class="markdown-body" id="markdown-content">
@@ -296,13 +312,22 @@ async def markdown_to_image(markdown_text, width=800, css=None):
         # 等待 KaTeX 渲染完成
         try:
             # 等待KaTeX库加载
-            await page.wait_for_function("typeof renderMathInElement !== 'undefined'", timeout=10000)
+            await page.wait_for_function("typeof renderMathInElement !== 'undefined'", timeout=1000)
             # 等待一段时间让渲染完成
             await page.wait_for_timeout(1000)
             print("✅ KaTeX 渲染完成")
         except Exception as e:
             print(f"⚠️ KaTeX 渲染可能有问题，继续截图: {e}")
             await page.wait_for_timeout(1000)
+
+        # 等待 Mermaid 渲染完成
+        try:
+            await page.wait_for_function("typeof mermaid !== 'undefined' && document.querySelectorAll('svg').length > 0", timeout=1000)
+            await page.wait_for_timeout(500)
+            print("✅ Mermaid 渲染完成")
+        except Exception as e:
+            print(f"⚠️ Mermaid 渲染可能有问题，继续截图: {e}")
+            await page.wait_for_timeout(500)
 
         # 获取内容高度以设置适当的截图高度
         height = await page.evaluate("""
