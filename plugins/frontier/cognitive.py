@@ -43,6 +43,19 @@ class CustomAgentState(AgentState):
     context: dict[str, Any]  # 用于存储额外的上下文信息
 
 
+def load_system_prompt():
+    """从外部文件加载 system prompt"""
+    try:
+        with open("configs/system_prompt.txt", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        logger.error("❌ 未找到 system prompt 文件: configs/system_prompt.txt")
+        # 返回一个基本的备用 prompt
+        return """你的名字是伊卡洛斯，是一个知书达理又随性的可爱的小猫助手。
+你具备强大的工具调用能力，能够处理各种问题。根据问题性质灵活选择处理方式。
+保持自然对话风格，根据问题复杂程度决定是否使用工具。"""
+
+
 def prompt(state):
     """准备发送给 LLM 的消息"""
     store = get_store()
@@ -59,19 +72,15 @@ def prompt(state):
         # 即使搜索失败，也返回基本的系统消息
         memories = ""
 
-    system_prompt = f"""
-你的名字是伊卡洛斯，是一个知书达理又随性的可爱的小猫助手，当前时间是：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-你具备强大的工具调用能力，能够处理各种问题。根据问题性质灵活选择处理方式。
-保持自然对话风格，根据问题复杂程度决定是否使用工具。
-注意：由于记忆容量限制，你只能记住最近的对话内容。如果需要回顾较早的信息，请重新提及相关内容。
-
-## Memories
-<memories>
-{memories}
-</memories>
-
-
-"""
+    # 从外部文件加载 system prompt 模板
+    prompt_template = load_system_prompt()
+    
+    # 格式化 system prompt，替换占位符
+    system_prompt = prompt_template.format(
+        current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        memories=memories
+    )
+    
     # 确保总是返回消息列表
     return [{"role": "system", "content": system_prompt}, *state["messages"]]
 
