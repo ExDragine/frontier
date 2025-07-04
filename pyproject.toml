@@ -3,11 +3,11 @@ name = "frontier"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "a2a-sdk",
     "beautifulsoup4",
-    "bilibili-api-python>=17.2.1",
+    "bilibili-api-python",
     "fastapi",
     "gitpython>=3.1.44",
     "joblib>=1.5.1",
@@ -15,7 +15,7 @@ dependencies = [
     "langchain-chroma",
     "langchain-community",
     "langchain-docling",
-    "langchain-huggingface>=0.2.0",
+    "langchain-huggingface",
     "langchain-mcp-adapters",
     "langchain-openai",
     "langgraph",
@@ -27,16 +27,16 @@ dependencies = [
     "nb-cli",
     "nonebot-adapter-onebot",
     "nonebot-adapter-qq",
-    "nonebot-plugin-alconna>=0.58.3",
+    "nonebot-plugin-alconna",
     "nonebot2",
     "openai",
-    "pandas-stubs>=2.2.3.250527",
+    "pandas-stubs",
     "pillow",
     "playwright",
     "pypinyin",
     "ruff>=0.11.12",
     "scikit-learn>=1.6.1",
-    "sentence-transformers>=4.1.0",
+    "sentence-transformers",
     "tavily-python",
     "websockets",
 ]
