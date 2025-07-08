@@ -74,13 +74,12 @@ def prompt(state):
 
     # 从外部文件加载 system prompt 模板
     prompt_template = load_system_prompt()
-    
+
     # 格式化 system prompt，替换占位符
     system_prompt = prompt_template.format(
-        current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        memories=memories
+        current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), memories=memories
     )
-    
+
     # 确保总是返回消息列表
     return [{"role": "system", "content": system_prompt}, *state["messages"]]
 
@@ -90,7 +89,7 @@ def pre_model_hook(state):
         state["messages"],
         strategy="last",
         token_counter=count_tokens_approximately,
-        max_tokens=16384,
+        max_tokens=8192,
         start_on="human",
         end_on=("human", "tool"),
         include_system=True,
@@ -209,7 +208,7 @@ def analyze_tool_calls(response):
 
 
 # 简化的主函数 - 直接使用复杂智能体，并添加记忆管理
-async def intelligent_agent(messages, max_messages: int = 10):
+async def intelligent_agent(messages):
     """
     智能代理主函数 - 直接使用复杂智能体处理所有问题，支持消息历史长度限制
 
@@ -233,7 +232,7 @@ async def intelligent_agent(messages, max_messages: int = 10):
         }
 
     start_time = time.time()
-    logger.info(f"🚀 启动智能代理系统 (最大消息数: {max_messages})...")
+    logger.info(f"🚀 启动智能代理系统")
 
     try:
         tools = module_tools.all_tools
@@ -254,7 +253,7 @@ async def intelligent_agent(messages, max_messages: int = 10):
         config: RunnableConfig = {"configurable": {"thread_id": "1"}}
 
         # 准备状态，包含最大消息数设置
-        agent_input = {"messages": messages, "max_messages": max_messages, "context": {}}
+        agent_input = {"messages": messages, "context": {}}
 
         response = await agent.ainvoke(agent_input, config=config)
 
@@ -281,15 +280,9 @@ async def intelligent_agent(messages, max_messages: int = 10):
             "agent_used": "intelligent",
             "processing_time": processing_time,
             "total_time": processing_time,
-            # "tool_calls_summary": tool_calls_info,
             "artifacts": artifacts,
             "processed_artifacts": processed_artifacts,
             "uni_messages": message_segments,
-            "memory_info": {
-                "max_messages": max_messages,
-                "current_messages": len(response.get("messages", [])),
-                "memory_trimmed": len(messages) > max_messages,
-            },
         }
 
         return response_data
