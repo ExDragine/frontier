@@ -94,7 +94,7 @@ def pre_model_hook(state):
         end_on=("human", "tool"),
         include_system=True,
     )
-    return {"llm_input_messages": trimmed_messages}
+    return {"messages": trimmed_messages}
 
 
 # ... existing code ...
@@ -232,7 +232,7 @@ async def intelligent_agent(messages):
         }
 
     start_time = time.time()
-    logger.info(f"🚀 启动智能代理系统")
+    logger.info("🚀 启动智能代理系统")
 
     try:
         tools = module_tools.all_tools
