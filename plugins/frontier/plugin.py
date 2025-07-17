@@ -3,10 +3,8 @@ AI插件主文件
 包含NoneBot插件的注册和处理逻辑
 """
 
-import base64
 import os
 
-import httpx
 from git import Repo
 from nonebot import logger, on_message, require
 from nonebot.internal.adapter import Event
@@ -72,22 +70,21 @@ async def handle_updater():
 @common.handle()
 async def handle_common(event: Event):
     """处理普通消息"""
-    message = event.get_message()
-
+    # message = event.get_message()
     texts = event.get_message().extract_plain_text()
     images = []
-    if len(message) > 1:
-        for attachment in message:
-            if attachment.type == "image":
-                if image_url := attachment.data.get("url"):
-                    async with httpx.AsyncClient() as client:
-                        image = await client.get(image_url)
-                        images.append(
-                            {
-                                "type": "image_url",
-                                "image_url": f"data:image/jpeg;base64,{base64.b64encode(image.content).decode()}",
-                            }
-                        )
+    # if len(message) > 1:
+    #     for attachment in message:
+    #         if attachment.type == "image":
+    #             if image_url := attachment.data.get("url"):
+    #                 async with httpx.AsyncClient() as client:
+    #                     image = await client.get(image_url)
+    #                     images.append(
+    #                         {
+    #                             "type": "image_url",
+    #                             "image_url": f"data:image/jpeg;base64,{base64.b64encode(image.content).decode()}",
+    #                         }
+    #                     )
     messages = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
     await common.send("正在烧烤🔮")
 
@@ -122,19 +119,16 @@ async def handle_common(event: Event):
                             result = await markdown_to_image(last_message.content)
                             if result:
                                 await UniMessage.image(raw=result).send()
-                                # await common.finish(MessageSegment.file_image(result), at_sender=False)
                         except Exception as e:
                             await UniMessage.text(f"貌似出了点问题: {e}").send()
                     else:
                         try:
                             await UniMessage.text(last_message.content).send()
-                            # await common.finish(MessageSegment.text(last_message.content))
-                        except Exception as e:
-                            await UniMessage.text(f"貌似出了点问题: {e}").send()
+                        except Exception:
+                            # await UniMessage.text(f"貌似出了点问题: {e}").send()
                             result = await markdown_to_image(last_message.content)
                             if result:
                                 await UniMessage.image(raw=result).send()
-                                # await common.finish(MessageSegment.file_image(result))
                 elif not artifacts:  # 只有在没有媒体工件时才发送"没有返回内容"
                     await common.finish("处理完成，但没有返回内容")
             elif not artifacts:  # 只有在没有媒体工件时才发送"没有返回内容"
@@ -152,7 +146,6 @@ async def handle_common(event: Event):
                     last_message = messages_list[-1]
                     if hasattr(last_message, "content"):
                         await UniMessage.text(last_message.content).send()
-                        # await common.finish(MessageSegment.text(last_message.content))
                     else:
                         await common.finish("处理完成，但没有返回内容")
                 else:
@@ -161,4 +154,9 @@ async def handle_common(event: Event):
                 await common.finish("处理完成，但返回格式异常")
 
     except Exception as e:
+        result = await markdown_to_image(e)
+        if result:
+            await UniMessage.image(raw=result).send()
+            await common.finish("处理过程中发生错误，已生成错误图片")
+
         await UniMessage.text(f"貌似什么东西坏了: {e}").send()

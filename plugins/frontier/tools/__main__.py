@@ -1,4 +1,5 @@
 from plugins.frontier.tools.aurora import aurora_live
+from plugins.frontier.tools.bilibili import get_bilibili_video_info
 from plugins.frontier.tools.earthquake import get_china_earthquake, get_japan_earthquake
 from plugins.frontier.tools.heavens_above import station_location
 from plugins.frontier.tools.mcp_client import mcp_get_tools
@@ -15,6 +16,7 @@ class ModuleTools:
             get_static_china_radar,
             get_fy4b_cloud_map,
             get_fy4b_geos_cloud_map,
+            get_bilibili_video_info,
             paint,
             get_himawari_satellite_image,
             get_china_earthquake,

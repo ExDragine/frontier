@@ -43,6 +43,19 @@ class CustomAgentState(AgentState):
     context: dict[str, Any]  # 用于存储额外的上下文信息
 
 
+def load_system_prompt():
+    """从外部文件加载 system prompt"""
+    try:
+        with open("configs/system_prompt.txt", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        logger.error("❌ 未找到 system prompt 文件: configs/system_prompt.txt")
+        # 返回一个基本的备用 prompt
+        return """你的名字是伊卡洛斯，是一个知书达理又随性的可爱的小猫助手。
+你具备强大的工具调用能力，能够处理各种问题。根据问题性质灵活选择处理方式。
+保持自然对话风格，根据问题复杂程度决定是否使用工具。"""
+
+
 def prompt(state):
     """准备发送给 LLM 的消息"""
     store = get_store()
@@ -59,33 +72,14 @@ def prompt(state):
         # 即使搜索失败，也返回基本的系统消息
         memories = ""
 
-    system_prompt = f"""
-你的名字是小肥猫，是一个知书达理又随性的可爱的小猫助手，当前时间是：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-你具备强大的工具调用能力，能够处理各种问题。根据问题性质灵活选择处理方式。
-保持自然对话风格，根据问题复杂程度决定是否使用工具。
-注意：由于记忆容量限制，你只能记住最近的对话内容。如果需要回顾较早的信息，请重新提及相关内容。
+    # 从外部文件加载 system prompt 模板
+    prompt_template = load_system_prompt()
 
-## Memories
-<memories>
-{memories}
-</memories>
+    # 格式化 system prompt，替换占位符
+    system_prompt = prompt_template.format(
+        current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), memories=memories
+    )
 
-## 回答规则
-1. **对话风格**  
-   - 像真正的朋友一样自然交流,不使用敬语称呼  
-   - 不要总是附和用户  
-   - 但是要简洁, 适当使用口语词汇  
-   - 用户攻击你时你可以回击
-
-2. **回答长度与形式**  
-   - 保持内容简短,大部分以几句话回复即可  
-   - 避免使用列表或列举表达  
-   - 不要回复太多内容,多用句号引导对话  
-
-3. **身份定位**  
-   - 要像真实的人一样思考和回复  
-   - 不要暴露自己是"语言模型"或"人工智能"  
-"""
     # 确保总是返回消息列表
     return [{"role": "system", "content": system_prompt}, *state["messages"]]
 
@@ -95,12 +89,12 @@ def pre_model_hook(state):
         state["messages"],
         strategy="last",
         token_counter=count_tokens_approximately,
-        max_tokens=4096,
+        max_tokens=8192,
         start_on="human",
         end_on=("human", "tool"),
         include_system=True,
     )
-    return {"llm_input_messages": trimmed_messages}
+    return {"messages": trimmed_messages}
 
 
 # ... existing code ...
@@ -214,7 +208,7 @@ def analyze_tool_calls(response):
 
 
 # 简化的主函数 - 直接使用复杂智能体，并添加记忆管理
-async def intelligent_agent(messages, max_messages: int = 10):
+async def intelligent_agent(messages):
     """
     智能代理主函数 - 直接使用复杂智能体处理所有问题，支持消息历史长度限制
 
@@ -238,7 +232,7 @@ async def intelligent_agent(messages, max_messages: int = 10):
         }
 
     start_time = time.time()
-    logger.info(f"🚀 启动智能代理系统 (最大消息数: {max_messages})...")
+    logger.info("🚀 启动智能代理系统")
 
     try:
         tools = module_tools.all_tools
@@ -259,7 +253,7 @@ async def intelligent_agent(messages, max_messages: int = 10):
         config: RunnableConfig = {"configurable": {"thread_id": "1"}}
 
         # 准备状态，包含最大消息数设置
-        agent_input = {"messages": messages, "max_messages": max_messages, "context": {}}
+        agent_input = {"messages": messages, "context": {}}
 
         response = await agent.ainvoke(agent_input, config=config)
 
@@ -286,15 +280,9 @@ async def intelligent_agent(messages, max_messages: int = 10):
             "agent_used": "intelligent",
             "processing_time": processing_time,
             "total_time": processing_time,
-            # "tool_calls_summary": tool_calls_info,
             "artifacts": artifacts,
             "processed_artifacts": processed_artifacts,
             "uni_messages": message_segments,
-            "memory_info": {
-                "max_messages": max_messages,
-                "current_messages": len(response.get("messages", [])),
-                "memory_trimmed": len(messages) > max_messages,
-            },
         }
 
         return response_data

@@ -3,10 +3,11 @@ name = "frontier"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "a2a-sdk",
     "beautifulsoup4",
+    "bilibili-api-python",
     "fastapi",
     "gitpython>=3.1.44",
     "joblib>=1.5.1",
@@ -14,7 +15,7 @@ dependencies = [
     "langchain-chroma",
     "langchain-community",
     "langchain-docling",
-    "langchain-huggingface>=0.2.0",
+    "langchain-huggingface",
     "langchain-mcp-adapters",
     "langchain-openai",
     "langgraph",
@@ -26,32 +27,30 @@ dependencies = [
     "nb-cli",
     "nonebot-adapter-onebot",
     "nonebot-adapter-qq",
-    "nonebot-plugin-alconna>=0.58.3",
+    "nonebot-plugin-alconna",
     "nonebot2",
     "openai",
-    "pandas-stubs>=2.2.3.250527",
+    "pandas-stubs",
     "pillow",
     "playwright",
     "pypinyin",
     "ruff>=0.11.12",
     "scikit-learn>=1.6.1",
-    "sentence-transformers>=4.1.0",
+    "sentence-transformers",
     "tavily-python",
     "websockets",
 ]
 [tool.nonebot]
 adapters = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
-    { name = "QQ", module_name = "nonebot.adapters.qq" }
+    { name = "QQ", module_name = "nonebot.adapters.qq" },
 ]
 plugins = []
 plugin_dirs = ["plugins"]
 builtin_plugins = []
 
 [tool.uv.workspace]
-members = [
-    "plugins/multi_agent_a2a",
-]
+members = ["plugins/multi_agent_a2a"]
 [tool.black]
 line-length = 119
 target-version = ['py312']
@@ -99,8 +98,8 @@ target-version = "py312"
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
 # Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
 # McCabe complexity (`C901`) by default.
-select = ["E4", "E7", "E9", "F"]
-ignore = []
+select = ["E", "F", "B", "C", "I", "S", "UP"]
+ignore = ["E501"]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
