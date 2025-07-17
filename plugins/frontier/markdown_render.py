@@ -98,7 +98,7 @@ async def markdown_to_image(markdown_text, width=1280, css=None):
 
     # 读取 HTML 模板
     template_path = "./resources/markdown_render.html"
-    with open(template_path, "r", encoding="utf-8") as f:
+    with open(template_path, encoding="utf-8") as f:
         template_html = f.read()
 
     full_html = template_html.format(style_block=style_block, html_content=html_content)
@@ -167,8 +167,8 @@ async def markdown_to_image(markdown_text, width=1280, css=None):
         # 删除临时文件
         try:
             os.remove(temp_html_path)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ 删除临时文件失败: {e}")
 
         return img
     else:

@@ -46,7 +46,7 @@ class CustomAgentState(AgentState):
 def load_system_prompt():
     """从外部文件加载 system prompt"""
     try:
-        with open("configs/system_prompt.txt", "r", encoding="utf-8") as f:
+        with open("configs/system_prompt.txt", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         logger.error("❌ 未找到 system prompt 文件: configs/system_prompt.txt")

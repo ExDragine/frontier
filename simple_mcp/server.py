@@ -42,7 +42,7 @@ def safe_eval(expr: str) -> float:
     def _eval(n):
         # Python 3.8+: ast.Constant, Python <3.8: ast.Num
         if isinstance(n, ast.Constant):
-            if isinstance(n.value, (int, float)):
+            if isinstance(n.value, int | float):
                 return n.value
             else:
                 raise ValueError(f"Unsupported constant: {n.value}")
@@ -55,7 +55,7 @@ def safe_eval(expr: str) -> float:
         raise ValueError(f"Unsupported expression: {n}")
 
     result = _eval(node)
-    if not isinstance(result, (int, float)):
+    if not isinstance(result, int | float):
         raise ValueError(f"Expression did not evaluate to a number: {result!r}")
     return float(result)
 
@@ -202,7 +202,7 @@ async def rocket_launches(days: int = 3) -> str:
     if not 1 <= days <= 7:
         return "❌ 天数1-7"
     try:
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
         end = now + datetime.timedelta(days=days)
         payload = {"net": {"gte": now.isoformat(), "lte": end.isoformat()}}
         resp = await async_http_client.post(TLP_LAUNCH_URL, json=payload)
