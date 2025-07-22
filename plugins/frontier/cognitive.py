@@ -4,16 +4,12 @@ from datetime import datetime
 from typing import Any
 
 import dotenv
-
-# from langchain.globals import set_llm_cache
-# from langchain_community.cache import SQLiteCache
 from langchain_core.messages import HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langchain_core.runnables import RunnableConfig
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.config import get_store
 from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.chat_agent_executor import AgentState
 from langgraph.store.memory import InMemoryStore
@@ -58,27 +54,12 @@ def load_system_prompt():
 
 def prompt(state):
     """准备发送给 LLM 的消息"""
-    store = get_store()
-    query = state["messages"][-1].content[-1]
-    if isinstance(query, dict):
-        query = query.get("text", "")
-    try:
-        memories = store.search(
-            ("memories",),
-            query=query,
-        )
-    except Exception as e:
-        logger.error(f"💥 记忆搜索失败: {str(e)}")
-        # 即使搜索失败，也返回基本的系统消息
-        memories = ""
 
     # 从外部文件加载 system prompt 模板
     prompt_template = load_system_prompt()
 
     # 格式化 system prompt，替换占位符
-    system_prompt = prompt_template.format(
-        current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), memories=memories
-    )
+    system_prompt = prompt_template.format(current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     # 确保总是返回消息列表
     return [{"role": "system", "content": system_prompt}, *state["messages"]]
@@ -208,7 +189,7 @@ def analyze_tool_calls(response):
 
 
 # 简化的主函数 - 直接使用复杂智能体，并添加记忆管理
-async def intelligent_agent(messages):
+async def intelligent_agent(messages, user_id):
     """
     智能代理主函数 - 直接使用复杂智能体处理所有问题，支持消息历史长度限制
 
@@ -250,7 +231,7 @@ async def intelligent_agent(messages):
         )
 
         logger.info("🤖 开始执行智能 Agent...")
-        config: RunnableConfig = {"configurable": {"thread_id": "1"}}
+        config: RunnableConfig = {"configurable": {"thread_id": f"{user_id}"}}
 
         # 准备状态，包含最大消息数设置
         agent_input = {"messages": messages, "context": {}}
@@ -302,9 +283,3 @@ async def intelligent_agent(messages):
             "uni_messages": [],
             "error": str(e),
         }
-
-
-# 保持向后兼容的函数别名
-async def react_agent(messages):
-    """向后兼容的函数别名"""
-    return await intelligent_agent(messages)

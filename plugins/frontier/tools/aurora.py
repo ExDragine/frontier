@@ -1,5 +1,4 @@
 import time
-from typing import Optional
 
 from langchain_core.tools import tool
 from nonebot import logger, require
@@ -10,7 +9,7 @@ from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def aurora_live() -> tuple[str, Optional[UniMsg]]:
+async def aurora_live() -> tuple[str, UniMsg | None]:
     """获取北极光实时图像
 
     Returns:

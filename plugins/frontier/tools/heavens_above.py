@@ -1,5 +1,3 @@
-from typing import Optional
-
 import httpx
 from langchain_core.tools import tool
 from nonebot import require
@@ -10,7 +8,7 @@ from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def station_location(name) -> tuple[str, Optional[UniMsg]]:
+async def station_location(name) -> tuple[str, UniMsg | None]:
     """
     获取空间站位置图像
 

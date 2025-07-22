@@ -1,5 +1,5 @@
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
@@ -12,7 +12,7 @@ from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def get_static_china_radar(area: str) -> tuple[Any, Optional[UniMsg]]:
+async def get_static_china_radar(area: str) -> tuple[Any, UniMsg | None]:
     """获取静态中国雷达图
 
     Args:

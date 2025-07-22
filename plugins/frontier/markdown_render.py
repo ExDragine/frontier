@@ -14,7 +14,7 @@ async def init_playwright():
     if browser is None:
         playwright = await async_playwright().start()
         browser = await playwright.chromium.launch(headless=True)
-        page = await browser.new_page(viewport={"width": 800, "height": 600})
+        page = await browser.new_page(viewport={"width": 1000, "height": 600})
 
 
 def preprocess_math(text):
@@ -57,7 +57,7 @@ def process_math_in_markdown(text):
     return text
 
 
-async def markdown_to_image(markdown_text, width=1280, css=None):
+async def markdown_to_image(markdown_text, width=1000, css=None):
     """
     将 Markdown 文本渲染为图片
 

@@ -1,5 +1,3 @@
-from typing import Optional
-
 from langchain_core.tools import tool
 from nonebot import require
 from playwright.async_api import async_playwright
@@ -10,7 +8,7 @@ from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def get_china_earthquake() -> tuple[str, Optional[UniMsg]]:
+async def get_china_earthquake() -> tuple[str, UniMsg | None]:
     """获取中国地震信息
 
     Returns:
@@ -22,7 +20,7 @@ async def get_china_earthquake() -> tuple[str, Optional[UniMsg]]:
 
 
 @tool(response_format="content_and_artifact")
-async def get_japan_earthquake() -> tuple[str, Optional[UniMsg]]:
+async def get_japan_earthquake() -> tuple[str, UniMsg | None]:
     """获取日本地震信息
 
     Returns:
