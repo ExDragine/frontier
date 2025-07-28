@@ -1,5 +1,4 @@
 import time
-from typing import Optional
 from urllib.parse import quote
 
 import httpx
@@ -12,7 +11,7 @@ from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def paint(prompt: str) -> tuple[str, Optional[UniMsg]]:
+async def get_paint(prompt: str) -> tuple[str, UniMsg | None]:
     """生成图片
 
     Args:

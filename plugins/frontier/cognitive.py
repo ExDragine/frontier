@@ -4,16 +4,12 @@ from datetime import datetime
 from typing import Any
 
 import dotenv
-
-# from langchain.globals import set_llm_cache
-# from langchain_community.cache import SQLiteCache
 from langchain_core.messages import HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langchain_core.runnables import RunnableConfig
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.config import get_store
 from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.chat_agent_executor import AgentState
 from langgraph.store.memory import InMemoryStore
@@ -26,7 +22,6 @@ from plugins.frontier.tools import ModuleTools
 require("nonebot_plugin_alconna")
 
 dotenv.load_dotenv()
-# set_llm_cache(SQLiteCache(database_path="cache.db"))
 
 store = InMemoryStore(
     index={"dims": 1536, "embed": HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")}
@@ -58,27 +53,12 @@ def load_system_prompt():
 
 def prompt(state):
     """准备发送给 LLM 的消息"""
-    store = get_store()
-    query = state["messages"][-1].content[-1]
-    if isinstance(query, dict):
-        query = query.get("text", "")
-    try:
-        memories = store.search(
-            ("memories",),
-            query=query,
-        )
-    except Exception as e:
-        logger.error(f"💥 记忆搜索失败: {str(e)}")
-        # 即使搜索失败，也返回基本的系统消息
-        memories = ""
 
     # 从外部文件加载 system prompt 模板
     prompt_template = load_system_prompt()
 
     # 格式化 system prompt，替换占位符
-    system_prompt = prompt_template.format(
-        current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), memories=memories
-    )
+    system_prompt = prompt_template.format(current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     # 确保总是返回消息列表
     return [{"role": "system", "content": system_prompt}, *state["messages"]]
@@ -169,46 +149,8 @@ def get_message_segments(processed_artifacts):
     return message_segments
 
 
-def analyze_tool_calls(response):
-    """分析 Agent 响应中的工具调用信息"""
-    tool_calls = []
-
-    # 添加安全检查
-    if not response or not isinstance(response, dict):
-        logger.warning("⚠️ analyze_tool_calls: response 为空或不是字典类型")
-        return {"total_tool_calls": 0, "tools_used": [], "detailed_calls": []}
-
-    if "messages" in response and response["messages"]:
-        for message in response["messages"]:
-            # 检查是否有工具调用
-            if hasattr(message, "tool_calls") and message.tool_calls:
-                for tool_call in message.tool_calls:
-                    tool_info = {
-                        "tool_name": tool_call.get("name", "unknown"),
-                        "arguments": tool_call.get("args", {}),
-                        "id": tool_call.get("id", ""),
-                    }
-                    tool_calls.append(tool_info)
-                    logger.info(f"🔍 发现工具调用: {tool_info['tool_name']} - 参数: {tool_info['arguments']}")
-
-            # 检查消息类型
-            if hasattr(message, "type"):
-                logger.info(f"📝 消息类型: {message.type}")
-
-    summary = {
-        "total_tool_calls": len(tool_calls),
-        "tools_used": [call["tool_name"] for call in tool_calls],
-        "detailed_calls": tool_calls,
-    }
-
-    logger.info(f"📈 工具调用总结: 共调用 {summary['total_tool_calls']} 次工具")
-    logger.info(f"🛠️ 使用的工具: {summary['tools_used']}")
-
-    return summary
-
-
 # 简化的主函数 - 直接使用复杂智能体，并添加记忆管理
-async def intelligent_agent(messages):
+async def intelligent_agent(messages, user_id):
     """
     智能代理主函数 - 直接使用复杂智能体处理所有问题，支持消息历史长度限制
 
@@ -225,7 +167,6 @@ async def intelligent_agent(messages):
             "agent_used": "error",
             "processing_time": 0.0,
             "total_time": 0.0,
-            "tool_calls_summary": {"total_tool_calls": 0, "tools_used": [], "detailed_calls": []},
             "artifacts": [],
             "processed_artifacts": [],
             "message_segments": [],
@@ -250,7 +191,7 @@ async def intelligent_agent(messages):
         )
 
         logger.info("🤖 开始执行智能 Agent...")
-        config: RunnableConfig = {"configurable": {"thread_id": "1"}}
+        config: RunnableConfig = {"configurable": {"thread_id": f"{user_id}"}}
 
         # 准备状态，包含最大消息数设置
         agent_input = {"messages": messages, "context": {}}
@@ -259,9 +200,6 @@ async def intelligent_agent(messages):
 
         processing_time = time.time() - start_time
         logger.info(f"✅ 智能代理完成 (耗时: {processing_time:.2f}s)")
-
-        # 分析响应中的工具调用
-        # tool_calls_info = analyze_tool_calls(response)
 
         # 提取工件
         artifacts = extract_artifacts(response)
@@ -296,15 +234,8 @@ async def intelligent_agent(messages):
             "agent_used": "error",
             "processing_time": total_time,
             "total_time": total_time,
-            "tool_calls_summary": {"total_tool_calls": 0, "tools_used": [], "detailed_calls": []},
             "artifacts": [],
             "processed_artifacts": [],
             "uni_messages": [],
             "error": str(e),
         }
-
-
-# 保持向后兼容的函数别名
-async def react_agent(messages):
-    """向后兼容的函数别名"""
-    return await intelligent_agent(messages)

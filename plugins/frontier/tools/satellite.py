@@ -1,5 +1,5 @@
 import time
-from typing import Literal, Optional
+from typing import Literal
 
 import httpx
 from langchain_core.tools import tool
@@ -11,7 +11,7 @@ from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, Optional[UniMsg]]:
+async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, UniMsg | None]:
     """获取卫星云图
 
     Args:
@@ -86,7 +86,7 @@ async def get_fy4b_geos_cloud_map(
         "GRA": f"https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/GRA/IRX/VIDEO/GEOS.GRA.IRX.GBAL.{t}.mp4",
         "WVX": f"https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/WVX/VIDEO/GEOS.MOS.WVX.GBAL.{t}.mp4",
     }
-    fn2url: Optional[str] = url.get(fn)
+    fn2url: str | None = url.get(fn)
     if fn2url is None:
         return None
     try:
@@ -101,7 +101,7 @@ async def get_fy4b_geos_cloud_map(
 
 
 @tool(response_format="content_and_artifact")
-async def get_himawari_satellite_image() -> tuple[str, Optional[UniMsg]]:
+async def get_himawari_satellite_image() -> tuple[str, UniMsg | None]:
     """获取Himawari静止气象卫星最新可见光合成图像
 
     Returns:

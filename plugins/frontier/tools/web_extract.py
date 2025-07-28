@@ -5,7 +5,7 @@ from langchain_docling.loader import DoclingLoader, ExportType
 
 
 @tool(response_format="content")
-async def web_extract(url: str) -> str:
+async def get_web_extract(url: str) -> str:
     """
     从网页或PDF链接中提取信息
 
