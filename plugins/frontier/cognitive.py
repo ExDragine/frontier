@@ -22,7 +22,6 @@ from plugins.frontier.tools import ModuleTools
 require("nonebot_plugin_alconna")
 
 dotenv.load_dotenv()
-# set_llm_cache(SQLiteCache(database_path="cache.db"))
 
 store = InMemoryStore(
     index={"dims": 1536, "embed": HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")}
@@ -150,44 +149,6 @@ def get_message_segments(processed_artifacts):
     return message_segments
 
 
-def analyze_tool_calls(response):
-    """分析 Agent 响应中的工具调用信息"""
-    tool_calls = []
-
-    # 添加安全检查
-    if not response or not isinstance(response, dict):
-        logger.warning("⚠️ analyze_tool_calls: response 为空或不是字典类型")
-        return {"total_tool_calls": 0, "tools_used": [], "detailed_calls": []}
-
-    if "messages" in response and response["messages"]:
-        for message in response["messages"]:
-            # 检查是否有工具调用
-            if hasattr(message, "tool_calls") and message.tool_calls:
-                for tool_call in message.tool_calls:
-                    tool_info = {
-                        "tool_name": tool_call.get("name", "unknown"),
-                        "arguments": tool_call.get("args", {}),
-                        "id": tool_call.get("id", ""),
-                    }
-                    tool_calls.append(tool_info)
-                    logger.info(f"🔍 发现工具调用: {tool_info['tool_name']} - 参数: {tool_info['arguments']}")
-
-            # 检查消息类型
-            if hasattr(message, "type"):
-                logger.info(f"📝 消息类型: {message.type}")
-
-    summary = {
-        "total_tool_calls": len(tool_calls),
-        "tools_used": [call["tool_name"] for call in tool_calls],
-        "detailed_calls": tool_calls,
-    }
-
-    logger.info(f"📈 工具调用总结: 共调用 {summary['total_tool_calls']} 次工具")
-    logger.info(f"🛠️ 使用的工具: {summary['tools_used']}")
-
-    return summary
-
-
 # 简化的主函数 - 直接使用复杂智能体，并添加记忆管理
 async def intelligent_agent(messages, user_id):
     """
@@ -206,7 +167,6 @@ async def intelligent_agent(messages, user_id):
             "agent_used": "error",
             "processing_time": 0.0,
             "total_time": 0.0,
-            "tool_calls_summary": {"total_tool_calls": 0, "tools_used": [], "detailed_calls": []},
             "artifacts": [],
             "processed_artifacts": [],
             "message_segments": [],
@@ -241,9 +201,6 @@ async def intelligent_agent(messages, user_id):
         processing_time = time.time() - start_time
         logger.info(f"✅ 智能代理完成 (耗时: {processing_time:.2f}s)")
 
-        # 分析响应中的工具调用
-        # tool_calls_info = analyze_tool_calls(response)
-
         # 提取工件
         artifacts = extract_artifacts(response)
         processed_artifacts = process_artifacts(artifacts)
@@ -277,7 +234,6 @@ async def intelligent_agent(messages, user_id):
             "agent_used": "error",
             "processing_time": total_time,
             "total_time": total_time,
-            "tool_calls_summary": {"total_tool_calls": 0, "tools_used": [], "detailed_calls": []},
             "artifacts": [],
             "processed_artifacts": [],
             "uni_messages": [],
