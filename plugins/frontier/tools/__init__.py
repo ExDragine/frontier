@@ -9,7 +9,7 @@ from .paint import get_paint
 from .radar import get_static_china_radar
 from .rocket import rocket_launches
 from .satellite import get_fy4b_cloud_map, get_fy4b_geos_cloud_map, get_himawari_satellite_image
-from .weather import get_current_weather, get_future_weather, mars_weather
+from .weather import mars_weather
 from .web_extract import get_web_extract
 
 
@@ -32,8 +32,6 @@ class ModuleTools:
             comet_information,
             comet_list,
             rocket_launches,
-            get_current_weather,
-            get_future_weather,
             mars_weather,
         ]
         self.all_tools = self.mcp_tools + self.local_tools

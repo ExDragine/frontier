@@ -14,7 +14,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.chat_agent_executor import AgentState
 from langgraph.store.memory import InMemoryStore
 from nonebot import logger, require
-from pydantic import Field, SecretStr
+from pydantic import SecretStr
 
 from plugins.frontier.tools import ModuleTools
 
@@ -23,6 +23,7 @@ require("nonebot_plugin_alconna")
 dotenv.load_dotenv()
 
 module_tools = ModuleTools()
+
 
 # 移除全局store，改为在函数内创建
 def create_user_store():
@@ -36,8 +37,8 @@ def create_user_store():
 class CustomAgentState(AgentState):
     """自定义Agent状态，支持消息历史管理"""
 
-    max_messages: int = 10  # 最大消息数量，默认10条
-    context: dict[str, Any] = Field(default_factory=dict)  # 用于存储额外的上下文信息
+    max_messages: int  # 最大消息数量，默认10条
+    context: dict[str, Any]  # 用于存储额外的上下文信息
 
 
 def load_system_prompt():
@@ -89,6 +90,7 @@ API_KEY = SecretStr(API_KEY)
 
 model = ChatOpenAI(model=MODEL, api_key=API_KEY, base_url="https://openrouter.ai/api/v1")
 
+
 async def create_user_checkpointer(user_id: str):
     """为每个用户会话创建独立的SQLite checkpointer实例"""
     # 确保cache目录存在
@@ -96,7 +98,7 @@ async def create_user_checkpointer(user_id: str):
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir, exist_ok=True)
         logger.info(f"📁 创建cache目录: {cache_dir}")
-    
+
     # 为每个用户创建独立的SQLite数据库文件
     db_path = f"{cache_dir}/checkpoints_user_{user_id}.db"
     logger.debug(f"💾 用户 {user_id} 的数据库路径: {db_path}")
@@ -191,10 +193,10 @@ async def intelligent_agent(messages, user_id):
 
     try:
         tools = module_tools.all_tools
-        
+
         # 为当前用户创建独立的store实例
         user_store = create_user_store()
-        
+
         logger.info(f"👤 为用户 {user_id} 创建独立的存储实例")
         logger.debug(f"🔍 Store实例ID: {id(user_store)}")
 
@@ -217,16 +219,16 @@ async def intelligent_agent(messages, user_id):
             logger.info("🤖 开始执行智能 Agent...")
             config: RunnableConfig = {
                 "configurable": {
-                    "thread_id": f"user_{user_id}_thread", 
-                    "user_id": str(user_id)  # 添加用户ID以增强隔离
+                    "thread_id": f"user_{user_id}_thread",
+                    "user_id": str(user_id),  # 添加用户ID以增强隔离
                 }
             }
 
             # 准备状态，包含最大消息数设置
             agent_input = {
-                "messages": messages, 
+                "messages": messages,
                 "context": {},
-                "max_messages": 10  # 默认最大消息数
+                "max_messages": 10,  # 默认最大消息数
             }
 
             response = await agent.ainvoke(agent_input, config=config)
@@ -243,7 +245,9 @@ async def intelligent_agent(messages, user_id):
             ai_messages = []
             if response and isinstance(response, dict) and "messages" in response:
                 ai_messages = [msg for msg in response["messages"] if hasattr(msg, "type") and msg.type == "ai"]
-            final_response = ai_messages[-1] if ai_messages else HumanMessage(content="智能代理处理完成，但没有生成响应。")
+            final_response = (
+                ai_messages[-1] if ai_messages else HumanMessage(content="智能代理处理完成，但没有生成响应。")
+            )
 
             # 构建返回结果
             response_data = {
