@@ -19,6 +19,7 @@ dependencies = [
     "langchain-mcp-adapters",
     "langchain-openai",
     "langgraph",
+    "langgraph-checkpoint-sqlite",
     "langmem>=0.0.27",
     "matplotlib>=3.10.3",
     "mcp-server-sqlite",
