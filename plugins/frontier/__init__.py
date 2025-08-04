@@ -43,7 +43,7 @@ async def handle_updater():
         repo = Repo(".")
         pull_result = repo.git.pull(rebase=True)
         logger.info(f"Git pull 结果: {pull_result}")
-        sync_result = subprocess.run(["uv", "sync"], check=True)  # noqa: S603, S607
+        sync_result = subprocess.run(["uv", "sync"], check=False)  # noqa: S603, S607
         logger.info(f"UV sync 结果: {sync_result}")
 
         if sync_result.returncode == 0:
