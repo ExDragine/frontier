@@ -5,6 +5,7 @@ import subprocess
 import httpx
 from git import Repo
 from nonebot import logger, on_message, require
+from nonebot.adapters.qq.event import GroupAtMessageCreateEvent
 from nonebot.internal.adapter import Event
 from PIL import Image
 
@@ -105,9 +106,12 @@ async def send_messages(response: dict):
 
 
 @common.handle()
-async def handle_common(event: Event):
+async def handle_common(event: GroupAtMessageCreateEvent):
     """处理普通消息"""
-    user_id = event.get_user_id()
+    try:
+        user_id = event.group_openid
+    except Exception:
+        user_id = event.get_user_id()
     texts, images = await message_extract(event)
     messages = [{"role": "user", "content": [{"type": "text", "text": texts}]}]
     await common.send("正在烧烤🔮")
