@@ -47,11 +47,8 @@ def load_system_prompt():
         with open("configs/system_prompt.txt", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        logger.error("❌ 未找到 system prompt 文件: configs/system_prompt.txt")
-        # 返回一个基本的备用 prompt
-        return """你的名字是伊卡洛斯，是一个知书达理又随性的可爱的小猫助手。
-你具备强大的工具调用能力，能够处理各种问题。根据问题性质灵活选择处理方式。
-保持自然对话风格，根据问题复杂程度决定是否使用工具。"""
+        logger.warning("❌ 未找到 system prompt 文件: configs/system_prompt.txt")
+        return "Keep response simple."
 
 
 def prompt(state):
@@ -81,14 +78,15 @@ def pre_model_hook(state):
 
 
 # ... existing code ...
-MODEL = os.getenv("OPENROUTER_MODEL")
-API_KEY = os.getenv("OPENROUTER_API_KEY")
+BASE_URL = os.getenv("OPENAI_BASE_URL")
+MODEL = os.getenv("OPENAI_MODEL")
+API_KEY = os.getenv("OPENAI_API_KEY")
 
 if not MODEL or not API_KEY:
-    raise ValueError("OPENROUTER_MODEL and OPENROUTER_API_KEY must be set")
+    raise ValueError("OPENAI_MODEL and OPENAI_API_KEY must be set")
 API_KEY = SecretStr(API_KEY)
 
-model = ChatOpenAI(model=MODEL, api_key=API_KEY, base_url="https://openrouter.ai/api/v1")
+model = ChatOpenAI(model=MODEL, api_key=API_KEY, base_url=BASE_URL)
 
 
 async def create_user_checkpointer(user_id: str):

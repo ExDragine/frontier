@@ -113,7 +113,7 @@ async def handle_common(event: GroupAtMessageCreateEvent):
     except Exception:
         user_id = event.get_user_id()
     texts, images = await message_extract(event)
-    messages = [{"role": "user", "content": [{"type": "text", "text": texts}]}]
+    messages = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
     await common.send("正在烧烤🔮")
 
     try:
