@@ -321,3 +321,4 @@ package-lock.json
 .idea
 .vscode
 mcp.json
+.claude
