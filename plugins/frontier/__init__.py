@@ -1,10 +1,9 @@
 import base64
 import io
-import subprocess
 
 import httpx
 from git import Repo
-from nonebot import logger, on_message, require
+from nonebot import logger, on_command, on_message, require
 from nonebot.adapters.qq.event import GroupAtMessageCreateEvent
 from nonebot.internal.adapter import Event
 from PIL import Image
@@ -13,6 +12,7 @@ from plugins.frontier.markdown_render import markdown_to_image
 
 from .cognitive import intelligent_agent
 from .context_check import context_checker
+from .painter import paint
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import (  # noqa: E402
@@ -29,6 +29,25 @@ updater = on_alconna(
     use_cmd_start=True,
 )
 
+painter = on_command("画图", priority=2, block=True, aliases={"paint", "绘图", "画一张图", "帮我画一张图"})
+
+
+@painter.handle()
+async def handle_painter(event: Event):
+    texts, images = await message_extract(event)
+    if not texts:
+        await UniMessage.text("你想画点什么？").send()
+    messages = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
+    await UniMessage.text("正在画图🎨").send()
+    result = await paint(messages)
+    if result:
+        if result[0]:
+            await UniMessage.text(result[0]).send()
+        for image in result[1]:
+            await UniMessage.image(raw=image).send()
+    else:
+        await UniMessage.text("画图失败，请重试。").send()
+
 
 common = on_message(priority=10)
 
@@ -43,13 +62,13 @@ async def handle_updater():
         repo = Repo(".")
         pull_result = repo.git.pull(rebase=True)
         logger.info(f"Git pull 结果: {pull_result}")
-        sync_result = subprocess.run(["uv", "sync"], check=False)  # noqa: S603, S607
-        logger.info(f"UV sync 结果: {sync_result}")
+        # sync_result = subprocess.run(["uv", "sync"], check=False)  # noqa: S603, S607
+        # logger.info(f"UV sync 结果: {sync_result}")
 
-        if sync_result.returncode == 0:
-            await UniMessage.text("✅ 更新完成！").send()
-        else:
-            await UniMessage.text(f"⚠️ 依赖同步可能有问题，请检查日志: \n{sync_result.stdout}").send()
+        # if sync_result.returncode == 0:
+        await UniMessage.text("✅ 更新完成！").send()
+        # else:
+        #     await UniMessage.text(f"⚠️ 依赖同步可能有问题，请检查日志: \n{sync_result.stdout}").send()
 
     except Exception as e:
         logger.error(f"更新失败: {e}")
@@ -65,7 +84,10 @@ async def message_extract(event: Event):
             if attachment.type == "image":
                 if image_url := attachment.data.get("url"):
                     async with httpx.AsyncClient() as client:
-                        response = await client.get(image_url)
+                        try:
+                            response = await client.get(image_url)
+                        except httpx.ReadTimeout:
+                            response = await client.get(image_url)
                         sample = response.content
                         image = Image.open(io.BytesIO(sample))
                         await UniMessage.text(await context_checker(image)).send()
