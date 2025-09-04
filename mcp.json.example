@@ -1,11 +1,4 @@
 {
-  "simple-mcp": {
-    "command": "python",
-    "args": [
-      "./simple_mcp/server.py"
-    ],
-    "transport": "stdio"
-  },
   "tavily": {
     "command": "npx",
     "args": [

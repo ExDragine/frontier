@@ -8,11 +8,11 @@ from nonebot.adapters.qq.event import GroupAtMessageCreateEvent
 from nonebot.internal.adapter import Event
 from PIL import Image
 
+from plugins.frontier.cognitive import intelligent_agent
+from plugins.frontier.context_check import det
+from plugins.frontier.environment_check import system_check
 from plugins.frontier.markdown_render import markdown_to_image
-
-from .cognitive import intelligent_agent
-from .context_check import context_checker
-from .painter import paint
+from plugins.frontier.painter import paint
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import (  # noqa: E402
@@ -20,6 +20,8 @@ from nonebot_plugin_alconna import (  # noqa: E402
     UniMessage,
     on_alconna,
 )
+
+system_check()
 
 updater = on_alconna(
     Alconna("更新"),
@@ -35,9 +37,15 @@ painter = on_command("画图", priority=2, block=True, aliases={"paint", "绘图
 @painter.handle()
 async def handle_painter(event: Event):
     texts, images = await message_extract(event)
+    texts = texts.replace("/画图", "Create a picture about: ")
     if not texts:
         await UniMessage.text("你想画点什么？").send()
-    messages = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
+    with open("./configs/system_prompt_image.txt") as f:
+        img_sys_prompt = f.read()
+    messages = [
+        {"role": "system", "content": img_sys_prompt},
+        {"role": "user", "content": [{"type": "text", "text": texts}] + images},
+    ]
     await UniMessage.text("正在画图🎨").send()
     result = await paint(messages)
     if result:
@@ -90,7 +98,12 @@ async def message_extract(event: Event):
                             response = await client.get(image_url)
                         sample = response.content
                         image = Image.open(io.BytesIO(sample))
-                        await UniMessage.text(await context_checker(image)).send()
+                        det_result = det.predict(image)[0]
+                        await UniMessage.text(
+                            "不是瑟瑟"
+                            if det_result["label"] == "normal"
+                            else "是瑟瑟" + f"置信度: {det_result['score']:.2f}"
+                        ).send()
                         images.append(
                             {
                                 "type": "image_url",
@@ -110,7 +123,7 @@ async def send_artifacts(artifacts):
 async def send_messages(response: dict):
     last_message = response["messages"][-1]
     if hasattr(last_message, "content") and last_message.content.strip():
-        if len(last_message.content) > 300:
+        if len(last_message.content) > 500:
             try:
                 result = await markdown_to_image(last_message.content)
                 if result:

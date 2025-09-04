@@ -29,7 +29,7 @@ module_tools = ModuleTools()
 def create_user_store():
     """为每个用户会话创建独立的store实例"""
     return InMemoryStore(
-        index={"dims": 1536, "embed": HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")}
+        index={"dims": 384, "embed": HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")}
     )
 
 
@@ -69,7 +69,7 @@ def pre_model_hook(state):
         state["messages"],
         strategy="last",
         token_counter=count_tokens_approximately,
-        max_tokens=8192,
+        max_tokens=64,
         start_on="human",
         end_on=("human", "tool"),
         include_system=True,

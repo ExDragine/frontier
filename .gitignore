@@ -322,3 +322,4 @@ package-lock.json
 .vscode
 mcp.json
 .claude
+cache/
