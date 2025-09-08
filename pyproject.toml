@@ -5,42 +5,41 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "a2a-sdk",
-    "beautifulsoup4",
-    "bilibili-api-python",
-    "fastapi",
-    "gitpython",
-    "langchain",
-    "langchain-chroma",
-    "langchain-community",
-    "langchain-docling",
-    "langchain-huggingface",
-    "langchain-mcp-adapters",
-    "langchain-openai",
-    "langgraph",
-    "langgraph-checkpoint-sqlite",
-    "langmem",
-    "matplotlib",
-    "mcp-server-sqlite",
-    "mcp[cli]",
-    "mdit-py-plugins",
-    "nb-cli",
+    # 核心框架
+    "nonebot2",
     "nonebot-adapter-onebot",
     "nonebot-adapter-qq",
     "nonebot-plugin-alconna",
-    "nonebot2",
-    "onnx",
-    "onnxruntime-gpu",
-    "openai",
-    "pandas-stubs",
+    "nb-cli",
+
+    # AI和机器学习
+    "langchain",
+    "langchain-community",
+    "langchain-openai",
+    "langchain-mcp-adapters",
+    "langchain-docling",
+    "langchain-huggingface",
+    "langgraph",
+    "langgraph-checkpoint-sqlite",
+    "sentence-transformers",
+
+    # 内容绘制
+    "mdit-py-plugins",
+
+    # 图像处理和AI
     "pillow",
+    "onnx",
+    "onnxruntime",
+
+    # 网络和数据处理
+    "beautifulsoup4",
     "playwright",
+    "websockets",
+
+    # 工具和实用库
+    "gitpython",
     "pypinyin",
     "ruff",
-    "scikit-learn",
-    "sentence-transformers",
-    "tavily-python",
-    "websockets",
 ]
 [tool.nonebot]
 adapters = [

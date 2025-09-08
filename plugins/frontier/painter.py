@@ -10,7 +10,7 @@ dotenv.load_dotenv()
 
 BASE_URL = os.getenv("OPENAI_BASE_URL")
 API_KEY = os.getenv("OPENAI_API_KEY")
-MODEL = "google/gemini-2.5-flash-image-preview"
+MODEL = os.getenv("PAINT_MODEL", "")
 
 client = AsyncClient(base_url=BASE_URL, api_key=API_KEY)
 
@@ -29,7 +29,7 @@ async def extract_image(content_images) -> bytes | None:
         return output.getvalue()
 
 
-async def paint(prompt) -> tuple[str | None, list[bytes | None]]:
+async def paint(prompt: list) -> tuple[str | None, list[bytes | None]]:
     response = await client.chat.completions.create(model=MODEL, messages=prompt, stream=False, temperature=0.7)
     message = response.choices[0].message.content
     try:
