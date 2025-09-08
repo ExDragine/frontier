@@ -3,7 +3,7 @@ import io
 
 import httpx
 from git import Repo
-from nonebot import logger, on_command, on_message, require
+from nonebot import get_driver, logger, on_command, on_message, require
 from nonebot.adapters.qq.event import GroupAtMessageCreateEvent
 from nonebot.internal.adapter import Event
 from PIL import Image
@@ -21,7 +21,21 @@ from nonebot_plugin_alconna import (  # noqa: E402
     on_alconna,
 )
 
-system_check()
+driver = get_driver()
+
+
+@driver.on_startup
+async def on_startup():
+    system_check()
+
+
+@driver.on_bot_connect
+async def on_bot_connect():
+    pass
+    # if os.path.exists(".lock"):
+    #     os.remove(".lock")
+    #     await UniMessage.text("✅ 更新完成！").send()
+
 
 updater = on_alconna(
     Alconna("更新"),
@@ -65,18 +79,14 @@ async def handle_updater():
     """处理更新命令"""
     try:
         logger.info("开始执行更新操作...")
+        with open(".lock", "w") as f:
+            f.write("lock")
         await UniMessage.text("🔄 开始更新...").send()
 
         repo = Repo(".")
+        repo.git.checkout()
         pull_result = repo.git.pull(rebase=True)
         logger.info(f"Git pull 结果: {pull_result}")
-        # sync_result = subprocess.run(["uv", "sync"], check=False)  # noqa: S603, S607
-        # logger.info(f"UV sync 结果: {sync_result}")
-
-        # if sync_result.returncode == 0:
-        await UniMessage.text("✅ 更新完成！").send()
-        # else:
-        #     await UniMessage.text(f"⚠️ 依赖同步可能有问题，请检查日志: \n{sync_result.stdout}").send()
 
     except Exception as e:
         logger.error(f"更新失败: {e}")

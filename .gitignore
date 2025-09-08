@@ -323,3 +323,4 @@ package-lock.json
 mcp.json
 .claude
 cache/
+.lock
