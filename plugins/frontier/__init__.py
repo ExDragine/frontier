@@ -144,7 +144,7 @@ async def send_messages(response: dict):
 async def handle_common(event: GroupAtMessageCreateEvent):
     """处理普通消息"""
     try:
-        user_id = event.group_openid
+        user_id = event.get_user_id()
     except Exception:
         user_id = event.get_user_id()
     texts, images = await message_extract(event)
