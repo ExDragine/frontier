@@ -11,7 +11,6 @@ dependencies = [
     "nonebot-adapter-qq",
     "nonebot-plugin-alconna",
     "nb-cli",
-
     # AI和机器学习
     "langchain",
     "langchain-community",
@@ -22,24 +21,22 @@ dependencies = [
     "langgraph",
     "langgraph-checkpoint-sqlite",
     "sentence-transformers",
-
     # 内容绘制
     "mdit-py-plugins",
-
     # 图像处理和AI
     "pillow",
     "onnx",
     "onnxruntime",
-
     # 网络和数据处理
     "beautifulsoup4",
     "playwright",
     "websockets",
-
+    "tavily-python",
     # 工具和实用库
     "gitpython",
     "pypinyin",
     "ruff",
+    "llama-cpp-python",
 ]
 [tool.nonebot]
 adapters = [

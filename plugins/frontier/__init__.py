@@ -11,14 +11,13 @@ from PIL import Image
 from plugins.frontier.cognitive import intelligent_agent
 from plugins.frontier.context_check import det
 from plugins.frontier.environment_check import system_check
+from plugins.frontier.local_slm import slm_cognitive
 from plugins.frontier.markdown_render import markdown_to_image
 from plugins.frontier.painter import paint
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import (  # noqa: E402
-    Alconna,
     UniMessage,
-    on_alconna,
 )
 
 driver = get_driver()
@@ -37,15 +36,37 @@ async def on_bot_connect():
     #     await UniMessage.text("✅ 更新完成！").send()
 
 
-updater = on_alconna(
-    Alconna("更新"),
+updater = on_command(
+    "更新",
     aliases={"update"},
     priority=1,
     block=True,
-    use_cmd_start=True,
 )
 
 painter = on_command("画图", priority=2, block=True, aliases={"paint", "绘图", "画一张图", "帮我画一张图"})
+
+slm_test = on_command("slm", priority=3, block=True)
+
+
+@slm_test.handle()
+async def handle_slm_test(event: Event):
+    texts, images = await message_extract(event)
+    texts = texts.replace("/slm", "")
+    if not texts:
+        await UniMessage.text("你想让我说点什么？").send()
+    result = await slm_cognitive(texts)
+    if result:
+        if len(result) > 500:
+            try:
+                img_result = await markdown_to_image(result)
+                if img_result:
+                    await UniMessage.image(raw=img_result).send()
+            except Exception as e:
+                await UniMessage.text(f"貌似出了点问题: {e}").send()
+        else:
+            await UniMessage.text(result).send()
+    else:
+        await UniMessage.text("SLM 没有返回任何内容，请重试。").send()
 
 
 @painter.handle()
