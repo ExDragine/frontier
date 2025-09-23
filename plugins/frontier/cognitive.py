@@ -226,7 +226,7 @@ async def intelligent_agent(messages, user_id):
             config: RunnableConfig = {
                 "configurable": {
                     "thread_id": f"user_{user_id}_thread",
-                    "user_id": str(user_id),  # 添加用户ID以增强隔离
+                    "user_id": f"user_{user_id}",  # 添加用户ID以增强隔离
                 }
             }
 
