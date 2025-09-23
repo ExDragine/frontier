@@ -8,7 +8,6 @@ dependencies = [
     # 核心框架
     "nonebot2",
     "nonebot-adapter-onebot",
-    "nonebot-adapter-qq",
     "nonebot-plugin-alconna",
     "nb-cli",
     # AI和机器学习
@@ -37,11 +36,11 @@ dependencies = [
     "pypinyin",
     "ruff",
     "llama-cpp-python",
+    "sqlmodel",
 ]
 [tool.nonebot]
 adapters = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
-    { name = "QQ", module_name = "nonebot.adapters.qq" },
 ]
 plugins = []
 plugin_dirs = ["plugins"]

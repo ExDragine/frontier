@@ -82,11 +82,19 @@ BASE_URL = os.getenv("OPENAI_BASE_URL")
 MODEL = os.getenv("OPENAI_MODEL")
 API_KEY = os.getenv("OPENAI_API_KEY")
 
-if not MODEL or not API_KEY:
+if not MODEL or not API_KEY or not BASE_URL:
     raise ValueError("OPENAI_MODEL and OPENAI_API_KEY must be set")
 API_KEY = SecretStr(API_KEY)
 
-model = ChatOpenAI(model=MODEL, api_key=API_KEY, base_url=BASE_URL)
+model = ChatOpenAI(
+    api_key=API_KEY,
+    base_url=BASE_URL,
+    model=MODEL,
+    max_tokens=1024,  # type: ignore
+    reasoning={"enable": True},
+    temperature=0.7,
+    streaming=False,
+)
 
 
 async def create_user_checkpointer(user_id: str):

@@ -1,24 +1,30 @@
 import base64
 import io
+import os
 
+import dotenv
 import httpx
 from git import Repo
 from nonebot import get_driver, logger, on_command, on_message, require
-from nonebot.adapters.qq.event import GroupAtMessageCreateEvent
+from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 from nonebot.internal.adapter import Event
 from PIL import Image
 
 from plugins.frontier.cognitive import intelligent_agent
 from plugins.frontier.context_check import det
+from plugins.frontier.database import databases, init
 from plugins.frontier.environment_check import system_check
 from plugins.frontier.local_slm import slm_cognitive
 from plugins.frontier.markdown_render import markdown_to_image
 from plugins.frontier.painter import paint
 
+dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import (  # noqa: E402
     UniMessage,
 )
+
+MODEL = os.getenv("OPENAI_MODEL")
 
 driver = get_driver()
 
@@ -26,6 +32,11 @@ driver = get_driver()
 @driver.on_startup
 async def on_startup():
     system_check()
+    os.makedirs("./cache", exist_ok=True)
+    for i in databases.values():
+        if not os.path.exists(f"./cache/{i}.db"):
+            os.mkdir(f"./cache/{i}.db")
+            await init()
 
 
 @driver.on_bot_connect
@@ -46,6 +57,16 @@ updater = on_command(
 painter = on_command("画图", priority=2, block=True, aliases={"paint", "绘图", "画一张图", "帮我画一张图"})
 
 slm_test = on_command("slm", priority=3, block=True)
+
+model_tools = on_command("model", priority=4, block=True, aliases={"模型", "模型设置"})
+
+
+@model_tools.handle()
+async def handlen_model_tools(event: Event):
+    texts, images = await message_extract(event)
+    texts = texts.replace("/model", "")
+    if not texts:
+        await UniMessage.text(f"当前默认使用的模型为: {MODEL}").send()
 
 
 @slm_test.handle()
@@ -172,7 +193,9 @@ async def send_messages(response: dict):
 
 
 @common.handle()
-async def handle_common(event: GroupAtMessageCreateEvent):
+async def handle_common(event: GroupMessageEvent):
+    if not event.is_tome():
+        return
     """处理普通消息"""
     try:
         user_id = event.get_user_id()
