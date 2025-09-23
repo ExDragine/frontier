@@ -90,9 +90,6 @@ model = ChatOpenAI(
     api_key=API_KEY,
     base_url=BASE_URL,
     model=MODEL,
-    max_tokens=1024,  # type: ignore
-    reasoning={"enable": True},
-    temperature=0.7,
     streaming=False,
 )
 
