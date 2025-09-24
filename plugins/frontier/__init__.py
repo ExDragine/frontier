@@ -56,9 +56,7 @@ updater = on_command(
 
 painter = on_command("画图", priority=2, block=True, aliases={"paint", "绘图", "画一张图", "帮我画一张图"})
 
-slm_test = on_command("slm", priority=3, block=True)
-
-model_tools = on_command("model", priority=4, block=True, aliases={"模型", "模型设置"})
+model_tools = on_command("model", priority=3, block=True, aliases={"模型", "模型设置"})
 
 
 @model_tools.handle()
@@ -67,27 +65,6 @@ async def handlen_model_tools(event: Event):
     texts = texts.replace("/model", "")
     if not texts:
         await UniMessage.text(f"当前默认使用的模型为: {MODEL}").send()
-
-
-@slm_test.handle()
-async def handle_slm_test(event: Event):
-    texts, images = await message_extract(event)
-    texts = texts.replace("/slm", "")
-    if not texts:
-        await UniMessage.text("你想让我说点什么？").send()
-    result = await slm_cognitive(texts)
-    if result:
-        if len(result) > 500:
-            try:
-                img_result = await markdown_to_image(result)
-                if img_result:
-                    await UniMessage.image(raw=img_result).send()
-            except Exception as e:
-                await UniMessage.text(f"貌似出了点问题: {e}").send()
-        else:
-            await UniMessage.text(result).send()
-    else:
-        await UniMessage.text("SLM 没有返回任何内容，请重试。").send()
 
 
 @painter.handle()
@@ -195,7 +172,10 @@ async def send_messages(response: dict):
 @common.handle()
 async def handle_common(event: GroupMessageEvent):
     if not event.is_tome():
-        return
+        if event.get_plaintext().startswith("小李子"):
+            pass
+        else:
+            await common.finish()
     """处理普通消息"""
     try:
         user_id = event.get_user_id()
@@ -203,7 +183,9 @@ async def handle_common(event: GroupMessageEvent):
         user_id = event.get_user_id()
     texts, images = await message_extract(event)
     messages = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
-    await common.send("正在烧烤🔮")
+    slm_reply = await slm_cognitive("请用简短的不到十个字来回复用户你已经收到了消息", texts)
+    if slm_reply:
+        await common.send(slm_reply)
 
     try:
         result = await intelligent_agent(messages, user_id)

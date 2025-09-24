@@ -30,7 +30,7 @@ llm = ChatLlamaCpp(
     model_path=f"cache/models/{SLM_MODEL_FILE}",
     temperature=0.6,
     n_ctx=1024,
-    max_tokens=512,
+    max_tokens=64,
     top_p=0.95,
     verbose=True,
     streaming=False,
@@ -39,8 +39,10 @@ llm = ChatLlamaCpp(
 agent = create_react_agent(model=llm, tools=[], debug=AGENT_DEBUG_MODE.lower() == "true")
 
 
-async def slm_cognitive(prompt: str):
-    messages = {"messages": [SystemMessage(SYSTEM_PROMPT), HumanMessage(prompt)]}
+async def slm_cognitive(system_prompt: str="",user_prompt:str=""):
+    if not system_prompt:
+        system_prompt = SYSTEM_PROMPT
+    messages = {"messages": [SystemMessage(system_prompt), HumanMessage(user_prompt)]}
     result = await agent.ainvoke(messages)
     for msg in result["messages"]:
         if isinstance(msg, AIMessage):
