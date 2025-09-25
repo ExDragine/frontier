@@ -11,10 +11,9 @@ from nonebot.internal.adapter import Event
 from PIL import Image
 
 from plugins.frontier.cognitive import intelligent_agent
-from plugins.frontier.context_check import det
+from plugins.frontier.context_check import det, text_det
 from plugins.frontier.database import databases, init
 from plugins.frontier.environment_check import system_check
-from plugins.frontier.local_slm import slm_cognitive
 from plugins.frontier.markdown_render import markdown_to_image
 from plugins.frontier.painter import paint
 
@@ -183,9 +182,11 @@ async def handle_common(event: GroupMessageEvent):
         user_id = event.get_user_id()
     texts, images = await message_extract(event)
     messages = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
-    slm_reply = await slm_cognitive("请用简短的不到十个字来回复用户你已经收到了消息", texts)
-    if slm_reply:
-        await common.send(slm_reply)
+    safe_label, categories = await text_det.predict(texts)
+    if safe_label != "Safe":
+        warning_msg = f"⚠️ 该消息被检测为 {safe_label}，涉及类别: {', '.join(categories) if categories else '未知'}。"
+        await UniMessage.text(warning_msg).send()
+        # await common.finish()
 
     try:
         result = await intelligent_agent(messages, user_id)
