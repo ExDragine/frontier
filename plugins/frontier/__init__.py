@@ -20,9 +20,7 @@ from plugins.frontier.painter import paint
 
 dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import (  # noqa: E402
-    UniMessage,
-)
+from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
 
 MODEL = os.getenv("OPENAI_MODEL")
 
@@ -44,7 +42,7 @@ async def on_bot_connect():
     pass
     if os.path.exists(".lock"):
         os.remove(".lock")
-        await UniMessage.text("✅ 更新完成！").send()
+        await UniMessage.text("✅ 更新完成！").send(target=Target.group("1035400922"))
 
 
 updater = on_command("更新", priority=1, block=True, aliases={"update"}, permission=SUPERUSER)
@@ -170,10 +168,8 @@ async def handle_common(event: GroupMessageEvent):
         else:
             await common.finish()
     """处理普通消息"""
-    try:
-        user_id = event.get_user_id()
-    except Exception:
-        user_id = event.get_user_id()
+    user_id = event.get_user_id()
+    user_name = event.sender.card if event.sender.card else event.sender.nickname
     texts, images = await message_extract(event)
     messages = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
     safe_label, categories = await text_det.predict(texts)
@@ -183,7 +179,7 @@ async def handle_common(event: GroupMessageEvent):
         # await common.finish()
 
     try:
-        result = await intelligent_agent(messages, user_id)
+        result = await intelligent_agent(messages, user_id, user_name)
 
         # 处理新的返回值结构
         if isinstance(result, dict) and "response" in result:

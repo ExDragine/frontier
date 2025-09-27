@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 
 import dotenv
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langchain_core.runnables import RunnableConfig
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -41,27 +41,18 @@ class CustomAgentState(AgentState):
     context: dict[str, Any]  # 用于存储额外的上下文信息
 
 
-def load_system_prompt():
+def load_system_prompt(user_name):
     """从外部文件加载 system prompt"""
     try:
         with open("configs/system_prompt.txt", encoding="utf-8") as f:
-            return f.read()
+            system_prompt = f.read()
+            system_prompt = system_prompt.format(
+                current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name=user_name
+            )
+            return system_prompt
     except FileNotFoundError:
         logger.warning("❌ 未找到 system prompt 文件: configs/system_prompt.txt")
-        return "Keep response simple."
-
-
-def prompt(state):
-    """准备发送给 LLM 的消息"""
-
-    # 从外部文件加载 system prompt 模板
-    prompt_template = load_system_prompt()
-
-    # 格式化 system prompt，替换占位符
-    system_prompt = prompt_template.format(current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-    # 确保总是返回消息列表
-    return [{"role": "system", "content": system_prompt}, *state["messages"]]
+        return "Your are a helpful assistant."
 
 
 def pre_model_hook(state):
@@ -169,7 +160,7 @@ def get_message_segments(processed_artifacts):
 
 
 # 简化的主函数 - 直接使用复杂智能体，并添加记忆管理
-async def intelligent_agent(messages, user_id):
+async def intelligent_agent(messages, user_id, user_name):
     """
     智能代理主函数 - 直接使用复杂智能体处理所有问题，支持消息历史长度限制
 
@@ -193,6 +184,7 @@ async def intelligent_agent(messages, user_id):
 
     start_time = time.time()
     logger.info("🚀 启动智能代理系统")
+    prompt_template = load_system_prompt(user_name)
 
     try:
         tools = module_tools.all_tools
@@ -211,7 +203,7 @@ async def intelligent_agent(messages, user_id):
             agent = create_react_agent(
                 model=model,
                 tools=tools,
-                prompt=prompt,
+                prompt=SystemMessage(content=prompt_template),
                 checkpointer=user_checkpointer,
                 state_schema=CustomAgentState,
                 store=user_store,
