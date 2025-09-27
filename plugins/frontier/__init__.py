@@ -8,6 +8,7 @@ from git import Repo
 from nonebot import get_driver, logger, on_command, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 from nonebot.internal.adapter import Event
+from nonebot.permission import SUPERUSER
 from PIL import Image
 
 from plugins.frontier.cognitive import intelligent_agent
@@ -41,25 +42,18 @@ async def on_startup():
 @driver.on_bot_connect
 async def on_bot_connect():
     pass
-    # if os.path.exists(".lock"):
-    #     os.remove(".lock")
-    #     await UniMessage.text("✅ 更新完成！").send()
+    if os.path.exists(".lock"):
+        os.remove(".lock")
+        await UniMessage.text("✅ 更新完成！").send()
 
 
-updater = on_command(
-    "更新",
-    aliases={"update"},
-    priority=1,
-    block=True,
-)
-
+updater = on_command("更新", priority=1, block=True, aliases={"update"}, permission=SUPERUSER)
 painter = on_command("画图", priority=2, block=True, aliases={"paint", "绘图", "画一张图", "帮我画一张图"})
+setting = on_command("model", priority=3, block=True, aliases={"模型", "模型设置"})
 
-model_tools = on_command("model", priority=3, block=True, aliases={"模型", "模型设置"})
 
-
-@model_tools.handle()
-async def handlen_model_tools(event: Event):
+@setting.handle()
+async def handle_setting(event: Event):
     texts, images = await message_extract(event)
     texts = texts.replace("/model", "")
     if not texts:
@@ -93,7 +87,7 @@ common = on_message(priority=10)
 
 
 @updater.handle()
-async def handle_updater():
+async def handle_updater(event: Event):
     """处理更新命令"""
     try:
         logger.info("开始执行更新操作...")

@@ -37,6 +37,7 @@ dependencies = [
     "ruff",
     "llama-cpp-python",
     "sqlmodel",
+    "nonebot-plugin-apscheduler",
 ]
 [tool.nonebot]
 adapters = [
