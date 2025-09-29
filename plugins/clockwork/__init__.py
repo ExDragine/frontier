@@ -28,12 +28,12 @@ async def github_post_news():
     print(response.json())
 
 
-@scheduler.scheduled_job("cron", hour="18")
+@scheduler.scheduled_job("cron", hour="19")
 async def apod_everyday():
     url = "https://api.nasa.gov/planetary/apod"
-    params = {"api_key": os.getenv("NASA_API_KEY", "DEMO_KEY"), "count": 1}
+    params = {"api_key": os.getenv("NASA_API_KEY", "DEMO_KEY")}
     response = httpx.get(url, params=params).json()[0]
-    title = response["title"]
+    title = f"【NASA Astronomy Picture of the Day】\n{response['title']}\n{response['explanation']}"
     image_url = response["url"]
     message = UniMessage([Text(title), Image(url=image_url)])
     await message.send(target=Target.group(os.getenv("APOD_GROUP_ID", "")))
