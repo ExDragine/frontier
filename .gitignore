@@ -324,3 +324,4 @@ mcp.json
 .claude
 cache/
 .lock
+uv.lock
