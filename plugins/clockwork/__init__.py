@@ -2,10 +2,10 @@ import os
 
 import dotenv
 import httpx
-from nonebot_plugin_alconna import Image, Target, Text, UniMessage
 from nonebot_plugin_apscheduler import scheduler
 
 dotenv.load_dotenv()
+from nonebot_plugin_alconna import Image, Target, Text, UniMessage  # noqa: E402
 
 
 async def github_post_news():
