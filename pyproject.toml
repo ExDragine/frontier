@@ -9,6 +9,7 @@ dependencies = [
     "nonebot2[fastapi]",
     "nonebot-adapter-onebot",
     "nonebot-plugin-alconna",
+    "nonebot-plugin-apscheduler",
     "nb-cli",
     # AI和机器学习
     "langchain",
@@ -17,6 +18,7 @@ dependencies = [
     "langchain-mcp-adapters",
     "langchain-docling",
     "langchain-huggingface",
+    "langchain-tavily",
     "langgraph",
     "langgraph-checkpoint-sqlite",
     "sentence-transformers",
@@ -30,14 +32,12 @@ dependencies = [
     "beautifulsoup4",
     "playwright",
     "websockets",
-    "tavily-python",
     # 工具和实用库
     "gitpython",
     "pypinyin",
     "ruff",
     "llama-cpp-python",
     "sqlmodel",
-    "nonebot-plugin-apscheduler",
 ]
 [tool.nonebot]
 adapters = [
