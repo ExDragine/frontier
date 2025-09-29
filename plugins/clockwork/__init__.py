@@ -32,8 +32,8 @@ async def github_post_news():
 async def apod_everyday():
     url = "https://api.nasa.gov/planetary/apod"
     params = {"api_key": os.getenv("NASA_API_KEY", "DEMO_KEY"), "count": 1}
-    response = httpx.get(url, params=params)
-    title = response.json()["title"]
-    image_url = response.json()["url"]
+    response = httpx.get(url, params=params).json()[0]
+    title = response["title"]
+    image_url = response["url"]
     message = UniMessage([Text(title), Image(url=image_url)])
     await message.send(target=Target.group(os.getenv("APOD_GROUP_ID", "")))
