@@ -42,7 +42,7 @@ async def on_bot_connect():
     pass
     if os.path.exists(".lock"):
         os.remove(".lock")
-        await UniMessage.text("✅ 更新完成！").send(target=Target.group("1035400922"))
+        await UniMessage.text("✅ 更新完成！").send(target=Target.group(os.getenv("ANNOUNCE_GROUP_ID", "")))
 
 
 updater = on_command("更新", priority=1, block=True, aliases={"update"}, permission=SUPERUSER)
