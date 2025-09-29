@@ -2,9 +2,12 @@ import os
 
 import dotenv
 import httpx
+from nonebot import require
 from nonebot_plugin_apscheduler import scheduler
 
+require("nonebot_plugin_alconna")
 dotenv.load_dotenv()
+
 from nonebot_plugin_alconna import Image, Target, Text, UniMessage  # noqa: E402
 
 
