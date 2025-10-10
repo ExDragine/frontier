@@ -31,7 +31,7 @@ async def github_post_news():
     print(response.json())
 
 
-@scheduler.scheduled_job("cron", hour="19")
+@scheduler.scheduled_job("cron", hour="19", misfire_grace_time=60)
 async def apod_everyday():
     url = "https://api.nasa.gov/planetary/apod"
     params = {"api_key": os.getenv("NASA_API_KEY", "DEMO_KEY")}
@@ -42,7 +42,7 @@ async def apod_everyday():
     await message.send(target=Target.group(os.getenv("APOD_GROUP_ID", "")))
 
 
-@scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30")
+@scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=60)
 async def earth_now():
     URL = "https://www.storm-chasers.cn/wp-content/uploads/satimgs/Composite_TVIS_FDLK.jpg"
     message = UniMessage([Text("半个钟之前的地球"), Image(url=URL)])
