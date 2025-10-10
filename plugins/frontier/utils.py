@@ -64,6 +64,7 @@ async def send_messages(response: dict[str, list]):
                 await UniMessage.text(result).send()
             else:
                 await UniMessage.text(last_message.content).send()
+            return None
         if len(last_message.content) > 500:
             try:
                 result = await markdown_to_image(last_message.content)

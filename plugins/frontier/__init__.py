@@ -9,7 +9,6 @@ from nonebot.permission import SUPERUSER
 
 from plugins.frontier.cognitive import intelligent_agent
 from plugins.frontier.context_check import text_det
-from plugins.frontier.database import databases, init
 from plugins.frontier.environment_check import system_check
 from plugins.frontier.local_slm import slm_cognitive
 from plugins.frontier.markdown_render import markdown_to_image
@@ -29,10 +28,6 @@ driver = get_driver()
 async def on_startup():
     system_check()
     os.makedirs("./cache", exist_ok=True)
-    for i in databases.values():
-        if not os.path.exists(f"./cache/{i}.db"):
-            os.mkdir(f"./cache/{i}.db")
-            await init()
 
 
 @driver.on_bot_connect
