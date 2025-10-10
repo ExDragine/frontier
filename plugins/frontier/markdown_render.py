@@ -2,6 +2,7 @@ import html
 import os
 import re
 
+from bs4 import BeautifulSoup
 from markdown_it import MarkdownIt
 from playwright.async_api import async_playwright
 
@@ -55,6 +56,12 @@ def process_math_in_markdown(text):
     text = re.sub(r"(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)", replace_inline_math, text)
 
     return text
+
+
+async def markdown_to_text(markdown_text):
+    md_html = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"]).render(markdown_text)
+    plain_text = BeautifulSoup(md_html, "html.parser").get_text()
+    return plain_text
 
 
 async def markdown_to_image(markdown_text, width=1000, css=None):
