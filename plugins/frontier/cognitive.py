@@ -200,7 +200,7 @@ async def intelligent_agent(messages, user_id, user_name):
             }
         }
 
-        response = await agent.ainvoke(messages, config=config)
+        response = await agent.ainvoke({"messages": messages}, config=config)
 
         processing_time = time.time() - start_time
         logger.info(f"✅ 智能代理完成 (耗时: {processing_time:.2f}s)")
