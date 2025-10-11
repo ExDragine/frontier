@@ -1,4 +1,5 @@
 import os
+import time
 
 import dotenv
 from git import Repo
@@ -143,6 +144,15 @@ async def handle_common(event: GroupMessageEvent):
                 logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
                 await send_artifacts(artifacts)
             if "messages" in response and response["messages"]:
+                await messages_db.insert(
+                    time=int(time.time() * 1000),
+                    msg_id=None,
+                    user_id=int(event.self_id),
+                    group_id=int(event.group_id) if event.group_id else None,
+                    user_name="Assistant",
+                    role="assistant",
+                    content=response["messages"][-1]["content"],
+                )
                 await send_messages(response)
 
     except Exception as e:
