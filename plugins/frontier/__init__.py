@@ -2,6 +2,7 @@ import os
 
 import dotenv
 from git import Repo
+from langchain.schema import HumanMessage
 from nonebot import get_driver, logger, on_command, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 from nonebot.internal.adapter import Event
@@ -9,6 +10,7 @@ from nonebot.permission import SUPERUSER
 
 from plugins.frontier.cognitive import intelligent_agent
 from plugins.frontier.context_check import text_det
+from plugins.frontier.database import MessageDatabase
 from plugins.frontier.environment_check import system_check
 from plugins.frontier.local_slm import slm_cognitive
 from plugins.frontier.markdown_render import markdown_to_image
@@ -22,6 +24,7 @@ from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
 MODEL = os.getenv("OPENAI_MODEL")
 
 driver = get_driver()
+messages_db = MessageDatabase()
 
 
 @driver.on_startup
@@ -32,7 +35,6 @@ async def on_startup():
 
 @driver.on_bot_connect
 async def on_bot_connect():
-    pass
     if os.path.exists(".lock"):
         os.remove(".lock")
         await UniMessage.text("✅ 更新完成！").send(target=Target.group(os.getenv("ANNOUNCE_GROUP_ID", "")))
@@ -98,16 +100,29 @@ async def handle_painter(event: Event):
 
 @common.handle()
 async def handle_common(event: GroupMessageEvent):
+    user_id = event.get_user_id()
+    user_name = event.sender.card if event.sender.card else event.sender.nickname
+    texts, images = await message_extract(event)
+    await messages_db.insert(
+        time=event.time,
+        msg_id=event.message_id,
+        user_id=int(user_id),
+        group_id=int(event.group_id) if event.group_id else None,
+        user_name=user_name,
+        role="user" if user_id != str(event.self_id) else "assistant",
+        content=texts,
+    )
     if not event.is_tome():
         if event.get_plaintext().startswith("小李子"):
             pass
         else:
             await common.finish()
     """处理普通消息"""
-    user_id = event.get_user_id()
-    user_name = event.sender.card if event.sender.card else event.sender.nickname
-    texts, images = await message_extract(event)
-    messages = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
+    pre_messages = await messages_db.prepare_message(
+        group_id=int(event.group_id) if event.group_id else None, user_id=int(user_id)
+    )
+    messages: list = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
+    full_messages = pre_messages.append(HumanMessage(content=messages))
     safe_label, categories = await text_det.predict(texts)
     if safe_label != "Safe":
         warning_msg = f"⚠️ 该消息被检测为 {safe_label}，涉及类别: {', '.join(categories) if categories else '未知'}。"
@@ -120,19 +135,13 @@ async def handle_common(event: GroupMessageEvent):
             await UniMessage.text(warning_msg).send()
 
     try:
-        result = await intelligent_agent(messages, user_id, user_name)
-
-        # 处理新的返回值结构
+        result = await intelligent_agent(full_messages, user_id, user_name)
         if isinstance(result, dict) and "response" in result:
             response = result["response"]
             artifacts: list[UniMessage] | None = result.get("uni_messages", [])
-
-            # 首先发送所有的 UniMessage 工件（图片、视频等）
             if artifacts:
                 logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
                 await send_artifacts(artifacts)
-
-            # 然后发送文本响应
             if "messages" in response and response["messages"]:
                 await send_messages(response)
 

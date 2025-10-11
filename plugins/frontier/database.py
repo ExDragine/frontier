@@ -1,4 +1,5 @@
-from sqlmodel import Field, Session, SQLModel, create_engine, delete, select
+from langchain.schema import AIMessage, HumanMessage
+from sqlmodel import Field, Session, SQLModel, create_engine, desc, select
 
 
 class User(SQLModel, table=True):
@@ -12,7 +13,7 @@ class Message(SQLModel, table=True):
     msg_id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
     group_id: int | None = Field(default=None, index=True)
-    user_name: str
+    user_name: str | None
     role: str
     content: str
 
@@ -60,7 +61,7 @@ class MessageDatabase:
         msg_id: int | None,
         user_id: int,
         group_id: int | None,
-        user_name: str,
+        user_name: str | None,
         role: str,
         content: str,
     ):
@@ -77,14 +78,34 @@ class MessageDatabase:
             session.add(message)
             session.commit()
 
-    async def select(self, user_id: int):
+    async def select(self, user_id: int | None = None, group_id: int | None = None):
         with Session(self.engine) as session:
-            statement = select(Message).where(Message.user_id == user_id)
+            if group_id:
+                statement = select(Message).where(Message.group_id == group_id).order_by(desc(Message.time)).limit(20)
+            elif user_id:
+                statement = (
+                    select(Message)
+                    .where(Message.user_id == user_id and Message.group_id is None)
+                    .order_by(desc(Message.time))
+                    .limit(20)
+                )
+            else:
+                return None
             results = session.exec(statement)
             return results.all()
 
-    async def delete(self, user_id: int):
-        with Session(self.engine) as session:
-            statement = delete(Message).where(Message.user_id == user_id)
-            session.exec(statement)
-            session.commit()
+    async def prepare_message(self, user_id: int | None = None, group_id: int | None = None):
+        messages = await self.select(user_id=user_id, group_id=group_id)
+        if not messages:
+            return []
+        messages_seq = []
+        for message in messages:
+            if message.role == "user":
+                messages_seq.append(
+                    HumanMessage(
+                        content=f"{message.user_name}:{message.content}" if message.user_name else message.content
+                    )
+                )
+            else:
+                messages_seq.append(AIMessage(content=f"Yourself: {message.content}"))
+        return messages_seq
