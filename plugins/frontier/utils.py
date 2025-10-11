@@ -7,8 +7,8 @@ from nonebot.internal.adapter import Event
 from PIL import Image
 
 from plugins.frontier.context_check import det
-from plugins.frontier.local_slm import slm_cognitive
 from plugins.frontier.markdown_render import markdown_to_image, markdown_to_text
+from plugins.frontier.slm import slm_cognitive
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402

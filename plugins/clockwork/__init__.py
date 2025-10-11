@@ -6,7 +6,7 @@ import httpx
 from nonebot import require
 from PIL import Image as PILImage
 
-from plugins.frontier.local_slm import slm_cognitive
+from plugins.frontier.slm import slm_cognitive
 
 require("nonebot_plugin_apscheduler")
 require("nonebot_plugin_alconna")

@@ -14,9 +14,9 @@ from plugins.frontier.cognitive import intelligent_agent
 from plugins.frontier.context_check import text_det
 from plugins.frontier.database import MessageDatabase
 from plugins.frontier.environment_check import system_check
-from plugins.frontier.local_slm import slm_cognitive
 from plugins.frontier.markdown_render import markdown_to_image
 from plugins.frontier.painter import paint
+from plugins.frontier.slm import slm_cognitive
 from plugins.frontier.utils import message_extract, send_artifacts, send_messages
 
 dotenv.load_dotenv()
