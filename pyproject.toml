@@ -36,7 +36,6 @@ dependencies = [
     "gitpython",
     "pypinyin",
     "ruff",
-    "llama-cpp-python",
     "sqlmodel",
 ]
 [tool.nonebot]

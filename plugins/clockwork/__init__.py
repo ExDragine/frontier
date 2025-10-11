@@ -50,7 +50,7 @@ async def apod_everyday():
         await message.send(target=Target.group(os.getenv("APOD_GROUP_ID", "")))
 
 
-@scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=120)
+@scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=180)
 async def earth_now():
     URL = "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_DISK_GCLR.JPG"
     async with httpx.AsyncClient() as client:
@@ -61,10 +61,10 @@ async def earth_now():
     image_data = io.BytesIO()
     image.save(image_data, format="JPEG")
     image_data.seek(0)
-    slm_reply = await slm_cognitive("根据内容给出不超过15字的适用于社交聊天的优化后的内容", "来看看半个钟后的地球吧")
+    slm_reply = await slm_cognitive("根据内容给出不超过15字的适用于社交聊天的优化后的内容", "来看看半个钟前的地球吧")
     messages: list[UniMessage] = [
         UniMessage(
-            Text(slm_reply if slm_reply else "来看看半个钟后的地球吧"),
+            Text(slm_reply if slm_reply else "来看看半个钟前的地球吧"),
         ),
         UniMessage(Image(raw=image_data)),
     ]
