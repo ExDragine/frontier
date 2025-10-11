@@ -123,13 +123,15 @@ async def handle_common(event: GroupMessageEvent):
         if event.get_plaintext().startswith("小李子"):
             pass
         else:
-            temp_conv = messages[-5:] + [{"role": "user", "content": f"{user_name}: {texts}"}]
+            if secrets.randbelow(10) != 1:
+                await common.finish()
+            temp_conv: list[dict] = messages[-5:] + [{"role": "user", "content": f"{user_name}: {texts}"}]
             plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
             slm_reply = await slm_cognitive(
                 "请判断当前对话内容是否适合插话，是则返回 YES 不是则返回 NO, 只返回这两个结果",
                 plain_conv,
             )
-            if slm_reply == "YES" and secrets.randbelow(5) == 1:
+            if slm_reply == "YES":
                 pass
             else:
                 await common.finish()
