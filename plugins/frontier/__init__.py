@@ -105,6 +105,8 @@ async def handle_common(event: GroupMessageEvent):
     user_id = event.get_user_id()
     user_name = event.sender.card if event.sender.card else event.sender.nickname
     texts, images = await message_extract(event)
+    if not texts:
+        await common.finish()
     await messages_db.insert(
         time=int(time.time() * 1000),
         msg_id=event.message_id,
