@@ -1,4 +1,3 @@
-from langchain.schema import AIMessage, HumanMessage
 from sqlmodel import Field, Session, SQLModel, create_engine, desc, select
 
 
@@ -9,8 +8,8 @@ class User(SQLModel, table=True):
 
 
 class Message(SQLModel, table=True):
-    time: int
-    msg_id: int | None = Field(default=None, primary_key=True)
+    time: int = Field(primary_key=True)
+    msg_id: int | None = Field(default=None)
     user_id: int = Field(index=True)
     group_id: int | None = Field(default=None, index=True)
     user_name: str | None
@@ -81,13 +80,13 @@ class MessageDatabase:
     async def select(self, user_id: int | None = None, group_id: int | None = None):
         with Session(self.engine) as session:
             if group_id:
-                statement = select(Message).where(Message.group_id == group_id).order_by(desc(Message.time)).limit(20)
+                statement = select(Message).where(Message.group_id == group_id).order_by(desc(Message.time)).limit(10)
             elif user_id:
                 statement = (
                     select(Message)
                     .where(Message.user_id == user_id and Message.group_id is None)
                     .order_by(desc(Message.time))
-                    .limit(20)
+                    .limit(10)
                 )
             else:
                 return None
@@ -99,13 +98,11 @@ class MessageDatabase:
         if not messages:
             return []
         messages_seq = []
+        messages = reversed(messages)
         for message in messages:
             if message.role == "user":
-                messages_seq.append(
-                    HumanMessage(
-                        content=f"{message.user_name}:{message.content}" if message.user_name else message.content
-                    )
-                )
+                messages_seq.append({"role": "user", "content": f"{message.user_name}: {message.content}"})
             else:
-                messages_seq.append(AIMessage(content=f"Yourself: {message.content}"))
+                messages_seq.append({"role": "assistant", "content": message.content})
+        messages_seq.pop()
         return messages_seq
