@@ -214,7 +214,7 @@ async def intelligent_agent(messages, user_id, user_name):
         ai_messages = []
         if response and isinstance(response, dict) and "messages" in response:
             ai_messages = [msg for msg in response["messages"] if hasattr(msg, "type") and msg.type == "ai"]
-        final_response = ai_messages[-1] if ai_messages else HumanMessage(content="智能代理处理完成，但没有生成响应。")
+        final_response = ai_messages[-1] if ai_messages else "智能代理处理完成，但没有生成响应。"
 
         # 构建返回结果
         response_data = {
@@ -234,7 +234,7 @@ async def intelligent_agent(messages, user_id, user_name):
         logger.error(f"💥 智能代理系统执行失败: {str(e)}")
 
         return {
-            "response": {"messages": [HumanMessage(content=f"系统处理出现错误: {str(e)}")]},
+            "response": {"messages": "系统处理出现错误: {str(e)}"},
             "agent_used": "error",
             "processing_time": total_time,
             "total_time": total_time,
