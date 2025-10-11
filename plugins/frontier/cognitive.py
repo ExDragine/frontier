@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 
 import dotenv
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langchain_core.runnables import RunnableConfig
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -158,7 +158,7 @@ async def intelligent_agent(messages, user_id, user_name):
     """
     if not messages:
         return {
-            "response": {"messages": [HumanMessage(content="请提供有效的消息内容")]},
+            "response": {"messages": [AIMessage(content="请提供有效的消息内容")]},
             "agent_used": "error",
             "processing_time": 0.0,
             "total_time": 0.0,
@@ -214,12 +214,11 @@ async def intelligent_agent(messages, user_id, user_name):
         ai_messages = []
         if response and isinstance(response, dict) and "messages" in response:
             ai_messages = [msg for msg in response["messages"] if hasattr(msg, "type") and msg.type == "ai"]
-        final_response = ai_messages[-1] if ai_messages else "智能代理处理完成，但没有生成响应。"
+        final_response = ai_messages[-1] if ai_messages else AIMessage("智能代理处理完成，但没有生成响应。")
 
         # 构建返回结果
         response_data = {
             "response": {"messages": [final_response]},
-            "agent_used": "intelligent",
             "processing_time": processing_time,
             "total_time": processing_time,
             "artifacts": artifacts,
@@ -234,8 +233,7 @@ async def intelligent_agent(messages, user_id, user_name):
         logger.error(f"💥 智能代理系统执行失败: {str(e)}")
 
         return {
-            "response": {"messages": "系统处理出现错误: {str(e)}"},
-            "agent_used": "error",
+            "response": {"messages": AIMessage(f"系统处理出现错误: {str(e)}")},
             "processing_time": total_time,
             "total_time": total_time,
             "artifacts": [],

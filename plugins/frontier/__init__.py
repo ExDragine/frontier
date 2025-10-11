@@ -3,7 +3,7 @@ import time
 
 import dotenv
 from git import Repo
-from langchain.schema import HumanMessage
+from langchain.schema import AIMessage, HumanMessage
 from nonebot import get_driver, logger, on_command, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 from nonebot.internal.adapter import Event
@@ -119,11 +119,12 @@ async def handle_common(event: GroupMessageEvent):
         else:
             await common.finish()
     """处理普通消息"""
-    pre_messages = await messages_db.prepare_message(
+    messages = await messages_db.prepare_message(
         group_id=int(event.group_id) if event.group_id else None, user_id=int(user_id)
     )
-    messages: list = [{"role": "user", "content": [{"type": "text", "text": texts}] + images}]
-    full_messages = pre_messages.append(HumanMessage(content=messages))
+    messages.append(
+        HumanMessage([{"role": "user", "content": [{"type": "text", "text": f"{user_name}:{texts}"}] + images}])
+    )
     safe_label, categories = await text_det.predict(texts)
     if safe_label != "Safe":
         warning_msg = f"⚠️ 该消息被检测为 {safe_label}，涉及类别: {', '.join(categories) if categories else '未知'}。"
@@ -136,14 +137,14 @@ async def handle_common(event: GroupMessageEvent):
             await UniMessage.text(warning_msg).send()
 
     try:
-        result = await intelligent_agent(full_messages, user_id, user_name)
+        result = await intelligent_agent(messages, user_id, user_name)
         if isinstance(result, dict) and "response" in result:
             response = result["response"]
             artifacts: list[UniMessage] | None = result.get("uni_messages", [])
             if artifacts:
                 logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
                 await send_artifacts(artifacts)
-            if "messages" in response and response["messages"]:
+            if response["messages"] and isinstance(response["messages"][-1], AIMessage):
                 await messages_db.insert(
                     time=int(time.time() * 1000),
                     msg_id=None,
@@ -151,9 +152,11 @@ async def handle_common(event: GroupMessageEvent):
                     group_id=int(event.group_id) if event.group_id else None,
                     user_name="Assistant",
                     role="assistant",
-                    content=response["messages"][-1]["content"],
+                    content=response["messages"][-1].content,
                 )
                 await send_messages(response)
+            else:
+                await UniMessage.text(response["messages"]).send()
 
     except Exception as e:
         result = await markdown_to_image(e)
