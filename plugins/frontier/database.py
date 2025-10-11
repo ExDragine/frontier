@@ -80,13 +80,13 @@ class MessageDatabase:
     async def select(self, user_id: int | None = None, group_id: int | None = None):
         with Session(self.engine) as session:
             if group_id:
-                statement = select(Message).where(Message.group_id == group_id).order_by(desc(Message.time)).limit(10)
+                statement = select(Message).where(Message.group_id == group_id).order_by(desc(Message.time)).limit(20)
             elif user_id:
                 statement = (
                     select(Message)
                     .where(Message.user_id == user_id and Message.group_id is None)
                     .order_by(desc(Message.time))
-                    .limit(10)
+                    .limit(20)
                 )
             else:
                 return None

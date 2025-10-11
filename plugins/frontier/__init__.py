@@ -114,20 +114,23 @@ async def handle_common(event: GroupMessageEvent):
         role="user" if user_id != str(event.self_id) else "assistant",
         content=texts,
     )
+    messages = await messages_db.prepare_message(
+        group_id=int(event.group_id) if event.group_id else None, user_id=int(user_id)
+    )
     if not event.is_tome():
         if event.get_plaintext().startswith("小李子"):
             pass
         else:
+            temp_conv = messages[-5:] + [{"role": "user", "content": f"{user_name}: {texts}"}]
+            plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
             slm_reply = await slm_cognitive(
-                "请判断当前对话是否适合插话，是则返回 YES 不是则返回 NO, 只返回这两个结果", texts
+                "请判断当前对话内容是否适合插话，是则返回 YES 不是则返回 NO, 只返回这两个结果",
+                plain_conv,
             )
-            if slm_reply == "YES" and secrets.randbelow(2) == 1:
+            if slm_reply == "YES" and secrets.randbelow(5) == 1:
                 pass
             else:
                 await common.finish()
-    messages = await messages_db.prepare_message(
-        group_id=int(event.group_id) if event.group_id else None, user_id=int(user_id)
-    )
     messages.append({"role": "user", "content": [{"type": "text", "text": f"{user_name}:{texts}"}] + images})
     safe_label, categories = await text_det.predict(texts)
     if safe_label != "Safe":
