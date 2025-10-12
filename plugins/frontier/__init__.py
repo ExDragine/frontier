@@ -123,7 +123,7 @@ async def handle_common(event: GroupMessageEvent):
         if event.get_plaintext().startswith("小李子"):
             pass
         else:
-            if secrets.randbelow(10) != 1:
+            if secrets.randbelow(100) != 1:
                 await common.finish()
             temp_conv: list[dict] = messages[-5:] + [{"role": "user", "content": f"{user_name}: {texts}"}]
             plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)

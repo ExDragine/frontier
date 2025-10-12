@@ -52,7 +52,7 @@ async def apod_everyday():
 
 @scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=180)
 async def earth_now():
-    URL = "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_DISK_GCLR.JPG"
+    URL = "https://www.storm-chasers.cn/wp-content/uploads/satimgs/Composite_TVIS_FDLK.jpg"
     async with httpx.AsyncClient() as client:
         response = await client.get(URL)
         image_raw = response.content
