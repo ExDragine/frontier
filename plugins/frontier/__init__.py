@@ -6,7 +6,7 @@ import dotenv
 from git import Repo
 from langchain.schema import AIMessage
 from nonebot import get_driver, logger, on_command, on_message, require
-from nonebot.adapters.onebot.v11.event import GroupMessageEvent
+from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 from nonebot.internal.adapter import Event
 from nonebot.permission import SUPERUSER
 
@@ -102,10 +102,14 @@ async def handle_painter(event: Event):
 
 
 @common.handle()
-async def handle_common(event: GroupMessageEvent):
+async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     user_id = event.get_user_id()
     user_name = event.sender.card if event.sender.card else event.sender.nickname
     texts, images = await message_extract(event)
+    if isinstance(event, GroupMessageEvent):
+        group_id = int(event.group_id)
+    else:
+        group_id = None
     if not texts:
         if not event.is_tome():
             await common.finish()
@@ -115,19 +119,17 @@ async def handle_common(event: GroupMessageEvent):
         time=int(time.time() * 1000),
         msg_id=event.message_id,
         user_id=int(user_id),
-        group_id=int(event.group_id) if event.group_id else None,
+        group_id=group_id,
         user_name=user_name,
         role="user" if user_id != str(event.self_id) else "assistant",
         content=texts,
     )
-    messages = await messages_db.prepare_message(
-        group_id=int(event.group_id) if event.group_id else None, user_id=int(user_id)
-    )
+    messages = await messages_db.prepare_message(group_id, int(user_id))
     if not event.is_tome():
         if event.get_plaintext().startswith("小李子"):
             pass
         else:
-            if int(event.group_id) != int(TEST_TARGET) or secrets.randbelow(10) != 1:
+            if group_id != int(TEST_TARGET) or secrets.randbelow(10) != 1:
                 await common.finish()
             temp_conv: list[dict] = messages[-5:] + [{"role": "user", "content": f"{user_name}: {texts}"}]
             plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
@@ -164,7 +166,7 @@ async def handle_common(event: GroupMessageEvent):
                     time=int(time.time() * 1000),
                     msg_id=None,
                     user_id=int(event.self_id),
-                    group_id=int(event.group_id) if event.group_id else None,
+                    group_id=group_id,
                     user_name="Assistant",
                     role="assistant",
                     content=response["messages"][-1].content,
