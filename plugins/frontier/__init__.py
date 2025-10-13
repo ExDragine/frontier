@@ -24,6 +24,7 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
 
 MODEL = os.getenv("OPENAI_MODEL")
+TEST_TARGET = os.getenv("TEST_TARGET", "")
 
 driver = get_driver()
 messages_db = MessageDatabase()
@@ -106,7 +107,10 @@ async def handle_common(event: GroupMessageEvent):
     user_name = event.sender.card if event.sender.card else event.sender.nickname
     texts, images = await message_extract(event)
     if not texts:
-        await common.finish()
+        if not event.is_tome():
+            await common.finish()
+        else:
+            texts = "Hello"
     await messages_db.insert(
         time=int(time.time() * 1000),
         msg_id=event.message_id,
@@ -123,7 +127,7 @@ async def handle_common(event: GroupMessageEvent):
         if event.get_plaintext().startswith("小李子"):
             pass
         else:
-            if secrets.randbelow(100) != 1:
+            if int(event.group_id) != int(TEST_TARGET) or secrets.randbelow(10) != 1:
                 await common.finish()
             temp_conv: list[dict] = messages[-5:] + [{"role": "user", "content": f"{user_name}: {texts}"}]
             plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
