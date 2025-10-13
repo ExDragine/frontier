@@ -40,7 +40,7 @@ async def apod_everyday():
     url = "https://api.nasa.gov/planetary/apod"
     params = {"api_key": os.getenv("NASA_API_KEY", "DEMO_KEY")}
     response = httpx.get(url, params=params).json()
-    intro = f"NASA每日一图\n\n{response['title']}\n{response['explanation']}"
+    intro = f"NASA每日一图\n{response['title']}\n{response['explanation']}"
     slm_reply = await slm_cognitive("翻译用户给出的天文相关的内容为中文，只返回翻译结果，保留专有词汇为英文", intro)
     messages: list[UniMessage] = [
         UniMessage(Text(slm_reply if slm_reply else intro)),
@@ -52,12 +52,12 @@ async def apod_everyday():
 
 @scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=180)
 async def earth_now():
-    URL = "https://www.storm-chasers.cn/wp-content/uploads/satimgs/Composite_TVIS_FDLK.jpg"
+    URL = "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_DISK_GCLR.JPG"
     async with httpx.AsyncClient() as client:
         response = await client.get(URL)
         image_raw = response.content
     image = PILImage.open(io.BytesIO(image_raw))
-    image = image.resize((int(image.width * 0.5), int(image.height * 0.5)))
+    image = image.resize((int(image.width * 0.25), int(image.height * 0.25)))
     image_data = io.BytesIO()
     image.save(image_data, format="JPEG")
     image_data.seek(0)
