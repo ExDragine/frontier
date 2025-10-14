@@ -124,7 +124,10 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         role="user" if user_id != str(event.self_id) else "assistant",
         content=texts,
     )
-    messages = await messages_db.prepare_message(group_id, int(user_id))
+    messages = await messages_db.prepare_message(
+        int(user_id),
+        group_id,
+    )
     if not event.is_tome():
         if event.get_plaintext().startswith("小李子"):
             pass
