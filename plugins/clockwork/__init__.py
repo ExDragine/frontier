@@ -67,7 +67,7 @@ async def earth_now():
         await message.send(target=Target.group(os.getenv("EARTH_NOW_GROUP_ID", "")))
 
 
-@scheduler.scheduled_job(trigger="interval", minutes=5)
+@scheduler.scheduled_job(trigger="interval", minutes=5, misfire_grace_time=60)
 async def eq_usgs():
     USGS_API_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_hour.geojson"
     EVENT_NAME = "eq_usgs"
