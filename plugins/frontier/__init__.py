@@ -1,5 +1,4 @@
 import os
-import secrets
 import time
 
 import dotenv
@@ -11,20 +10,18 @@ from nonebot.internal.adapter import Event
 from nonebot.permission import SUPERUSER
 
 from plugins.frontier.cognitive import intelligent_agent
-from plugins.frontier.context_check import text_det
 from plugins.frontier.database import MessageDatabase
 from plugins.frontier.environment_check import system_check
 from plugins.frontier.markdown_render import markdown_to_image
 from plugins.frontier.painter import paint
 from plugins.frontier.slm import slm_cognitive
-from plugins.frontier.utils import message_extract, send_artifacts, send_messages
+from plugins.frontier.utils import message_extract, message_gateway, send_artifacts, send_messages
 
 dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
 
 MODEL = os.getenv("OPENAI_MODEL")
-TEST_TARGET = os.getenv("TEST_TARGET", "")
 
 driver = get_driver()
 messages_db = MessageDatabase()
@@ -128,34 +125,9 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         int(user_id),
         group_id,
     )
-    if not event.is_tome():
-        if event.get_plaintext().startswith("小李子"):
-            pass
-        else:
-            if group_id != int(TEST_TARGET) or secrets.randbelow(10) != 1:
-                await common.finish()
-            temp_conv: list[dict] = messages[-5:] + [{"role": "user", "content": f"{user_name}: {texts}"}]
-            plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
-            slm_reply = await slm_cognitive(
-                "请判断当前对话内容是否适合插话，是则返回 YES 不是则返回 NO, 只返回这两个结果",
-                plain_conv,
-            )
-            if slm_reply == "YES":
-                pass
-            else:
-                await common.finish()
+    if not await message_gateway(event, messages):
+        await common.finish()
     messages.append({"role": "user", "content": [{"type": "text", "text": f"{user_name}:{texts}"}] + images})
-    safe_label, categories = await text_det.predict(texts)
-    if safe_label != "Safe":
-        warning_msg = f"⚠️ 该消息被检测为 {safe_label}，涉及类别: {', '.join(categories) if categories else '未知'}。"
-        slm_reply = await slm_cognitive(
-            "根据系统给出的提示说一段怪话，拟人的用词，简短明了，不超过30字。", warning_msg
-        )
-        if slm_reply:
-            await UniMessage.text(slm_reply).send()
-        else:
-            await UniMessage.text(warning_msg).send()
-
     try:
         result = await intelligent_agent(messages, user_id, user_name)
         if isinstance(result, dict) and "response" in result:
@@ -177,11 +149,9 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
                 await send_messages(response)
             else:
                 await UniMessage.text(response["messages"]).send()
-
     except Exception as e:
         result = await markdown_to_image(e)
         if result:
             await UniMessage.image(raw=result).send()
             await common.finish("处理过程中发生错误，已生成错误图片")
-
         await UniMessage.text(f"貌似什么东西坏了: {e}").send()
