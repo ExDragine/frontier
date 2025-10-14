@@ -95,7 +95,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
         return True
     if event.get_plaintext().startswith("小李子"):
         return True
-    if event.group_id == int(TEST_TARGET) and secrets.randbelow(5) == 1:
+    if event.group_id == int(TEST_TARGET) and secrets.randbelow(100) == 1:
         messages.append({"role": "user", "content": event.get_plaintext().strip()})
         temp_conv: list[dict] = messages[-5:]
         plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)

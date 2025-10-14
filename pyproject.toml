@@ -33,6 +33,7 @@ dependencies = [
     "playwright",
     "websockets",
     # 工具和实用库
+    "httpx[http2]",
     "gitpython",
     "pypinyin",
     "ruff",
