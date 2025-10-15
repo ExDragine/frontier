@@ -6,7 +6,7 @@ from nonebot import logger
 from pypinyin import lazy_pinyin
 
 http_client = Client(timeout=30)
-async_http_client = AsyncClient(timeout=30)
+async_http_client = AsyncClient(timeout=30, http2=True)
 
 NASA_WEATHER_URL = "https://mars.nasa.gov/rss/api/?feed=weather&category=msl&feedtype=json"
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?format=json"

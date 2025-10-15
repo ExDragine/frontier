@@ -1,2 +1,3 @@
 .venv/Scripts/Activate.ps1
-nb run --reload
+uv sync --frozen
+nb run

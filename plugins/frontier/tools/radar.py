@@ -69,7 +69,7 @@ async def china_static_radar(area: str):
             # 'Referer': 'https://www.google.com/', # 如果想模拟从某个页面跳转过来，可以设置 Referer，但要确保合理，否则可能起反作用
             # 'Cookie': 'sessionid=...; othercookie=...', # Cookie 通常由 httpx 的 Client 自动管理，或者在登录后手动获取并添加，不要伪造无意义的 Cookie
         }
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(http2=True) as client:
             data = await client.get(url, headers=fake_headers)
         html_data = BeautifulSoup(data.text, "html.parser")
         # print(html_data.prettify())

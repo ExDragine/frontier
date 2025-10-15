@@ -5,45 +5,43 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "a2a-sdk",
-    "beautifulsoup4",
-    "bilibili-api-python",
-    "fastapi",
-    "gitpython>=3.1.44",
-    "joblib>=1.5.1",
+    # 核心框架
+    "nonebot2[fastapi]",
+    "nonebot-adapter-onebot",
+    "nonebot-plugin-alconna",
+    "nonebot-plugin-apscheduler",
+    "nb-cli",
+    # AI和机器学习
     "langchain",
-    "langchain-chroma",
     "langchain-community",
+    "langchain-openai",
+    "langchain-mcp-adapters",
     "langchain-docling",
     "langchain-huggingface",
-    "langchain-mcp-adapters",
-    "langchain-openai",
+    "langchain-tavily",
     "langgraph",
-    "langmem>=0.0.27",
-    "matplotlib>=3.10.3",
-    "mcp-server-sqlite",
-    "mcp[cli]",
-    "mdit-py-plugins",
-    "nb-cli",
-    "nonebot-adapter-onebot",
-    "nonebot-adapter-qq",
-    "nonebot-plugin-alconna",
-    "nonebot2",
-    "openai",
-    "pandas-stubs",
-    "pillow",
-    "playwright",
-    "pypinyin",
-    "ruff>=0.11.12",
-    "scikit-learn>=1.6.1",
+    "langgraph-checkpoint-sqlite",
     "sentence-transformers",
-    "tavily-python",
+    # 内容绘制
+    "mdit-py-plugins",
+    # 图像处理和AI
+    "pillow",
+    "onnx",
+    "onnxruntime",
+    # 网络和数据处理
+    "beautifulsoup4",
+    "playwright",
     "websockets",
+    # 工具和实用库
+    "httpx[http2]",
+    "gitpython",
+    "pypinyin",
+    "ruff",
+    "sqlmodel",
 ]
 [tool.nonebot]
 adapters = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
-    { name = "QQ", module_name = "nonebot.adapters.qq" },
 ]
 plugins = []
 plugin_dirs = ["plugins"]

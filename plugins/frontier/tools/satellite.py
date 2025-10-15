@@ -90,7 +90,7 @@ async def get_fy4b_geos_cloud_map(
     if fn2url is None:
         return None
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, http2=True) as client:
             response = await client.get(fn2url)
             response.raise_for_status()
             video_bytes: bytes = response.content
