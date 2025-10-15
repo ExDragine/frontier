@@ -9,7 +9,7 @@ TLP_LAUNCH_URL = "https://tlpnetwork.com/api/launches"
 
 # 全局 HTTP 客户端复用
 http_client = Client(timeout=30)
-async_http_client = AsyncClient(timeout=30)
+async_http_client = AsyncClient(timeout=30, http2=True)
 
 
 # 火箭发射

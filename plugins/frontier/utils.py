@@ -33,7 +33,7 @@ async def message_extract(event: Event):
         for attachment in message:
             if attachment.type == "image":
                 if image_url := attachment.data.get("url"):
-                    async with httpx.AsyncClient() as client:
+                    async with httpx.AsyncClient(http2=True) as client:
                         try:
                             response = await client.get(image_url)
                         except httpx.ReadTimeout:

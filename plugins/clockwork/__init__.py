@@ -73,7 +73,7 @@ async def eq_usgs():
     EVENT_NAME = "eq_usgs"
     try:
         new_id = await event_database.select(EVENT_NAME)
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(http2=True) as client:
             response = await client.get(USGS_API_URL)
             content: dict = response.json()
 
