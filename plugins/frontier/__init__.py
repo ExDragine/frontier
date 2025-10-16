@@ -129,12 +129,6 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         await common.finish()
     messages.append({"role": "user", "content": [{"type": "text", "text": f"{user_name}:{texts}"}] + images})
     try:
-        # slm_reply = await slm_cognitive(
-        #     "返回一条消息表示自己正在处理这条消息，10个字左右,结合用户的内容但不要做出回答，只需要表达：“我收到这条消息了”即可。",
-        #     texts,
-        # )
-        # if slm_reply:
-        #     await UniMessage.text(slm_reply).send()
         result = await intelligent_agent(messages, user_id, user_name)
         if isinstance(result, dict) and "response" in result:
             response = result["response"]

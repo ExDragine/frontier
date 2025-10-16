@@ -1,7 +1,6 @@
 import base64
 import io
 import os
-import secrets
 
 import dotenv
 import httpx
@@ -12,7 +11,7 @@ from PIL import Image
 
 from plugins.frontier.context_check import det, text_det
 from plugins.frontier.markdown_render import markdown_to_image, markdown_to_text
-from plugins.frontier.slm import slm_cognitive
+from plugins.frontier.slm import reply_check, slm_cognitive
 
 dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
@@ -95,14 +94,11 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
         return True
     if event.get_plaintext().startswith("小李子"):
         return True
-    if event.group_id == int(TEST_TARGET) and secrets.randbelow(100) == 1:
+    if event.group_id == int(TEST_TARGET):
         messages.append({"role": "user", "content": event.get_plaintext().strip()})
         temp_conv: list[dict] = messages[-5:]
         plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
-        slm_reply = await slm_cognitive(
-            "请判断当前对话内容是否适合插话，是则返回 YES 不是则返回 NO, 只返回这两个结果",
+        slm_reply = await reply_check(
             plain_conv,
         )
-        if slm_reply == "YES":
-            return True
-    return False
+        return slm_reply

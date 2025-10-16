@@ -1,38 +1,58 @@
 import os
 
 import dotenv
+from langchain.prompts import ChatPromptTemplate
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt.chat_agent_executor import create_react_agent
-from pydantic import SecretStr
+from pydantic import BaseModel, Field, SecretStr
 
 dotenv.load_dotenv()
 
 SLM_MODEL = os.getenv("SLM_MODEL", "")
 BASE_URL = os.getenv("OPENAI_BASE_URL")
-API_KEY = os.getenv("OPENAI_API_KEY")
+API_KEY = SecretStr(os.getenv("OPENAI_API_KEY", ""))
 AGENT_DEBUG_MODE = os.getenv("AGENT_DEBUG_MODE", "false")
 
 if not SLM_MODEL or not API_KEY or not BASE_URL:
     raise ValueError("OPENAI_MODEL and OPENAI_API_KEY must be set")
-API_KEY = SecretStr(API_KEY)
-
-model = ChatOpenAI(
-    api_key=API_KEY,
-    base_url=BASE_URL,
-    model=SLM_MODEL,
-    streaming=False,
-)
-
-with open("configs/system_prompt.txt") as f:
-    SYSTEM_PROMPT = f.read()
 
 
-agent = create_react_agent(model=model, tools=[], debug=AGENT_DEBUG_MODE.lower() == "true")
+class ReplyCheck(BaseModel):
+    should_reply: str = Field(
+        description="Should or not reply message. If should, reply with yes, either reply with no"
+    )
+
+
+async def reply_check(user_prompt):
+    system = "你是一个分类器，用来判断用户输入的内容是否应该回复,当用户当前明确提及“小李子”，且上下文表达出用户需要帮助，且不会破坏别人交流的情况下才需要做出回复。"
+    prompt = ChatPromptTemplate.from_messages([("system", system), ("human", "{input}")])
+    model_with_struct = ChatOpenAI(
+        api_key=API_KEY,
+        base_url=BASE_URL,
+        model=SLM_MODEL,
+        streaming=False,
+    ).with_structured_output(ReplyCheck)
+    model_with_struct_and_prompt = prompt | model_with_struct
+    result: ReplyCheck = await model_with_struct_and_prompt.ainvoke(user_prompt)  # type: ignore
+    match result.should_reply.lower():
+        case "yes":
+            return True
+        case _:
+            return False
 
 
 async def slm_cognitive(system_prompt: str = "", user_prompt: str = ""):
+    model = ChatOpenAI(
+        api_key=API_KEY,
+        base_url=BASE_URL,
+        model=SLM_MODEL,
+        streaming=False,
+    )
+    agent = create_react_agent(model=model, tools=[], debug=AGENT_DEBUG_MODE.lower() == "true")
     if not system_prompt:
+        with open("configs/system_prompt.txt") as f:
+            SYSTEM_PROMPT = f.read()
         system_prompt = SYSTEM_PROMPT
     messages = {"messages": [SystemMessage(system_prompt), HumanMessage(user_prompt)]}
     result = await agent.ainvoke(messages)
