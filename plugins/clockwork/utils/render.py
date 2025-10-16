@@ -8,7 +8,7 @@ from playwright.async_api import async_playwright
 
 async def playwright_render(name: str, packed_args: dict):
     trigger_mark = secrets.token_hex(16)
-    cache_file = f"./cache/{trigger_mark}.html"
+    cache_file = f"{os.getcwd()}/cache/{trigger_mark}.html"
     # 设置模板加载路径
     env = Environment(loader=FileSystemLoader("./templates/"), autoescape=True)
 

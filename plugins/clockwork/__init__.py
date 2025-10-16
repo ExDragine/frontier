@@ -71,68 +71,64 @@ async def earth_now():
 async def eq_usgs():
     USGS_API_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_hour.geojson"
     EVENT_NAME = "eq_usgs"
-    try:
-        new_id = await event_database.select(EVENT_NAME)
-        async with httpx.AsyncClient(http2=True) as client:
-            response = await client.get(USGS_API_URL)
-            content: dict = response.json()
+    new_id = await event_database.select(EVENT_NAME)
+    async with httpx.AsyncClient(http2=True) as client:
+        response = await client.get(USGS_API_URL)
+        content: dict = response.json()
 
-        if not content or not content.get("features"):
-            logger.info("USGS 没有新的地震")
-            return None
+    if not content or not content.get("features"):
+        logger.info("USGS 没有新的地震")
+        return None
 
-        # 获取最新的地震数据
-        data = content["features"][0]
-        event_id = str(data["id"])
-        properties = data["properties"]
-        coordinates = data["geometry"]["coordinates"]
+    # 获取最新的地震数据
+    data = content["features"][0]
+    event_id = str(data["id"])
+    properties = data["properties"]
+    coordinates = data["geometry"]["coordinates"]
 
-        # 检查是否是新地震且震级大于限制
-        if new_id != event_id:
-            if not await event_database.select(EVENT_NAME):
-                await event_database.insert(EVENT_NAME, event_id)
-            else:
-                await event_database.update(EVENT_NAME, event_id)
+    # 检查是否是新地震且震级大于限制
+    if new_id != event_id:
+        if not await event_database.select(EVENT_NAME):
+            await event_database.insert(EVENT_NAME, event_id)
         else:
-            logger.info("USGS 没有新的地震")
-            return
-        logger.info(f"检测到{properties['place']}发生{properties['mag']}级地震")
-        # 准备详细信息
-        detail = [
-            {
-                "label": "⏱️发震时间(UTC +8)",
-                "value": datetime.datetime.fromtimestamp(properties["time"] / 1000).strftime("%Y-%m-%d %H:%M:%S"),
-            },
-            {"label": "🗺️震中位置", "value": properties["place"]},
-            {"label": "〽️震级", "value": f"{properties['mag']} {properties['magType']}"},
-            {"label": "🌐纬度", "value": coordinates[1]},
-            {"label": "🌐经度", "value": coordinates[0]},
-            {"label": "⬇️震源深度", "value": f"{coordinates[2]} 千米"},
-        ]
+            await event_database.update(EVENT_NAME, event_id)
+    else:
+        logger.info("USGS 没有新的地震")
+        return
+    logger.info(f"检测到{properties['place']}发生{properties['mag']}级地震")
+    # 准备详细信息
+    detail = [
+        {
+            "label": "⏱️发震时间(UTC +8)",
+            "value": datetime.datetime.fromtimestamp(properties["time"] / 1000).strftime("%Y-%m-%d %H:%M:%S"),
+        },
+        {"label": "🗺️震中位置", "value": properties["place"]},
+        {"label": "〽️震级", "value": f"{properties['mag']} {properties['magType']}"},
+        {"label": "🌐纬度", "value": coordinates[1]},
+        {"label": "🌐经度", "value": coordinates[0]},
+        {"label": "⬇️震源深度", "value": f"{coordinates[2]} 千米"},
+    ]
 
-        # 如果有海啸警报，添加警告信息
-        if properties.get("tsunami") == 1:
-            detail.append({"label": "🌊警告", "value": "可能发生海啸"})
+    # 如果有海啸警报，添加警告信息
+    if properties.get("tsunami") == 1:
+        detail.append({"label": "🌊警告", "value": "可能发生海啸"})
 
-        # 如果有烈度信息，添加烈度数据
-        if properties.get("mmi"):
-            detail.append({"label": "💢最大烈度", "value": f"{properties['mmi']}"})
+    # 如果有烈度信息，添加烈度数据
+    if properties.get("mmi"):
+        detail.append({"label": "💢最大烈度", "value": f"{properties['mmi']}"})
 
-        img = await playwright_render(
-            EVENT_NAME,
-            {
-                "title": "USGS地震速报",
-                "detail": detail,
-                "latitude": coordinates[1],
-                "longitude": coordinates[0],
-                "magnitude": properties["mag"],
-                "depth": coordinates[2],
-            },
-        )
+    img = await playwright_render(
+        EVENT_NAME,
+        {
+            "title": "USGS地震速报",
+            "detail": detail,
+            "latitude": coordinates[1],
+            "longitude": coordinates[0],
+            "magnitude": properties["mag"],
+            "depth": coordinates[2],
+        },
+    )
 
-        if img:
-            message = UniMessage().image(raw=img)
-            await message.send(target=Target.group(os.getenv("APOD_GROUP_ID", "")))
-
-    except Exception as e:
-        logger.error(f"Error in usgs_eew: {e}")
+    if img:
+        message = UniMessage().image(raw=img)
+        await message.send(target=Target.group(os.getenv("APOD_GROUP_ID", "")))
