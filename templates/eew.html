@@ -136,6 +136,11 @@
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             attributionControl: false
         }).addTo(map);
+        // Add Plates edge
+        L.tileLayer('https://earthquake.usgs.gov/basemap/tiles/plates/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            attributionControl: false
+        }).addTo(map);
         const marker = L.circleMarker(coordinates, {
             radius: 8,           // 圆的半径（像素）
             fillColor: "#d32f2f", // 填充颜色（红色）
