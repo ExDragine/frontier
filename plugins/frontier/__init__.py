@@ -68,23 +68,30 @@ async def handle_updater(event: Event):
 
 @setting.handle()
 async def handle_setting(event: Event):
-    texts, images = await message_extract(event)
-    texts = texts.replace("/model", "")
-    if not texts:
+    text, images = await message_extract(event)
+    text = text.replace("/model", "")
+    if not text:
         await UniMessage.text(f"当前默认使用的模型为: {MODEL}").send()
 
 
 @painter.handle()
 async def handle_painter(event: Event):
-    texts, images = await message_extract(event)
-    texts = texts.replace("/画图", "Create a picture about: ")
-    if not texts:
+    text, images = await message_extract(event)
+    text = text.replace("/画图", "Create a picture about: ")
+    if not text:
         await UniMessage.text("你想画点什么？").send()
     with open("./configs/system_prompt_image.txt") as f:
         img_sys_prompt = f.read()
     messages = [
         {"role": "system", "content": img_sys_prompt},
-        {"role": "user", "content": [{"type": "text", "text": texts}] + images},
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": text}]
+            + [
+                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"}
+                for image in images
+            ],
+        },
     ]
     slm_reply = await slm_cognitive("请生成一段简短的提示语，内容由用户输入决定，不要超过20字。", "正在画图🎨")
     if slm_reply:
