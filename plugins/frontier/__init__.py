@@ -1,3 +1,4 @@
+import base64
 import os
 import time
 
@@ -15,7 +16,7 @@ from plugins.frontier.environment_check import system_check
 from plugins.frontier.markdown_render import markdown_to_image
 from plugins.frontier.painter import paint
 from plugins.frontier.slm import slm_cognitive
-from plugins.frontier.utils import message_extract, message_gateway, send_artifacts, send_messages
+from plugins.frontier.utils import message_check, message_extract, message_gateway, send_artifacts, send_messages
 
 dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
@@ -102,16 +103,16 @@ async def handle_painter(event: Event):
 async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     user_id = event.get_user_id()
     user_name = event.sender.card if event.sender.card else event.sender.nickname
-    texts, images = await message_extract(event)
+    text, images = await message_extract(event)
     if isinstance(event, GroupMessageEvent):
         group_id = int(event.group_id)
     else:
         group_id = None
-    if not texts:
+    if not text:
         if not event.is_tome():
             await common.finish()
         else:
-            texts = "Hello"
+            text = "Hello"
     await messages_db.insert(
         time=int(time.time() * 1000),
         msg_id=event.message_id,
@@ -119,7 +120,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         group_id=group_id,
         user_name=user_name,
         role="user" if user_id != str(event.self_id) else "assistant",
-        content=texts,
+        content=text,
     )
     messages = await messages_db.prepare_message(
         int(user_id),
@@ -127,7 +128,17 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     )
     if not await message_gateway(event, messages):
         await common.finish()
-    messages.append({"role": "user", "content": [{"type": "text", "text": f"{user_name}:{texts}"}] + images})
+    await message_check(text, images)
+    messages.append(
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": f"{user_name}:{text}"}]
+            + [
+                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"}
+                for image in images
+            ],
+        }
+    )
     try:
         result = await intelligent_agent(messages, user_id, user_name)
         if isinstance(result, dict) and "response" in result:

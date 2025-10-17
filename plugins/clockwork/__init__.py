@@ -56,7 +56,9 @@ async def apod_everyday():
 @scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=180)
 async def earth_now():
     url = "https://cdn.star.nesdis.noaa.gov/GOES19/ABI/FD/GEOCOLOR/1808x1808.jpg"
-    slm_reply = await slm_cognitive("根据内容给出不超过15字的适用于社交聊天的优化后的内容", "来看看半个钟前的地球吧")
+    slm_reply = await slm_cognitive(
+        "你负责优化用户输入的内容，根据内容给出不超过15字的适用于社交聊天的优化后的内容", "来看看半个钟前的地球吧"
+    )
     messages: list[UniMessage] = [
         UniMessage(
             Text(slm_reply if slm_reply else "来看看半个钟前的地球吧"),

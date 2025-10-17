@@ -1,4 +1,3 @@
-import base64
 import io
 import os
 
@@ -22,11 +21,7 @@ TEST_TARGET = os.getenv("TEST_TARGET", "")
 
 async def message_extract(event: Event):
     message = event.get_message()
-    texts = event.get_message().extract_plain_text()
-    safe_label, categories = await text_det.predict(texts)
-    if safe_label != "Safe":
-        warning_msg = f"⚠️ 该消息被检测为 {safe_label}，涉及类别: {', '.join(categories) if categories else '未知'}。"
-        logger.info(warning_msg)
+    text = event.get_message().extract_plain_text()
     images = []
     if len(message) > 1:
         for attachment in message:
@@ -37,18 +32,9 @@ async def message_extract(event: Event):
                             response = await client.get(image_url)
                         except httpx.ReadTimeout:
                             response = await client.get(image_url)
-                        sample = response.content
-                        image = Image.open(io.BytesIO(sample))
-                        det_result = det.predict(image)[0]
-                        if det_result["label"] != "normal":
-                            logger.info(f"检测到图片类型: {det_result['label']}, 置信度为: {det_result['score']:.2f}")
-                        images.append(
-                            {
-                                "type": "image_url",
-                                "image_url": f"data:image/jpeg;base64,{base64.b64encode(sample).decode()}",
-                            }
-                        )
-    return texts, images
+                        image = response.content
+                        images.append(image)
+    return text, images
 
 
 async def send_artifacts(artifacts):
@@ -102,3 +88,19 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
             plain_conv,
         )
         return slm_reply
+
+
+async def message_check(text: str | None, images: list | None):
+    if text:
+        safe_label, categories = await text_det.predict(text)
+        if safe_label != "Safe":
+            warning_msg = (
+                f"⚠️ 该消息被检测为 {safe_label}，涉及类别: {', '.join(categories) if categories else '未知'}。"
+            )
+            logger.info(warning_msg)
+    if images:
+        for image in images:
+            image = Image.open(io.BytesIO(image))
+            det_result = det.predict(image)[0]
+            if det_result["label"] != "normal":
+                logger.info(f"检测到图片类型: {det_result['label']}, 置信度为: {det_result['score']:.2f}")
