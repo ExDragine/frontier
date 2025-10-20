@@ -9,7 +9,7 @@ from nonebot.internal.adapter import Event
 from PIL import Image
 
 from plugins.frontier.context_check import det, text_det
-from utils.render import markdown_to_image, markdown_to_text
+from plugins.frontier.markdown_render import markdown_to_image, markdown_to_text
 from utils.slm import reply_check, slm_cognitive
 
 dotenv.load_dotenv()
