@@ -16,6 +16,7 @@ from nonebot_plugin_alconna import Image, Target, Text, UniMessage  # noqa: E402
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 event_database = EventDatabase()
+httpx_client = httpx.AsyncClient(http2=True)
 
 
 async def github_post_news():
@@ -34,7 +35,9 @@ async def github_post_news():
         }
     }
     """
-    response = httpx.post(GITHUB_GRAPHQL_URL, headers={"Authorization": f"Bearer {GITHUB_PAT}"}, json={"query": query})
+    response = await httpx_client.post(
+        GITHUB_GRAPHQL_URL, headers={"Authorization": f"Bearer {GITHUB_PAT}"}, json={"query": query}
+    )
     print(response.json())
 
 
@@ -42,12 +45,13 @@ async def github_post_news():
 async def apod_everyday():
     url = "https://api.nasa.gov/planetary/apod"
     params = {"api_key": os.getenv("NASA_API_KEY", "DEMO_KEY")}
-    response = httpx.get(url, params=params).json()
-    intro = f"NASA每日一图\n{response['title']}\n{response['explanation']}"
+    response = await httpx_client.get(url, params=params)
+    content = response.json()
+    intro = f"NASA每日一图\n{content['title']}\n{content['explanation']}"
     slm_reply = await slm_cognitive("翻译用户给出的天文相关的内容为中文，只返回翻译结果，保留专有词汇为英文", intro)
     messages: list[UniMessage] = [
         UniMessage(Text(slm_reply if slm_reply else intro)),
-        UniMessage(Image(url=response["url"])),
+        UniMessage(Image(url=content["url"])),
     ]
     for message in messages:
         await message.send(target=Target.group(os.getenv("APOD_GROUP_ID", "")))
@@ -55,15 +59,28 @@ async def apod_everyday():
 
 @scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=180)
 async def earth_now():
-    url = "https://cdn.star.nesdis.noaa.gov/GOES19/ABI/FD/GEOCOLOR/1808x1808.jpg"
+    url = "https://www.storm-chasers.cn/wp-content/uploads/satimgs/Composite_TVIS_FDLK.jpg"
+    content = None
+    for _i in range(3):
+        try:
+            response = await httpx_client.get(url)
+            response.raise_for_status()
+            content = response.content
+            break
+        except httpx.HTTPError as e:
+            logger.warning(f"获取Earth Now图片失败: {e}", "准备重试...")
+            continue
+    if not content:
+        return
     slm_reply = await slm_cognitive(
-        "你负责优化用户输入的内容，根据内容给出不超过15字的适用于社交聊天的优化后的内容", "来看看半个钟前的地球吧"
+        "你负责优化用户输入的内容，根据内容给出不超过15字的适用于社交聊天的优化后的内容",
+        f"现在是{datetime.datetime.now().hour}点半，来看看半个钟前的地球吧",
     )
     messages: list[UniMessage] = [
         UniMessage(
             Text(slm_reply if slm_reply else "来看看半个钟前的地球吧"),
         ),
-        UniMessage(Image(url=url)),
+        UniMessage(Image(raw=content)),
     ]
     for message in messages:
         await message.send(target=Target.group(os.getenv("EARTH_NOW_GROUP_ID", "")))
@@ -74,9 +91,8 @@ async def eq_usgs():
     USGS_API_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_hour.geojson"
     EVENT_NAME = "eq_usgs"
     new_id = await event_database.select(EVENT_NAME)
-    async with httpx.AsyncClient(http2=True) as client:
-        response = await client.get(USGS_API_URL)
-        content: dict = response.json()
+    response = await httpx_client.get(USGS_API_URL)
+    content: dict = response.json()
 
     if not content or not content.get("features"):
         logger.info("USGS 没有新的地震")

@@ -32,7 +32,7 @@ async def get_web_extract(url: str) -> str:
 
 
 tavily_search = TavilySearch(
-    max_results=5,
+    max_results=50,
     topic="general",
 )
 tavily_extract = TavilyExtract(
