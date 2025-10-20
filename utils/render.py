@@ -20,7 +20,7 @@ async def markdown_to_image(markdown_text):
         browser = await p.chromium.launch()
         page = await browser.new_page()
         await page.set_content(html)
-        image = await page.screenshot()
+        image = await page.screenshot(full_page=True)
         await browser.close()
         return image
 
