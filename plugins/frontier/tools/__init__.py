@@ -1,3 +1,4 @@
+from .adapter import send_audio, send_emoji, send_image, send_video
 from .aurora import aurora_live
 from .bilibili import get_bilibili_video_info
 from .calculator import simple_calculator
@@ -37,5 +38,9 @@ class ModuleTools:
             tavily_extract,
             tavily_crawl,
             tavily_map,
+            send_image,
+            send_audio,
+            send_video,
+            send_emoji,
         ]
         self.all_tools = self.mcp_tools + self.local_tools
