@@ -2,8 +2,27 @@ import os
 import re
 import secrets
 
+from bs4 import BeautifulSoup
 from jinja2 import Environment, FileSystemLoader
+from markdown_it import MarkdownIt
 from playwright.async_api import async_playwright
+
+
+async def markdown_to_text(markdown_text):
+    html = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"]).render(markdown_text)
+    plain_text = BeautifulSoup(html, "html.parser").get_text()
+    return plain_text
+
+
+async def markdown_to_image(markdown_text):
+    html = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"]).render(markdown_text)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content(html)
+        image = await page.screenshot()
+        await browser.close()
+        return image
 
 
 async def playwright_render(name: str, packed_args: dict):

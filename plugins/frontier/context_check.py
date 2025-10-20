@@ -7,7 +7,7 @@ from nonebot import logger
 from PIL import Image
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, ViTImageProcessor
 
-from plugins.frontier.onnx import export_to_onnx
+from utils.onnx import export_to_onnx
 
 MODEL_ID = "Falconsai/nsfw_image_detection"
 MODEL_CAHCE_PATH = "./cache/models/"

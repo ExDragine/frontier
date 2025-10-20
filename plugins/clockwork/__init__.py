@@ -5,9 +5,9 @@ import dotenv
 import httpx
 from nonebot import logger, require
 
-from plugins.clockwork.utils.database import EventDatabase
-from plugins.clockwork.utils.render import playwright_render
-from plugins.frontier.slm import slm_cognitive
+from utils.database import EventDatabase
+from utils.render import playwright_render
+from utils.slm import slm_cognitive
 
 require("nonebot_plugin_apscheduler")
 require("nonebot_plugin_alconna")

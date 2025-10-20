@@ -11,12 +11,17 @@ from nonebot.internal.adapter import Event
 from nonebot.permission import SUPERUSER
 
 from plugins.frontier.cognitive import intelligent_agent
-from plugins.frontier.database import MessageDatabase
-from plugins.frontier.environment_check import system_check
-from plugins.frontier.markdown_render import markdown_to_image
+from plugins.frontier.message import (
+    message_check,
+    message_extract,
+    message_gateway,
+    send_artifacts,
+    send_messages,
+)
 from plugins.frontier.painter import paint
-from plugins.frontier.slm import slm_cognitive
-from plugins.frontier.utils import message_check, message_extract, message_gateway, send_artifacts, send_messages
+from utils.database import MessageDatabase
+from utils.environment_check import system_check
+from utils.slm import slm_cognitive
 
 dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
@@ -135,7 +140,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     )
     if not await message_gateway(event, messages):
         await common.finish()
-    await message_check(text, images)
+    _ = await message_check(text, images)
     messages.append(
         {
             "role": "user",
@@ -146,30 +151,23 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
             ],
         }
     )
-    try:
-        result = await intelligent_agent(messages, user_id, user_name)
-        if isinstance(result, dict) and "response" in result:
-            response = result["response"]
-            artifacts: list[UniMessage] | None = result.get("uni_messages", [])
-            if artifacts:
-                logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
-                await send_artifacts(artifacts)
-            if response["messages"] and isinstance(response["messages"][-1], AIMessage):
-                await messages_db.insert(
-                    time=int(time.time() * 1000),
-                    msg_id=None,
-                    user_id=int(event.self_id),
-                    group_id=group_id,
-                    user_name="Assistant",
-                    role="assistant",
-                    content=response["messages"][-1].content,
-                )
-                await send_messages(response)
-            else:
-                await UniMessage.text(response["messages"]).send()
-    except Exception as e:
-        result = await markdown_to_image(e)
-        if result:
-            await UniMessage.image(raw=result).send()
-            await common.finish("处理过程中发生错误，已生成错误图片")
-        await UniMessage.text(f"貌似什么东西坏了: {e}").send()
+    result = await intelligent_agent(messages, user_id, user_name)
+    if isinstance(result, dict) and "response" in result:
+        response = result["response"]
+        artifacts: list[UniMessage] | None = result.get("uni_messages", [])
+        if artifacts:
+            logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
+            await send_artifacts(artifacts)
+        if response["messages"] and isinstance(response["messages"][-1], AIMessage):
+            await messages_db.insert(
+                time=int(time.time() * 1000),
+                msg_id=None,
+                user_id=int(event.self_id),
+                group_id=group_id,
+                user_name="Assistant",
+                role="assistant",
+                content=response["messages"][-1].content,
+            )
+            await send_messages(response)
+        else:
+            await UniMessage.text(response["messages"]).send()

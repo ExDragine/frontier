@@ -1,5 +1,7 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, desc, select
 
+DATABASE_FILE = "sqlite:///frontier.db"
+
 
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
@@ -17,9 +19,14 @@ class Message(SQLModel, table=True):
     content: str
 
 
+class TimeStamp(SQLModel, table=True):
+    name: str = Field(primary_key=True, index=True)
+    id: str | None
+
+
 class UserDatabase:
     def __init__(self):
-        self.engine = create_engine("sqlite:///user_settings.db")
+        self.engine = create_engine(DATABASE_FILE)
         User.metadata.create_all(self.engine)
 
     async def insert(self, user_id, user_name, custom_model):
@@ -51,7 +58,7 @@ class UserDatabase:
 
 class MessageDatabase:
     def __init__(self):
-        self.engine = create_engine("sqlite:///messages.db")
+        self.engine = create_engine(DATABASE_FILE)
         Message.metadata.create_all(self.engine)
 
     async def insert(
@@ -106,3 +113,36 @@ class MessageDatabase:
                 messages_seq.append({"role": "assistant", "content": message.content})
         messages_seq.pop()
         return messages_seq
+
+
+class EventDatabase:
+    def __init__(self):
+        self.engine = create_engine(DATABASE_FILE)
+        TimeStamp.metadata.create_all(self.engine)
+
+    async def insert(self, name, id: str | None = None):
+        with Session(self.engine) as session:
+            target = TimeStamp(name=name, id=id)
+            session.add(target)
+            session.commit()
+
+    async def delete(self, name):
+        with Session(self.engine) as session:
+            target = session.get(TimeStamp, name)
+            if target:
+                session.delete(name)
+                session.commit()
+
+    async def update(self, name, id):
+        with Session(self.engine) as session:
+            target = session.get(TimeStamp, name)
+            if target:
+                target.id = id
+                session.add(target)
+                session.commit()
+
+    async def select(self, name):
+        with Session(self.engine) as session:
+            target = session.get(TimeStamp, name)
+            if target:
+                return target.id

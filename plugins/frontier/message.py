@@ -9,8 +9,8 @@ from nonebot.internal.adapter import Event
 from PIL import Image
 
 from plugins.frontier.context_check import det, text_det
-from plugins.frontier.markdown_render import markdown_to_image, markdown_to_text
-from plugins.frontier.slm import reply_check, slm_cognitive
+from utils.render import markdown_to_image, markdown_to_text
+from utils.slm import reply_check, slm_cognitive
 
 dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
@@ -98,9 +98,13 @@ async def message_check(text: str | None, images: list | None):
                 f"⚠️ 该消息被检测为 {safe_label}，涉及类别: {', '.join(categories) if categories else '未知'}。"
             )
             logger.info(warning_msg)
+            return False
+        return True
     if images:
         for image in images:
             image = Image.open(io.BytesIO(image))
             det_result = det.predict(image)[0]
             if det_result["label"] != "normal":
                 logger.info(f"检测到图片类型: {det_result['label']}, 置信度为: {det_result['score']:.2f}")
+                return False
+            return True
