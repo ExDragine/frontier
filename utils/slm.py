@@ -2,9 +2,9 @@ import os
 
 import dotenv
 from langchain.agents import create_agent
-from langchain.chat_models import init_chat_model
 from langchain.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field, SecretStr
 
 dotenv.load_dotenv()
@@ -27,7 +27,7 @@ class ReplyCheck(BaseModel):
 async def reply_check(user_prompt):
     system = "你是一个分类器，用来判断用户输入的内容是否应该回复,当用户当前明确提及“小李子”，且上下文表达出用户需要帮助，且不会破坏别人交流的情况下才需要做出回复。"
     prompt = ChatPromptTemplate.from_messages([("system", system), ("human", "{input}")])
-    model_with_struct = init_chat_model(
+    model_with_struct = ChatOpenAI(
         api_key=API_KEY,
         base_url=BASE_URL,
         model=SLM_MODEL,
@@ -43,7 +43,7 @@ async def reply_check(user_prompt):
 
 
 async def slm_cognitive(system_prompt: str = "", user_prompt: str = ""):
-    model = init_chat_model(
+    model = ChatOpenAI(
         api_key=API_KEY,
         base_url=BASE_URL,
         model=SLM_MODEL,
