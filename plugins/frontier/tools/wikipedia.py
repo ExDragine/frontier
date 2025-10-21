@@ -1,5 +1,5 @@
+from langchain.tools import tool
 from langchain_community.document_loaders import WikipediaLoader
-from langchain_core.tools import tool
 
 
 @tool(response_format="content")

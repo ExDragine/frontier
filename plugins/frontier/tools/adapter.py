@@ -1,8 +1,8 @@
-from langchain_core.tools import tool
+from langchain.tools import tool
 from nonebot import require
 
 require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
+from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")

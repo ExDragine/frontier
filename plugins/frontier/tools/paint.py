@@ -2,16 +2,15 @@ import time
 from urllib.parse import quote
 
 import httpx
-from langchain_core.tools import tool
+from langchain.tools import tool
 from nonebot import logger, require
 
 require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMsg  # noqa: E402
-from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
+from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def get_paint(prompt: str) -> tuple[str, UniMsg | None]:
+async def get_paint(prompt: str) -> tuple[str, UniMessage | None]:
     """生成图片
 
     Args:

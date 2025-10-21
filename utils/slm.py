@@ -1,10 +1,10 @@
 import os
 
 import dotenv
-from langchain.prompts import ChatPromptTemplate
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from langgraph.prebuilt.chat_agent_executor import create_react_agent
+from langchain.agents import create_agent
+from langchain.chat_models import init_chat_model
+from langchain.messages import AIMessage
+from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, SecretStr
 
 dotenv.load_dotenv()
@@ -27,7 +27,7 @@ class ReplyCheck(BaseModel):
 async def reply_check(user_prompt):
     system = "你是一个分类器，用来判断用户输入的内容是否应该回复,当用户当前明确提及“小李子”，且上下文表达出用户需要帮助，且不会破坏别人交流的情况下才需要做出回复。"
     prompt = ChatPromptTemplate.from_messages([("system", system), ("human", "{input}")])
-    model_with_struct = ChatOpenAI(
+    model_with_struct = init_chat_model(
         api_key=API_KEY,
         base_url=BASE_URL,
         model=SLM_MODEL,
@@ -43,19 +43,18 @@ async def reply_check(user_prompt):
 
 
 async def slm_cognitive(system_prompt: str = "", user_prompt: str = ""):
-    model = ChatOpenAI(
+    model = init_chat_model(
         api_key=API_KEY,
         base_url=BASE_URL,
         model=SLM_MODEL,
         streaming=False,
     )
-    agent = create_react_agent(model=model, tools=[], debug=AGENT_DEBUG_MODE.lower() == "true")
+    agent = create_agent(model=model, tools=[], system_prompt=system_prompt, debug=AGENT_DEBUG_MODE.lower() == "true")
     if not system_prompt:
         with open("configs/system_prompt.txt") as f:
             SYSTEM_PROMPT = f.read()
         system_prompt = SYSTEM_PROMPT
-    messages = {"messages": [SystemMessage(system_prompt), HumanMessage(user_prompt)]}
-    result = await agent.ainvoke(messages)
+    result = await agent.ainvoke({"messages": [{"role": "user", "content": user_prompt}]})
     for msg in result["messages"]:
         if isinstance(msg, AIMessage):
             content = msg.content

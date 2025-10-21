@@ -2,7 +2,7 @@
 import ast
 import operator as op
 
-from langchain_core.tools import tool
+from langchain.tools import tool
 from nonebot import logger
 
 OPS = {

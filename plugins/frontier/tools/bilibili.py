@@ -1,8 +1,8 @@
 import json
 from datetime import datetime
 
+from langchain.tools import tool
 from langchain_community.document_loaders import BiliBiliLoader
-from langchain_core.tools import tool
 
 
 @tool(response_format="content")

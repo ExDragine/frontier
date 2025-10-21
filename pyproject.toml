@@ -12,11 +12,10 @@ dependencies = [
     "nonebot-plugin-apscheduler",
     "nb-cli",
     # AI和机器学习
-    "langchain",
+    "langchain>=1.0.0",
     "langchain-community",
     "langchain-openai",
     "langchain-mcp-adapters",
-    "langchain-docling",
     "langchain-huggingface",
     "langchain-tavily",
     "langgraph",

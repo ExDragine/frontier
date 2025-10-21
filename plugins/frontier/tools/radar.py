@@ -3,16 +3,15 @@ from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
-from langchain_core.tools import tool
+from langchain.tools import tool
 from nonebot import logger, require
 
 require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMsg  # noqa: E402
-from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
+from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def get_static_china_radar(area: str) -> tuple[Any, UniMsg | None]:
+async def get_static_china_radar(area: str) -> tuple[Any, UniMessage | None]:
     """获取静态中国雷达图
 
     Args:

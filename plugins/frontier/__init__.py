@@ -4,7 +4,7 @@ import time
 
 import dotenv
 from git import Repo
-from langchain.schema import AIMessage
+from langchain.messages import AIMessage
 from nonebot import get_driver, logger, on_command, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 from nonebot.internal.adapter import Event

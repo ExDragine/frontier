@@ -4,13 +4,11 @@ from datetime import datetime
 from typing import Any
 
 import dotenv
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_core.messages.utils import count_tokens_approximately, trim_messages
+from langchain.agents import AgentState, create_agent
+from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
-from langgraph.prebuilt.chat_agent_executor import AgentState
 from langgraph.store.memory import InMemoryStore
 from nonebot import logger, require
 from pydantic import SecretStr
@@ -52,19 +50,6 @@ def load_system_prompt(user_name):
     except FileNotFoundError:
         logger.warning("❌ 未找到 system prompt 文件: configs/system_prompt.txt")
         return "Your are a helpful assistant."
-
-
-def pre_model_hook(state):
-    trimmed_messages = trim_messages(
-        state["messages"],
-        strategy="last",
-        token_counter=count_tokens_approximately,
-        max_tokens=64,
-        start_on="human",
-        end_on=("human", "tool"),
-        include_system=True,
-    )
-    return {"messages": trimmed_messages}
 
 
 # ... existing code ...
@@ -179,13 +164,12 @@ async def intelligent_agent(messages, user_id, user_name):
 
         # 使用SQLite checkpointer的异步上下文管理器
 
-        agent = create_react_agent(
+        agent = create_agent(
             model=model,
             tools=tools,
-            prompt=SystemMessage(content=prompt_template),
+            system_prompt=prompt_template,
             state_schema=CustomAgentState,
             store=user_store,
-            pre_model_hook=pre_model_hook,  # 添加消息修剪钩子
             debug=os.getenv("AGENT_DEBUG_MODE", "false").lower() == "true",
         )
 

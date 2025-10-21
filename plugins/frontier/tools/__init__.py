@@ -10,8 +10,8 @@ from .paint import get_paint
 from .radar import get_static_china_radar
 from .rocket import rocket_launches
 from .satellite import get_fy4b_cloud_map, get_fy4b_geos_cloud_map, get_himawari_satellite_image
+from .tavily import tavily_crawl, tavily_extract, tavily_map, tavily_search
 from .weather import mars_weather
-from .web_extract import get_web_extract, tavily_crawl, tavily_extract, tavily_map, tavily_search
 
 
 class ModuleTools:
@@ -26,7 +26,6 @@ class ModuleTools:
             get_himawari_satellite_image,
             get_china_earthquake,
             get_japan_earthquake,
-            get_web_extract,
             aurora_live,
             station_location,
             simple_calculator,
