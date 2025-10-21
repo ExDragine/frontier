@@ -77,10 +77,7 @@ if not MODEL or not API_KEY or not BASE_URL:
 API_KEY = SecretStr(API_KEY)
 
 model = ChatOpenAI(
-    api_key=API_KEY,
-    base_url=BASE_URL,
-    model=MODEL,
-    streaming=False,
+    api_key=API_KEY, base_url=BASE_URL, model=MODEL, streaming=False, reasoning_effort="high", verbosity="low"
 )
 
 
