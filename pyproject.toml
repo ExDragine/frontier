@@ -21,10 +21,7 @@ dependencies = [
     "langgraph",
     "langgraph-checkpoint-sqlite",
     "sentence-transformers",
-    # 内容绘制
-    "mdit-py-plugins",
-    # 图像处理和AI
-    "pillow",
+    "accelerate",
     "onnx",
     "onnxruntime",
     # 网络和数据处理
@@ -37,6 +34,8 @@ dependencies = [
     "pypinyin",
     "ruff",
     "sqlmodel",
+    "mdit-py-plugins",
+    "pillow",
 ]
 [tool.nonebot]
 adapters = [
