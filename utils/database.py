@@ -106,12 +106,15 @@ class MessageDatabase:
             return []
         messages_seq = []
         messages = reversed(messages)
+        messages = list(messages)[:-1]
         for message in messages:
-            if message.role == "user":
-                messages_seq.append({"role": "user", "content": f"{message.user_name}: {message.content}"})
+            if not messages_seq:
+                messages_seq.append({"role": message.role, "content": message.content})
+                continue
+            if message.role == messages_seq[-1]["role"]:
+                messages_seq[-1]["content"] += f"\n{message.content}"
             else:
-                messages_seq.append({"role": "assistant", "content": message.content})
-        messages_seq.pop()
+                messages_seq.append({"role": message.role, "content": message.content})
         return messages_seq
 
 
