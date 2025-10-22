@@ -4,7 +4,7 @@ from datetime import datetime
 
 import dotenv
 from langchain.agents import create_agent
-from langchain.agents.middleware import LLMToolSelectorMiddleware, SummarizationMiddleware, TodoListMiddleware
+from langchain.agents.middleware import TodoListMiddleware
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
@@ -129,39 +129,36 @@ async def chat_agent(messages, user_id, user_name):
             "user_id": f"user_{user_id}",  # 添加用户ID以增强隔离
         }
     }
-    for i in range(3):
-        try:
-            agent = create_agent(
-                model=model,
-                tools=tools,
-                system_prompt=prompt_template,
-                middleware=[
-                    SummarizationMiddleware(model=slm_model),
-                    LLMToolSelectorMiddleware(model=slm_model, max_tools=10),
-                    TodoListMiddleware(),
-                ],
-                debug=os.getenv("AGENT_DEBUG_MODE", "false").lower() == "true",
-            )
-            response = await agent.ainvoke({"messages": messages}, config=config)
-            processing_time = time.time() - start_time
-            logger.info(f"✅ 智能代理完成 (耗时: {processing_time:.2f}s)")
-            artifacts = extract_artifacts(response)
-            processed_artifacts = process_artifacts(artifacts)
-            message_segments = get_message_segments(processed_artifacts)
-            ai_messages = []
-            if response and isinstance(response, dict) and "messages" in response:
-                ai_messages = [msg for msg in response["messages"] if hasattr(msg, "type") and msg.type == "ai"]
-            final_response = ai_messages[-1] if ai_messages else AIMessage("智能代理处理完成，但没有生成响应。")
-            response_data = {
-                "response": {"messages": [final_response]},
-                "processing_time": processing_time,
-                "total_time": processing_time,
-                "artifacts": artifacts,
-                "processed_artifacts": processed_artifacts,
-                "uni_messages": message_segments,
-            }
-            return response_data
-        except Exception as e:
-            logger.error(f"💥 智能代理系统执行失败: {str(e)},继续第{i + 2}次尝试...")
-            continue
-    return None
+    try:
+        agent = create_agent(
+            model=model,
+            tools=tools,
+            system_prompt=prompt_template,
+            middleware=[
+                # SummarizationMiddleware(model=slm_model),
+                # LLMToolSelectorMiddleware(model=slm_model, max_tools=10),
+                TodoListMiddleware(),
+            ],
+            debug=os.getenv("AGENT_DEBUG_MODE", "false").lower() == "true",
+        )
+        response = await agent.ainvoke({"messages": messages}, config=config)
+        processing_time = time.time() - start_time
+        logger.info(f"✅ 智能代理完成 (耗时: {processing_time:.2f}s)")
+        artifacts = extract_artifacts(response)
+        processed_artifacts = process_artifacts(artifacts)
+        message_segments = get_message_segments(processed_artifacts)
+        ai_messages = []
+        if response and isinstance(response, dict) and "messages" in response:
+            ai_messages = [msg for msg in response["messages"] if hasattr(msg, "type") and msg.type == "ai"]
+        final_response = ai_messages[-1] if ai_messages else AIMessage("智能代理处理完成，但没有生成响应。")
+        response_data = {
+            "response": {"messages": [final_response]},
+            "processing_time": processing_time,
+            "total_time": processing_time,
+            "artifacts": artifacts,
+            "processed_artifacts": processed_artifacts,
+            "uni_messages": message_segments,
+        }
+        return response_data
+    except Exception as e:
+        logger.error(f"💥 智能代理系统执行失败: {str(e)}")
