@@ -4,7 +4,6 @@ import time
 
 import dotenv
 from git import Repo
-from langchain.messages import AIMessage
 from nonebot import get_driver, logger, on_command, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 from nonebot.internal.adapter import Event
@@ -98,7 +97,9 @@ async def handle_painter(event: Event):
             ],
         },
     ]
-    slm_reply = await slm_cognitive("请生成一段简短的提示语，内容由用户输入决定，不要超过20字。", "正在画图🎨")
+    slm_reply = await slm_cognitive(
+        "请生成一段简短的提示语，内容由用户输入决定，表示你已收到请求，正在画图重，不要超过20字。", text
+    )
     if slm_reply:
         await UniMessage.text(slm_reply).send()
     result = await paint(messages)
@@ -155,11 +156,13 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     result = await chat_agent(messages, user_id, user_name)
     if isinstance(result, dict) and "response" in result:
         response = result["response"]
+        if not response:
+            await common.finish("小李子飞升了，暂时不可用")
         artifacts: list[UniMessage] | None = result.get("uni_messages", [])
         if artifacts:
             logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
             await send_artifacts(artifacts)
-        if response["messages"] and isinstance(response["messages"][-1], AIMessage):
+        if response["messages"] and isinstance(response["messages"], list):
             await messages_db.insert(
                 time=int(time.time() * 1000),
                 msg_id=None,
