@@ -137,6 +137,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     messages = await messages_db.prepare_message(
         int(user_id),
         group_id,
+        query_numbers=int(os.getenv("QUERY_MESSAGE_NUMBERS", "50")),
     )
     if not await message_gateway(event, messages):
         await common.finish()

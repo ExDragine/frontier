@@ -84,24 +84,29 @@ class MessageDatabase:
             session.add(message)
             session.commit()
 
-    async def select(self, user_id: int | None = None, group_id: int | None = None):
+    async def select(self, user_id: int | None = None, group_id: int | None = None, query_numbers: int = 20):
         with Session(self.engine) as session:
             if group_id:
-                statement = select(Message).where(Message.group_id == group_id).order_by(desc(Message.time)).limit(50)
+                statement = (
+                    select(Message)
+                    .where(Message.group_id == group_id)
+                    .order_by(desc(Message.time))
+                    .limit(query_numbers)
+                )
             elif user_id:
                 statement = (
                     select(Message)
                     .where(Message.user_id == user_id and Message.group_id is None)
                     .order_by(desc(Message.time))
-                    .limit(50)
+                    .limit(query_numbers)
                 )
             else:
                 return None
             results = session.exec(statement)
             return results.all()
 
-    async def prepare_message(self, user_id: int | None = None, group_id: int | None = None):
-        messages = await self.select(user_id=user_id, group_id=group_id)
+    async def prepare_message(self, user_id: int | None = None, group_id: int | None = None, query_numbers: int = 20):
+        messages = await self.select(user_id=user_id, group_id=group_id, query_numbers=query_numbers)
         if not messages:
             return []
         messages_seq = []
