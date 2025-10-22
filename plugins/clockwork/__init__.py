@@ -117,14 +117,12 @@ async def eq_usgs():
     # 准备详细信息
     detail = [
         {
-            "label": "⏱️发震时间(UTC +8)",
+            "label": "⏱️发震时间",
             "value": datetime.datetime.fromtimestamp(properties["time"] / 1000).strftime("%Y-%m-%d %H:%M:%S"),
         },
         {"label": "🗺️震中位置", "value": properties["place"]},
-        {"label": "〽️震级", "value": f"{properties['mag']} {properties['magType']}"},
         {"label": "🌐纬度", "value": coordinates[1]},
         {"label": "🌐经度", "value": coordinates[0]},
-        {"label": "⬇️震源深度", "value": f"{coordinates[2]} 千米"},
     ]
 
     # 如果有海啸警报，添加警告信息

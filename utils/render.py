@@ -35,7 +35,7 @@ async def playwright_render(name: str, packed_args: dict):
 
     match name:
         case "eq_usgs":
-            template = env.get_template("eew.html")
+            template = env.get_template("earthquake.html")
             depth = packed_args.get("depth")
             if isinstance(depth, str):
                 pattern = re.compile(r"[\d.]+")
