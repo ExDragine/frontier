@@ -1,15 +1,13 @@
 import os
 import time
 from datetime import datetime
-from typing import Any
 
 import dotenv
-from langchain.agents import AgentState, create_agent
+from langchain.agents import create_agent
+from langchain.agents.middleware import LLMToolSelectorMiddleware, SummarizationMiddleware, TodoListMiddleware
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
-from langgraph.store.memory import InMemoryStore
 from nonebot import logger, require
 from pydantic import SecretStr
 
@@ -19,23 +17,21 @@ require("nonebot_plugin_alconna")
 
 dotenv.load_dotenv()
 
+
+SLM_MODEL = os.getenv("SLM_MODEL", "")
+BASE_URL = os.getenv("OPENAI_BASE_URL")
+MODEL = os.getenv("OPENAI_MODEL")
+API_KEY = os.getenv("OPENAI_API_KEY")
+
+if not MODEL or not API_KEY or not BASE_URL:
+    raise ValueError("OPENAI_MODEL and OPENAI_API_KEY must be set")
+API_KEY = SecretStr(API_KEY)
+
+model = ChatOpenAI(
+    api_key=API_KEY, base_url=BASE_URL, model=MODEL, streaming=False, reasoning_effort="high", verbosity="low"
+)
+slm_model = ChatOpenAI(model=SLM_MODEL, api_key=API_KEY, base_url=BASE_URL, streaming=False)
 module_tools = ModuleTools()
-
-
-# 移除全局store，改为在函数内创建
-def create_user_store():
-    """为每个用户会话创建独立的store实例"""
-    return InMemoryStore(
-        index={"dims": 384, "embed": HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")}
-    )
-
-
-# 自定义状态，支持消息历史管理
-class CustomAgentState(AgentState):
-    """自定义Agent状态，支持消息历史管理"""
-
-    max_messages: int  # 最大消息数量，默认10条
-    context: dict[str, Any]  # 用于存储额外的上下文信息
 
 
 def load_system_prompt(user_name):
@@ -50,20 +46,6 @@ def load_system_prompt(user_name):
     except FileNotFoundError:
         logger.warning("❌ 未找到 system prompt 文件: configs/system_prompt.txt")
         return "Your are a helpful assistant."
-
-
-# ... existing code ...
-BASE_URL = os.getenv("OPENAI_BASE_URL")
-MODEL = os.getenv("OPENAI_MODEL")
-API_KEY = os.getenv("OPENAI_API_KEY")
-
-if not MODEL or not API_KEY or not BASE_URL:
-    raise ValueError("OPENAI_MODEL and OPENAI_API_KEY must be set")
-API_KEY = SecretStr(API_KEY)
-
-model = ChatOpenAI(
-    api_key=API_KEY, base_url=BASE_URL, model=MODEL, streaming=False, reasoning_effort="high", verbosity="low"
-)
 
 
 def extract_artifacts(response):
@@ -126,18 +108,7 @@ def get_message_segments(processed_artifacts):
     return message_segments
 
 
-# 简化的主函数 - 直接使用复杂智能体，并添加记忆管理
-async def intelligent_agent(messages, user_id, user_name):
-    """
-    智能代理主函数 - 直接使用复杂智能体处理所有问题，支持消息历史长度限制
-
-    Args:
-        messages: 用户消息列表
-        user_id: 用户唯一标识符，用于数据隔离
-
-    Returns:
-        dict: 包含响应和相关信息的字典
-    """
+async def chat_agent(messages, user_id, user_name):
     if not messages:
         return {
             "response": {"messages": [AIMessage(content="请提供有效的消息内容")]},
@@ -157,19 +128,15 @@ async def intelligent_agent(messages, user_id, user_name):
         tools = module_tools.all_tools
 
         # 为当前用户创建独立的store实例
-        user_store = create_user_store()
-
-        logger.info(f"👤 为用户 {user_id} 创建独立的存储实例")
-        logger.debug(f"🔍 Store实例ID: {id(user_store)}")
-
-        # 使用SQLite checkpointer的异步上下文管理器
-
         agent = create_agent(
             model=model,
             tools=tools,
             system_prompt=prompt_template,
-            state_schema=CustomAgentState,
-            store=user_store,
+            middleware=[
+                SummarizationMiddleware(model=slm_model),
+                LLMToolSelectorMiddleware(model=slm_model, max_tools=10),
+                TodoListMiddleware(),
+            ],
             debug=os.getenv("AGENT_DEBUG_MODE", "false").lower() == "true",
         )
 
@@ -180,9 +147,7 @@ async def intelligent_agent(messages, user_id, user_name):
                 "user_id": f"user_{user_id}",  # 添加用户ID以增强隔离
             }
         }
-
         response = await agent.ainvoke({"messages": messages}, config=config)
-
         processing_time = time.time() - start_time
         logger.info(f"✅ 智能代理完成 (耗时: {processing_time:.2f}s)")
 

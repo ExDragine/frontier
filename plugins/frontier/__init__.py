@@ -10,7 +10,7 @@ from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageE
 from nonebot.internal.adapter import Event
 from nonebot.permission import SUPERUSER
 
-from plugins.frontier.cognitive import intelligent_agent
+from plugins.frontier.cognitive import chat_agent
 from plugins.frontier.message import (
     message_check,
     message_extract,
@@ -151,7 +151,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
             ],
         }
     )
-    result = await intelligent_agent(messages, user_id, user_name)
+    result = await chat_agent(messages, user_id, user_name)
     if isinstance(result, dict) and "response" in result:
         response = result["response"]
         artifacts: list[UniMessage] | None = result.get("uni_messages", [])
