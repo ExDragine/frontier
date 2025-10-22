@@ -31,6 +31,8 @@ model = ChatOpenAI(
     api_key=API_KEY, base_url=BASE_URL, model=MODEL, streaming=False, reasoning_effort="high", verbosity="low"
 )
 slm_model = ChatOpenAI(model=SLM_MODEL, api_key=API_KEY, base_url=BASE_URL, streaming=False)
+module_tools = ModuleTools()
+tools = module_tools.all_tools
 
 
 def load_system_prompt(user_name):
@@ -121,7 +123,6 @@ async def chat_agent(messages, user_id, user_name):
     start_time = time.time()
     logger.info("🚀 启动智能代理系统")
     prompt_template = load_system_prompt(user_name)
-    tools = ModuleTools().all_tools
     logger.info("🤖 开始执行智能 Agent...")
     config: RunnableConfig = {
         "configurable": {
