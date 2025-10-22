@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 
 from langchain.tools import tool
-from langchain_classic.document_loaders import BiliBiliLoader
+from langchain_community.document_loaders import BiliBiliLoader
 
 
 @tool(response_format="content")
