@@ -17,6 +17,7 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 TEST_TARGET = os.getenv("TEST_TARGET", "")
+PURE_TEXT_GROUP_ID = os.getenv("PURE_TEXT_GROUP_ID", "")
 
 
 async def message_extract(event: Event):
@@ -44,7 +45,7 @@ async def send_artifacts(artifacts):
             await artifact.send()
 
 
-async def send_messages(response: dict[str, list]):
+async def send_messages(group_id: int | None, response: dict[str, list]):
     last_message = response["messages"][-1]
     if hasattr(last_message, "content") and last_message.content.strip():
         if last_message.content.startswith("系统处理出现错误"):
@@ -56,21 +57,12 @@ async def send_messages(response: dict[str, list]):
             else:
                 await UniMessage.text(last_message.content).send()
             return None
-        if len(last_message.content) > 500:
-            try:
-                result = await markdown_to_image(last_message.content)
-                if result:
-                    await UniMessage.image(raw=result).send()
-            except Exception as e:
-                await UniMessage.text(f"貌似出了点问题: {e}").send()
+        if len(last_message.content) < 500 or group_id == int(PURE_TEXT_GROUP_ID):
+            await UniMessage.text(await markdown_to_text(last_message.content)).send()
         else:
-            try:
-                await UniMessage.text(await markdown_to_text(last_message.content)).send()
-            except Exception:
-                # await UniMessage.text(f"貌似出了点问题: {e}").send()
-                result = await markdown_to_image(last_message.content)
-                if result:
-                    await UniMessage.image(raw=result).send()
+            result = await markdown_to_image(last_message.content)
+            if result:
+                await UniMessage.image(raw=result).send()
 
 
 async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messages: list):

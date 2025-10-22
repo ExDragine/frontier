@@ -172,6 +172,6 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
                 role="assistant",
                 content=response["messages"][-1].content,
             )
-            await send_messages(response)
+            await send_messages(group_id, response)
         else:
             await UniMessage.text(response["messages"]).send()
