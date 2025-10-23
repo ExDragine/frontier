@@ -2,7 +2,6 @@ import os
 
 import dotenv
 from langchain.agents import create_agent
-from langchain.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field, SecretStr
@@ -58,10 +57,11 @@ async def slm_cognitive(system_prompt: str = "", user_prompt: str = "", use_mode
             SYSTEM_PROMPT = f.read()
         system_prompt = SYSTEM_PROMPT
     result = await agent.ainvoke({"messages": [{"role": "user", "content": user_prompt}]})
+    content = ""
     for msg in result["messages"]:
-        if isinstance(msg, AIMessage):
-            content = msg.content
-            if isinstance(content, list):
+        if msg.type == "ai":
+            if isinstance(msg.content, list):
                 pass
             else:
-                return content
+                content += msg.content
+    return content
