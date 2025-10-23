@@ -1,5 +1,6 @@
 import io
 import os
+import secrets
 
 import dotenv
 import httpx
@@ -16,7 +17,7 @@ dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
-TEST_TARGET = os.getenv("TEST_TARGET", "")
+TEST_TARGET = os.getenv("TEST_TARGET", [""])
 PURE_TEXT_GROUP_ID = os.getenv("PURE_TEXT_GROUP_ID", "")
 
 
@@ -74,7 +75,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
         return True
     if event.to_me:
         return True
-    if event.group_id == int(TEST_TARGET):
+    if str(event.group_id) in TEST_TARGET and secrets.SystemRandom().randint(1, 100) <= 10:
         messages.append({"role": "user", "content": event.get_plaintext().strip()})
         temp_conv: list[dict] = messages[-5:]
         plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
