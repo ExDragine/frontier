@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, SecretStr
 
 dotenv.load_dotenv()
 
+MODEL = os.getenv("OPENAI_MODEL", "")
 SLM_MODEL = os.getenv("SLM_MODEL", "")
 BASE_URL = os.getenv("OPENAI_BASE_URL")
 API_KEY = SecretStr(os.getenv("OPENAI_API_KEY", ""))
@@ -42,11 +43,11 @@ async def reply_check(user_prompt):
             return False
 
 
-async def slm_cognitive(system_prompt: str = "", user_prompt: str = "", tools=None):
+async def slm_cognitive(system_prompt: str = "", user_prompt: str = "", use_model: str = SLM_MODEL, tools=None):
     model = ChatOpenAI(
         api_key=API_KEY,
         base_url=BASE_URL,
-        model=SLM_MODEL,
+        model=use_model,
         streaming=False,
     )
     agent = create_agent(

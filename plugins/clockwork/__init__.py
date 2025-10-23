@@ -23,6 +23,9 @@ httpx_client = httpx.AsyncClient(http2=True)
 module_tools = ModuleTools()
 tools = module_tools.mcp_tools + module_tools.web_tools
 
+MODEL = os.getenv("OPENAI_MODEL", "")
+SLM_MODEL = os.getenv("SLM_MODEL", "")
+
 
 async def github_post_news():
     GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
@@ -161,7 +164,7 @@ async def eq_usgs():
 async def daily_news():
     system_prompt = "你是一个新闻摘要专家，收集互联网上的最新新闻，并将每条新闻总结成不超过100字的简洁摘要，确保涵盖主要事实和关键信息。并以美观的Markdown格式输出。"
     user_prompt = f"现在是{datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).strftime('%Y年%m月%d日')}，请总结今天的主要新闻。"
-    summary = await slm_cognitive(system_prompt, user_prompt, tools=tools)
+    summary = await slm_cognitive(system_prompt, user_prompt, use_model=MODEL, tools=tools)
     if summary:
         message = UniMessage().image(raw=await markdown_to_image(f"# 今日新闻摘要\n\n{summary}"))
         await message.send(target=Target.group(os.getenv("NEWS_SUMMARY_GROUP_ID", "")))
