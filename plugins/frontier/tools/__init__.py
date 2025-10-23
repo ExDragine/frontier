@@ -43,3 +43,4 @@ class ModuleTools:
             send_emoji,
         ]
         self.all_tools = self.mcp_tools + self.local_tools
+        self.web_tools = [tavily_search, tavily_extract, tavily_crawl, tavily_map]

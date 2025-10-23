@@ -6,6 +6,8 @@ import dotenv
 import httpx
 from nonebot import logger, require
 
+from plugins.frontier.markdown_render import markdown_to_image
+from plugins.frontier.tools import ModuleTools
 from utils.database import EventDatabase
 from utils.render import playwright_render
 from utils.slm import slm_cognitive
@@ -18,6 +20,8 @@ from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 event_database = EventDatabase()
 httpx_client = httpx.AsyncClient(http2=True)
+module_tools = ModuleTools()
+tools = module_tools.mcp_tools + module_tools.web_tools
 
 
 async def github_post_news():
@@ -151,3 +155,13 @@ async def eq_usgs():
     if img:
         message = UniMessage().image(raw=img)
         await message.send(target=Target.group(os.getenv("APOD_GROUP_ID", "")))
+
+
+@scheduler.scheduled_job("cron", hour="9", misfire_grace_time=120)
+async def daily_news():
+    system_prompt = "你是一个新闻摘要专家，收集互联网上的最新新闻，并将每条新闻总结成不超过100字的简洁摘要，确保涵盖主要事实和关键信息。并以美观的Markdown格式输出。"
+    user_prompt = f"现在是{datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).strftime('%Y年%m月%d日')}，请总结今天的主要新闻。"
+    summary = await slm_cognitive(system_prompt, user_prompt, tools=tools)
+    if summary:
+        message = UniMessage().image(raw=await markdown_to_image(f"# 今日新闻摘要\n\n{summary}"))
+        await message.send(target=Target.group(os.getenv("NEWS_SUMMARY_GROUP_ID", "")))

@@ -42,14 +42,16 @@ async def reply_check(user_prompt):
             return False
 
 
-async def slm_cognitive(system_prompt: str = "", user_prompt: str = ""):
+async def slm_cognitive(system_prompt: str = "", user_prompt: str = "", tools=None):
     model = ChatOpenAI(
         api_key=API_KEY,
         base_url=BASE_URL,
         model=SLM_MODEL,
         streaming=False,
     )
-    agent = create_agent(model=model, tools=[], system_prompt=system_prompt, debug=AGENT_DEBUG_MODE.lower() == "true")
+    agent = create_agent(
+        model=model, tools=tools, system_prompt=system_prompt, debug=AGENT_DEBUG_MODE.lower() == "true"
+    )
     if not system_prompt:
         with open("configs/system_prompt.txt") as f:
             SYSTEM_PROMPT = f.read()
