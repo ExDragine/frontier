@@ -1,5 +1,6 @@
 import datetime
 import os
+import zoneinfo
 
 import dotenv
 import httpx
@@ -74,7 +75,7 @@ async def earth_now():
         return
     slm_reply = await slm_cognitive(
         "你负责优化用户输入的内容，根据内容给出不超过15字的适用于社交聊天的优化后的内容",
-        f"现在是{datetime.datetime.now().hour}点半，来看看半个钟前的地球吧",
+        f"现在是{datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour}点半，来看看半个钟前的地球吧",
     )
     messages: list[UniMessage] = [
         UniMessage(
@@ -118,7 +119,9 @@ async def eq_usgs():
     detail = [
         {
             "label": "⏱️发震时间",
-            "value": datetime.datetime.fromtimestamp(properties["time"] / 1000).strftime("%Y-%m-%d %H:%M:%S"),
+            "value": datetime.datetime.fromtimestamp(properties["time"] / 1000)
+            .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
+            .strftime("%Y-%m-%d %H:%M:%S"),
         },
         {"label": "🗺️震中位置", "value": properties["place"]},
         {"label": "🌐纬度", "value": coordinates[1]},

@@ -1,3 +1,6 @@
+import datetime
+import zoneinfo
+
 from sqlmodel import Field, Session, SQLModel, create_engine, desc, select
 
 DATABASE_FILE = "sqlite:///frontier.db"
@@ -113,13 +116,24 @@ class MessageDatabase:
         messages = reversed(messages)
         messages = list(messages)[:-1]
         for message in messages:
+            content = f"{datetime.datetime.fromtimestamp(int(message.time / 1000)).astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S')}  {message.user_name}: {message.content}"
             if not messages_seq:
-                messages_seq.append({"role": message.role, "content": message.content})
+                messages_seq.append(
+                    {
+                        "role": message.role,
+                        "content": content,
+                    }
+                )
                 continue
             if message.role == messages_seq[-1]["role"]:
-                messages_seq[-1]["content"] += f"\n{message.content}"
+                messages_seq[-1]["content"] += f"\n{content}"
             else:
-                messages_seq.append({"role": message.role, "content": message.content})
+                messages_seq.append(
+                    {
+                        "role": message.role,
+                        "content": content,
+                    }
+                )
         return messages_seq
 
 

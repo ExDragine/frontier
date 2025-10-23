@@ -1,5 +1,6 @@
 import os
 import time
+import zoneinfo
 from datetime import datetime
 
 import dotenv
@@ -41,7 +42,10 @@ def load_system_prompt(user_name):
         with open("configs/system_prompt.txt", encoding="utf-8") as f:
             system_prompt = f.read()
             system_prompt = system_prompt.format(
-                current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name=user_name
+                current_time=datetime.now()
+                .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
+                .strftime("%Y-%m-%d %H:%M:%S"),
+                user_name=user_name,
             )
             return system_prompt
     except FileNotFoundError:
