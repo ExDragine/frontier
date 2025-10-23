@@ -75,7 +75,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
         return True
     if event.to_me:
         return True
-    if str(event.group_id) in TEST_TARGET and secrets.SystemRandom().randint(1, 100) <= 10:
+    if str(event.group_id) in TEST_TARGET and secrets.SystemRandom().randint(1, 100) <= 50:
         messages.append({"role": "user", "content": event.get_plaintext().strip()})
         temp_conv: list[dict] = messages[-5:]
         plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
