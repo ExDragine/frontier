@@ -25,7 +25,7 @@ class ReplyCheck(BaseModel):
 
 
 async def reply_check(user_prompt):
-    system = "你是一个分类器，用来判断用户输入的内容是否应该回复,当用户当前明确提及“小李子”，且上下文表达出用户需要帮助，且不会破坏别人交流的情况下才需要做出回复。"
+    system = "你是一个分类器，用来判断是否应该介入当前多个用户的对话中,当明确提及“小李子”，且上下文表达出需要帮助且别人没提供相关信息时，且不会破坏交流的情况下才需要做出回复。"
     prompt = ChatPromptTemplate.from_messages([("system", system), ("human", "{input}")])
     model_with_struct = ChatOpenAI(
         api_key=API_KEY,
