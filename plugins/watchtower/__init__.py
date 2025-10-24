@@ -32,7 +32,7 @@ async def on_bot_connect():
     if os.path.exists(".lock"):
         os.remove(".lock")
         for group_id in EnvConfig.ANNOUNCE_GROUP_ID:
-            await UniMessage.text("✅ 更新完成！").send(target=Target.group(group_id))
+            await UniMessage.text("✅ 更新完成！").send(target=Target.group(str(group_id)))
 
 
 @updater.handle()
@@ -48,6 +48,7 @@ async def handle_updater(event: Event):
         repo.git.checkout()
         pull_result = repo.git.pull(rebase=True)
         logger.info(f"Git pull 结果: {pull_result}")
+        exit(0)
 
     except Exception as e:
         logger.error(f"更新失败: {e}")

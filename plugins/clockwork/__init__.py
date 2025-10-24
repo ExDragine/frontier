@@ -59,7 +59,7 @@ async def apod_everyday():
     ]
     for message in messages:
         for group_id in EnvConfig.APOD_GROUP_ID:
-            await message.send(target=Target.group(group_id))
+            await message.send(target=Target.group(str(group_id)))
 
 
 @scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=180)
@@ -89,7 +89,7 @@ async def earth_now():
     ]
     for message in messages:
         for group_id in EnvConfig.EARTH_NOW_GROUP_ID:
-            await message.send(target=Target.group(group_id))
+            await message.send(target=Target.group(str(group_id)))
 
 
 @scheduler.scheduled_job(trigger="interval", minutes=5, misfire_grace_time=60)
@@ -156,7 +156,7 @@ async def eq_usgs():
     if img:
         message = UniMessage().image(raw=img)
         for group_id in EnvConfig.EARTHQUAKE_GROUP_ID:
-            await message.send(target=Target.group(group_id))
+            await message.send(target=Target.group(str(group_id)))
 
 
 @scheduler.scheduled_job("cron", hour="9,17", misfire_grace_time=120)
@@ -168,4 +168,4 @@ async def daily_news():
     if summary:
         message = UniMessage().image(raw=await markdown_to_image(summary))
         for group_id in EnvConfig.NEWS_SUMMARY_GROUP_ID:
-            await message.send(target=Target.group(group_id))
+            await message.send(target=Target.group(str(group_id)))
