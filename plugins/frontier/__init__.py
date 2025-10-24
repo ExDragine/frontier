@@ -3,107 +3,27 @@ import os
 import time
 
 import dotenv
-from git import Repo
-from nonebot import get_driver, logger, on_command, on_message, require
+from nonebot import logger, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
-from nonebot.internal.adapter import Event
-from nonebot.permission import SUPERUSER
 
 from plugins.frontier.cognitive import chat_agent
-from plugins.frontier.message import (
+from utils.database import MessageDatabase
+from utils.message import (
     message_check,
     message_extract,
     message_gateway,
     send_artifacts,
     send_messages,
 )
-from plugins.frontier.painter import paint
-from utils.database import MessageDatabase
-from utils.environment_check import system_check
 
 dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
+from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
-MODEL = os.getenv("OPENAI_MODEL")
-
-driver = get_driver()
 messages_db = MessageDatabase()
 
 
-@driver.on_startup
-async def on_startup():
-    system_check()
-    os.makedirs("./cache", exist_ok=True)
-
-
-@driver.on_bot_connect
-async def on_bot_connect():
-    if os.path.exists(".lock"):
-        os.remove(".lock")
-        await UniMessage.text("✅ 更新完成！").send(target=Target.group(os.getenv("ANNOUNCE_GROUP_ID", "")))
-
-
-updater = on_command("更新", priority=1, block=True, aliases={"update"}, permission=SUPERUSER)
-setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
-painter = on_command("画图", priority=3, block=True, aliases={"paint", "绘图", "画一张图", "帮我画一张图"})
 common = on_message(priority=10)
-
-
-@updater.handle()
-async def handle_updater(event: Event):
-    """处理更新命令"""
-    try:
-        logger.info("开始执行更新操作...")
-        with open(".lock", "w") as f:
-            f.write("lock")
-        await UniMessage.text("🔄 开始更新...").send()
-
-        repo = Repo(".")
-        repo.git.checkout()
-        pull_result = repo.git.pull(rebase=True)
-        logger.info(f"Git pull 结果: {pull_result}")
-
-    except Exception as e:
-        logger.error(f"更新失败: {e}")
-        await UniMessage.text(f"❌ 更新失败: {str(e)}").send()
-
-
-@setting.handle()
-async def handle_setting(event: Event):
-    text, images = await message_extract(event)
-    text = text.replace("/model", "")
-    if not text:
-        await UniMessage.text(f"当前默认使用的模型为: {MODEL}").send()
-
-
-@painter.handle()
-async def handle_painter(event: Event):
-    text, images = await message_extract(event)
-    text = text.replace("/画图", "Create a picture about: ")
-    if not text:
-        await UniMessage.text("你想画点什么？").send()
-    with open("./configs/system_prompt_image.txt") as f:
-        img_sys_prompt = f.read()
-    messages = [
-        {"role": "system", "content": img_sys_prompt},
-        {
-            "role": "user",
-            "content": [{"type": "text", "text": text}]
-            + [
-                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"}
-                for image in images
-            ],
-        },
-    ]
-    result = await paint(messages)
-    if result:
-        if result[0]:
-            await UniMessage.text(result[0]).send()
-        for image in result[1]:
-            await UniMessage.image(raw=image).send()
-    else:
-        await UniMessage.text("画图失败，请重试。").send()
 
 
 @common.handle()

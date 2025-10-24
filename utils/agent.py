@@ -1,21 +1,18 @@
-import os
-
 import dotenv
 from langchain.agents import create_agent
 from langchain.agents.middleware import TodoListMiddleware
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field, SecretStr
 
+from utils.config import EnvConfig
+
 dotenv.load_dotenv()
 
-MODEL = os.getenv("OPENAI_MODEL", "")
-SLM_MODEL = os.getenv("SLM_MODEL", "")
-BASE_URL = os.getenv("OPENAI_BASE_URL")
-API_KEY = SecretStr(os.getenv("OPENAI_API_KEY", ""))
-AGENT_DEBUG_MODE = os.getenv("AGENT_DEBUG_MODE", "false")
-
-if not SLM_MODEL or not API_KEY or not BASE_URL:
-    raise ValueError("OPENAI_MODEL and OPENAI_API_KEY must be set")
+ADVAN_MODEL = EnvConfig.ADVAN_MODEL
+BASIC_MODEL = EnvConfig.BASIC_MODEL
+OPENAI_BASE_URL = EnvConfig.OPENAI_BASE_URL
+OPENAI_API_KEY = SecretStr(EnvConfig.OPENAI_API_KEY)
+AGENT_DEBUG_MODE = EnvConfig.AGENT_DEBUG_MODE
 
 
 class ReplyCheck(BaseModel):
@@ -32,9 +29,9 @@ async def reply_check(user_prompt: str):
                         and the intervention will not disrupt the conversation. 
                         Try to avoid inserting into the conversation arbitrarily and only reply when it is absolutely necessary."""
     model = ChatOpenAI(
-        api_key=API_KEY,
-        base_url=BASE_URL,
-        model=SLM_MODEL,
+        api_key=OPENAI_API_KEY,
+        base_url=OPENAI_BASE_URL,
+        model=BASIC_MODEL,
         reasoning_effort="high",
     )
     agent = create_agent(
@@ -51,10 +48,12 @@ async def reply_check(user_prompt: str):
     return False
 
 
-async def slm_cognitive(system_prompt: str = "", user_prompt: str = "", use_model: str = SLM_MODEL, tools=None):
+async def cognitive(
+    system_prompt: str = "", user_prompt: str = "", use_model: str = BASIC_MODEL, tools=None, response_format=None
+):
     model = ChatOpenAI(
-        api_key=API_KEY,
-        base_url=BASE_URL,
+        api_key=OPENAI_API_KEY,
+        base_url=OPENAI_BASE_URL,
         model=use_model,
         streaming=False,
     )
@@ -63,13 +62,16 @@ async def slm_cognitive(system_prompt: str = "", user_prompt: str = "", use_mode
         tools=tools,
         system_prompt=system_prompt,
         middleware=[TodoListMiddleware()],
-        debug=AGENT_DEBUG_MODE.lower() == "true",
+        response_format=response_format,
+        debug=AGENT_DEBUG_MODE,
     )
     if not system_prompt:
         with open("configs/system_prompt.txt") as f:
             SYSTEM_PROMPT = f.read()
         system_prompt = SYSTEM_PROMPT
     result = await agent.ainvoke({"messages": [{"role": "user", "content": user_prompt}]})
+    if response_format:
+        return result["structured_response"]
     content = ""
     for msg in result["messages"]:
         if msg.type == "ai":

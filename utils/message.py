@@ -1,5 +1,4 @@
 import io
-import os
 
 import dotenv
 import httpx
@@ -8,16 +7,14 @@ from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageE
 from nonebot.internal.adapter import Event
 from PIL import Image
 
-from plugins.frontier.context_check import det, text_det
 from plugins.frontier.markdown_render import markdown_to_image, markdown_to_text
-from utils.slm import reply_check, slm_cognitive
+from utils.agent import cognitive, reply_check
+from utils.config import EnvConfig
+from utils.context_check import det, text_det
 
 dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
-
-TEST_TARGET = os.getenv("TEST_TARGET", [""])
-PURE_TEXT_GROUP_ID = os.getenv("PURE_TEXT_GROUP_ID", "")
 
 
 async def message_extract(event: Event):
@@ -49,7 +46,7 @@ async def send_messages(group_id: int | None, response: dict[str, list]):
     last_message = response["messages"][-1]
     if hasattr(last_message, "content") and last_message.content.strip():
         if last_message.content.startswith("系统处理出现错误"):
-            result = await slm_cognitive(
+            result = await cognitive(
                 "请告诉用户当前出现了什么问题，简短明了，不要返回敏感信息，不超过50字。", last_message.content
             )
             if result:
@@ -57,7 +54,7 @@ async def send_messages(group_id: int | None, response: dict[str, list]):
             else:
                 await UniMessage.text(last_message.content).send()
             return None
-        if len(last_message.content) < 500 or group_id == int(PURE_TEXT_GROUP_ID):
+        if len(last_message.content) < 500 or str(group_id) in EnvConfig.RAW_MESSAGE_GROUP_ID:
             await UniMessage.text(await markdown_to_text(last_message.content)).send()
         else:
             result = await markdown_to_image(last_message.content)
@@ -74,7 +71,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
         return True
     if event.to_me:
         return True
-    if str(event.group_id) in TEST_TARGET:
+    if str(event.group_id) in EnvConfig.TEST_GROUP_ID:
         messages.append({"role": "user", "content": event.get_plaintext().strip()})
         temp_conv: list[dict] = messages[-5:]
         plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)

@@ -1,5 +1,4 @@
 import datetime
-import os
 import zoneinfo
 
 import dotenv
@@ -8,9 +7,10 @@ from nonebot import logger, require
 
 from plugins.frontier.markdown_render import markdown_to_image
 from plugins.frontier.tools import ModuleTools
+from utils.agent import cognitive
+from utils.config import EnvConfig
 from utils.database import EventDatabase
 from utils.render import playwright_render
-from utils.slm import slm_cognitive
 
 require("nonebot_plugin_apscheduler")
 require("nonebot_plugin_alconna")
@@ -23,13 +23,9 @@ httpx_client = httpx.AsyncClient(http2=True)
 module_tools = ModuleTools()
 tools = module_tools.mcp_tools + module_tools.web_tools
 
-MODEL = os.getenv("OPENAI_MODEL", "")
-SLM_MODEL = os.getenv("SLM_MODEL", "")
-
 
 async def github_post_news():
     GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
-    GITHUB_PAT = os.getenv("GITHUB_PAT")
     query = """
     query {
         repository(owner:"UnrealUpdateTracker", name:"UnrealEngine") {
@@ -44,7 +40,7 @@ async def github_post_news():
     }
     """
     response = await httpx_client.post(
-        GITHUB_GRAPHQL_URL, headers={"Authorization": f"Bearer {GITHUB_PAT}"}, json={"query": query}
+        GITHUB_GRAPHQL_URL, headers={"Authorization": f"Bearer {EnvConfig.GITHUB_PAT}"}, json={"query": query}
     )
     print(response.json())
 
@@ -52,17 +48,18 @@ async def github_post_news():
 @scheduler.scheduled_job("cron", hour="19", misfire_grace_time=60)
 async def apod_everyday():
     url = "https://api.nasa.gov/planetary/apod"
-    params = {"api_key": os.getenv("NASA_API_KEY", "DEMO_KEY")}
+    params = {"api_key": EnvConfig.NASA_API_KEY}
     response = await httpx_client.get(url, params=params)
     content = response.json()
     intro = f"NASA每日一图\n{content['title']}\n{content['explanation']}"
-    slm_reply = await slm_cognitive("翻译用户给出的天文相关的内容为中文，只返回翻译结果，保留专有词汇为英文", intro)
+    slm_reply = await cognitive("翻译用户给出的天文相关的内容为中文，只返回翻译结果，保留专有词汇为英文", intro)
     messages: list[UniMessage] = [
         UniMessage(Text(slm_reply if slm_reply else intro)),
         UniMessage(Image(url=content["url"])),
     ]
     for message in messages:
-        await message.send(target=Target.group(os.getenv("APOD_GROUP_ID", "")))
+        for group_id in EnvConfig.APOD_GROUP_ID:
+            await message.send(target=Target.group(group_id))
 
 
 @scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=180)
@@ -80,7 +77,7 @@ async def earth_now():
             continue
     if not content:
         return
-    slm_reply = await slm_cognitive(
+    slm_reply = await cognitive(
         "你负责优化用户输入的内容，根据内容给出不超过15字的适用于社交聊天的优化后的内容",
         f"现在是{datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour}点半，来看看半个钟前的地球吧",
     )
@@ -91,7 +88,8 @@ async def earth_now():
         UniMessage(Image(raw=content)),
     ]
     for message in messages:
-        await message.send(target=Target.group(os.getenv("EARTH_NOW_GROUP_ID", "")))
+        for group_id in EnvConfig.EARTH_NOW_GROUP_ID:
+            await message.send(target=Target.group(group_id))
 
 
 @scheduler.scheduled_job(trigger="interval", minutes=5, misfire_grace_time=60)
@@ -157,7 +155,8 @@ async def eq_usgs():
 
     if img:
         message = UniMessage().image(raw=img)
-        await message.send(target=Target.group(os.getenv("APOD_GROUP_ID", "")))
+        for group_id in EnvConfig.EARTHQUAKE_GROUP_ID:
+            await message.send(target=Target.group(group_id))
 
 
 @scheduler.scheduled_job("cron", hour="9,17", misfire_grace_time=120)
@@ -165,7 +164,8 @@ async def daily_news():
     logger.info("开始获取每日新闻摘要")
     system_prompt = "你是一个新闻摘要专家，收集互联网上的最新新闻，并将每条新闻总结成不超过100字的简洁摘要，确保涵盖主要事实和关键信息。并以美观的Markdown格式输出。"
     user_prompt = f"现在是{datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).strftime('%Y年%m月%d日')}，请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的主要新闻。"
-    summary = await slm_cognitive(system_prompt, user_prompt, use_model=MODEL, tools=tools)
+    summary = await cognitive(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
     if summary:
         message = UniMessage().image(raw=await markdown_to_image(summary))
-        await message.send(target=Target.group(os.getenv("NEWS_SUMMARY_GROUP_ID", "")))
+        for group_id in EnvConfig.NEWS_SUMMARY_GROUP_ID:
+            await message.send(target=Target.group(group_id))

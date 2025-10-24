@@ -1,2 +1,7 @@
 source .venv/bin/activate
-nb run --reload
+# loop to restart
+while true; do
+    uv sync --upgrade
+    nb run
+    sleep 5
+done

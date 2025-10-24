@@ -1,11 +1,9 @@
-import os
 import time
 import zoneinfo
 from datetime import datetime
 
 import dotenv
-from langchain.agents import create_agent
-from langchain.agents.middleware import TodoListMiddleware
+from deepagents import create_deep_agent
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
@@ -13,25 +11,27 @@ from nonebot import logger, require
 from pydantic import SecretStr
 
 from plugins.frontier.tools import ModuleTools
+from utils.config import EnvConfig
 
 require("nonebot_plugin_alconna")
 
 dotenv.load_dotenv()
 
 
-SLM_MODEL = os.getenv("SLM_MODEL", "")
-BASE_URL = os.getenv("OPENAI_BASE_URL")
-MODEL = os.getenv("OPENAI_MODEL")
-API_KEY = os.getenv("OPENAI_API_KEY")
-
-if not MODEL or not API_KEY or not BASE_URL:
-    raise ValueError("OPENAI_MODEL and OPENAI_API_KEY must be set")
-API_KEY = SecretStr(API_KEY)
+OPENAI_API_KEY = SecretStr(EnvConfig.OPENAI_API_KEY)
+OPENAI_BASE_URL = EnvConfig.OPENAI_BASE_URL
+ADVAN_MODEL = EnvConfig.ADVAN_MODEL
+BASIC_MODEL = EnvConfig.BASIC_MODEL
+AGENT_DEBUG_MODE = EnvConfig.AGENT_DEBUG_MODE
 
 model = ChatOpenAI(
-    api_key=API_KEY, base_url=BASE_URL, model=MODEL, streaming=False, reasoning_effort="high", verbosity="low"
+    api_key=OPENAI_API_KEY,
+    base_url=OPENAI_BASE_URL,
+    model=ADVAN_MODEL,
+    streaming=False,
+    reasoning_effort="high",
+    verbosity="low",
 )
-slm_model = ChatOpenAI(model=SLM_MODEL, api_key=API_KEY, base_url=BASE_URL, streaming=False)
 module_tools = ModuleTools()
 tools = module_tools.all_tools
 
@@ -121,13 +121,11 @@ async def chat_agent(messages, user_id, user_name):
             "total_time": 0.0,
             "artifacts": [],
             "processed_artifacts": [],
-            "message_segments": [],
+            "uni_messages": [],
         }
-
+    logger.info(f"Agent烧烤中~🍖 用户: {user_name} (ID: {user_id})")
     start_time = time.time()
-    logger.info("🚀 启动智能代理系统")
     prompt_template = load_system_prompt(user_name)
-    logger.info("🤖 开始执行智能 Agent...")
     config: RunnableConfig = {
         "configurable": {
             "thread_id": f"user_{user_id}_thread",
@@ -135,20 +133,13 @@ async def chat_agent(messages, user_id, user_name):
         }
     }
     try:
-        agent = create_agent(
+        agent = create_deep_agent(
             model=model,
             tools=tools,
             system_prompt=prompt_template,
-            middleware=[
-                # SummarizationMiddleware(model=slm_model),
-                # LLMToolSelectorMiddleware(model=slm_model, max_tools=10),
-                TodoListMiddleware(),
-            ],
-            debug=os.getenv("AGENT_DEBUG_MODE", "false").lower() == "true",
+            debug=AGENT_DEBUG_MODE,
         )
         response = await agent.ainvoke({"messages": messages}, config=config)
-        processing_time = time.time() - start_time
-        logger.info(f"✅ 智能代理完成 (耗时: {processing_time:.2f}s)")
         artifacts = extract_artifacts(response)
         processed_artifacts = process_artifacts(artifacts)
         message_segments = get_message_segments(processed_artifacts)
@@ -156,6 +147,8 @@ async def chat_agent(messages, user_id, user_name):
         if response and isinstance(response, dict) and "messages" in response:
             ai_messages = [msg for msg in response["messages"] if hasattr(msg, "type") and msg.type == "ai"]
         final_response = ai_messages[-1] if ai_messages else AIMessage("智能代理处理完成，但没有生成响应。")
+        processing_time = time.time() - start_time
+        logger.info(f"Agent烤熟了~🥓 (耗时: {processing_time:.2f}s)")
         response_data = {
             "response": {"messages": [final_response]},
             "processing_time": processing_time,
