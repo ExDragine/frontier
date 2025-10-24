@@ -38,7 +38,6 @@ async def reply_check(user_prompt: str):
         model=model,
         tools=[],
         system_prompt=system_prompt,
-        middleware=[TodoListMiddleware()],
         response_format=ReplyCheck,
     )
     result = await agent.ainvoke({"messages": [{"role": "user", "content": user_prompt}]})

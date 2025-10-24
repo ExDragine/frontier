@@ -60,5 +60,5 @@ async def handle_setting(event: Event):
     text = text.replace("/model", "")
     if not text:
         await UniMessage.text(
-            f"当前默认使用的模型为: {EnvConfig.OPENAI_MODEL},当前辅助模型为:{EnvConfig.BASIC_MODEL},当前绘图模型为:{EnvConfig.PAINT_MODEL}"
+            f"当前默认使用的模型为: {EnvConfig.OPENAI_MODEL}\n当前辅助模型为:{EnvConfig.BASIC_MODEL}\n当前绘图模型为:{EnvConfig.PAINT_MODEL}"
         ).send()
