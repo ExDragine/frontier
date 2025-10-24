@@ -20,7 +20,6 @@ from plugins.frontier.message import (
 from plugins.frontier.painter import paint
 from utils.database import MessageDatabase
 from utils.environment_check import system_check
-from utils.slm import slm_cognitive
 
 dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
@@ -97,11 +96,6 @@ async def handle_painter(event: Event):
             ],
         },
     ]
-    slm_reply = await slm_cognitive(
-        "请生成一段简短的提示语，内容由用户输入决定，表示你已收到请求，正在画图重，不要超过20字。", text
-    )
-    if slm_reply:
-        await UniMessage.text(slm_reply).send()
     result = await paint(messages)
     if result:
         if result[0]:
