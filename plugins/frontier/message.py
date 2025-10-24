@@ -78,9 +78,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
         messages.append({"role": "user", "content": event.get_plaintext().strip()})
         temp_conv: list[dict] = messages[-5:]
         plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
-        slm_reply = await reply_check(
-            plain_conv,
-        )
+        slm_reply = await reply_check(plain_conv)
         return slm_reply
 
 
