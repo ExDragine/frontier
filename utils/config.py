@@ -1,12 +1,11 @@
 import os
 
 import dotenv
-from pydantic_settings import BaseSettings
 
 dotenv.load_dotenv()
 
 
-class EnvConfig(BaseSettings):
+class EnvConfig:
     OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "")
