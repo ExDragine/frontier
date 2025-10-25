@@ -31,8 +31,7 @@ async def on_startup():
 async def on_bot_connect():
     if os.path.exists(".lock"):
         os.remove(".lock")
-        for group_id in EnvConfig.ANNOUNCE_GROUP_ID:
-            await UniMessage.text("✅ 更新完成！").send(target=Target.group(str(group_id)))
+        await UniMessage.text("✅ 更新完成！").send(target=Target.group(str(EnvConfig.ANNOUNCE_GROUP_ID)))
 
 
 @updater.handle()
