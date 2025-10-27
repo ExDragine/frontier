@@ -39,8 +39,8 @@ fact_check_subagent = {
         ## Additional Instructions
         The current time is UTC+8: {datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")}
     """,
-    "tools": [agent_tools.web_tools],
+    "tools": agent_tools.web_tools,
     "model": model,
-    "middleware": [],
-    "interrupt_on": {},
+    # "middleware": [],
+    # "interrupt_on": {},
 }
