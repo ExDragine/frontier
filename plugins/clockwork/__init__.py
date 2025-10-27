@@ -5,7 +5,7 @@ import dotenv
 import httpx
 from nonebot import logger, require
 
-from plugins.frontier.tools import ModuleTools
+from tools import agent_tools
 from utils.agent import cognitive
 from utils.config import EnvConfig
 from utils.database import EventDatabase
@@ -20,8 +20,7 @@ from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 event_database = EventDatabase()
 httpx_client = httpx.AsyncClient(http2=True)
-module_tools = ModuleTools()
-tools = module_tools.mcp_tools + module_tools.web_tools
+tools = agent_tools.mcp_tools + agent_tools.web_tools
 
 
 async def github_post_news():

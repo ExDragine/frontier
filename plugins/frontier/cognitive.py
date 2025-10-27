@@ -10,8 +10,9 @@ from langchain_openai import ChatOpenAI
 from nonebot import logger, require
 from pydantic import SecretStr
 
-from plugins.frontier.tools import ModuleTools
+from tools import agent_tools
 from utils.config import EnvConfig
+from utils.subagents import fact_check_subagent
 
 require("nonebot_plugin_alconna")
 
@@ -32,8 +33,8 @@ model = ChatOpenAI(
     reasoning_effort="high",
     verbosity="low",
 )
-module_tools = ModuleTools()
-tools = module_tools.all_tools
+tools = agent_tools.all_tools
+subagents: list = [fact_check_subagent]
 
 
 def load_system_prompt(user_name):
@@ -137,6 +138,7 @@ async def chat_agent(messages, user_id, user_name):
             model=model,
             tools=tools,
             system_prompt=prompt_template,
+            subagents=subagents,
             debug=AGENT_DEBUG_MODE,
         )
         response = await agent.ainvoke({"messages": messages}, config=config)
