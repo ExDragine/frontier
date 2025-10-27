@@ -1,4 +1,5 @@
 import os
+from signal import SIGINT
 
 import dotenv
 from git import Repo
@@ -47,7 +48,8 @@ async def handle_updater(event: Event):
         repo.git.checkout()
         pull_result = repo.git.pull(rebase=True)
         logger.info(f"Git pull 结果: {pull_result}")
-        exit(0)
+        pid = os.getpid()
+        os.kill(pid, SIGINT)
 
     except Exception as e:
         logger.error(f"更新失败: {e}")

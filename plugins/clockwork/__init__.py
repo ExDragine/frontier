@@ -6,7 +6,7 @@ import httpx
 from nonebot import logger, require
 
 from tools import agent_tools
-from utils.agent import cognitive
+from utils.agents import cognitive
 from utils.config import EnvConfig
 from utils.database import EventDatabase
 from utils.markdown_render import markdown_to_image

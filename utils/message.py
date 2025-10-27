@@ -7,7 +7,7 @@ from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageE
 from nonebot.internal.adapter import Event
 from PIL import Image
 
-from utils.agent import cognitive, reply_check
+from utils.agents import cognitive, reply_check
 from utils.config import EnvConfig
 from utils.context_check import det, text_det
 from utils.markdown_render import markdown_to_image, markdown_to_text
@@ -15,6 +15,9 @@ from utils.markdown_render import markdown_to_image, markdown_to_text
 dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
+
+transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
+httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 
 
 async def message_extract(event: Event):
@@ -25,13 +28,9 @@ async def message_extract(event: Event):
         for attachment in message:
             if attachment.type == "image":
                 if image_url := attachment.data.get("url"):
-                    async with httpx.AsyncClient(http2=True) as client:
-                        try:
-                            response = await client.get(image_url)
-                        except httpx.ReadTimeout:
-                            response = await client.get(image_url)
-                        image = response.content
-                        images.append(image)
+                    response = await httpx_client.get(image_url)
+                    image = response.content
+                    images.append(image)
     return text, images
 
 

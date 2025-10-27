@@ -40,7 +40,6 @@ Since this is a casual chat on a social platform, unless it's a professional que
 
 ## Additional information
 The current time is UTC+8: {current_time}
-The user you are talking to is named: {user_name}
 
 
 ## Tools

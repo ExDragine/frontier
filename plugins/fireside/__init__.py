@@ -6,7 +6,7 @@ import dotenv
 from nonebot import logger, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 
-from plugins.frontier.cognitive import chat_agent
+from utils.agents import FrontierCognitive
 from utils.database import MessageDatabase
 from utils.message import (
     message_check,
@@ -21,7 +21,7 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 messages_db = MessageDatabase()
-
+cognitive = FrontierCognitive()
 
 common = on_message(priority=10)
 
@@ -67,7 +67,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
             ],
         }
     )
-    result = await chat_agent(messages, user_id, user_name)
+    result = await cognitive.chat_agent(messages, user_id, user_name)
     if isinstance(result, dict) and "response" in result:
         response = result["response"]
         if not response:
