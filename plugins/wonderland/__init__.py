@@ -1,13 +1,11 @@
 import base64
 
-import dotenv
 from nonebot import on_command, require
 from nonebot.internal.adapter import Event
 
 from plugins.wonderland.painter import paint
 from utils.message import message_extract
 
-dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 

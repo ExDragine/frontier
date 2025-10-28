@@ -1,14 +1,10 @@
 import base64
 import io
 
-import dotenv
 from openai import AsyncClient
 from PIL import Image
 
-from utils.config import EnvConfig
-
-dotenv.load_dotenv()
-
+from utils.configs import EnvConfig
 
 client = AsyncClient(base_url=EnvConfig.OPENAI_BASE_URL, api_key=EnvConfig.OPENAI_API_KEY)
 

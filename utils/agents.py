@@ -12,7 +12,7 @@ from nonebot import logger
 from pydantic import BaseModel, Field, SecretStr
 
 from tools import agent_tools
-from utils.config import EnvConfig
+from utils.configs import EnvConfig
 from utils.subagents import fact_check_subagent
 
 ADVAN_MODEL = EnvConfig.ADVAN_MODEL

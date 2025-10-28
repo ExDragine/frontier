@@ -1,20 +1,18 @@
 import datetime
 import zoneinfo
 
-import dotenv
 import httpx
 from nonebot import logger, require
 
 from tools import agent_tools
 from utils.agents import cognitive
-from utils.config import EnvConfig
+from utils.configs import EnvConfig
 from utils.database import EventDatabase
 from utils.markdown_render import markdown_to_image
 from utils.render import playwright_render
 
 require("nonebot_plugin_apscheduler")
 require("nonebot_plugin_alconna")
-dotenv.load_dotenv()
 from nonebot_plugin_alconna import Image, Target, Text, UniMessage  # noqa: E402
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 

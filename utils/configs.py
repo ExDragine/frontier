@@ -1,8 +1,12 @@
 import os
 
+# import tomllib
 import dotenv
 
 dotenv.load_dotenv()
+
+# with open("configs/env.toml", "rb") as f:
+#     config = tomllib.load(f)
 
 
 class EnvConfig:
@@ -23,5 +27,7 @@ class EnvConfig:
     EARTH_NOW_GROUP_ID: str = os.getenv("EARTH_NOW_GROUP_ID", TEST_GROUP_ID)
     NEWS_SUMMARY_GROUP_ID: str = os.getenv("NEWS_SUMMARY_GROUP_ID", TEST_GROUP_ID)
     EARTHQUAKE_GROUP_ID: str = os.getenv("EARTHQUAKE_GROUP_ID", TEST_GROUP_ID)
+
+    QUERY_MESSAGE_NUMBERS: int = int(os.getenv("QUERY_MESSAGE_NUMBERS", "20"))
 
     AGENT_DEBUG_MODE: bool = os.getenv("AGENT_DEBUG_MODE", "false").lower() == "true"

@@ -1,19 +1,17 @@
 import os
 from signal import SIGINT
 
-import dotenv
 from git import Repo
 from nonebot import get_driver, logger, on_command, require
 from nonebot.internal.adapter import Event
 from nonebot.permission import SUPERUSER
 
 from plugins.watchtower.environment_check import system_check
-from utils.config import EnvConfig
+from utils.configs import EnvConfig
 from utils.message import (
     message_extract,
 )
 
-dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
 

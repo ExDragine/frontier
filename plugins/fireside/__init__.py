@@ -1,12 +1,11 @@
 import base64
-import os
 import time
 
-import dotenv
 from nonebot import logger, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 
 from utils.agents import FrontierCognitive
+from utils.configs import EnvConfig
 from utils.database import MessageDatabase
 from utils.message import (
     message_check,
@@ -16,7 +15,6 @@ from utils.message import (
     send_messages,
 )
 
-dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
@@ -52,7 +50,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     messages = await messages_db.prepare_message(
         int(user_id),
         group_id,
-        query_numbers=int(os.getenv("QUERY_MESSAGE_NUMBERS", "20")),
+        query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
     )
     if not await message_gateway(event, messages):
         await common.finish()

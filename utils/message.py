@@ -1,6 +1,5 @@
 import io
 
-import dotenv
 import httpx
 from nonebot import logger, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
@@ -8,11 +7,10 @@ from nonebot.internal.adapter import Event
 from PIL import Image
 
 from utils.agents import cognitive, reply_check
-from utils.config import EnvConfig
+from utils.configs import EnvConfig
 from utils.context_check import det, text_det
 from utils.markdown_render import markdown_to_image, markdown_to_text
 
-dotenv.load_dotenv()
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 

@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from tools import agent_tools
-from utils.config import EnvConfig
+from utils.configs import EnvConfig
 
 ADVAN_MODEL = EnvConfig.ADVAN_MODEL
 BASIC_MODEL = EnvConfig.BASIC_MODEL
