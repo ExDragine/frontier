@@ -6,7 +6,7 @@ from PIL import Image
 
 from utils.configs import EnvConfig
 
-client = AsyncClient(base_url=EnvConfig.OPENAI_BASE_URL, api_key=EnvConfig.OPENAI_API_KEY)
+client = AsyncClient(base_url=EnvConfig.OPENAI_BASE_URL, api_key=EnvConfig.OPENAI_API_KEY.get_secret_value())
 
 
 async def extract_image(content_images) -> bytes | None:

@@ -1,4 +1,5 @@
 import os
+import shutil
 from signal import SIGINT
 
 from git import Repo
@@ -24,13 +25,18 @@ setting = on_command("model", priority=2, block=True, aliases={"模型", "模型
 async def on_startup():
     system_check()
     os.makedirs("./cache", exist_ok=True)
+    if not os.path.exists("env.toml"):
+        shutil.copy("env.toml.example", "env.toml")
+    if not os.path.exists("mcp.json"):
+        shutil.copy("mcp.json.example", "mcp.json")
 
 
 @driver.on_bot_connect
 async def on_bot_connect():
     if os.path.exists(".lock"):
         os.remove(".lock")
-        await UniMessage.text("✅ 更新完成！").send(target=Target.group(str(EnvConfig.ANNOUNCE_GROUP_ID)))
+        for group_id in EnvConfig.ANNOUNCE_GROUP_ID:
+            await UniMessage.text("✅ 更新完成！").send(target=Target.group(str(group_id)))
 
 
 @updater.handle()
@@ -60,5 +66,5 @@ async def handle_setting(event: Event):
     text = text.replace("/model", "")
     if not text:
         await UniMessage.text(
-            f"当前默认使用的模型为: {EnvConfig.OPENAI_MODEL}\n当前辅助模型为:{EnvConfig.BASIC_MODEL}\n当前绘图模型为:{EnvConfig.PAINT_MODEL}"
+            f"当前默认使用的模型为: {EnvConfig.ADVAN_MODEL}\n当前辅助模型为:{EnvConfig.BASIC_MODEL}\n当前绘图模型为:{EnvConfig.PAINT_MODEL}"
         ).send()

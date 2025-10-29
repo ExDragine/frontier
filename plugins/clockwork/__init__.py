@@ -37,7 +37,9 @@ async def github_post_news():
     }
     """
     response = await httpx_client.post(
-        GITHUB_GRAPHQL_URL, headers={"Authorization": f"Bearer {EnvConfig.GITHUB_PAT}"}, json={"query": query}
+        GITHUB_GRAPHQL_URL,
+        headers={"Authorization": f"Bearer {EnvConfig.GITHUB_PAT.get_secret_value()}"},
+        json={"query": query},
     )
     print(response.json())
 
@@ -45,7 +47,7 @@ async def github_post_news():
 @scheduler.scheduled_job("cron", hour="19", misfire_grace_time=60)
 async def apod_everyday():
     url = "https://api.nasa.gov/planetary/apod"
-    params = {"api_key": EnvConfig.NASA_API_KEY}
+    params = {"api_key": EnvConfig.NASA_API_KEY.get_secret_value()}
     response = await httpx_client.get(url, params=params)
     content = response.json()
     intro = f"NASA每日一图\n{content['title']}\n{content['explanation']}"
@@ -55,7 +57,8 @@ async def apod_everyday():
         UniMessage(Image(url=content["url"])),
     ]
     for message in messages:
-        await message.send(target=Target.group(str(EnvConfig.APOD_GROUP_ID)))
+        for group in EnvConfig.APOD_GROUP_ID:
+            await message.send(target=Target.group(str(group)))
 
 
 @scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=180)
@@ -84,7 +87,8 @@ async def earth_now():
         UniMessage(Image(raw=content)),
     ]
     for message in messages:
-        await message.send(target=Target.group(str(EnvConfig.EARTH_NOW_GROUP_ID)))
+        for group in EnvConfig.EARTH_NOW_GROUP_ID:
+            await message.send(target=Target.group(str(group)))
 
 
 @scheduler.scheduled_job(trigger="interval", minutes=5, misfire_grace_time=60)
@@ -150,7 +154,8 @@ async def eq_usgs():
 
     if img:
         message = UniMessage().image(raw=img)
-        await message.send(target=Target.group(str(EnvConfig.EARTHQUAKE_GROUP_ID)))
+        for group in EnvConfig.EARTHQUAKE_GROUP_ID:
+            await message.send(target=Target.group(str(group)))
 
 
 @scheduler.scheduled_job("cron", hour="9,17", misfire_grace_time=120)
@@ -161,4 +166,5 @@ async def daily_news():
     summary = await cognitive(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
     if summary:
         message = UniMessage().image(raw=await markdown_to_image(summary))
-        await message.send(target=Target.group(str(EnvConfig.NEWS_SUMMARY_GROUP_ID)))
+        for group in EnvConfig.NEWS_SUMMARY_GROUP_ID:
+            await message.send(target=Target.group(str(group)))

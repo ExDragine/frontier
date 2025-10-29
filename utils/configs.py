@@ -1,33 +1,47 @@
-import os
+import tomllib
 
-# import tomllib
 import dotenv
+from pydantic import SecretStr
 
 dotenv.load_dotenv()
 
-# with open("configs/env.toml", "rb") as f:
-#     config = tomllib.load(f)
+
+with open("env.toml", "rb") as f:
+    config = tomllib.load(f)
+
+endpoint: dict = config.get("endpoint", {})
+key: dict = config.get("key", {})
+function_list = config.get("function", {})
+message: dict = config.get("message", {})
+database: dict = config.get("database", {})
+debug: dict = config.get("debug", {})
 
 
 class EnvConfig:
-    OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "")
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "")
-    BASIC_MODEL: str = os.getenv("BASIC_MODEL", "")
-    ADVAN_MODEL: str = os.getenv("ADVAN_MODEL", OPENAI_MODEL)
-    PAINT_MODEL: str = os.getenv("PAINT_MODEL", "")
+    OPENAI_BASE_URL: str = endpoint["openai_base_url"]
+    BASIC_MODEL: str = endpoint["basic_model"]
+    ADVAN_MODEL: str = endpoint["advan_model"]
+    PAINT_MODEL: str = endpoint["paint_model"]
 
-    NASA_API_KEY: str = os.getenv("NASA_API_KEY", "DEMO_KEY")
-    GITHUB_PAT = os.getenv("GITHUB_PAT", "")
+    OPENAI_API_KEY: SecretStr = SecretStr(key["openai_api_key"])
+    NASA_API_KEY: SecretStr = SecretStr(key["nasa_api_key"])
+    GITHUB_PAT: SecretStr = SecretStr(key["github_pat"])
 
-    RAW_MESSAGE_GROUP_ID: str = os.getenv("RAW_MESSAGE_GROUP_ID", "")
-    TEST_GROUP_ID: str = os.getenv("TEST_GROUP_ID", "")
-    ANNOUNCE_GROUP_ID: str = os.getenv("ANNOUNCE_GROUP_ID", TEST_GROUP_ID)
-    APOD_GROUP_ID: str = os.getenv("APOD_GROUP_ID", TEST_GROUP_ID)
-    EARTH_NOW_GROUP_ID: str = os.getenv("EARTH_NOW_GROUP_ID", TEST_GROUP_ID)
-    NEWS_SUMMARY_GROUP_ID: str = os.getenv("NEWS_SUMMARY_GROUP_ID", TEST_GROUP_ID)
-    EARTHQUAKE_GROUP_ID: str = os.getenv("EARTHQUAKE_GROUP_ID", TEST_GROUP_ID)
+    AGENT_WITHELIST_MODE: bool = function_list["agent_whitelist_mode"]
+    AGENT_WITHELIST_PERSON_LIST: list = function_list["agent_whitelist_person_list"]
+    AGENT_WITHELIST_GROUP_LIST: list = function_list["agent_whitelist_group_list"]
+    PAINT_WITHELIST_MODE: bool = function_list["paint_whitelist_mode"]
+    PAINT_WITHELIST_PERSON_LIST: list = function_list["paint_whitelist_person_list"]
+    PAINT_WITHELIST_GROUP_LIST: list = function_list["paint_whitelist_group_list"]
 
-    QUERY_MESSAGE_NUMBERS: int = int(os.getenv("QUERY_MESSAGE_NUMBERS", "20"))
+    RAW_MESSAGE_GROUP_ID: list = message["raw_message_group_id"]
+    TEST_GROUP_ID: list = message["test_group_id"]
+    ANNOUNCE_GROUP_ID: list = message.get("announce_group_id", TEST_GROUP_ID)
+    APOD_GROUP_ID: list = message.get("apod_group_id", TEST_GROUP_ID)
+    EARTH_NOW_GROUP_ID: list = message.get("earth_now_group_id", TEST_GROUP_ID)
+    NEWS_SUMMARY_GROUP_ID: list = message.get("news_summary_group_id", TEST_GROUP_ID)
+    EARTHQUAKE_GROUP_ID: list = message.get("earthquake_group_id", TEST_GROUP_ID)
 
-    AGENT_DEBUG_MODE: bool = os.getenv("AGENT_DEBUG_MODE", "false").lower() == "true"
+    QUERY_MESSAGE_NUMBERS: int = database["query_message_numbers"]
+
+    AGENT_DEBUG_MODE: bool = debug["agent_debug_mode"]

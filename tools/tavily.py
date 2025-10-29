@@ -1,5 +1,7 @@
+import dotenv
 from langchain_tavily import TavilyCrawl, TavilyExtract, TavilyMap, TavilySearch
 
+dotenv.load_dotenv()
 tavily_search = TavilySearch(
     max_results=50,
     topic="general",

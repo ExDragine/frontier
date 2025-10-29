@@ -51,7 +51,7 @@ async def send_messages(group_id: int | None, response: dict[str, list]):
             else:
                 await UniMessage.text(last_message.content).send()
             return None
-        if len(last_message.content) < 500 or str(group_id) in EnvConfig.RAW_MESSAGE_GROUP_ID:
+        if len(last_message.content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID:
             await UniMessage.text(await markdown_to_text(last_message.content)).send()
         else:
             result = await markdown_to_image(last_message.content)
@@ -61,19 +61,26 @@ async def send_messages(group_id: int | None, response: dict[str, list]):
 
 async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messages: list):
     if isinstance(event, PrivateMessageEvent):
-        return True
-    if event.is_tome():
-        return True
-    if event.get_plaintext().startswith("小李子"):
-        return True
-    if event.to_me:
-        return True
-    if str(event.group_id) in EnvConfig.TEST_GROUP_ID:
-        messages.append({"role": "user", "content": event.get_plaintext().strip()})
-        temp_conv: list[dict] = messages[-5:]
-        plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
-        slm_reply = await reply_check(plain_conv)
-        return slm_reply
+        if EnvConfig.AGENT_WITHELIST_MODE and event.user_id in EnvConfig.AGENT_WITHELIST_PERSON_LIST:
+            return True
+        else:
+            return True
+    if isinstance(event, GroupMessageEvent):
+        if EnvConfig.AGENT_WITHELIST_MODE and event.group_id in EnvConfig.AGENT_WITHELIST_GROUP_LIST:
+            return True
+        if event.is_tome():
+            return True
+        if event.get_plaintext().startswith("小李子"):
+            return True
+        if event.to_me:
+            return True
+        if event.group_id in EnvConfig.TEST_GROUP_ID:
+            messages.append({"role": "user", "content": event.get_plaintext().strip()})
+            temp_conv: list[dict] = messages[-5:]
+            plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
+            slm_reply = await reply_check(plain_conv)
+            return slm_reply
+    return False
 
 
 async def message_check(text: str | None, images: list | None):
@@ -94,3 +101,4 @@ async def message_check(text: str | None, images: list | None):
                 logger.info(f"检测到图片类型: {det_result['label']}, 置信度为: {det_result['score']:.2f}")
                 return False
             return True
+    return True

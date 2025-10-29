@@ -325,3 +325,4 @@ mcp.json
 cache/
 .lock
 uv.lock
+env.toml

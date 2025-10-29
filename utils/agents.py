@@ -9,7 +9,7 @@ from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from nonebot import logger
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 from tools import agent_tools
 from utils.configs import EnvConfig
@@ -18,7 +18,7 @@ from utils.subagents import fact_check_subagent
 ADVAN_MODEL = EnvConfig.ADVAN_MODEL
 BASIC_MODEL = EnvConfig.BASIC_MODEL
 OPENAI_BASE_URL = EnvConfig.OPENAI_BASE_URL
-OPENAI_API_KEY = SecretStr(EnvConfig.OPENAI_API_KEY)
+OPENAI_API_KEY = EnvConfig.OPENAI_API_KEY
 AGENT_DEBUG_MODE = EnvConfig.AGENT_DEBUG_MODE
 
 
