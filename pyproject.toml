@@ -22,8 +22,6 @@ dependencies = [
   "deepagents",
   "sentence-transformers",
   "accelerate",
-  "onnx",
-  "onnxruntime",
   # 网络和数据处理
   "beautifulsoup4",
   "playwright",

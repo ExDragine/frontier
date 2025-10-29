@@ -8,7 +8,7 @@ from PIL import Image
 
 from utils.agents import cognitive, reply_check
 from utils.configs import EnvConfig
-from utils.context_check import det, text_det
+from utils.context_check import ImageCheck, TextCheck
 from utils.markdown_render import markdown_to_image, markdown_to_text
 
 require("nonebot_plugin_alconna")
@@ -16,6 +16,8 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
 httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+text_det = TextCheck()
+image_det = ImageCheck()
 
 
 async def message_extract(event: Event):
@@ -96,9 +98,11 @@ async def message_check(text: str | None, images: list | None):
     if images:
         for image in images:
             image = Image.open(io.BytesIO(image))
-            det_result = det.predict(image)[0]
-            if det_result["label"] != "normal":
-                logger.info(f"检测到图片类型: {det_result['label']}, 置信度为: {det_result['score']:.2f}")
+            det_result = await image_det.predict(image)
+            if not det_result:
+                return True
+            if det_result["label"] == "nsfw":
+                logger.info(f"检测到瑟瑟, 置信度为: {det_result['score']:.2f}")
                 return False
             return True
     return True

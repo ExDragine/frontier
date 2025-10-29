@@ -2,11 +2,8 @@
 
 ## How to start
 
-1. generate project using `nb create` .
-2. create your plugin using `nb plugin create` .
-3. writing your plugins under `plugins` folder.
-4. run your bot using `nb run --reload` .
-
-## Documentation
-
-See [Docs](https://nonebot.dev/)
+1. install `uv` and `node`(if you need npx based mcp)
+2. `uv sync`
+3. `playwright install`
+4. fill all env
+5. bash `run.sh`(linux) / `./run.ps1`(windows)
