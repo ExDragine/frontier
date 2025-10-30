@@ -6,7 +6,7 @@ from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageE
 from nonebot.internal.adapter import Event
 from PIL import Image
 
-from utils.agents import cognitive, reply_check
+from utils.agents import reply_check
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
 from utils.markdown_render import markdown_to_image, markdown_to_text
@@ -41,24 +41,19 @@ async def send_artifacts(artifacts):
             await artifact.send()
 
 
-async def send_messages(group_id: int | None, response: dict[str, list]):
+async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
     last_message = response["messages"][-1]
     if hasattr(last_message, "content") and last_message.content.strip():
-        if last_message.content.startswith("系统处理出现错误"):
-            result = await cognitive(
-                "请告诉用户当前出现了什么问题，简短明了，不要返回敏感信息，不超过50字。", last_message.content
-            )
-            if result:
-                await UniMessage.text(result).send()
-            else:
-                await UniMessage.text(last_message.content).send()
-            return None
         if len(last_message.content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID:
-            await UniMessage.text(await markdown_to_text(last_message.content)).send()
+            messages = UniMessage.reply(str(message_id)) + UniMessage.text(
+                await markdown_to_text(last_message.content)
+            )
+            await messages.send()
         else:
             result = await markdown_to_image(last_message.content)
+            messages = UniMessage.reply(str(message_id)) + UniMessage.image(raw=result)
             if result:
-                await UniMessage.image(raw=result).send()
+                await messages.send()
 
 
 async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messages: list):
