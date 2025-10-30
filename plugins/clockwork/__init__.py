@@ -158,12 +158,20 @@ async def eq_usgs():
             await message.send(target=Target.group(str(group)))
 
 
-@scheduler.scheduled_job("cron", hour="9,17", misfire_grace_time=120)
+@scheduler.scheduled_job("cron", hour="9,17", minute="18", misfire_grace_time=120)
 async def daily_news():
     logger.info("开始获取每日新闻摘要")
-    system_prompt = "你是一个新闻摘要专家，收集互联网上的最新新闻，并将每条新闻总结成不超过100字的简洁摘要，确保涵盖主要事实和关键信息。并以美观的Markdown格式输出。"
-    user_prompt = f"现在是{datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).strftime('%Y年%m月%d日')}，请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的主要新闻。"
-    summary = await cognitive(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
+    system_prompt = f"""
+    Now is {datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日")}
+    You are a news summary expert who collects the latest news from the internet,
+    summarizes each piece into a concise summary of no more than 200 words, 
+    ensuring it covers the main facts and key information. 
+    The content should be output in a clean Markdown format.
+    This content is for direct output, so do not add any irrelevant content outside of the main summary.
+    Reply in Simplified Chinese.
+    """
+    user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的全球范围内15条主要新闻。"
+    summary = await cognitive(system_prompt, user_prompt, use_model=EnvConfig.BASIC_MODEL, tools=tools)
     if summary:
         message = UniMessage().image(raw=await markdown_to_image(summary))
         for group in EnvConfig.NEWS_SUMMARY_GROUP_ID:
