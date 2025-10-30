@@ -72,7 +72,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
             return True
         if event.is_tome():
             return True
-        if event.get_plaintext().startswith("小李子"):
+        if event.get_plaintext().startswith(EnvConfig.BOT_NAME):
             return True
         if event.to_me:
             return True

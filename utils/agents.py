@@ -15,12 +15,6 @@ from tools import agent_tools
 from utils.configs import EnvConfig
 from utils.subagents import fact_check_subagent
 
-ADVAN_MODEL = EnvConfig.ADVAN_MODEL
-BASIC_MODEL = EnvConfig.BASIC_MODEL
-OPENAI_BASE_URL = EnvConfig.OPENAI_BASE_URL
-OPENAI_API_KEY = EnvConfig.OPENAI_API_KEY
-AGENT_DEBUG_MODE = EnvConfig.AGENT_DEBUG_MODE
-
 
 class ReplyCheck(BaseModel):
     should_reply: str = Field(
@@ -30,15 +24,15 @@ class ReplyCheck(BaseModel):
 
 
 async def reply_check(user_prompt: str):
-    system_prompt = """ You are a classifier to determine whether to intervene in the current multi-party conversation.
-                        You should only reply \"yes\" or \"no\" when \"小李子\" is explicitly mentioned, 
+    system_prompt = f""" You are a classifier to determine whether to intervene in the current multi-party conversation.
+                        You should only reply \"yes\" or \"no\" when \"{EnvConfig.BOT_NAME}\" is explicitly mentioned, 
                         the context indicates a need for help and no one else has provided relevant information, 
                         and the intervention will not disrupt the conversation. 
                         Try to avoid inserting into the conversation arbitrarily and only reply when it is absolutely necessary."""
     model = ChatOpenAI(
-        api_key=OPENAI_API_KEY,
-        base_url=OPENAI_BASE_URL,
-        model=BASIC_MODEL,
+        api_key=EnvConfig.OPENAI_API_KEY,
+        base_url=EnvConfig.OPENAI_BASE_URL,
+        model=EnvConfig.BASIC_MODEL,
         reasoning_effort="high",
     )
     agent = create_agent(
@@ -55,11 +49,15 @@ async def reply_check(user_prompt: str):
 
 
 async def cognitive(
-    system_prompt: str = "", user_prompt: str = "", use_model: str = BASIC_MODEL, tools=None, response_format=None
+    system_prompt: str = "",
+    user_prompt: str = "",
+    use_model: str = EnvConfig.BASIC_MODEL,
+    tools=None,
+    response_format=None,
 ):
     model = ChatOpenAI(
-        api_key=OPENAI_API_KEY,
-        base_url=OPENAI_BASE_URL,
+        api_key=EnvConfig.OPENAI_API_KEY,
+        base_url=EnvConfig.OPENAI_BASE_URL,
         model=use_model,
         streaming=False,
     )
@@ -69,7 +67,7 @@ async def cognitive(
         system_prompt=system_prompt,
         middleware=[TodoListMiddleware()],
         response_format=response_format,
-        debug=AGENT_DEBUG_MODE,
+        debug=EnvConfig.AGENT_DEBUG_MODE,
     )
     if not system_prompt:
         with open("configs/system_prompt.txt") as f:
@@ -91,9 +89,9 @@ async def cognitive(
 class FrontierCognitive:
     def __init__(self):
         self.model = ChatOpenAI(
-            api_key=OPENAI_API_KEY,
-            base_url=OPENAI_BASE_URL,
-            model=ADVAN_MODEL,
+            api_key=EnvConfig.OPENAI_API_KEY,
+            base_url=EnvConfig.OPENAI_BASE_URL,
+            model=EnvConfig.ADVAN_MODEL,
             streaming=False,
             reasoning_effort="high",
             verbosity="low",
@@ -106,7 +104,7 @@ class FrontierCognitive:
             tools=self.tools,
             system_prompt=self.prompt_template,
             subagents=self.subagents,
-            debug=AGENT_DEBUG_MODE,
+            debug=EnvConfig.AGENT_DEBUG_MODE,
         )
 
     @staticmethod
@@ -116,6 +114,7 @@ class FrontierCognitive:
             with open("configs/system_prompt.txt", encoding="utf-8") as f:
                 system_prompt = f.read()
                 system_prompt = system_prompt.format(
+                    name=EnvConfig.BOT_NAME,
                     current_time=datetime.now()
                     .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
                     .strftime("%Y-%m-%d %H:%M:%S"),

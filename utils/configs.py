@@ -9,6 +9,7 @@ dotenv.load_dotenv()
 with open("env.toml", "rb") as f:
     config = tomllib.load(f)
 
+information: dict = config.get("information", {})
 endpoint: dict = config.get("endpoint", {})
 key: dict = config.get("key", {})
 function_list = config.get("function", {})
@@ -18,6 +19,8 @@ debug: dict = config.get("debug", {})
 
 
 class EnvConfig:
+    BOT_NAME: str = information["name"]
+
     OPENAI_BASE_URL: str = endpoint["openai_base_url"]
     BASIC_MODEL: str = endpoint["basic_model"]
     ADVAN_MODEL: str = endpoint["advan_model"]

@@ -38,6 +38,7 @@ Since this is a casual chat on a social platform, unless it's a professional que
 
 
 ## Additional information
+We call your name as {name}
 The current time is UTC+8: {current_time}
 
 

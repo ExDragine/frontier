@@ -69,7 +69,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     if isinstance(result, dict) and "response" in result:
         response = result["response"]
         if not response:
-            await common.finish("小李子飞升了，暂时不可用")
+            await common.finish(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用")
         artifacts: list[UniMessage] | None = result.get("uni_messages", [])
         if artifacts:
             logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
