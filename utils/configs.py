@@ -32,10 +32,14 @@ class EnvConfig:
 
     AGENT_WITHELIST_MODE: bool = function_list["agent_whitelist_mode"]
     AGENT_WITHELIST_PERSON_LIST: list = function_list["agent_whitelist_person_list"]
-    AGENT_WITHELIST_GROUP_LIST: list = function_list["agent_whitelist_group_list"]
+    AGENT_BLACKLIST_GROUP_LIST: list = function_list["agent_whitelist_group_list"]
+    AGENT_BLACKLIST_PERSON_LIST: list = function_list["agent_blacklist_person_list"]
+    AGENT_WITHELIST_GROUP_LIST: list = function_list["agent_blacklist_group_list"]
     PAINT_WITHELIST_MODE: bool = function_list["paint_whitelist_mode"]
     PAINT_WITHELIST_PERSON_LIST: list = function_list["paint_whitelist_person_list"]
     PAINT_WITHELIST_GROUP_LIST: list = function_list["paint_whitelist_group_list"]
+    PAINT_BLACKLIST_PERSON_LIST: list = function_list["paint_blacklist_person_list"]
+    PAINT_BLACKLIST_GROUP_LIST: list = function_list["paint_blacklist_group_list"]
 
     RAW_MESSAGE_GROUP_ID: list = message["raw_message_group_id"]
     TEST_GROUP_ID: list = message["test_group_id"]

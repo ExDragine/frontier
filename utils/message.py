@@ -60,16 +60,16 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
     if isinstance(event, PrivateMessageEvent):
         if EnvConfig.AGENT_WITHELIST_MODE and event.user_id in EnvConfig.AGENT_WITHELIST_PERSON_LIST:
             return True
-        else:
-            return True
+        if event.user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST:
+            return False
     if isinstance(event, GroupMessageEvent):
         if EnvConfig.AGENT_WITHELIST_MODE and event.group_id in EnvConfig.AGENT_WITHELIST_GROUP_LIST:
             return True
-        if event.is_tome():
+        if event.group_id in EnvConfig.AGENT_BLACKLIST_GROUP_LIST:
+            return False
+        if event.is_tome() or event.to_me:
             return True
         if event.get_plaintext().startswith(EnvConfig.BOT_NAME):
-            return True
-        if event.to_me:
             return True
         if event.group_id in EnvConfig.TEST_GROUP_ID:
             messages.append({"role": "user", "content": event.get_plaintext().strip()})

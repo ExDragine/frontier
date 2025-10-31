@@ -170,8 +170,8 @@ async def daily_news():
     This content is for direct output, so do not add any irrelevant content outside of the main summary.
     Reply in Simplified Chinese.
     """
-    user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的全球范围内15条主要新闻。"
-    summary = await cognitive(system_prompt, user_prompt, use_model=EnvConfig.BASIC_MODEL, tools=tools)
+    user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的全球范围内的主要新闻。至少10条"
+    summary = await cognitive(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
     if summary:
         message = UniMessage().image(raw=await markdown_to_image(summary))
         for group in EnvConfig.NEWS_SUMMARY_GROUP_ID:
