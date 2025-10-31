@@ -1,8 +1,8 @@
 import json
 from datetime import datetime
 
+from langchain.tools import tool
 from langchain_community.document_loaders import BiliBiliLoader
-from langchain_core.tools import tool
 
 
 @tool(response_format="content")
@@ -27,7 +27,7 @@ async def get_bilibili_video_info(url: str):
 
 
 # 整理有用信息
-def extract_info(meta):
+def extract_info(meta: dict):
     pubdate = meta.get("pubdate")
     pubdate_str = datetime.fromtimestamp(pubdate).strftime("%Y-%m-%d %H:%M:%S") if pubdate else ""
     info = {

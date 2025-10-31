@@ -2,13 +2,32 @@ import os
 import re
 import secrets
 
+from bs4 import BeautifulSoup
 from jinja2 import Environment, FileSystemLoader
+from markdown_it import MarkdownIt
 from playwright.async_api import async_playwright
+
+
+async def markdown_to_text(markdown_text):
+    html = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"]).render(markdown_text)
+    plain_text = BeautifulSoup(html, "html.parser").get_text()
+    return plain_text
+
+
+async def markdown_to_image(markdown_text):
+    html = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"]).render(markdown_text)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content(html)
+        image = await page.screenshot(full_page=True)
+        await browser.close()
+        return image
 
 
 async def playwright_render(name: str, packed_args: dict):
     trigger_mark = secrets.token_hex(16)
-    cache_file = f"./cache/{trigger_mark}.html"
+    cache_file = f"{os.getcwd()}/cache/{trigger_mark}.html"
     # 设置模板加载路径
     env = Environment(loader=FileSystemLoader("./templates/"), autoescape=True)
 
@@ -16,7 +35,7 @@ async def playwright_render(name: str, packed_args: dict):
 
     match name:
         case "eq_usgs":
-            template = env.get_template("eew.html")
+            template = env.get_template("earthquake.html")
             depth = packed_args.get("depth")
             if isinstance(depth, str):
                 pattern = re.compile(r"[\d.]+")

@@ -1,18 +1,12 @@
 import base64
 import io
-import os
 
-import dotenv
 from openai import AsyncClient
 from PIL import Image
 
-dotenv.load_dotenv()
+from utils.configs import EnvConfig
 
-BASE_URL = os.getenv("OPENAI_BASE_URL")
-API_KEY = os.getenv("OPENAI_API_KEY")
-MODEL = os.getenv("PAINT_MODEL", "")
-
-client = AsyncClient(base_url=BASE_URL, api_key=API_KEY)
+client = AsyncClient(base_url=EnvConfig.OPENAI_BASE_URL, api_key=EnvConfig.OPENAI_API_KEY.get_secret_value())
 
 
 async def extract_image(content_images) -> bytes | None:
@@ -30,7 +24,9 @@ async def extract_image(content_images) -> bytes | None:
 
 
 async def paint(prompt: list) -> tuple[str | None, list[bytes | None]]:
-    response = await client.chat.completions.create(model=MODEL, messages=prompt, stream=False, temperature=0.7)
+    response = await client.chat.completions.create(
+        model=EnvConfig.PAINT_MODEL, messages=prompt, stream=False, temperature=0.7
+    )
     message = response.choices[0].message.content
     try:
         images = response.choices[0].message.images  # type: ignore

@@ -2,16 +2,15 @@ import time
 from typing import Literal
 
 import httpx
-from langchain_core.tools import tool
+from langchain.tools import tool
 from nonebot import logger, require
 
 require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMsg  # noqa: E402
-from nonebot_plugin_alconna.uniseg import UniMessage  # noqa: E402
+from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")
-async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, UniMsg | None]:
+async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, UniMessage | None]:
     """获取卫星云图
 
     Args:
@@ -101,7 +100,7 @@ async def get_fy4b_geos_cloud_map(
 
 
 @tool(response_format="content_and_artifact")
-async def get_himawari_satellite_image() -> tuple[str, UniMsg | None]:
+async def get_himawari_satellite_image() -> tuple[str, UniMessage | None]:
     """获取Himawari静止气象卫星最新可见光合成图像
 
     Returns:

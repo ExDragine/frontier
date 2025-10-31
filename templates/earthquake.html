@@ -22,7 +22,7 @@
         .map-card {
             display: flex;
             width: 1200px;
-            height: 900px;
+            height: 700px;
             position: relative;
             overflow: hidden;
         }
@@ -35,7 +35,7 @@
             display: flex;
             flex-direction: column;
             gap: 15px;
-            width: 280px;
+            width: 300px;
         }
 
         .info-card {
@@ -84,7 +84,7 @@
         }
 
         .magnitude-label {
-            font-size: 18px;
+            font-size: 20px;
             text-align: center;
             margin-bottom: 5px;
         }
@@ -105,7 +105,7 @@
     <div class="map-card" id="card">
         <div class="floating-cards">
             <div class="info-card magnitude-card">
-                <div class="magnitude-label">地震规模</div>
+                <div class="magnitude-label">震级</div>
                 <div class="magnitude-value">{{ magnitude }}</div>
                 <p style="text-align: center;"><strong>震源深度</strong>: {{ depth }} km</p>
             </div>
@@ -121,33 +121,24 @@
             <div id="map"></div>
         </div>
     </div>
-
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
         // Coordinates dynamically passed through Jinja2
         const coordinates = [{{ latitude }}, {{ longitude }}]; 
         let zoomLevel = 7;
-
         // Initialize the map
         const map = L.map('map', {
             attributionControl: false,
             zoomControl: false
         }).setView(coordinates, zoomLevel); // Adjust zoom level for better view
-
-        const lightLayer = L.tileLayer('https://server.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-            attribution: '&copy; <a href="https://www.esri.com/en-us/home">Esri</a>',
-            attributionControl: false
-        });
-        const elevationLayer = L.tileLayer('https://server.arcgisonline.com/arcgis/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
-            attribution: '&copy; <a href="https://www.esri.com/en-us/home">Esri</a>',
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             attributionControl: false
         }).addTo(map);
-        const pagerLayer = L.tileLayer('https://earthquake.usgs.gov/arcgis/rest/services/eq/pager_landscan2018bin/MapServer/tile/{z}/{y}/{x}', {
-            attribution: '&copy; <a href="https://www.esri.com/en-us/home">Esri</a>',
-            attributionControl: false
-        });
-        const roadLayer = L.tileLayer('https://webst01.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}', {
-            attribution: '&copy; <a href="https://www.esri.com/en-us/home">Esri</a>',
+        // Add Plates edge
+        L.tileLayer('https://earthquake.usgs.gov/basemap/tiles/plates/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             attributionControl: false
         }).addTo(map);
         const marker = L.circleMarker(coordinates, {

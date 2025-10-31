@@ -1,4 +1,9 @@
+import datetime
+import zoneinfo
+
 from sqlmodel import Field, Session, SQLModel, create_engine, desc, select
+
+DATABASE_FILE = "sqlite:///frontier.db"
 
 
 class User(SQLModel, table=True):
@@ -17,9 +22,14 @@ class Message(SQLModel, table=True):
     content: str
 
 
+class TimeStamp(SQLModel, table=True):
+    name: str = Field(primary_key=True, index=True)
+    id: str | None
+
+
 class UserDatabase:
     def __init__(self):
-        self.engine = create_engine("sqlite:///user_settings.db")
+        self.engine = create_engine(DATABASE_FILE)
         User.metadata.create_all(self.engine)
 
     async def insert(self, user_id, user_name, custom_model):
@@ -51,7 +61,7 @@ class UserDatabase:
 
 class MessageDatabase:
     def __init__(self):
-        self.engine = create_engine("sqlite:///messages.db")
+        self.engine = create_engine(DATABASE_FILE)
         Message.metadata.create_all(self.engine)
 
     async def insert(
@@ -77,32 +87,84 @@ class MessageDatabase:
             session.add(message)
             session.commit()
 
-    async def select(self, user_id: int | None = None, group_id: int | None = None):
+    async def select(self, user_id: int | None = None, group_id: int | None = None, query_numbers: int = 20):
         with Session(self.engine) as session:
             if group_id:
-                statement = select(Message).where(Message.group_id == group_id).order_by(desc(Message.time)).limit(50)
+                statement = (
+                    select(Message)
+                    .where(Message.group_id == group_id)
+                    .order_by(desc(Message.time))
+                    .limit(query_numbers)
+                )
             elif user_id:
                 statement = (
                     select(Message)
                     .where(Message.user_id == user_id and Message.group_id is None)
                     .order_by(desc(Message.time))
-                    .limit(50)
+                    .limit(query_numbers)
                 )
             else:
                 return None
             results = session.exec(statement)
             return results.all()
 
-    async def prepare_message(self, user_id: int | None = None, group_id: int | None = None):
-        messages = await self.select(user_id=user_id, group_id=group_id)
+    async def prepare_message(self, user_id: int | None = None, group_id: int | None = None, query_numbers: int = 20):
+        messages = await self.select(user_id=user_id, group_id=group_id, query_numbers=query_numbers)
         if not messages:
             return []
         messages_seq = []
         messages = reversed(messages)
+        messages = list(messages)[:-1]
         for message in messages:
-            if message.role == "user":
-                messages_seq.append({"role": "user", "content": f"{message.user_name}: {message.content}"})
+            content = f"{datetime.datetime.fromtimestamp(int(message.time / 1000)).astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S')}  {message.user_name}: {message.content}"
+            if not messages_seq:
+                messages_seq.append(
+                    {
+                        "role": message.role,
+                        "content": content,
+                    }
+                )
+                continue
+            if message.role == messages_seq[-1]["role"]:
+                messages_seq[-1]["content"] += f"\n{content}"
             else:
-                messages_seq.append({"role": "assistant", "content": message.content})
-        messages_seq.pop()
+                messages_seq.append(
+                    {
+                        "role": message.role,
+                        "content": content,
+                    }
+                )
         return messages_seq
+
+
+class EventDatabase:
+    def __init__(self):
+        self.engine = create_engine(DATABASE_FILE)
+        TimeStamp.metadata.create_all(self.engine)
+
+    async def insert(self, name, id: str | None = None):
+        with Session(self.engine) as session:
+            target = TimeStamp(name=name, id=id)
+            session.add(target)
+            session.commit()
+
+    async def delete(self, name):
+        with Session(self.engine) as session:
+            target = session.get(TimeStamp, name)
+            if target:
+                session.delete(name)
+                session.commit()
+
+    async def update(self, name, id):
+        with Session(self.engine) as session:
+            target = session.get(TimeStamp, name)
+            if target:
+                target.id = id
+                session.add(target)
+                session.commit()
+
+    async def select(self, name):
+        with Session(self.engine) as session:
+            target = session.get(TimeStamp, name)
+            if target:
+                return target.id
