@@ -164,10 +164,11 @@ async def daily_news():
     system_prompt = f"""
     Now is {datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日")}
     You are a news summary expert who collects the latest news from the internet,
-    summarizes each piece into a concise summary of no more than 200 words, 
+    summarizes each piece into a concise summary of no more than 140 words, 
     ensuring it covers the main facts and key information. 
     The content should be output in a clean Markdown format.
     This content is for direct output, so do not add any irrelevant content outside of the main summary.
+    Remember to add a title to the entire summary.
     Reply in Simplified Chinese.
     """
     user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的全球范围内的主要新闻。至少10条"
