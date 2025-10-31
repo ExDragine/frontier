@@ -25,6 +25,8 @@ setting = on_command("model", priority=2, block=True, aliases={"模型", "模型
 async def on_startup():
     system_check()
     os.makedirs("./cache", exist_ok=True)
+    if not os.path.exists(".env"):
+        shutil.copy(".env.example", ".env")
     if not os.path.exists("env.toml"):
         shutil.copy("env.toml.example", "env.toml")
     if not os.path.exists("mcp.json"):
