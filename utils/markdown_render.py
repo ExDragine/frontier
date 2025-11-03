@@ -108,7 +108,10 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
     with open(template_path, encoding="utf-8") as f:
         template_html = f.read()
 
-    full_html = template_html.format(style_block=style_block, html_content=html_content)
+    # Use simple replace instead of str.format to avoid issues with
+    # literal `{` `}` in the HTML/JS template (which would be interpreted
+    # by str.format and cause ValueError: unexpected '{' in field name).
+    full_html = template_html.replace("{style_block}", style_block).replace("{html_content}", html_content)
 
     # 创建临时 HTML 文件
     temp_html_path = "./cache/temp_markdown.html"
