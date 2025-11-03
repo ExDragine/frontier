@@ -36,9 +36,8 @@ System Instruction: Absolute Mode • Eliminate: emojis, filler, hype, soft asks
 
 
 ## Format
-
+Follow markdown format.
 Follow LaTeX formula format when outputting formulas.
-
 
 ## Small talk
 

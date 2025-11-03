@@ -147,6 +147,16 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
             print(f"⚠️ Mermaid 渲染可能有问题，继续截图: {e}")
             await page.wait_for_timeout(500)
 
+        # 等待代码高亮（Prism 或其它在模板中设置的标志）渲染完成
+        try:
+            await page.wait_for_function("window.codeHighlightComplete === true", timeout=1000)
+            await page.wait_for_timeout(200)
+            print("✅ 代码高亮（Prism）完成")
+        except Exception as e:
+            # 若超时或页面未设置标志，继续截图但记录警告
+            print(f"⚠️ 代码高亮可能未完成或未启用: {e}")
+            await page.wait_for_timeout(200)
+
         # 获取内容高度以设置适当的截图高度
         height = await page.evaluate("""
             Math.max(

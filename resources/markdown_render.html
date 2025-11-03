@@ -39,6 +39,32 @@
     <!-- Mermaid 配置和加载 -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>mermaid.initialize({{startOnLoad:true, theme:"default"}});</script>
+    <!-- Prism.js 语法高亮（使用 CDN） -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+    <!-- 常用语言支持（可按需添加更多组件） -->
+    <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-javascript.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // 如果 Prism 已加载，则高亮所有代码块并设置标志，供后端截图等待
+            try {
+                if (window.Prism && typeof window.Prism.highlightAll === 'function') {
+                    window.Prism.highlightAll();
+                    window.codeHighlightComplete = true;
+                    console.log("Prism highlighting completed");
+                } else {
+                    // 若未加载（例如网络问题），仍设置标志以避免阻塞截图
+                    window.codeHighlightComplete = true;
+                    console.warn("Prism not available; skipping highlight");
+                }
+            } catch (e) {
+                window.codeHighlightComplete = true;
+                console.warn("Prism highlight error:", e);
+            }
+        });
+    </script>
 </head>
 <body>
     <div class="markdown-body" id="markdown-content">
