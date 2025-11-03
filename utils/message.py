@@ -62,6 +62,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
             return True
         if event.user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST:
             return False
+        return True
     if isinstance(event, GroupMessageEvent):
         if EnvConfig.AGENT_WITHELIST_MODE and event.group_id in EnvConfig.AGENT_WITHELIST_GROUP_LIST:
             return True
@@ -77,6 +78,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
             plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
             slm_reply = await reply_check(plain_conv)
             return slm_reply
+        return False
     return False
 
 
