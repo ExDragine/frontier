@@ -55,7 +55,7 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
         _ = await text_det.predict(last_message.content)
         if len(last_message.content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID:
             messages = UniMessage.reply(str(message_id)) + UniMessage.text(
-                await markdown_to_text(last_message.content)
+                (await markdown_to_text(last_message.content)).rstrip("\r\n").strip()
             )
             await messages.send()
         else:

@@ -193,7 +193,7 @@ class FrontierCognitive:
                 "processed_artifacts": [],
                 "uni_messages": [],
             }
-        logger.info(f"Agent烧烤中~🍖 用户: {user_name} (ID: {user_id})")
+        logger.info(f"Agent烧烤中~🍖 思考等级: {agent_capability} 用户: {user_name} (ID: {user_id})")
         config: RunnableConfig = {
             "configurable": {
                 "thread_id": f"user_{user_id}_thread",
