@@ -17,7 +17,8 @@ from nonebot_plugin_alconna import Image, Target, Text, UniMessage  # noqa: E402
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 event_database = EventDatabase()
-httpx_client = httpx.AsyncClient(http2=True)
+transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
+httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 tools = agent_tools.mcp_tools + agent_tools.web_tools
 
 
@@ -63,26 +64,16 @@ async def apod_everyday():
 
 @scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=180)
 async def earth_now():
-    url = "https://www.storm-chasers.cn/wp-content/uploads/satimgs/Composite_TVIS_FDLK.jpg"
+    url = "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_DISK_GCLR.JPG"
     content = None
-    for _i in range(3):
-        try:
-            response = await httpx_client.get(url)
-            response.raise_for_status()
-            content = response.content
-            break
-        except httpx.HTTPError as e:
-            logger.warning(f"获取Earth Now图片失败: {e}", "准备重试...")
-            continue
+    response = await httpx_client.get(url)
+    response.raise_for_status()
+    content = response.content
     if not content:
         return
-    slm_reply = await cognitive(
-        "你负责优化用户输入的内容，根据内容给出不超过15字的适用于社交聊天的优化后的内容",
-        f"现在是{datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour}点半，来看看半个钟前的地球吧",
-    )
     messages: list[UniMessage] = [
         UniMessage(
-            Text(slm_reply if slm_reply else "来看看半个钟前的地球吧"),
+            Text("来看看半个钟前的地球吧"),
         ),
         UniMessage(Image(raw=content)),
     ]
