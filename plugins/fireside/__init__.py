@@ -1,10 +1,12 @@
 import base64
 import time
+from typing import Literal
 
 from nonebot import logger, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
+from pydantic import BaseModel, Field
 
-from utils.agents import FrontierCognitive
+from utils.agents import FrontierCognitive, assistant_agent
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
 from utils.message import (
@@ -19,9 +21,15 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 messages_db = MessageDatabase()
-cognitive = FrontierCognitive()
+f_cognitive = FrontierCognitive()
 
 common = on_message(priority=10)
+
+
+class AgentChoice(BaseModel):
+    agent_capability: Literal["lite", "normal", "heavy"] = Field(
+        description="The available capability levels are lite, normal, and heavy."
+    )
 
 
 @common.handle()
@@ -65,7 +73,10 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
             ],
         }
     )
-    result = await cognitive.chat_agent(messages, user_id, user_name)
+    with open("configs/agent_choice.txt") as f:
+        system_prompt = f.read()
+    agent_choice: AgentChoice = await assistant_agent(system_prompt, text, response_format=AgentChoice)
+    result = await f_cognitive.chat_agent(messages, user_id, user_name, agent_choice.agent_capability)
     if isinstance(result, dict) and "response" in result:
         response = result["response"]
         if not response:

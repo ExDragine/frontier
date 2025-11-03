@@ -5,7 +5,7 @@ import httpx
 from nonebot import logger, require
 
 from tools import agent_tools
-from utils.agents import cognitive
+from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 from utils.database import EventDatabase
 from utils.markdown_render import markdown_to_image
@@ -52,7 +52,7 @@ async def apod_everyday():
     response = await httpx_client.get(url, params=params)
     content = response.json()
     intro = f"NASA每日一图\n{content['title']}\n{content['explanation']}"
-    slm_reply = await cognitive("翻译用户给出的天文相关的内容为中文，只返回翻译结果，保留专有词汇为英文", intro)
+    slm_reply = await assistant_agent("翻译用户给出的天文相关的内容为中文，只返回翻译结果，保留专有词汇为英文", intro)
     messages: list[UniMessage] = [
         UniMessage(Text(slm_reply if slm_reply else intro)),
         UniMessage(Image(url=content["url"])),
@@ -163,7 +163,7 @@ async def daily_news():
     Reply in Simplified Chinese.
     """
     user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的全球范围内的主要新闻。至少10条"
-    summary = await cognitive(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
+    summary = await assistant_agent(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
     if summary:
         message = UniMessage().image(raw=await markdown_to_image(summary))
         for group in EnvConfig.NEWS_SUMMARY_GROUP_ID:

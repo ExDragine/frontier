@@ -1,7 +1,7 @@
 import time
 import zoneinfo
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from deepagents import create_deep_agent
 from langchain.agents import create_agent
@@ -10,63 +10,31 @@ from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from nonebot import logger
-from pydantic import BaseModel, Field
 
 from tools import agent_tools
 from utils.configs import EnvConfig
 from utils.subagents import fact_check_subagent
 
 
-class ReplyCheck(BaseModel):
-    should_reply: str = Field(
-        description="Should or not reply message. If should, reply with yes, either reply with no"
-    )
-    confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
-
-
-async def reply_check(user_prompt: str):
-    system_prompt = f""" You are a classifier to determine whether to intervene in the current multi-party conversation.
-                        You should only reply \"yes\" or \"no\" when \"{EnvConfig.BOT_NAME}\" is explicitly mentioned, 
-                        the context indicates a need for help and no one else has provided relevant information, 
-                        and the intervention will not disrupt the conversation. 
-                        Try to avoid inserting into the conversation arbitrarily and only reply when it is absolutely necessary."""
-    model = ChatOpenAI(
-        api_key=EnvConfig.OPENAI_API_KEY,
-        base_url=EnvConfig.OPENAI_BASE_URL,
-        model=EnvConfig.BASIC_MODEL,
-        reasoning_effort="high",
-    )
-    agent = create_agent(
-        model=model,
-        tools=[],
-        system_prompt=system_prompt,
-        response_format=ReplyCheck,
-    )
-    result = await agent.ainvoke({"messages": [{"role": "user", "content": user_prompt}]})
-    structured_response: ReplyCheck = result["structured_response"]
-    if structured_response.should_reply.lower() == "yes" and structured_response.confidence >= 0.7:
-        return True
-    return False
-
-
-async def cognitive(
+async def assistant_agent(
     system_prompt: str = "",
     user_prompt: str = "",
     use_model: str = EnvConfig.BASIC_MODEL,
     tools=None,
     response_format=None,
-):
+) -> Any:
     model = ChatOpenAI(
         api_key=EnvConfig.OPENAI_API_KEY,
         base_url=EnvConfig.OPENAI_BASE_URL,
         model=use_model,
         streaming=False,
+        max_retries=2,
     )
     agent = create_agent(
         model=model,
         tools=tools,
         system_prompt=system_prompt,
-        middleware=[TodoListMiddleware()],
+        middleware=[],
         response_format=response_format,
         debug=EnvConfig.AGENT_DEBUG_MODE,
     )
@@ -92,36 +60,6 @@ class FrontierCognitive:
         self.tools = agent_tools.all_tools
         self.subagents: list = [fact_check_subagent]
         self.prompt_template = FrontierCognitive.load_system_prompt()
-        self.agents = {
-            "lite": create_agent(
-                model=FrontierCognitive.create_model(reasoning_effort="low"),
-                tools=self.tools,
-                system_prompt=self.prompt_template,
-                middleware=[],
-                debug=EnvConfig.AGENT_DEBUG_MODE,
-            ),
-            "normal": create_agent(
-                model=FrontierCognitive.create_model(reasoning_effort="medium"),
-                tools=self.tools,
-                system_prompt=self.prompt_template,
-                middleware=[
-                    TodoListMiddleware(),
-                    SummarizationMiddleware(
-                        model=FrontierCognitive.create_model(reasoning_effort="low", verbosity="medium"),
-                        max_tokens_before_summary=50000,
-                    ),
-                ],
-                debug=EnvConfig.AGENT_DEBUG_MODE,
-            ),
-            "heavy": create_deep_agent(
-                model=FrontierCognitive.create_model(reasoning_effort="high"),
-                tools=self.tools,
-                system_prompt=self.prompt_template,
-                subagents=self.subagents,
-                debug=EnvConfig.AGENT_DEBUG_MODE,
-            ),
-        }
-        self.agent = self.agents.get(EnvConfig.AGENT_CAPABILITY, "normal")
 
     @staticmethod
     def create_model(
@@ -139,6 +77,40 @@ class FrontierCognitive:
             max_retries=2,
         )
         return model
+
+    @staticmethod
+    def create_agent(prompt_template, subagents, tools, agent_capability):
+        agents = {
+            "lite": create_agent(
+                model=FrontierCognitive.create_model(reasoning_effort="low"),
+                tools=tools,
+                system_prompt=prompt_template,
+                middleware=[],
+                debug=EnvConfig.AGENT_DEBUG_MODE,
+            ),
+            "normal": create_agent(
+                model=FrontierCognitive.create_model(reasoning_effort="medium"),
+                tools=tools,
+                system_prompt=prompt_template,
+                middleware=[
+                    TodoListMiddleware(),
+                    SummarizationMiddleware(
+                        model=FrontierCognitive.create_model(reasoning_effort="low", verbosity="medium"),
+                        max_tokens_before_summary=50000,
+                    ),
+                ],
+                debug=EnvConfig.AGENT_DEBUG_MODE,
+            ),
+            "heavy": create_deep_agent(
+                model=FrontierCognitive.create_model(reasoning_effort="high"),
+                tools=tools,
+                system_prompt=prompt_template,
+                subagents=subagents,
+                debug=EnvConfig.AGENT_DEBUG_MODE,
+            ),
+        }
+        agent = agents.get(agent_capability, EnvConfig.AGENT_CAPABILITY)
+        return agent
 
     @staticmethod
     def load_system_prompt():
@@ -210,8 +182,9 @@ class FrontierCognitive:
         logger.info(f"📨 总共提取到 {len(message_segments)} 个 UniMessage")
         return message_segments
 
-    async def chat_agent(self, messages, user_id, user_name):
+    async def chat_agent(self, messages, user_id, user_name, agent_capability: Literal["lite", "normal", "heavy"]):
         start_time = time.time()
+        agent = FrontierCognitive.create_agent(self.prompt_template, self.subagents, self.tools, agent_capability)
         if not messages:
             return {
                 "response": {"messages": [AIMessage(content="请提供有效的消息内容")]},
@@ -228,7 +201,7 @@ class FrontierCognitive:
             }
         }
         try:
-            response = await self.agent.ainvoke({"messages": messages}, config=config)
+            response = await agent.ainvoke({"messages": messages}, config=config)
         except Exception as e:
             return {
                 "response": {"messages": [AIMessage(f"💥 智能代理系统执行失败: {str(e)}")]},
