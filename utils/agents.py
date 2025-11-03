@@ -1,10 +1,11 @@
 import time
 import zoneinfo
 from datetime import datetime
+from typing import Literal
 
 from deepagents import create_deep_agent
 from langchain.agents import create_agent
-from langchain.agents.middleware import TodoListMiddleware
+from langchain.agents.middleware import SummarizationMiddleware, TodoListMiddleware
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
@@ -88,24 +89,56 @@ async def cognitive(
 
 class FrontierCognitive:
     def __init__(self):
-        self.model = ChatOpenAI(
-            api_key=EnvConfig.OPENAI_API_KEY,
-            base_url=EnvConfig.OPENAI_BASE_URL,
-            model=EnvConfig.ADVAN_MODEL,
-            streaming=False,
-            reasoning_effort="high",
-            verbosity="low",
-        )
         self.tools = agent_tools.all_tools
         self.subagents: list = [fact_check_subagent]
         self.prompt_template = FrontierCognitive.load_system_prompt()
-        self.agent = create_deep_agent(
-            model=self.model,
-            tools=self.tools,
-            system_prompt=self.prompt_template,
-            subagents=self.subagents,
-            debug=EnvConfig.AGENT_DEBUG_MODE,
+        self.agents = {
+            "lite": create_agent(
+                model=FrontierCognitive.create_model(reasoning_effort="low"),
+                tools=self.tools,
+                system_prompt=self.prompt_template,
+                middleware=[],
+                debug=EnvConfig.AGENT_DEBUG_MODE,
+            ),
+            "normal": create_agent(
+                model=FrontierCognitive.create_model(reasoning_effort="medium"),
+                tools=self.tools,
+                system_prompt=self.prompt_template,
+                middleware=[
+                    TodoListMiddleware(),
+                    SummarizationMiddleware(
+                        model=FrontierCognitive.create_model(reasoning_effort="low", verbosity="medium"),
+                        max_tokens_before_summary=50000,
+                    ),
+                ],
+                debug=EnvConfig.AGENT_DEBUG_MODE,
+            ),
+            "heavy": create_deep_agent(
+                model=FrontierCognitive.create_model(reasoning_effort="high"),
+                tools=self.tools,
+                system_prompt=self.prompt_template,
+                subagents=self.subagents,
+                debug=EnvConfig.AGENT_DEBUG_MODE,
+            ),
+        }
+        self.agent = self.agents.get(EnvConfig.AGENT_CAPABILITY, "normal")
+
+    @staticmethod
+    def create_model(
+        streaming: bool = False,
+        reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = "minimal",
+        verbosity: Literal["low", "medium", "high"] | None = "low",
+    ):
+        model = ChatOpenAI(
+            api_key=EnvConfig.OPENAI_API_KEY,
+            base_url=EnvConfig.OPENAI_BASE_URL,
+            model=EnvConfig.ADVAN_MODEL,
+            streaming=streaming,
+            reasoning_effort=reasoning_effort,
+            verbosity=verbosity,
+            max_retries=2,
         )
+        return model
 
     @staticmethod
     def load_system_prompt():
@@ -128,12 +161,10 @@ class FrontierCognitive:
     async def extract_artifacts(response):
         """提取响应中的工件"""
         artifacts = []
-
         # 添加安全检查
         if not response or not isinstance(response, dict):
             logger.warning("⚠️ extract_artifacts: response 为空或不是字典类型")
             return artifacts
-
         if "messages" in response and response["messages"]:
             for message in response["messages"]:
                 # 检查是否是 ToolMessage 并且有 artifact
@@ -154,11 +185,9 @@ class FrontierCognitive:
     async def process_artifacts(artifacts):
         """处理工件，提取可直接使用的内容"""
         processed = []
-
         for artifact_info in artifacts:
             artifact = artifact_info["artifact"]
             tool_name = artifact_info["tool_name"]
-
             processed_item = {
                 "tool_name": tool_name,
                 "type": "uni_message",
@@ -167,14 +196,12 @@ class FrontierCognitive:
             }
             processed.append(processed_item)
             logger.info(f"✨ 处理工件: {tool_name}")
-
         return processed
 
     @staticmethod
     async def get_message_segments(processed_artifacts):
         """从处理后的工件中提取所有 MessageSegment"""
         message_segments = []
-
         for item in processed_artifacts:
             if item["type"] == "uni_message":
                 message_segments.append(item["uni_message"])
