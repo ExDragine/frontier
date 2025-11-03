@@ -85,7 +85,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
             messages.append({"role": "user", "content": event.get_plaintext().strip()})
             temp_conv: list[dict] = messages[-5:]
             plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
-            with open("configs/reply.txt") as f:
+            with open("configs/reply_check.txt") as f:
                 system_prompt = f.read().format(name={EnvConfig.BOT_NAME})
             reply_check: ReplyCheck = await assistant_agent(system_prompt, plain_conv, response_format=ReplyCheck)
             return True if reply_check.should_reply == "true" and reply_check.confidence > 0.5 else False
