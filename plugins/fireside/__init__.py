@@ -70,9 +70,6 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     if is_bot:
         await common.finish()
 
-    if not await message_gateway(event, messages):
-        await common.finish()
-
     # 复读机检查
     gid = group_id or 0
     if text and message_heap.add(gid, text):
@@ -80,7 +77,8 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         await UniMessage.text(text).send()
         await common.finish()
 
-    logger.info(f"message_heap: {message_heap}")
+    if not await message_gateway(event, messages):
+        await common.finish()
 
     _ = await message_check(text, images)
     messages.append(
