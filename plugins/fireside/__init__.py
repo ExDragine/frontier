@@ -36,7 +36,7 @@ class AgentChoice(BaseModel):
 
 @common.handle()
 async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
-    logger.info(f"handling...")
+    logger.info(f"message_heap: {message_heap}")
     user_id = event.get_user_id()
     user_name = event.sender.card if event.sender.card else event.sender.nickname
     text, images = await message_extract(event)
