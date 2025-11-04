@@ -36,7 +36,6 @@ class AgentChoice(BaseModel):
 
 @common.handle()
 async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
-    logger.info(f"message_heap: {message_heap}")
     user_id = event.get_user_id()
     user_name = event.sender.card if event.sender.card else event.sender.nickname
     text, images = await message_extract(event)
@@ -80,6 +79,8 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         logger.info(f"🔁 触发复读：群{gid} 消息「{text[:20]}」")
         await UniMessage.text(text).send()
         await common.finish()
+
+    logger.info(f"message_heap: {message_heap}")
 
     _ = await message_check(text, images)
     messages.append(
