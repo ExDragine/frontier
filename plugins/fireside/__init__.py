@@ -6,7 +6,7 @@ from nonebot import logger, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 from pydantic import BaseModel, Field
 
-from plugins.fireside.min_heap import RepeatMessageHeap
+from utils.min_heap import RepeatMessageHeap
 from utils.agents import FrontierCognitive, assistant_agent
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
