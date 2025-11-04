@@ -26,7 +26,7 @@ f_cognitive = FrontierCognitive()
 
 common = on_message(priority=10)
 
-message_heap = RepeatMessageHeap(capacity=10, threshold=3)
+message_heap = RepeatMessageHeap(capacity=10, threshold=2)
 
 class AgentChoice(BaseModel):
     agent_capability: Literal["lite", "normal", "heavy"] = Field(
