@@ -6,6 +6,7 @@ from nonebot import logger, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 from pydantic import BaseModel, Field
 
+from plugins.fireside.min_heap import RepeatMessageHeap
 from utils.agents import FrontierCognitive, assistant_agent
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
@@ -25,6 +26,7 @@ f_cognitive = FrontierCognitive()
 
 common = on_message(priority=10)
 
+message_heap = RepeatMessageHeap(capacity=10, threshold=3)
 
 class AgentChoice(BaseModel):
     agent_capability: Literal["lite", "normal", "heavy"] = Field(
@@ -62,6 +64,13 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     )
     if not await message_gateway(event, messages):
         await common.finish()
+
+    # 复读机
+    gid = group_id or 0
+    if text and message_heap.add(gid, text):
+        await UniMessage.text(text).send()
+        await common.finish()
+
     _ = await message_check(text, images)
     messages.append(
         {
