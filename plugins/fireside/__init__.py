@@ -48,6 +48,9 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
             await common.finish()
         else:
             text = "Hello"
+
+    is_bot = user_id == str(event.self_id)
+
     await messages_db.insert(
         time=int(time.time() * 1000),
         msg_id=event.message_id,
@@ -62,12 +65,18 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         group_id,
         query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
     )
+
+    # Bot 自己的消息不参与复读检查
+    if is_bot:
+        await common.finish()
+
     if not await message_gateway(event, messages):
         await common.finish()
 
-    # 复读机
+    # 复读机检查
     gid = group_id or 0
     if text and message_heap.add(gid, text):
+        logger.info(f"🔁 触发复读：群{gid} 消息「{text[:20]}」")
         await UniMessage.text(text).send()
         await common.finish()
 
