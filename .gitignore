@@ -328,3 +328,4 @@ cache/
 .lock
 uv.lock
 env.toml
+temp

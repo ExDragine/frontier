@@ -66,9 +66,16 @@ async def apod_everyday():
 async def earth_now():
     url = "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_DISK_GCLR.JPG"
     content = None
-    response = await httpx_client.get(url)
-    response.raise_for_status()
-    content = response.content
+    for _i in range(3):
+        try:
+            response = await httpx_client.get(url)
+            response.raise_for_status()
+            # 确保完整读取响应体
+            content = await response.aread()
+            break
+        except httpx.HTTPError as e:
+            logger.warning(f"获取Earth Now图片失败: {e}", "准备重试...")
+            continue
     if not content:
         return
     messages: list[UniMessage] = [
