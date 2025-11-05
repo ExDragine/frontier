@@ -1,0 +1,13 @@
+services:
+  frontier:
+    build: .
+    container_name: frontier
+    ports:
+      - 3000:3000
+      - 3000:3001
+    env_file:
+      - .env
+    volumes:
+      - env.toml:env.toml
+      - mcp.json:mcp.json
+      - frontier.db:frontier.db
