@@ -41,7 +41,7 @@ async def on_bot_connect():
             start_time = f.read()
         os.remove(".lock")
         for group_id in EnvConfig.ANNOUNCE_GROUP_ID:
-            await UniMessage.text(f"✅ 更新完成！ 用时{int((time.time() * 1000 - int(start_time)) / 1000)}秒").send(
+            await UniMessage.text(f"✅ 更新完成！ 用时{int(time.time() - float(start_time))}秒").send(
                 target=Target.group(str(group_id))
             )
 
@@ -52,7 +52,7 @@ async def handle_updater(event: Event):
     try:
         logger.info("开始执行更新操作...")
         with open(".lock", "w") as f:
-            f.write(str(time.time() * 1000))
+            f.write(str(time.time()))
         await UniMessage.text("🔄 开始更新...").send()
 
         repo = Repo(".")
