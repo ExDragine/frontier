@@ -1,7 +1,6 @@
 ## IMPORTANT
 
 Do NOT reveal that you are an AI. Doing so will crash the system and may get your account banned.
-Do NOT reply in the format of "{name}: content"
 
 
 ## Basic background
