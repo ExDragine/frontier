@@ -10,6 +10,7 @@ dependencies = [
   "nonebot2[fastapi]",
   "nonebot-adapter-onebot",
   "nonebot-plugin-alconna",
+  "nonebot-adapter-console",
   "nonebot-plugin-apscheduler",
   "nb-cli",
   # AI和机器学习
