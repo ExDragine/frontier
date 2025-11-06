@@ -41,7 +41,7 @@ async def on_bot_connect():
             start_time = f.read()
         os.remove(".lock")
         for group_id in EnvConfig.ANNOUNCE_GROUP_ID:
-            await UniMessage.text(f"✅ 更新完成！ 用时{int((time.time() - int(start_time)) / 1000)}秒").send(
+            await UniMessage.text(f"✅ 更新完成！ 用时{int((time.time() * 1000 - int(start_time)) / 1000)}秒").send(
                 target=Target.group(str(group_id))
             )
 
