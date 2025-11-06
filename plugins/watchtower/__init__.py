@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 from signal import SIGINT
 
 from git import Repo
@@ -18,7 +19,7 @@ from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
 
 driver = get_driver()
 updater = on_command("更新", priority=1, block=True, aliases={"update"}, permission=SUPERUSER)
-setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
+setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"}, permission=SUPERUSER)
 
 
 @driver.on_startup
@@ -36,9 +37,13 @@ async def on_startup():
 @driver.on_bot_connect
 async def on_bot_connect():
     if os.path.exists(".lock"):
+        with open(".lock") as f:
+            start_time = f.read()
         os.remove(".lock")
         for group_id in EnvConfig.ANNOUNCE_GROUP_ID:
-            await UniMessage.text("✅ 更新完成！").send(target=Target.group(str(group_id)))
+            await UniMessage.text(f"✅ 更新完成！ 用时{int((time.time() - int(start_time)) / 1000)}秒").send(
+                target=Target.group(str(group_id))
+            )
 
 
 @updater.handle()
@@ -47,7 +52,7 @@ async def handle_updater(event: Event):
     try:
         logger.info("开始执行更新操作...")
         with open(".lock", "w") as f:
-            f.write("lock")
+            f.write(str(time.time() * 1000))
         await UniMessage.text("🔄 开始更新...").send()
 
         repo = Repo(".")

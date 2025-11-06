@@ -29,6 +29,7 @@ async def assistant_agent(
         model=use_model,
         streaming=False,
         max_retries=2,
+        timeout=30,
     )
     agent = create_agent(
         model=model,
@@ -75,6 +76,7 @@ class FrontierCognitive:
             reasoning_effort=reasoning_effort,
             verbosity=verbosity,
             max_retries=2,
+            timeout=60,
         )
         return model
 
@@ -82,7 +84,7 @@ class FrontierCognitive:
     def create_agent(prompt_template, subagents, tools, agent_capability):
         agents = {
             "lite": create_agent(
-                model=FrontierCognitive.create_model(reasoning_effort="low"),
+                model=FrontierCognitive.create_model(reasoning_effort="medium"),
                 tools=tools,
                 system_prompt=prompt_template,
                 middleware=[],

@@ -6,7 +6,6 @@ from nonebot import logger, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 from pydantic import BaseModel, Field
 
-from utils.min_heap import RepeatMessageHeap
 from utils.agents import FrontierCognitive, assistant_agent
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
@@ -17,6 +16,7 @@ from utils.message import (
     send_artifacts,
     send_messages,
 )
+from utils.min_heap import RepeatMessageHeap
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
@@ -27,6 +27,7 @@ f_cognitive = FrontierCognitive()
 common = on_message(priority=10)
 
 message_heap = RepeatMessageHeap(capacity=10, threshold=2)
+
 
 class AgentChoice(BaseModel):
     agent_capability: Literal["lite", "normal", "heavy"] = Field(
@@ -47,7 +48,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         if not event.is_tome():
             await common.finish()
         else:
-            text = "Hello"
+            text = ""
 
     is_bot = user_id == str(event.self_id)
 
