@@ -18,8 +18,8 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
 
 driver = get_driver()
-updater = on_command("更新", priority=1, block=True, aliases={"update"}, permission=SUPERUSER)
-setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"}, permission=SUPERUSER)
+updater = on_command("update", priority=1, block=True, aliases={"更新"}, permission=SUPERUSER)
+setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
 
 
 @driver.on_startup
