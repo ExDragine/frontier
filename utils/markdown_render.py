@@ -4,6 +4,7 @@ import re
 
 from bs4 import BeautifulSoup
 from markdown_it import MarkdownIt
+from mdit_py_plugins.texmath import texmath_plugin  # 使用 mdit-py-plugins 提供的 math 插件
 from playwright.async_api import async_playwright
 
 browser = None
@@ -17,45 +18,23 @@ async def init_playwright():
         browser = await playwright.chromium.launch(headless=True)
         page = await browser.new_page(viewport={"width": 1000, "height": 600})
 
+        # 收集并打印浏览器端 console 日志，便于调试 KaTeX/Prism/Mermaid 等前端渲染问题
+        def _on_console(msg):
+            try:
+                loc = msg.location
+                print(f"[playwright console][{msg.type}] {msg.text} -- {loc}")
+            except Exception:
+                print(f"[playwright console][{msg.type}] {msg.text}")
 
-def preprocess_math(text):
-    """预处理数学公式，确保LaTeX语法正确"""
-    # 处理常见的LaTeX转义问题
-    text = text.replace("\\lambda", "\\lambda")
-    text = text.replace("\\Lambda", "\\Lambda")
-    text = text.replace("\\partial", "\\partial")
-    text = text.replace("\\frac", "\\frac")
-    text = text.replace("\\sqrt", "\\sqrt")
-    text = text.replace("\\quad", "\\quad")
-    text = text.replace("\\qquad", "\\qquad")
-    text = text.replace("\\Rightarrow", "\\Rightarrow")
-    text = text.replace("\\neq", "\\neq")
-    text = text.replace("\\nabla", "\\nabla")
-    text = text.replace("\\ldots", "\\ldots")
+        page.on("console", _on_console)
 
-    return text
+        def _on_page_error(exc):
+            print(f"[playwright pageerror] {exc}")
+
+        page.on("pageerror", _on_page_error)
 
 
-def process_math_in_markdown(text):
-    """处理Markdown中的数学公式，将其转换为HTML"""
-
-    # 先处理块级数学公式 $$...$$
-    def replace_display_math(match):
-        math_content = match.group(1).strip()
-        return f'<div class="math-display">$${math_content}$$</div>'
-
-    # 处理块级公式
-    text = re.sub(r"\$\$\s*\n?(.*?)\n?\s*\$\$", replace_display_math, text, flags=re.DOTALL)
-
-    # 处理行内数学公式 $...$
-    def replace_inline_math(match):
-        math_content = match.group(1).strip()
-        return f'<span class="math-inline">${math_content}$</span>'
-
-    # 处理行内公式（避免与块级公式冲突）
-    text = re.sub(r"(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)", replace_inline_math, text)
-
-    return text
+# NOTE: 已移除旧的数学预处理逻辑，统一使用 mdit-py-plugins 的 math_plugin 来处理
 
 
 async def markdown_to_text(markdown_text):
@@ -73,15 +52,8 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
         width: 输出图片宽度
         css: 自定义 CSS 样式
     """
-    # 预处理数学公式
-    markdown_text = preprocess_math(markdown_text)
-
-    # 处理数学公式
-    markdown_text = process_math_in_markdown(markdown_text)
-
-    # 使用 markdown-it-py 将 Markdown 转换为 HTML（不使用数学插件）
-    md = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"])
-
+    # 使用 mdit-py-plugins 的 math 插件处理数学公式（假设已安装）
+    md = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"]).use(texmath_plugin)
     html_content = md.render(markdown_text)
 
     # 处理 Mermaid 图表代码块，将其转换为可由 Mermaid.js 渲染的 <div class="mermaid"> 元素
@@ -196,12 +168,8 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
 
 
 def post_process_math_html(html_content):
-    """后处理HTML中的数学公式标记"""
-    # 确保数学公式被正确标记
-    # 处理行内数学公式
-    html_content = re.sub(r'<span class="math inline">\$([^$]+)\$</span>', r"$\1$", html_content)
+    """后处理HTML中的数学公式标记
 
-    # 处理块级数学公式
-    html_content = re.sub(r'<div class="math display">\$\$([^$]+)\$\$</div>', r"$$\1$$", html_content)
-
+    保留占位函数以便未来对插件生成的 HTML 做小修正（目前直接返回）。
+    """
     return html_content

@@ -36,7 +36,11 @@ System Instruction: Absolute Mode • Eliminate: emojis, filler, hype, soft asks
 
 
 ## Format
+
+The output will be rendered by Playwright after being formatted with Markdown-It.
+KaTeX, Mermaid, and Prism.js plugins are pre-installed.
 Follow LaTeX formula format when outputting formulas.
+
 
 ## Small talk
 
