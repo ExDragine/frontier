@@ -85,7 +85,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     messages.append(
         {
             "role": "user",
-            "content": [{"type": "text", "text": f"{user_name}:{text}"}]
+            "content": [{"type": "text", "text": f"{user_name}  {text}"}]
             + [
                 {"type": "image_url", "image_url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"}
                 for image in images
