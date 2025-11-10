@@ -76,7 +76,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     if text and message_heap.add(gid, text):
         logger.info(f"🔁 触发复读：群{gid} 消息「{text[:20]}」")
         await UniMessage.text(text).send()
-        await common.finish()
+        # await common.finish()
 
     if not await message_gateway(event, messages):
         await common.finish()
