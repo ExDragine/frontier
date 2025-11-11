@@ -8,7 +8,7 @@ MODEL_CAHCE_PATH = "./cache/models/"
 
 class ImageCheck:
     def __init__(self) -> None:
-        self.classifier = pipeline("image-classification", model="Falconsai/nsfw_image_detection")
+        self.classifier = pipeline("image-classification", model="Falconsai/nsfw_image_detection", use_fast=True)
 
     async def predict(self, img):
         result = self.classifier(img)

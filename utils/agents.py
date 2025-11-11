@@ -1,71 +1,41 @@
 import time
 import zoneinfo
 from datetime import datetime
+from typing import Any, Literal
 
 from deepagents import create_deep_agent
 from langchain.agents import create_agent
-from langchain.agents.middleware import TodoListMiddleware
+from langchain.agents.middleware import SummarizationMiddleware, TodoListMiddleware
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from nonebot import logger
-from pydantic import BaseModel, Field
 
 from tools import agent_tools
 from utils.configs import EnvConfig
 from utils.subagents import fact_check_subagent
 
 
-class ReplyCheck(BaseModel):
-    should_reply: str = Field(
-        description="Should or not reply message. If should, reply with yes, either reply with no"
-    )
-    confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
-
-
-async def reply_check(user_prompt: str):
-    system_prompt = f""" You are a classifier to determine whether to intervene in the current multi-party conversation.
-                        You should only reply \"yes\" or \"no\" when \"{EnvConfig.BOT_NAME}\" is explicitly mentioned, 
-                        the context indicates a need for help and no one else has provided relevant information, 
-                        and the intervention will not disrupt the conversation. 
-                        Try to avoid inserting into the conversation arbitrarily and only reply when it is absolutely necessary."""
-    model = ChatOpenAI(
-        api_key=EnvConfig.OPENAI_API_KEY,
-        base_url=EnvConfig.OPENAI_BASE_URL,
-        model=EnvConfig.BASIC_MODEL,
-        reasoning_effort="high",
-    )
-    agent = create_agent(
-        model=model,
-        tools=[],
-        system_prompt=system_prompt,
-        response_format=ReplyCheck,
-    )
-    result = await agent.ainvoke({"messages": [{"role": "user", "content": user_prompt}]})
-    structured_response: ReplyCheck = result["structured_response"]
-    if structured_response.should_reply.lower() == "yes" and structured_response.confidence >= 0.7:
-        return True
-    return False
-
-
-async def cognitive(
+async def assistant_agent(
     system_prompt: str = "",
     user_prompt: str = "",
     use_model: str = EnvConfig.BASIC_MODEL,
     tools=None,
     response_format=None,
-):
+) -> Any:
     model = ChatOpenAI(
         api_key=EnvConfig.OPENAI_API_KEY,
         base_url=EnvConfig.OPENAI_BASE_URL,
         model=use_model,
         streaming=False,
+        max_retries=2,
+        timeout=30,
     )
     agent = create_agent(
         model=model,
         tools=tools,
         system_prompt=system_prompt,
-        middleware=[TodoListMiddleware()],
+        middleware=[],
         response_format=response_format,
         debug=EnvConfig.AGENT_DEBUG_MODE,
     )
@@ -88,24 +58,61 @@ async def cognitive(
 
 class FrontierCognitive:
     def __init__(self):
-        self.model = ChatOpenAI(
-            api_key=EnvConfig.OPENAI_API_KEY,
-            base_url=EnvConfig.OPENAI_BASE_URL,
-            model=EnvConfig.ADVAN_MODEL,
-            streaming=False,
-            reasoning_effort="high",
-            verbosity="low",
-        )
         self.tools = agent_tools.all_tools
         self.subagents: list = [fact_check_subagent]
         self.prompt_template = FrontierCognitive.load_system_prompt()
-        self.agent = create_deep_agent(
-            model=self.model,
-            tools=self.tools,
-            system_prompt=self.prompt_template,
-            subagents=self.subagents,
-            debug=EnvConfig.AGENT_DEBUG_MODE,
+
+    @staticmethod
+    def create_model(
+        streaming: bool = False,
+        reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = "minimal",
+        verbosity: Literal["low", "medium", "high"] | None = "low",
+    ):
+        model = ChatOpenAI(
+            api_key=EnvConfig.OPENAI_API_KEY,
+            base_url=EnvConfig.OPENAI_BASE_URL,
+            model=EnvConfig.ADVAN_MODEL,
+            streaming=streaming,
+            reasoning_effort=reasoning_effort,
+            verbosity=verbosity,
+            max_retries=2,
+            timeout=60,
         )
+        return model
+
+    @staticmethod
+    def create_agent(prompt_template, subagents, tools, agent_capability):
+        agents = {
+            "lite": create_agent(
+                model=FrontierCognitive.create_model(reasoning_effort="medium"),
+                tools=tools,
+                system_prompt=prompt_template,
+                middleware=[],
+                debug=EnvConfig.AGENT_DEBUG_MODE,
+            ),
+            "normal": create_agent(
+                model=FrontierCognitive.create_model(reasoning_effort="medium"),
+                tools=tools,
+                system_prompt=prompt_template,
+                middleware=[
+                    TodoListMiddleware(),
+                    SummarizationMiddleware(
+                        model=FrontierCognitive.create_model(reasoning_effort="low", verbosity="medium"),
+                        max_tokens_before_summary=50000,
+                    ),
+                ],
+                debug=EnvConfig.AGENT_DEBUG_MODE,
+            ),
+            "heavy": create_deep_agent(
+                model=FrontierCognitive.create_model(reasoning_effort="high"),
+                tools=tools,
+                system_prompt=prompt_template,
+                subagents=subagents,
+                debug=EnvConfig.AGENT_DEBUG_MODE,
+            ),
+        }
+        agent = agents.get(agent_capability, EnvConfig.AGENT_CAPABILITY)
+        return agent
 
     @staticmethod
     def load_system_prompt():
@@ -128,12 +135,10 @@ class FrontierCognitive:
     async def extract_artifacts(response):
         """提取响应中的工件"""
         artifacts = []
-
         # 添加安全检查
         if not response or not isinstance(response, dict):
             logger.warning("⚠️ extract_artifacts: response 为空或不是字典类型")
             return artifacts
-
         if "messages" in response and response["messages"]:
             for message in response["messages"]:
                 # 检查是否是 ToolMessage 并且有 artifact
@@ -154,11 +159,9 @@ class FrontierCognitive:
     async def process_artifacts(artifacts):
         """处理工件，提取可直接使用的内容"""
         processed = []
-
         for artifact_info in artifacts:
             artifact = artifact_info["artifact"]
             tool_name = artifact_info["tool_name"]
-
             processed_item = {
                 "tool_name": tool_name,
                 "type": "uni_message",
@@ -167,14 +170,12 @@ class FrontierCognitive:
             }
             processed.append(processed_item)
             logger.info(f"✨ 处理工件: {tool_name}")
-
         return processed
 
     @staticmethod
     async def get_message_segments(processed_artifacts):
         """从处理后的工件中提取所有 MessageSegment"""
         message_segments = []
-
         for item in processed_artifacts:
             if item["type"] == "uni_message":
                 message_segments.append(item["uni_message"])
@@ -183,8 +184,9 @@ class FrontierCognitive:
         logger.info(f"📨 总共提取到 {len(message_segments)} 个 UniMessage")
         return message_segments
 
-    async def chat_agent(self, messages, user_id, user_name):
+    async def chat_agent(self, messages, user_id, user_name, agent_capability: Literal["lite", "normal", "heavy"]):
         start_time = time.time()
+        agent = FrontierCognitive.create_agent(self.prompt_template, self.subagents, self.tools, agent_capability)
         if not messages:
             return {
                 "response": {"messages": [AIMessage(content="请提供有效的消息内容")]},
@@ -193,7 +195,7 @@ class FrontierCognitive:
                 "processed_artifacts": [],
                 "uni_messages": [],
             }
-        logger.info(f"Agent烧烤中~🍖 用户: {user_name} (ID: {user_id})")
+        logger.info(f"Agent烧烤中~🍖 思考等级: {agent_capability} 用户: {user_name} (ID: {user_id})")
         config: RunnableConfig = {
             "configurable": {
                 "thread_id": f"user_{user_id}_thread",
@@ -201,7 +203,7 @@ class FrontierCognitive:
             }
         }
         try:
-            response = await self.agent.ainvoke({"messages": messages}, config=config)
+            response = await agent.ainvoke({"messages": messages}, config=config)
         except Exception as e:
             return {
                 "response": {"messages": [AIMessage(f"💥 智能代理系统执行失败: {str(e)}")]},

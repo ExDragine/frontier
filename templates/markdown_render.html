@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Rendered</title>
+    <link rel="stylesheet" href="https://font.sec.miui.com/font/css?family=MiSans:400,600:MiSans">
+    {style_block}
+    <!-- KaTeX 配置和加载 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex/dist/contrib/auto-render.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ],
+                throwOnError: false,
+                errorColor: '#cc0000',
+                strict: false,
+                trust: true,
+                macros: {
+                    "\\RR": "\\mathbb{R}",
+                    "\\NN": "\\mathbb{N}",
+                    "\\ZZ": "\\mathbb{Z}",
+                    "\\QQ": "\\mathbb{Q}",
+                    "\\CC": "\\mathbb{C}"
+                }
+            });
+            // 标记渲染完成
+            window.mathRenderComplete = true;
+            console.log("KaTeX rendering completed");
+        });
+    </script>
+    <!-- Mermaid 配置和加载 -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({startOnLoad:true, theme:"default"});</script>
+    <!-- Prism.js 语法高亮（使用 CDN） -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm//themes/prism-tomorrow.min.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/prismjs/prism.min.js"></script>
+    <!-- 常用语言支持（可按需添加更多组件） -->
+    <script defer src="https://cdn.jsdelivr.net/npm/prismjs/components/prism-python.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/prismjs/components/prism-javascript.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/prismjs/components/prism-bash.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // 如果 Prism 已加载，则高亮所有代码块并设置标志，供后端截图等待
+            try {
+                if (window.Prism && typeof window.Prism.highlightAll === 'function') {
+                    window.Prism.highlightAll();
+                    window.codeHighlightComplete = true;
+                    console.log("Prism highlighting completed");
+                } else {
+                    // 若未加载（例如网络问题），仍设置标志以避免阻塞截图
+                    window.codeHighlightComplete = true;
+                    console.warn("Prism not available; skipping highlight");
+                }
+            } catch (e) {
+                window.codeHighlightComplete = true;
+                console.warn("Prism highlight error:", e);
+            }
+        });
+    </script>
+</head>
+<body>
+    <div class="markdown-body" id="markdown-content">
+        {html_content}
+    </div>
+</body>
+</html>

@@ -12,11 +12,7 @@ OPENAI_BASE_URL = EnvConfig.OPENAI_BASE_URL
 OPENAI_API_KEY = EnvConfig.OPENAI_API_KEY
 AGENT_DEBUG_MODE = EnvConfig.AGENT_DEBUG_MODE
 
-model = ChatOpenAI(
-    api_key=OPENAI_API_KEY,
-    base_url=OPENAI_BASE_URL,
-    model=BASIC_MODEL,
-)
+model = ChatOpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL, model=BASIC_MODEL, max_retries=2, timeout=30)
 fact_check_subagent = {
     "name": "fact_check_agent",
     "description": "核查信息中提到的关键内容的真实性，提供准确的事实依据。",

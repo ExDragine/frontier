@@ -5,8 +5,9 @@ from nonebot import logger, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 from nonebot.internal.adapter import Event
 from PIL import Image
+from pydantic import BaseModel, Field
 
-from utils.agents import reply_check
+from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
 from utils.markdown_render import markdown_to_image, markdown_to_text
@@ -18,6 +19,13 @@ transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
 httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 text_det = TextCheck()
 image_det = ImageCheck()
+
+
+class ReplyCheck(BaseModel):
+    should_reply: str = Field(
+        description="Should or not reply message. If should, reply with true, either reply with false"
+    )
+    confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
 
 
 async def message_extract(event: Event):
@@ -44,9 +52,10 @@ async def send_artifacts(artifacts):
 async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
     last_message = response["messages"][-1]
     if hasattr(last_message, "content") and last_message.content.strip():
+        _ = await text_det.predict(last_message.content)
         if len(last_message.content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID:
             messages = UniMessage.reply(str(message_id)) + UniMessage.text(
-                await markdown_to_text(last_message.content)
+                (await markdown_to_text(last_message.content)).rstrip("\r\n").strip()
             )
             await messages.send()
         else:
@@ -62,6 +71,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
             return True
         if event.user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST:
             return False
+        return True
     if isinstance(event, GroupMessageEvent):
         if EnvConfig.AGENT_WITHELIST_MODE and event.group_id in EnvConfig.AGENT_WITHELIST_GROUP_LIST:
             return True
@@ -75,8 +85,11 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
             messages.append({"role": "user", "content": event.get_plaintext().strip()})
             temp_conv: list[dict] = messages[-5:]
             plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
-            slm_reply = await reply_check(plain_conv)
-            return slm_reply
+            with open("configs/reply_check.txt") as f:
+                system_prompt = f.read().format(name={EnvConfig.BOT_NAME})
+            reply_check: ReplyCheck = await assistant_agent(system_prompt, plain_conv, response_format=ReplyCheck)
+            return True if reply_check.should_reply == "true" and reply_check.confidence > 0.5 else False
+        return False
     return False
 
 

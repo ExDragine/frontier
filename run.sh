@@ -1,7 +1,7 @@
 source .venv/bin/activate
 # loop to restart
 while true; do
-    uv sync --upgrade
+    uv sync --upgrade --compile-bytecode --no-install-project
     nb run
     sleep 5
 done

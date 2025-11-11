@@ -30,6 +30,7 @@ class EnvConfig:
     NASA_API_KEY: SecretStr = SecretStr(key["nasa_api_key"])
     GITHUB_PAT: SecretStr = SecretStr(key["github_pat"])
 
+    AGENT_CAPABILITY = function_list["agent_capability"]
     AGENT_WITHELIST_MODE: bool = function_list["agent_whitelist_mode"]
     AGENT_WITHELIST_PERSON_LIST: list = function_list["agent_whitelist_person_list"]
     AGENT_BLACKLIST_GROUP_LIST: list = function_list["agent_whitelist_group_list"]

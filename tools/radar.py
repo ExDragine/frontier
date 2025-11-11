@@ -1,10 +1,9 @@
 import time
 from typing import Any
 
-import httpx
-from bs4 import BeautifulSoup
 from langchain.tools import tool
 from nonebot import logger, require
+from playwright.async_api import async_playwright
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
@@ -40,44 +39,35 @@ async def get_static_china_radar(area: str) -> tuple[Any, UniMessage | None]:
 
 
 async def china_static_radar(area: str):
-    if area in areas:
-        url = f"http://www.nmc.cn/publish/{areas[area]}"
-        fake_headers = {
-            # --- 最重要的 Headers ---
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",  # 伪装成最新版 Chrome (版本号可以按需调整)
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",  # 浏览器能接受的内容类型
-            # --- 常见的 Headers 增加真实性 ---
-            "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",  # 偏好的语言 (可以根据目标网站调整, en-US,en;q=0.9 是常见默认值)
-            "Accept-Encoding": "gzip, deflate, br, zstd",  # 支持的压缩格式，httpx 会自动处理解压
-            "Connection": "keep-alive",  # 保持连接
-            "Upgrade-Insecure-Requests": "1",  # 表明客户端希望升级到 HTTPS (如果可能)
-            "Cache-Control": "max-age=0",  # 很多直接访问或刷新时会带这个头
-            # --- Sec-CH-UA Headers (Client Hints - 增加现代浏览器特征) ---
-            # 这些值应与 User-Agent 中的浏览器版本匹配
-            "Sec-CH-UA": '"Not/A)Brand";v="99", "Google Chrome";v="127", "Chromium";v="127"',
-            "Sec-CH-UA-Mobile": "?0",  # ?0 表示非移动设备
-            "Sec-CH-UA-Platform": '"Windows"',  # 平台
-            # --- Sec-Fetch Headers (描述请求上下文) ---
-            # 对于直接在地址栏输入 URL 访问（导航）的情况，通常是这些值
-            "Sec-Fetch-Dest": "document",  # 请求的目标是 HTML 文档
-            "Sec-Fetch-Mode": "navigate",  # 请求模式是导航
-            "Sec-Fetch-Site": "none",  # 请求不是由当前站点发起的（直接访问）
-            "Sec-Fetch-User": "?1",  # 请求是由用户激活触发的（例如点击、输入地址）
-            # --- 其他可选 Headers (通常不需要手动设置) ---
-            # 'Host': 'target.website.com', # httpx 通常会根据 URL 自动设置 Host，一般无需手动添加
-            # 'Referer': 'https://www.google.com/', # 如果想模拟从某个页面跳转过来，可以设置 Referer，但要确保合理，否则可能起反作用
-            # 'Cookie': 'sessionid=...; othercookie=...', # Cookie 通常由 httpx 的 Client 自动管理，或者在登录后手动获取并添加，不要伪造无意义的 Cookie
-        }
-        async with httpx.AsyncClient(http2=True) as client:
-            data = await client.get(url, headers=fake_headers)
-        html_data = BeautifulSoup(data.text, "html.parser")
-        # print(html_data.prettify())
-        # 获取class为col-xs-12 time的div中的data-img
-        img = html_data.find_all("div", class_="col-xs-12 time")
-        img_url = []
-        for i in img:
-            img_url.append(i.get("data-img"))  # type: ignore
-        return img_url[0]
+    if area not in areas:
+        return None
+
+    url = f"http://www.nmc.cn/publish/{areas[area]}"
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            context = await browser.new_context()
+            page = await context.new_page()
+            await page.goto(url, wait_until="networkidle")
+            # 等待页面里目标元素出现
+            try:
+                await page.wait_for_selector("div.col-xs-12.time", timeout=7000)
+            except Exception as e:
+                # 如果超时则继续尝试获取（可能页面以不同方式渲染）
+                logger.error(e)
+
+            elements = await page.query_selector_all("div.col-xs-12.time")
+            for el in elements:
+                img_attr = await el.get_attribute("data-img")
+                if img_attr:
+                    await browser.close()
+                    return img_attr
+
+            await browser.close()
+            return None
+    except Exception as exc:
+        logger.error(f"china_static_radar playwright error: {exc}")
+        return None
 
 
 areas = {
