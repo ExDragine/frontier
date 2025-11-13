@@ -66,30 +66,27 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
 
 
 async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messages: list):
-    if isinstance(event, PrivateMessageEvent):
-        if EnvConfig.AGENT_WITHELIST_MODE and event.user_id in EnvConfig.AGENT_WITHELIST_PERSON_LIST:
-            return True
-        if event.user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST:
-            return False
-        return True
-    if isinstance(event, GroupMessageEvent):
-        if EnvConfig.AGENT_WITHELIST_MODE and event.group_id in EnvConfig.AGENT_WITHELIST_GROUP_LIST:
-            return True
-        if event.group_id in EnvConfig.AGENT_BLACKLIST_GROUP_LIST:
-            return False
-        if event.is_tome() or event.to_me:
-            return True
-        if event.get_plaintext().startswith(EnvConfig.BOT_NAME):
-            return True
-        if event.group_id in EnvConfig.TEST_GROUP_ID:
-            messages.append({"role": "user", "content": event.get_plaintext().strip()})
-            temp_conv: list[dict] = messages[-5:]
-            plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
-            with open("configs/reply_check.txt") as f:
-                system_prompt = f.read().format(name={EnvConfig.BOT_NAME})
-            reply_check: ReplyCheck = await assistant_agent(system_prompt, plain_conv, response_format=ReplyCheck)
-            return True if reply_check.should_reply == "true" and reply_check.confidence > 0.5 else False
+    group_id = event.group_id if isinstance(event, GroupMessageEvent) else 0
+    if EnvConfig.AGENT_WITHELIST_MODE and group_id in EnvConfig.AGENT_WITHELIST_GROUP_LIST:
+        pass
+    if group_id in EnvConfig.AGENT_BLACKLIST_GROUP_LIST:
         return False
+    if EnvConfig.AGENT_WITHELIST_MODE and event.user_id in EnvConfig.AGENT_WITHELIST_PERSON_LIST:
+        pass
+    if event.user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST:
+        return False
+    if event.is_tome() or event.to_me:
+        return True
+    if event.get_plaintext().startswith(EnvConfig.BOT_NAME):
+        return True
+    if group_id in EnvConfig.TEST_GROUP_ID:
+        messages.append({"role": "user", "content": event.get_plaintext().strip()})
+        temp_conv: list[dict] = messages[-5:]
+        plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
+        with open("configs/reply_check.txt") as f:
+            system_prompt = f.read().format(name={EnvConfig.BOT_NAME})
+        reply_check: ReplyCheck = await assistant_agent(system_prompt, plain_conv, response_format=ReplyCheck)
+        return True if reply_check.should_reply == "true" and reply_check.confidence > 0.5 else False
     return False
 
 

@@ -10,8 +10,9 @@ from .paint import get_paint
 from .radar import get_static_china_radar
 from .rocket import rocket_launches
 from .satellite import get_fy4b_cloud_map, get_fy4b_geos_cloud_map, get_himawari_satellite_image
+from .space_weather import GeoSpace, PlanetsWeather, goes_suvi, solar, sunspot, swpc_page
 from .tavily import tavily_crawl, tavily_extract, tavily_map, tavily_search
-from .weather import mars_weather
+from .weather import get_wind_map, mars_weather
 
 
 class ModuleTools:
@@ -41,6 +42,13 @@ class ModuleTools:
             send_audio,
             send_video,
             send_emoji,
+            get_wind_map,
+            GeoSpace,
+            solar,
+            goes_suvi,
+            sunspot,
+            swpc_page,
+            PlanetsWeather,
         ]
         self.all_tools = self.mcp_tools + self.local_tools
         self.web_tools = [tavily_search, tavily_extract, tavily_crawl, tavily_map]

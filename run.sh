@@ -1,7 +1,61 @@
+#!/bin/bash
+
+set -e  # 任何命令失败时立即退出
+
+# 获取脚本所在目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# 检测并安装 uv
+if ! command -v uv &> /dev/null; then
+    echo "检测到未安装 uv，正在安装..."
+    if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
+        echo "❌ uv 安装失败"
+        exit 1
+    fi
+    # 添加 uv 到 PATH
+    export PATH="$HOME/.local/bin:$PATH"
+    # 刷新 shell 路径缓存
+    hash -r
+    echo "✓ uv 安装完成"
+else
+    echo "✓ uv 已安装"
+fi
+
+# 检测并创建虚拟环境
+if [ ! -d ".venv" ]; then
+    echo "检测到不存在 .venv，正在执行 uv sync..."
+    if ! uv sync; then
+        echo "❌ uv sync 失败"
+        exit 1
+    fi
+    echo "✓ .venv 创建完成"
+else
+    echo "✓ .venv 已存在"
+fi
+
+# 激活虚拟环境
 source .venv/bin/activate
+
+echo "✓ 环境准备完成，启动主程序..."
+echo ""
+
 # loop to restart
 while true; do
-    uv sync --upgrade --compile-bytecode --no-install-project
-    nb run
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始新一轮同步和运行..."
+    
+    if ! uv sync --upgrade --compile-bytecode --no-install-project; then
+        echo "⚠️ uv sync 警告，继续执行..."
+    fi
+    
+    if ! playwright install; then
+        echo "⚠️ playwright install 警告，继续执行..."
+    fi
+    
+    if ! nb run; then
+        echo "❌ nb run 失败，5秒后重试..."
+    fi
+    
+    echo "等待 5 秒后重新启动..."
     sleep 5
 done
