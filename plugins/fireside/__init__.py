@@ -12,7 +12,7 @@ from utils.configs import EnvConfig
 from utils.database import MessageDatabase
 from utils.memory import MemoryStore
 from utils.message import (
-    message_check,
+    # message_check,
     message_extract,
     message_gateway,
     send_artifacts,
@@ -91,7 +91,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     if not await message_gateway(event, messages):
         await common.finish()
 
-    risk_check = await message_check(text, images)
+    # risk_check = await message_check(text, images)
     messages.append(
         {
             "role": "user",
@@ -105,7 +105,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
 
     with open("configs/agent_choice.txt") as f:
         system_prompt = f.read()
-    ref_history = await memory.mmr_search(str(group_id) if group_id else str(event.user_id), text, 3, filter={"": ""})
+    # ref_history = await memory.mmr_search(str(group_id) if group_id else str(event.user_id), text, 3, filter={"": ""})
     agent_choice: AgentChoice = await assistant_agent(system_prompt, text, response_format=AgentChoice)
     result = await f_cognitive.chat_agent(messages, user_id, user_name, agent_choice.agent_capability)
 
