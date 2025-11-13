@@ -1,3 +1,4 @@
+import asyncio
 import io
 
 import httpx
@@ -43,10 +44,23 @@ async def message_extract(event: Event):
 
 
 async def send_artifacts(artifacts):
-    """发送提取到的工件"""
+    """发送提取到的工件（并行发送）"""
+
+    tasks = []
     for artifact in artifacts:
         if isinstance(artifact, UniMessage):
-            await artifact.send()
+            try:
+                tasks.append(asyncio.create_task(artifact.send()))
+            except Exception as e:
+                logger.exception("创建发送任务失败: %s", e)
+
+    if not tasks:
+        return
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for res in results:
+        if isinstance(res, Exception):
+            logger.exception("发送工件时发生错误: %s", res)
 
 
 async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
