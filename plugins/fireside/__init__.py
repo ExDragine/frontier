@@ -131,7 +131,11 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
                 content=response["messages"][-1].content,
             )
             await send_messages(group_id, event.message_id, response)
-            memory_analyze: MemoryAnalyze = await assistant_agent(response_format=MemoryAnalyze)
+            with open("./configs/memory_analyze.txt") as f:
+                MASP = f.read()
+            memory_analyze: MemoryAnalyze = await assistant_agent(
+                MASP, f"user: {text}\n assistant: {response['messages'][-1].content}", response_format=MemoryAnalyze
+            )
             if memory_analyze.should_memory:
                 await memory.add(
                     str(group_id) if group_id else str(event.user_id), [memory_analyze.memory_content], [uuid.uuid4()]
