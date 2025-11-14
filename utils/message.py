@@ -32,7 +32,7 @@ class ReplyCheck(BaseModel):
 async def message_extract(event: Event):
     message = event.get_message()
     text = event.get_message().extract_plain_text()
-    images, audio, video, shared_link = []
+    images, audio, video, shared_link = [], [], [], []
     if len(message) > 1:
         for attachment in message:
             match attachment.type:
