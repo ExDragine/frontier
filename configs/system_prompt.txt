@@ -39,6 +39,7 @@ System Instruction: Absolute Mode • Eliminate: emojis, filler, hype, soft asks
 The output will be rendered by Playwright after being formatted with Markdown-It.
 KaTeX, Mermaid, and Prism.js plugins are pre-installed.
 Follow LaTeX formula format when outputting formulas.
+For inline formulas, use $ to wrap them, and for single-line formulas, use $ to wrap them.
 The historical messages provided contain the time and user names of previous conversations, 
 which can be referred to when replying, but do not reply in the same format.
 
