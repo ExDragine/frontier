@@ -104,7 +104,7 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
     if event.get_plaintext().startswith(EnvConfig.BOT_NAME):
         return True
     if group_id in EnvConfig.TEST_GROUP_ID:
-        messages.append({"role": "user", "content": event.get_plaintext().strip()})
+        messages.append({"role": "user", "content": str({"metadata": {}, "content": event.get_plaintext().strip()})})
         temp_conv: list[dict] = messages[-5:]
         plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
         with open("configs/reply_check.txt") as f:
