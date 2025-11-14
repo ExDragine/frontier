@@ -32,14 +32,24 @@ class ReplyCheck(BaseModel):
 async def message_extract(event: Event):
     message = event.get_message()
     text = event.get_message().extract_plain_text()
-    images = []
+    images, audio, video, shared_link = []
     if len(message) > 1:
         for attachment in message:
-            if attachment.type == "image":
-                if image_url := attachment.data.get("url"):
-                    response = await httpx_client.get(image_url)
-                    image = response.content
-                    images.append(image)
+            match attachment.type:
+                case "image":
+                    if image_url := attachment.data.get("url"):
+                        images.append((await httpx_client.get(image_url)).content)
+                case "record":
+                    if image_url := attachment.data.get("url"):
+                        audio.append((await httpx_client.get(image_url)).content)
+                case "video":
+                    if image_url := attachment.data.get("url"):
+                        video.append((await httpx_client.get(image_url)).content)
+                case "share":
+                    if image_url := attachment.data.get("url"):
+                        shared_link.append((await httpx_client.get(image_url)).content)
+                case _:
+                    pass
     return text, images
 
 

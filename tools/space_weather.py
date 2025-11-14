@@ -15,7 +15,7 @@ from nonebot_plugin_alconna import Image, UniMessage  # noqa: E402
 
 
 @tool(response_format="content")
-async def cme():
+async def solar_flare():
     """
     获取最近7天的太阳耀斑数据
 
@@ -90,7 +90,7 @@ async def realtime_solarwind():
 
 
 @tool(response_format="content")
-async def soho_solarwind():
+async def soho_realtime_solarwind():
     """
     获取SOHO太阳风数据
 
@@ -136,9 +136,9 @@ async def soho_solarwind():
 
 
 @tool(response_format="content_and_artifact")
-async def GeoSpace() -> tuple[str, UniMessage]:
+async def geospace() -> tuple[str, UniMessage]:
     """
-    获取地磁场的径向速度，密度与压力图
+    获取地球地磁场的径向速度，密度与压力图
 
     Returns:
         tuple[str, UniMessage]: 地磁场的径向速度，密度与压力图
@@ -153,16 +153,13 @@ async def GeoSpace() -> tuple[str, UniMessage]:
 
 
 @tool(response_format="content_and_artifact")
-async def solar_wind(time=None) -> tuple[str, UniMessage]:
-    """# 获取太阳风预测图
-
-    Args:
-        time (str, optional): 传入str类型时间, eg:20240101T10 . Defaults to datetime.datetime.now(tz=pytz.utc).strftime('%Y%m%dT%H').
+async def noaa_enlil_predict() -> tuple[str, UniMessage]:
+    """获取来自NOAA Enlil模型的太阳风密度与速度可视化预测图
 
     Returns:
         tuple[str, UniMessage]: 太阳风预测图
     """
-    time = time if time else datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%dT%H")
+    time = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%dT%H")
     enlil = "https://services.swpc.noaa.gov/images/animations/enlil/"
     content = (await httpx_client.get(enlil)).content
     page = BeautifulSoup(content, "html.parser")
@@ -174,12 +171,28 @@ async def solar_wind(time=None) -> tuple[str, UniMessage]:
 
 
 @tool(response_format="content_and_artifact")
-async def solar(imageType) -> tuple[str, UniMessage | None]:
+async def solar_image(imageType) -> tuple[str, UniMessage | None]:
     """
     # 太阳常用图像获取
+    NATA：北半球今晚极光预测
+    NATMA：北半球明天极光预测
+    NOA：北半球极光预测
+    SOA：南半球极光预测
+    SN：太阳黑子图
+    TL：过去五天发生的事件图
+    IETL：过去三天发生的时间图以及未来两天展望
+    GS1D：一天内太阳风速度以及地磁环境数据图表
+    GS3D：三天内太阳风速度以及地磁环境数据图表
+    GS7D：七天内太阳风速度以及地磁环境数据图表
+    GS3H：三小时内太阳风速度以及地磁环境数据图表
+    C2：SOHO C2日冕仪图像
+    C3：SOHO C3日冕仪图像
+    CCOR：搭载于GOES上的新一代紧凑型日冕仪图像（日冕仪图像优先用这个）
+    SWX：X-ray通量，质子通量，地磁场活跃度综合图表
+    HMIB：SDO HMI(Helioseismic and Magnetic Imager)图像
 
     Args:
-        imageType (str): 图像类型，字符串类型
+        imageType (str): 图像类型，可选值：NATA、NATMA、NOA、SOA、SN、TL、IETL、GS1D、GS3D、GS7D、GS3H、C2、C3、CCOR、SSM、SWX、HMIB
 
     Returns:
         MessageSegment: 返回构建好的消息串
@@ -198,8 +211,7 @@ async def solar(imageType) -> tuple[str, UniMessage | None]:
         "GS3H": "https://services.swpc.noaa.gov/images/geospace/geospace_3_hour.png",  # 三 小时内内太阳风速度以及地磁环境数据图表
         "C2": "https://services.swpc.noaa.gov/images/animations/lasco-c2/latest.jpg",
         "C3": "https://services.swpc.noaa.gov/images/animations/lasco-c3/latest.jpg",
-        "CCOR": "https://services.swpc.noaa.gov/experimental/images/animations/swfol1/ccor-1/latest.jpg",
-        "SSM": "https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_211193171.jpg",
+        "CCOR": "https://services.swpc.noaa.gov/images/animations/ccor1/latest.jpg",
         "SWX": "https://services.swpc.noaa.gov/images/swx-overview-small.gif",
         "HMIB": "https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_HMIB.jpg",
     }
@@ -211,13 +223,13 @@ async def solar(imageType) -> tuple[str, UniMessage | None]:
 
 @tool(response_format="content_and_artifact")
 async def goes_suvi(
-    type: Literal["94", "131", "171", "195", "284", "304", "map"] | None = "304",
+    type: Literal["094", "131", "171", "195", "284", "304", "map"] | None = "304",
 ) -> tuple[str, UniMessage | None]:
     """
-    获取GOES-16/17 SUVI图像
+    获取GOES-16/17 SUVI图像，有094、131、171、195、284、304、map七种波段的图像，map为根据日面特征生成的特征图
 
     Args:
-        type (str): 图像类型，字符串类型
+        type (str): 图像类型，可选值：094、131、171、195、284、304、map
 
     Returns:
         tuple[str, UniMessage | None]: 返回构建好的消息串
@@ -231,10 +243,10 @@ async def goes_suvi(
 @tool(response_format="content_and_artifact")
 async def sunspot(source: Literal["SOHO", "SDO", "ASO-S"] | None) -> tuple[str, UniMessage | None]:
     """
-    获取太阳黑子图像
+    获取太阳黑子图像，支持SOHO、SDO、ASO-S三种来源
 
     Args:
-        source (str): 图像来源，字符串类型
+        source (str): 图像来源，可选值：SOHO、SDO、ASO-S，优先级：SOHO > SDO > ASO-S
 
     Returns:
         tuple[str, UniMessage | None]: 返回构建好的消息串
@@ -283,6 +295,7 @@ async def swpc_page() -> tuple[str, UniMessage | None]:
                 timeout=120000,
                 wait_until="networkidle",
             )
+            await page.wait_for_timeout(10000)
             element_handle = await page.query_selector("id=region-content")
             if element_handle:
                 picture = await element_handle.screenshot()
@@ -294,12 +307,12 @@ async def swpc_page() -> tuple[str, UniMessage | None]:
 
 
 @tool(response_format="content_and_artifact")
-async def PlanetsWeather(planet) -> tuple[str, UniMessage | None]:
+async def planets_weather(planet) -> tuple[str, UniMessage | None]:
     """
-    获取行星天气
+    获取各个行星的基本数据和照片
 
     Args:
-        planet (str): 行星名称，字符串类型
+        planet (str): 行星名称，例如：太阳、水星、金星、地球、月球、火星、木星、土星、天王星、海王星、冥王星
 
     Returns:
         tuple[str, UniMessage | None]: 返回构建好的消息串
