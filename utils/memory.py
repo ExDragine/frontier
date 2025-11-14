@@ -1,5 +1,6 @@
 import chromadb
 from langchain_chroma import Chroma
+from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 
 
@@ -9,12 +10,13 @@ class MemoryStore:
         self.persistent_client = chromadb.PersistentClient("./caches/chroma")
 
     async def add(self, collection_name: str, documents: list, uuids: list):
+        docs_iter = (Document(page_content=text) for text in documents)
         memory_store = Chroma(
             client=self.persistent_client,
             collection_name=collection_name,
             embedding_function=self.embeddings,
         )
-        await memory_store.aadd_documents(documents=documents, ids=uuids)
+        await memory_store.aadd_documents(documents=list(docs_iter), ids=uuids)
 
     async def delete(self, collection_name: str, ids: list):
         memory_store = Chroma(
