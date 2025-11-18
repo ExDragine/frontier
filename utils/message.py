@@ -77,7 +77,7 @@ async def send_artifacts(artifacts):
 async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
     if content := response["messages"][-1].content:
         try:
-            content = json.loads(content)["content"]
+            content = json.loads(content)["content"].replace("'", '"')
         except Exception:
             content = content
         _ = await text_det.predict(content)
