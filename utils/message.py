@@ -1,6 +1,6 @@
+import ast
 import asyncio
 import io
-import json
 
 import httpx
 from nonebot import logger, require
@@ -77,7 +77,7 @@ async def send_artifacts(artifacts):
 async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
     if content := response["messages"][-1].content:
         try:
-            content = json.loads(content)["content"].replace("'", '"')
+            content = ast.literal_eval(content)["content"]
         except Exception:
             content = content
         _ = await text_det.predict(content)
