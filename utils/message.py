@@ -5,6 +5,7 @@ import io
 import httpx
 from nonebot import logger, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
+from nonebot.exception import ActionFailed
 from nonebot.internal.adapter import Event
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -85,7 +86,13 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
             messages = UniMessage.reply(str(message_id)) + UniMessage.text(
                 (await markdown_to_text(content)).rstrip("\r\n").strip()
             )
-            await messages.send()
+            try:
+                await messages.send()
+            except ActionFailed:
+                result = await markdown_to_image(content)
+                messages = UniMessage.reply(str(message_id)) + UniMessage.image(raw=result)
+                if result:
+                    await messages.send()
         else:
             result = await markdown_to_image(content)
             messages = UniMessage.reply(str(message_id)) + UniMessage.image(raw=result)
