@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 
 import httpx
 from nonebot import logger, require
@@ -74,16 +75,19 @@ async def send_artifacts(artifacts):
 
 
 async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
-    last_message = response["messages"][-1]
-    if hasattr(last_message, "content") and last_message.content.strip():
-        _ = await text_det.predict(last_message.content)
-        if len(last_message.content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID:
+    if content := response["messages"][-1].content:
+        try:
+            content = json.loads(content)["content"]
+        except Exception:
+            content = content
+        _ = await text_det.predict(content)
+        if len(content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID:
             messages = UniMessage.reply(str(message_id)) + UniMessage.text(
-                (await markdown_to_text(last_message.content)).rstrip("\r\n").strip()
+                (await markdown_to_text(content)).rstrip("\r\n").strip()
             )
             await messages.send()
         else:
-            result = await markdown_to_image(last_message.content)
+            result = await markdown_to_image(content)
             messages = UniMessage.reply(str(message_id)) + UniMessage.image(raw=result)
             if result:
                 await messages.send()
