@@ -1,6 +1,5 @@
 import base64
 import time
-import uuid
 from typing import Literal
 
 from nonebot import logger, on_message, require
@@ -10,7 +9,8 @@ from pydantic import BaseModel, Field
 from utils.agents import FrontierCognitive, assistant_agent
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
-from utils.memory import MemoryStore
+
+# from utils.memory import MemoryStore
 from utils.message import (
     # message_check,
     message_extract,
@@ -25,7 +25,7 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
-memory = MemoryStore()
+# memory = MemoryStore()
 
 common = on_message(priority=10)
 
@@ -131,15 +131,15 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
                 content=response["messages"][-1].content,
             )
             await send_messages(group_id, event.message_id, response)
-            with open("./configs/memory_analyze.txt") as f:
-                MASP = f.read()
-            memory_analyze: MemoryAnalyze = await assistant_agent(
-                MASP, f"user: {text}\n assistant: {response['messages'][-1].content}", response_format=MemoryAnalyze
-            )
-            if memory_analyze.should_memory:
-                await memory.add(
-                    str(group_id) if group_id else str(event.user_id), [memory_analyze.memory_content], [uuid.uuid4()]
-                )
+            # with open("./configs/memory_analyze.txt") as f:
+            #     MASP = f.read()
+            # memory_analyze: MemoryAnalyze = await assistant_agent(
+            #     MASP, f"user: {text}\n assistant: {response['messages'][-1].content}", response_format=MemoryAnalyze
+            # )
+            # if memory_analyze.should_memory:
+            #     await memory.add(
+            #         str(group_id) if group_id else str(event.user_id), [memory_analyze.memory_content], [uuid.uuid4()]
+            #     )
 
         else:
             await UniMessage.text(response["messages"]).send()
