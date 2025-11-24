@@ -22,6 +22,22 @@ else
     echo "✓ uv 已安装"
 fi
 
+# 尝试更新 uv 自身并升级 uv 管理的 Python（容错处理）
+echo "尝试执行: uv self update 和 uv python upgrade（若支持）..."
+if command -v uv &> /dev/null; then
+    if ! uv self update; then
+        echo "⚠️ uv self update 失败或不支持该命令，继续执行..."
+    else
+        echo "✓ uv 已自更新"
+    fi
+
+    if ! uv python upgrade; then
+        echo "⚠️ uv python upgrade 失败或不支持该命令，继续执行..."
+    else
+        echo "✓ uv 管理的 Python 升级完成"
+    fi
+fi
+
 # 检测并创建虚拟环境
 if [ ! -d ".venv" ]; then
     echo "检测到不存在 .venv，正在执行 uv sync..."
