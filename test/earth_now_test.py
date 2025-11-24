@@ -15,6 +15,7 @@ temp_dir.mkdir(parents=True, exist_ok=True)
 # 拼出目标文件路径
 file_path = temp_dir / "earth_now_test.jpg"
 
+
 async def fetch_earth_image():
     url = "https://www.storm-chasers.cn/wp-content/uploads/satimgs/Composite_TVIS_FDLK.jpg"
     content = None

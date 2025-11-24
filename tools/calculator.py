@@ -26,8 +26,6 @@ def safe_eval(expr: str) -> float:
                 return n.value
             else:
                 raise ValueError(f"Unsupported constant: {n.value}")
-        if isinstance(n, ast.Constant):
-            return n.n
         if isinstance(n, ast.BinOp):
             return OPS[type(n.op)](_eval(n.left), _eval(n.right))
         if isinstance(n, ast.UnaryOp):

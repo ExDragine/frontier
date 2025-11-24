@@ -24,9 +24,7 @@ async def extract_image(content_images) -> bytes | None:
 
 
 async def paint(prompt: list) -> tuple[str | None, list[bytes | None]]:
-    response = await client.chat.completions.create(
-        model=EnvConfig.PAINT_MODEL, messages=prompt, stream=False, temperature=0.7
-    )
+    response = await client.chat.completions.create(model=EnvConfig.PAINT_MODEL, messages=prompt, stream=False)
     message = response.choices[0].message.content
     try:
         images = response.choices[0].message.images  # type: ignore

@@ -15,7 +15,7 @@ painter = on_command("画图", priority=3, block=True, aliases={"paint", "绘图
 @painter.handle()
 async def handle_painter(event: Event):
     text, images = await message_extract(event)
-    text = text.replace("/画图", "Create a picture about: ")
+    text = text.replace("/画图", "")
     if not text:
         await UniMessage.text("你想画点什么？").send()
     with open("./configs/system_prompt_image.txt") as f:
