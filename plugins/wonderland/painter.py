@@ -1,6 +1,7 @@
 import base64
 import io
 
+from nonebot import logger
 from openai import AsyncClient
 from PIL import Image
 
@@ -25,12 +26,14 @@ async def extract_image(content_images) -> bytes | None:
 
 async def paint(prompt: list) -> tuple[str | None, list[bytes | None]]:
     response = await client.chat.completions.create(model=EnvConfig.PAINT_MODEL, messages=prompt, stream=False)
-    message = response.choices[0].message.content
+    message = response.choices[0].message.model_dump()
+    content = message.get("content", "")
     try:
-        images: list = response.choices[0].message.images  # type: ignore
+        images: list = message.get("images", [])
         images_list = []
         for i in images:
             images_list.append(await extract_image(i))
-        return message, images_list
+        return content, images_list
     except AttributeError:
-        return message, []
+        logger.error("回复中没有包含图像")
+        return content, []

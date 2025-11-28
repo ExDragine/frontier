@@ -1,6 +1,6 @@
 import base64
 
-from nonebot import on_command, require
+from nonebot import logger, on_command, require
 from nonebot.internal.adapter import Event
 
 from plugins.wonderland.painter import paint
@@ -37,5 +37,6 @@ async def handle_painter(event: Event):
     if text:
         await UniMessage.text(text).send()
     if images:
+        logger.info(f"生成了 {len(images)} 张图片")
         for image in images:
             await UniMessage.image(raw=image).send()
