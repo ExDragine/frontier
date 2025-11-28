@@ -1,6 +1,8 @@
 #!/bin/bash
 
 set -e  # 任何命令失败时立即退出
+export PYTHON_JIT=1
+export PYTHON_GIL=0
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,7 +66,7 @@ while true; do
         echo "⚠️ uv sync 警告，继续执行..."
     fi
     
-    if ! playwright install; then
+    if ! playwright install chromium; then
         echo "⚠️ playwright install 警告，继续执行..."
     fi
     
