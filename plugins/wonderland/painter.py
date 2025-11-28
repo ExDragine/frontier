@@ -25,7 +25,13 @@ async def extract_image(content_images) -> bytes | None:
 
 
 async def paint(prompt: list) -> tuple[str | None, list[bytes | None]]:
-    response = await client.chat.completions.create(model=EnvConfig.PAINT_MODEL, messages=prompt, stream=False)
+    response = await client.chat.completions.create(
+        model=EnvConfig.PAINT_MODEL,
+        messages=prompt,
+        stream=False,
+        extra_body={"modalities": ["image", "text"]},
+        image_config={"aspect_ratio": "16:9", "image_size": "2K"},
+    )  # type: ignore
     message = response.choices[0].message.model_dump()
     content = message.get("content", "")
     try:
