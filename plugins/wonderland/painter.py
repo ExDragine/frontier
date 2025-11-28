@@ -27,15 +27,10 @@ async def paint(prompt: list) -> tuple[str | None, list[bytes | None]]:
     response = await client.chat.completions.create(model=EnvConfig.PAINT_MODEL, messages=prompt, stream=False)
     message = response.choices[0].message.content
     try:
-        images = response.choices[0].message.images  # type: ignore
+        images: list = response.choices[0].message.images  # type: ignore
+        images_list = []
+        for i in images:
+            images_list.append(await extract_image(i))
+        return message, images_list
     except AttributeError:
-        images = None
-    if images:  # type: ignore
-        if isinstance(images, list):
-            images_list = []
-            for i in images:
-                images_list.append(await extract_image(i))
-            return message, images_list
-        return message, [await extract_image(images)]  # type: ignore
-    else:
         return message, []

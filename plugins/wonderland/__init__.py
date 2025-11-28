@@ -31,11 +31,11 @@ async def handle_painter(event: Event):
             ],
         },
     ]
-    result = await paint(messages)
-    if result:
-        if result[0]:
-            await UniMessage.text(result[0]).send()
-        for image in result[1]:
+    text, images = await paint(messages)
+    if not text and not images:
+        await UniMessage.text("这里空空如也，什么都没有画出来。").send()
+    if text:
+        await UniMessage.text(text).send()
+    if images:
+        for image in images:
             await UniMessage.image(raw=image).send()
-    else:
-        await UniMessage.text("画图失败，请重试。").send()
