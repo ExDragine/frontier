@@ -36,7 +36,9 @@ async def extract_image(content_images) -> bytes | None:
 
 async def analyze_config(prompt: str):
     response: PainterConfig = await assistant_agent(
-        system_prompt="分析用户发来的消息中的绘图配置", user_prompt=prompt, response_format=PainterConfig
+        system_prompt="分析用户发来的消息中的绘图配置，如果不包含相关信息请返回'none'",
+        user_prompt=prompt,
+        response_format=PainterConfig,
     )
     aspect_ratio = None if response.aspect_ratio == "none" else response.aspect_ratio
     image_size = None if response.image_size == "none" else response.image_size

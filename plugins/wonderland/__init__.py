@@ -3,7 +3,7 @@ import base64
 from nonebot import logger, on_command, require
 from nonebot.internal.adapter import Event
 
-from plugins.wonderland.painter import analyze_config, paint
+from plugins.wonderland.painter import paint
 from utils.message import message_extract
 
 require("nonebot_plugin_alconna")
@@ -31,8 +31,8 @@ async def handle_painter(event: Event):
             ],
         },
     ]
-    aspect_ratio, image_size = await analyze_config(text)
-    text, images = await paint(messages, aspect_ratio, image_size)
+    # aspect_ratio, image_size = await analyze_config(text)
+    text, images = await paint(messages, None, None)
     if not text and not images:
         await UniMessage.text("这里空空如也，什么都没有画出来。").send()
     if text:
