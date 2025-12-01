@@ -1,13 +1,23 @@
 import base64
 import io
+from typing import Literal
 
 from nonebot import logger
 from openai import AsyncClient
 from PIL import Image
+from pydantic import Field
 
+from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 
 client = AsyncClient(base_url=EnvConfig.OPENAI_BASE_URL, api_key=EnvConfig.OPENAI_API_KEY.get_secret_value())
+
+
+class PainterConfig:
+    aspect_ratio: Literal["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "none"] = Field(
+        description="提示词中是否包含宽高比信息"
+    )
+    image_size: Literal["1K", "2K", "4K", "none"] = Field(description="提示词中是否包含图像分辨率信息")
 
 
 async def extract_image(content_images) -> bytes | None:
@@ -24,14 +34,30 @@ async def extract_image(content_images) -> bytes | None:
         return output.getvalue()
 
 
-async def paint(prompt: list) -> tuple[str | None, list[bytes | None]]:
+async def analyze_config(prompt: str):
+    response: PainterConfig = await assistant_agent(response_format=PainterConfig)
+    aspect_ratio = None if response.aspect_ratio == "none" else response.aspect_ratio
+    image_size = None if response.image_size == "none" else response.image_size
+    return aspect_ratio, image_size
+
+
+async def paint(
+    prompt: list, aspect_ratio: str | None, image_size: str | None
+) -> tuple[str | None, list[bytes | None]]:
+    image_config = {}
+    if aspect_ratio:
+        image_config["aspect_ratio"] = aspect_ratio
+    if image_size:
+        image_config["image_size"] = image_size
+    extra_body: dict = {"modalities": ["image", "text"]}
+    if image_config:
+        extra_body["image_config"] = image_config
     response = await client.chat.completions.create(
         model=EnvConfig.PAINT_MODEL,
         messages=prompt,
         stream=False,
-        extra_body={"modalities": ["image", "text"]},
-        image_config={"aspect_ratio": "16:9", "image_size": "2K"},
-    )  # type: ignore
+        extra_body=extra_body,
+    )
     message = response.choices[0].message.model_dump()
     content = message.get("content", "")
     try:
