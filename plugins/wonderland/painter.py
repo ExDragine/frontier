@@ -62,12 +62,10 @@ async def paint(
         extra_body=extra_body,
     )
     message = response.choices[0].message.model_dump()
-    logger.info(f"📦 API 原始响应: {message}")
     content = message.get("content", "")
     try:
         images: list = message.get("images", [])
         logger.info(f"🖼️  API 返回的图片数量: {len(images)}")
-        logger.info(f"🔍 图片列表详情: {images}")
         images_list = []
         for idx, i in enumerate(images):
             logger.info(f"⚙️  正在处理第 {idx + 1} 张图片: {i}")
