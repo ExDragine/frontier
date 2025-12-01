@@ -5,7 +5,7 @@ from typing import Literal
 from nonebot import logger
 from openai import AsyncClient
 from PIL import Image
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from utils.agents import assistant_agent
 from utils.configs import EnvConfig
@@ -13,7 +13,7 @@ from utils.configs import EnvConfig
 client = AsyncClient(base_url=EnvConfig.OPENAI_BASE_URL, api_key=EnvConfig.OPENAI_API_KEY.get_secret_value())
 
 
-class PainterConfig:
+class PainterConfig(BaseModel):
     aspect_ratio: Literal["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "none"] = Field(
         description="提示词中是否包含宽高比信息"
     )
