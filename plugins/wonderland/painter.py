@@ -68,9 +68,11 @@ async def paint(
         logger.info(f"🖼️  API 返回的图片数量: {len(images)}")
         images_list = []
         for idx, i in enumerate(images):
-            logger.info(f"⚙️  正在处理第 {idx + 1} 张图片: {i}")
+            logger.info(f"⚙️  正在处理第 {idx + 1} 张图片")
             images_list.append(await extract_image(i))
         logger.info(f"✅ 最终处理完成，共 {len(images_list)} 张图片")
+        if len(images_list) > 1 and images_list[0] == images_list[1]:
+            images_list = images_list[1:]
         return content, images_list
     except AttributeError:
         logger.error("回复中没有包含图像")
