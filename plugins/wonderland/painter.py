@@ -51,7 +51,7 @@ async def paint(
         image_config["aspect_ratio"] = aspect_ratio
     if image_size:
         image_config["image_size"] = image_size
-    extra_body: dict = {"modalities": ["image", "text"]}
+    extra_body: dict = {"modalities": ["image"]}
     if image_config:
         extra_body["image_config"] = image_config
     logger.info(f"🎨 调用绘图API, extra_body: {extra_body}")
@@ -71,8 +71,6 @@ async def paint(
             logger.info(f"⚙️  正在处理第 {idx + 1} 张图片")
             images_list.append(await extract_image(i))
         logger.info(f"✅ 最终处理完成，共 {len(images_list)} 张图片")
-        if len(images_list) > 1 and images_list[0] == images_list[1]:
-            images_list = images_list[1:]
         return content, images_list
     except AttributeError:
         logger.error("回复中没有包含图像")
