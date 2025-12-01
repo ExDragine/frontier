@@ -35,7 +35,9 @@ async def extract_image(content_images) -> bytes | None:
 
 
 async def analyze_config(prompt: str):
-    response: PainterConfig = await assistant_agent(response_format=PainterConfig)
+    response: PainterConfig = await assistant_agent(
+        system_prompt="分析用户发来的消息中的绘图配置", user_prompt=prompt, response_format=PainterConfig
+    )
     aspect_ratio = None if response.aspect_ratio == "none" else response.aspect_ratio
     image_size = None if response.image_size == "none" else response.image_size
     return aspect_ratio, image_size
@@ -52,6 +54,7 @@ async def paint(
     extra_body: dict = {"modalities": ["image", "text"]}
     if image_config:
         extra_body["image_config"] = image_config
+    logger.info(f"🎨 调用绘图API, extra_body: {extra_body}")
     response = await client.chat.completions.create(
         model=EnvConfig.PAINT_MODEL,
         messages=prompt,
@@ -59,12 +62,17 @@ async def paint(
         extra_body=extra_body,
     )
     message = response.choices[0].message.model_dump()
+    logger.info(f"📦 API 原始响应: {message}")
     content = message.get("content", "")
     try:
         images: list = message.get("images", [])
+        logger.info(f"🖼️  API 返回的图片数量: {len(images)}")
+        logger.info(f"🔍 图片列表详情: {images}")
         images_list = []
-        for i in images:
+        for idx, i in enumerate(images):
+            logger.info(f"⚙️  正在处理第 {idx + 1} 张图片: {i}")
             images_list.append(await extract_image(i))
+        logger.info(f"✅ 最终处理完成，共 {len(images_list)} 张图片")
         return content, images_list
     except AttributeError:
         logger.error("回复中没有包含图像")
