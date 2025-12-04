@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from deepagents import create_deep_agent
-from deepagents.backends.sandbox import BaseSandbox
+from deepagents.backends import FilesystemBackend
 from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
 from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import PIIMiddleware, SummarizationMiddleware, TodoListMiddleware, ToolRetryMiddleware
@@ -126,7 +126,7 @@ class FrontierCognitive:
                         strategy="block",
                     ),
                 ],
-                backend=lambda rt: BaseSandbox(rt),  # type: ignore
+                backend=FilesystemBackend(root_dir="./caches/deep_agents"),
                 checkpointer=InMemorySaver(),
                 debug=EnvConfig.AGENT_DEBUG_MODE,
             ),
@@ -163,9 +163,12 @@ class FrontierCognitive:
         if "messages" in response and response["messages"]:
             for message in response["messages"]:
                 # 检查是否是 ToolMessage 并且有 artifact
-                if (hasattr(message, "type") and message.type == "tool" and
-                    hasattr(message, "artifact") and message.artifact is not None):
-
+                if (
+                    hasattr(message, "type")
+                    and message.type == "tool"
+                    and hasattr(message, "artifact")
+                    and message.artifact is not None
+                ):
                     tool_name = getattr(message, "name", "unknown")
                     uni_messages.append(message.artifact)
                     logger.info(f"📤 提取 UniMessage: {tool_name} - 类型: {type(message.artifact)}")
