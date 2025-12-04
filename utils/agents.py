@@ -4,9 +4,10 @@ import zoneinfo
 from datetime import datetime
 from typing import Any, Literal
 
-from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
+from deepagents.middleware.filesystem import FilesystemMiddleware
 from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
+from deepagents.middleware.subagents import SubAgentMiddleware
 from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import PIIMiddleware, SummarizationMiddleware, TodoListMiddleware, ToolRetryMiddleware
 from langchain.messages import AIMessage
@@ -27,6 +28,7 @@ async def assistant_agent(
     use_model: str = EnvConfig.BASIC_MODEL,
     tools=None,
     response_format=None,
+    middleware=None,
 ) -> Any:
     model = ChatOpenAI(
         api_key=EnvConfig.OPENAI_API_KEY,
@@ -40,7 +42,7 @@ async def assistant_agent(
         model=model,
         tools=tools,
         system_prompt=system_prompt,
-        middleware=[],
+        middleware=middleware if middleware else [],
         response_format=response_format,
         debug=EnvConfig.AGENT_DEBUG_MODE,
     )
@@ -70,6 +72,41 @@ class FrontierCognitive:
         self.tools = agent_tools.all_tools
         self.subagents: list = [fact_check_subagent]
         self.prompt_template = FrontierCognitive.load_system_prompt()
+        self.model = FrontierCognitive.create_model(reasoning_effort="medium")
+        self.backend = FilesystemBackend(root_dir="./caches/deep_agents")
+        self.interrupt_on = None
+        self.middleware = [
+            FilesystemMiddleware(backend=self.backend),
+            TodoListMiddleware(),
+            ToolRetryMiddleware(),
+            PIIMiddleware(
+                "api_key",
+                detector=r"sk-[a-zA-Z0-9]{32}",
+                strategy="block",
+            ),
+            SubAgentMiddleware(
+                default_model=self.model,
+                default_tools=self.tools,
+                subagents=self.subagents if self.subagents is not None else [],
+                default_middleware=[
+                    TodoListMiddleware(),
+                    FilesystemMiddleware(backend=self.backend),
+                    SummarizationMiddleware(
+                        model=self.model,
+                        max_tokens_before_summary=170000,
+                        messages_to_keep=6,
+                    ),
+                    PatchToolCallsMiddleware(),
+                ],
+                default_interrupt_on=self.interrupt_on,
+                general_purpose_agent=True,
+            ),
+            SummarizationMiddleware(
+                model=FrontierCognitive.create_model(reasoning_effort="low", verbosity="medium"),
+                max_tokens_before_summary=50000,
+            ),
+            PatchToolCallsMiddleware(),
+        ]
 
     @staticmethod
     def create_model(
@@ -90,23 +127,17 @@ class FrontierCognitive:
         return model
 
     @staticmethod
-    def create_agent(prompt_template, subagents, tools, agent_capability) -> CompiledStateGraph:
+    def create_agent(model, middleware, prompt_template, subagents, tools, agent_capability) -> CompiledStateGraph:
         agents = {
             "normal": create_agent(
-                model=FrontierCognitive.create_model(reasoning_effort="medium"),
+                model=model,
                 tools=tools,
                 system_prompt=prompt_template,
                 middleware=[
-                    TodoListMiddleware(),
-                    ToolRetryMiddleware(),
                     PIIMiddleware(
                         "api_key",
                         detector=r"sk-[a-zA-Z0-9]{32}",
                         strategy="block",
-                    ),
-                    SummarizationMiddleware(
-                        model=FrontierCognitive.create_model(reasoning_effort="low", verbosity="medium"),
-                        max_tokens_before_summary=50000,
                     ),
                     PatchToolCallsMiddleware(),
                 ],
@@ -114,24 +145,17 @@ class FrontierCognitive:
                 state_schema=CustomAgentState,
                 debug=EnvConfig.AGENT_DEBUG_MODE,
             ),
-            "heavy": create_deep_agent(
-                model=FrontierCognitive.create_model(reasoning_effort="high"),
+            "heavy": create_agent(
+                model=model,
                 tools=tools,
                 system_prompt=prompt_template,
-                subagents=subagents,
-                middleware=[
-                    PIIMiddleware(
-                        "api_key",
-                        detector=r"sk-[a-zA-Z0-9]{32}",
-                        strategy="block",
-                    ),
-                ],
-                backend=FilesystemBackend(root_dir="./caches/deep_agents"),
+                middleware=middleware,
                 checkpointer=InMemorySaver(),
+                state_schema=CustomAgentState,
                 debug=EnvConfig.AGENT_DEBUG_MODE,
             ),
         }
-        agent = agents.get(agent_capability, EnvConfig.AGENT_CAPABILITY)
+        agent: Any = agents.get(agent_capability, EnvConfig.AGENT_CAPABILITY)
         return agent
 
     @staticmethod
@@ -178,13 +202,9 @@ class FrontierCognitive:
 
     async def chat_agent(self, messages, user_id, user_name, agent_capability: Literal["lite", "normal", "heavy"]):
         start_time = time.time()
-        agent = FrontierCognitive.create_agent(self.prompt_template, self.subagents, self.tools, agent_capability)
-        if not messages:
-            return {
-                "response": {"messages": [AIMessage(content="请提供有效的消息内容")]},
-                "total_time": 0.0,
-                "uni_messages": [],
-            }
+        agent = FrontierCognitive.create_agent(
+            self.model, self.middleware, self.prompt_template, self.subagents, self.tools, agent_capability
+        )
         logger.info(f"Agent烧烤中~🍖 思考等级: {agent_capability} 用户: {user_name} (ID: {user_id})")
         config: RunnableConfig = {
             "configurable": {
@@ -194,8 +214,9 @@ class FrontierCognitive:
         try:
             response = await agent.ainvoke({"messages": messages, "user_id": user_id}, config=config)
         except Exception as e:
+            logger.error(f"❌ 智能代理系统执行失败: {str(e)}")
             return {
-                "response": {"messages": [AIMessage(f"💥 智能代理系统执行失败: {str(e)}")]},
+                "response": {"messages": [AIMessage("💥 这不是你的问题，也不是我的问题，这是服务商的问题。")]},
                 "total_time": time.time() - start_time,
                 "uni_messages": [],
             }
