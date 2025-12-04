@@ -33,8 +33,8 @@ message_heap = RepeatMessageHeap(capacity=10, threshold=2)
 
 
 class AgentChoice(BaseModel):
-    agent_capability: Literal["lite", "normal", "heavy"] = Field(
-        description="The available capability levels are lite, normal, and heavy."
+    agent_capability: Literal["normal", "heavy"] = Field(
+        description="For lightweight, simple tasks, choose 'normal'; for complex tasks, choose 'heavy'."
     )
 
 
