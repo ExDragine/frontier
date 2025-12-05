@@ -20,7 +20,7 @@ dependencies = [
   "langchain-mcp-adapters",
   "langchain-huggingface",
   "langchain-tavily",
-  # "langchain-chroma",
+  "langchain-chroma",
   "langgraph",
   "deepagents",
   "sentence-transformers",
