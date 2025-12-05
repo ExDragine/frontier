@@ -62,7 +62,7 @@ echo ""
 while true; do
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始新一轮同步和运行..."
     
-    if ! uv sync --upgrade --compile-bytecode --no-install-project; then
+    if ! uv sync --upgrade --no-install-project; then
         echo "⚠️ uv sync 警告，继续执行..."
     fi
     
