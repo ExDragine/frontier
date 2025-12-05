@@ -1,8 +1,8 @@
 #!/bin/bash
 
 set -e  # 任何命令失败时立即退出
-export PYTHON_JIT=1
-export PYTHON_GIL=0
+# export PYTHON_JIT=1
+# export PYTHON_GIL=0
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -62,6 +62,7 @@ echo ""
 while true; do
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始新一轮同步和运行..."
     
+    # if ! uv sync --upgrade --compile-bytecode --no-install-project; then
     if ! uv sync --upgrade --no-install-project; then
         echo "⚠️ uv sync 警告，继续执行..."
     fi
