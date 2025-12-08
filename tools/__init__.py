@@ -8,7 +8,7 @@ from .heavens_above import station_location
 from .mcp_client import mcp_get_tools
 from .paint import get_paint
 from .radar import get_static_china_radar
-from .rocket import rocket_launches
+from .rocket import get_launches
 from .satellite import get_fy4b_cloud_map, get_fy4b_geos_cloud_map, get_himawari_satellite_image
 from .space_weather import (
     geospace,
@@ -38,12 +38,12 @@ class ModuleTools:
             get_himawari_satellite_image,
             get_china_earthquake,
             get_japan_earthquake,
+            get_launches,
             aurora_live,
             station_location,
             simple_calculator,
             comet_information,
             comet_list,
-            rocket_launches,
             mars_weather,
             solar_flare,
             realtime_solarwind,
