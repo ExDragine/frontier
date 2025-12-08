@@ -14,6 +14,11 @@ http_client = AsyncClient(timeout=30, http2=True)
 # 火箭发射
 @tool(response_format="content")
 async def get_launches(days: int = 7):
+    """获取未来指定天数内的火箭发射计划。
+    Args:
+        days (int): 未来天数，默认值为7天。
+    Returns:
+        str: 火箭发射计划的详细信息。"""
     messages = ""
     url = "https://lldev.thespacedevs.com/2.3.0/launches/"
 
