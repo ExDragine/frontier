@@ -6,7 +6,7 @@ from .comet import comet_information, comet_list
 from .earthquake import get_china_earthquake, get_japan_earthquake
 from .heavens_above import station_location
 from .mcp_client import mcp_get_tools
-from .paint import get_paint
+from .memory import get_memory
 from .radar import get_static_china_radar
 from .rocket import get_launches
 from .satellite import get_fy4b_cloud_map, get_fy4b_geos_cloud_map, get_himawari_satellite_image
@@ -34,7 +34,7 @@ class ModuleTools:
             get_fy4b_cloud_map,
             get_fy4b_geos_cloud_map,
             get_bilibili_video_info,
-            get_paint,
+            get_memory,
             get_himawari_satellite_image,
             get_china_earthquake,
             get_japan_earthquake,
@@ -56,14 +56,14 @@ class ModuleTools:
             swpc_page,
             planets_weather,
             get_wind_map,
-            tavily_search,
-            tavily_extract,
-            tavily_crawl,
-            tavily_map,
             send_image,
             send_audio,
             send_video,
             send_emoji,
+            tavily_search,
+            tavily_extract,
+            tavily_crawl,
+            tavily_map,
         ]
         self.all_tools = self.mcp_tools + self.local_tools
         self.web_tools = [tavily_search, tavily_extract, tavily_crawl, tavily_map]

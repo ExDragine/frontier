@@ -34,8 +34,7 @@ class MemoryStore:
         )
 
         results = await memory_store.asimilarity_search(query=query, k=2, filter=filter)
-        for res in results:
-            return f"* {res.page_content}"
+        return "".join(f"* {res.page_content}\n" for res in results)
 
     async def mmr_search(self, collection_name: str, query: str, result_number: int, filter: dict):
         memory_store = Chroma(
