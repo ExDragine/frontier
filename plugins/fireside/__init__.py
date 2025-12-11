@@ -47,6 +47,8 @@ class MemoryAnalyze(BaseModel):
 
 @common.handle()
 async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
+    if EnvConfig.AGENT_MODULE_ENABLED is False:
+        await common.finish(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用")
     user_id = event.get_user_id()
     user_name = event.sender.card if event.sender.card else event.sender.nickname
     text, images = await message_extract(event)

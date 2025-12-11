@@ -21,6 +21,9 @@ debug: dict = config.get("debug", {})
 class EnvConfig:
     BOT_NAME: str = information["name"]
 
+    AGENT_MODULE_ENABLED: bool = function_list["agent_module_enabled"]
+    PAINT_MODULE_ENABLED: bool = function_list["paint_module_enabled"]
+
     OPENAI_BASE_URL: str = endpoint["openai_base_url"]
     BASIC_MODEL: str = endpoint["basic_model"]
     ADVAN_MODEL: str = endpoint["advan_model"]

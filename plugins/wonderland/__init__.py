@@ -4,6 +4,7 @@ from nonebot import logger, on_command, require
 from nonebot.internal.adapter import Event
 
 from plugins.wonderland.painter import paint
+from utils.configs import EnvConfig
 from utils.message import message_extract
 
 require("nonebot_plugin_alconna")
@@ -14,6 +15,8 @@ painter = on_command("画图", priority=3, block=True, aliases={"paint", "绘图
 
 @painter.handle()
 async def handle_painter(event: Event):
+    if EnvConfig.PAINT_MODULE_ENABLED is False:
+        await painter.finish("么得画了，等升级哇!")
     text, images = await message_extract(event)
     text = text.replace("/画图", "")
     if not text:
