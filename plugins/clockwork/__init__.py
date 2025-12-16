@@ -162,7 +162,7 @@ async def daily_news():
     today = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日")
     with open("configs/daily_news.txt") as f:
         system_prompt = f.read().format(current_time=today)
-    user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的全球范围内的主要新闻。至少10条"
+    user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的主要新闻。"
     summary = await assistant_agent(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
     if summary:
         message = UniMessage().image(raw=await markdown_to_image(summary))
