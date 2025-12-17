@@ -3,7 +3,7 @@ import re
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
 MODEL_ID = "Falconsai/nsfw_image_detection"
-MODEL_CAHCE_PATH = "./cache/models/"
+MODEL_CAHCE_PATH = "./caches/models/"
 
 
 class ImageCheck:

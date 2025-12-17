@@ -78,7 +78,7 @@ def system_check():
     try:
         import tomlkit
 
-        config_path = "cache/environment.toml"
+        config_path = "caches/environment.toml"
         try:
             with open(config_path, encoding="utf-8") as f:
                 config = tomlkit.load(f)
