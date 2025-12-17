@@ -21,7 +21,7 @@ async def handle_painter(event: Event):
     text = text.replace("/画图", "")
     if not text:
         await UniMessage.text("你想画点什么？").send()
-    with open("./configs/system_prompt_image.txt") as f:
+    with open("./prompts/system_prompt_image.txt") as f:
         img_sys_prompt = f.read()
     messages = [
         {"role": "system", "content": img_sys_prompt},

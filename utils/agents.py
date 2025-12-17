@@ -47,7 +47,7 @@ async def assistant_agent(
         debug=EnvConfig.AGENT_DEBUG_MODE,
     )
     if not system_prompt:
-        with open("configs/system_prompt.txt") as f:
+        with open("prompts/system_prompt.txt") as f:
             SYSTEM_PROMPT = f.read()
         system_prompt = SYSTEM_PROMPT
     result = await agent.ainvoke({"messages": [{"role": "user", "content": user_prompt}]})
@@ -162,7 +162,7 @@ class FrontierCognitive:
     def load_system_prompt():
         """从外部文件加载 system prompt"""
         try:
-            with open("configs/system_prompt.txt", encoding="utf-8") as f:
+            with open("prompts/system_prompt.txt", encoding="utf-8") as f:
                 system_prompt = f.read()
                 system_prompt = system_prompt.format(
                     name=EnvConfig.BOT_NAME,
@@ -172,7 +172,7 @@ class FrontierCognitive:
                 )
                 return system_prompt
         except FileNotFoundError:
-            logger.warning("❌ 未找到 system prompt 文件: configs/system_prompt.txt")
+            logger.warning("❌ 未找到 system prompt 文件: prompts/system_prompt.txt")
             return "Your are a helpful assistant."
 
     @staticmethod
