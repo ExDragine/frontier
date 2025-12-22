@@ -9,36 +9,36 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # 检测并安装 uv
-if ! command -v uv &> /dev/null; then
-    echo "检测到未安装 uv，正在安装..."
-    if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
-        echo "❌ uv 安装失败"
-        exit 1
-    fi
-    # 添加 uv 到 PATH
-    export PATH="$HOME/.local/bin:$PATH"
-    # 刷新 shell 路径缓存
-    hash -r
-    echo "✓ uv 安装完成"
-else
-    echo "✓ uv 已安装"
-fi
+# if ! command -v uv &> /dev/null; then
+#     echo "检测到未安装 uv，正在安装..."
+#     if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
+#         echo "❌ uv 安装失败"
+#         exit 1
+#     fi
+#     # 添加 uv 到 PATH
+#     export PATH="$HOME/.local/bin:$PATH"
+#     # 刷新 shell 路径缓存
+#     hash -r
+#     echo "✓ uv 安装完成"
+# else
+#     echo "✓ uv 已安装"
+# fi
 
 # 尝试更新 uv 自身并升级 uv 管理的 Python（容错处理）
-echo "尝试执行: uv self update 和 uv python upgrade（若支持）..."
-if command -v uv &> /dev/null; then
-    if ! uv self update; then
-        echo "⚠️ uv self update 失败或不支持该命令，继续执行..."
-    else
-        echo "✓ uv 已自更新"
-    fi
+# echo "尝试执行: uv self update 和 uv python upgrade（若支持）..."
+# if command -v uv &> /dev/null; then
+#     if ! uv self update; then
+#         echo "⚠️ uv self update 失败或不支持该命令，继续执行..."
+#     else
+#         echo "✓ uv 已自更新"
+#     fi
 
-    if ! uv python upgrade; then
-        echo "⚠️ uv python upgrade 失败或不支持该命令，继续执行..."
-    else
-        echo "✓ uv 管理的 Python 升级完成"
-    fi
-fi
+#     if ! uv python upgrade; then
+#         echo "⚠️ uv python upgrade 失败或不支持该命令，继续执行..."
+#     else
+#         echo "✓ uv 管理的 Python 升级完成"
+#     fi
+# fi
 
 # 检测并创建虚拟环境
 if [ ! -d ".venv" ]; then

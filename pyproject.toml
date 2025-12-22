@@ -39,6 +39,12 @@ dependencies = [
   "pillow",
   # "pypika @ git+https://github.com/pyctrl/pypika.git@v0.48.9-patched",
 ]
+
+[[tool.uv.index]]
+name = "tencent"
+url = "https://mirrors.cloud.tencent.com/pypi/simple/"
+
+
 [tool.nonebot]
 plugin_dirs = ["plugins"]
 builtin_plugins = []
