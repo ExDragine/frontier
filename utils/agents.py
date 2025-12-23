@@ -73,7 +73,7 @@ class FrontierCognitive:
         self.subagents: list = [fact_check_subagent]
         self.prompt_template = FrontierCognitive.load_system_prompt()
         self.model = FrontierCognitive.create_model(reasoning_effort="medium")
-        self.backend = FilesystemBackend(root_dir="./caches/deep_agents")
+        self.backend = FilesystemBackend(root_dir="./cache/deep_agents")
         self.interrupt_on = None
         self.middleware = [
             FilesystemMiddleware(backend=self.backend),

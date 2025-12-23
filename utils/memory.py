@@ -7,7 +7,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 class MemoryStore:
     def __init__(self) -> None:
         self.embeddings = HuggingFaceEmbeddings(model_name="")
-        self.persistent_client = chromadb.PersistentClient("./caches/chroma")
+        self.persistent_client = chromadb.PersistentClient("./cache/chroma")
 
     async def add(self, collection_name: str, documents: list, uuids: list):
         docs_iter = (Document(page_content=text) for text in documents)

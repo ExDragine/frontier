@@ -27,7 +27,7 @@ async def markdown_to_image(markdown_text):
 
 async def playwright_render(name: str, packed_args: dict):
     trigger_mark = secrets.token_hex(16)
-    cache_file = f"{os.getcwd()}/caches/{trigger_mark}.html"
+    cache_file = f"{os.getcwd()}/cache/{trigger_mark}.html"
     # 设置模板加载路径
     env = Environment(loader=FileSystemLoader("./templates/"), autoescape=True)
 
