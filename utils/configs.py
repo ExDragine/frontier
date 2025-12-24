@@ -16,6 +16,7 @@ function_list = config.get("function", {})
 message: dict = config.get("message", {})
 database: dict = config.get("database", {})
 debug: dict = config.get("debug", {})
+memory: dict = config.get("memory", {})
 
 
 class EnvConfig:
@@ -56,3 +57,5 @@ class EnvConfig:
     QUERY_MESSAGE_NUMBERS: int = database["query_message_numbers"]
 
     AGENT_DEBUG_MODE: bool = debug["agent_debug_mode"]
+
+    MEMORY_EMBEDDING_MODEL: str = memory.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")

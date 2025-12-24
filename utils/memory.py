@@ -3,10 +3,13 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 
+from utils.configs import EnvConfig
+
 
 class MemoryStore:
     def __init__(self) -> None:
-        self.embeddings = HuggingFaceEmbeddings(model_name="")
+        model_name = EnvConfig.MEMORY_EMBEDDING_MODEL.strip() or "sentence-transformers/all-MiniLM-L6-v2"
+        self.embeddings = HuggingFaceEmbeddings(model_name=model_name)
         self.persistent_client = chromadb.PersistentClient("./cache/chroma")
 
     async def add(self, collection_name: str, documents: list, uuids: list):
