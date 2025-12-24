@@ -98,9 +98,7 @@ async def soho_realtime_solarwind():
         str: SOHO太阳风数据
     """
     ENDPOINT = "https://space.umd.edu/pm/pmsw.used"
-    content = await httpx_client.get(ENDPOINT)
-    if not isinstance(content, bytes):
-        return str(content)
+    content = (await httpx_client.get(ENDPOINT)).content
     decode_data = content.decode("utf-8").split("\n")
     parts = decode_data[-1].split()
     # 年和第几天转化为具体日期时间

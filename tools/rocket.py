@@ -83,3 +83,4 @@ async def get_launches(days: int = 7):
         return messages
     except Exception as e:
         print(f"❌ 发生错误: {e}")
+        return f"❌ 获取发射计划时发生错误： {e}。"
