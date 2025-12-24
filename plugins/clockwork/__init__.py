@@ -156,20 +156,13 @@ async def eq_usgs():
             await message.send(target=Target.group(str(group)))
 
 
-@scheduler.scheduled_job("cron", hour="9,17", minute="18", misfire_grace_time=120)
+@scheduler.scheduled_job("cron", hour="9,18", minute="30", misfire_grace_time=120)
 async def daily_news():
     logger.info("开始获取每日新闻摘要")
-    system_prompt = f"""
-    Now is {datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日")}
-    You are a news summary expert who collects the latest news from the internet,
-    summarizes each piece into a concise summary of no more than 140 words, 
-    ensuring it covers the main facts and key information. 
-    The content should be output in a clean Markdown format.
-    This content is for direct output, so do not add any irrelevant content outside of the main summary.
-    Remember to add a title to the entire summary.
-    Reply in Simplified Chinese.
-    """
-    user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的全球范围内的主要新闻。至少10条"
+    today = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日")
+    with open("prompts/daily_news.txt") as f:
+        system_prompt = f.read().format(current_time=today)
+    user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的主要新闻。"
     summary = await assistant_agent(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
     if summary:
         message = UniMessage().image(raw=await markdown_to_image(summary))

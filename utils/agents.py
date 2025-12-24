@@ -1,14 +1,20 @@
 import time
+import uuid
 import zoneinfo
 from datetime import datetime
 from typing import Any, Literal
 
-from deepagents import create_deep_agent
-from langchain.agents import create_agent
-from langchain.agents.middleware import SummarizationMiddleware, TodoListMiddleware
+from deepagents.backends import FilesystemBackend
+from deepagents.middleware.filesystem import FilesystemMiddleware
+from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
+from deepagents.middleware.subagents import SubAgentMiddleware
+from langchain.agents import AgentState, create_agent
+from langchain.agents.middleware import PIIMiddleware, SummarizationMiddleware, TodoListMiddleware, ToolRetryMiddleware
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph.state import CompiledStateGraph
 from nonebot import logger
 
 from tools import agent_tools
@@ -22,6 +28,7 @@ async def assistant_agent(
     use_model: str = EnvConfig.BASIC_MODEL,
     tools=None,
     response_format=None,
+    middleware=None,
 ) -> Any:
     model = ChatOpenAI(
         api_key=EnvConfig.OPENAI_API_KEY,
@@ -35,12 +42,12 @@ async def assistant_agent(
         model=model,
         tools=tools,
         system_prompt=system_prompt,
-        middleware=[],
+        middleware=middleware if middleware else [],
         response_format=response_format,
         debug=EnvConfig.AGENT_DEBUG_MODE,
     )
     if not system_prompt:
-        with open("configs/system_prompt.txt") as f:
+        with open("prompts/system_prompt.txt") as f:
             SYSTEM_PROMPT = f.read()
         system_prompt = SYSTEM_PROMPT
     result = await agent.ainvoke({"messages": [{"role": "user", "content": user_prompt}]})
@@ -56,11 +63,50 @@ async def assistant_agent(
     return content
 
 
+class CustomAgentState(AgentState):
+    user_id: str
+
+
 class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.all_tools
         self.subagents: list = [fact_check_subagent]
         self.prompt_template = FrontierCognitive.load_system_prompt()
+        self.model = FrontierCognitive.create_model(reasoning_effort="medium")
+        self.backend = FilesystemBackend(root_dir="./cache/deep_agents")
+        self.interrupt_on = None
+        self.middleware = [
+            FilesystemMiddleware(backend=self.backend),
+            TodoListMiddleware(),
+            ToolRetryMiddleware(),
+            PIIMiddleware(
+                "api_key",
+                detector=r"sk-[a-zA-Z0-9]{32}",
+                strategy="block",
+            ),
+            SubAgentMiddleware(
+                default_model=self.model,
+                default_tools=self.tools,
+                subagents=self.subagents if self.subagents is not None else [],
+                default_middleware=[
+                    TodoListMiddleware(),
+                    FilesystemMiddleware(backend=self.backend),
+                    SummarizationMiddleware(
+                        model=self.model,
+                        max_tokens_before_summary=170000,
+                        messages_to_keep=6,
+                    ),
+                    PatchToolCallsMiddleware(),
+                ],
+                default_interrupt_on=self.interrupt_on,
+                general_purpose_agent=True,
+            ),
+            SummarizationMiddleware(
+                model=FrontierCognitive.create_model(reasoning_effort="low", verbosity="medium"),
+                max_tokens_before_summary=50000,
+            ),
+            PatchToolCallsMiddleware(),
+        ]
 
     @staticmethod
     def create_model(
@@ -81,44 +127,42 @@ class FrontierCognitive:
         return model
 
     @staticmethod
-    def create_agent(prompt_template, subagents, tools, agent_capability):
+    def create_agent(model, middleware, prompt_template, subagents, tools, agent_capability) -> CompiledStateGraph:
         agents = {
-            "lite": create_agent(
-                model=FrontierCognitive.create_model(reasoning_effort="medium"),
-                tools=tools,
-                system_prompt=prompt_template,
-                middleware=[],
-                debug=EnvConfig.AGENT_DEBUG_MODE,
-            ),
             "normal": create_agent(
-                model=FrontierCognitive.create_model(reasoning_effort="medium"),
+                model=model,
                 tools=tools,
                 system_prompt=prompt_template,
                 middleware=[
-                    TodoListMiddleware(),
-                    SummarizationMiddleware(
-                        model=FrontierCognitive.create_model(reasoning_effort="low", verbosity="medium"),
-                        max_tokens_before_summary=50000,
+                    PIIMiddleware(
+                        "api_key",
+                        detector=r"sk-[a-zA-Z0-9]{32}",
+                        strategy="block",
                     ),
+                    PatchToolCallsMiddleware(),
                 ],
+                checkpointer=InMemorySaver(),
+                state_schema=CustomAgentState,
                 debug=EnvConfig.AGENT_DEBUG_MODE,
             ),
-            "heavy": create_deep_agent(
-                model=FrontierCognitive.create_model(reasoning_effort="high"),
+            "heavy": create_agent(
+                model=model,
                 tools=tools,
                 system_prompt=prompt_template,
-                subagents=subagents,
+                middleware=middleware,
+                checkpointer=InMemorySaver(),
+                state_schema=CustomAgentState,
                 debug=EnvConfig.AGENT_DEBUG_MODE,
             ),
         }
-        agent = agents.get(agent_capability, EnvConfig.AGENT_CAPABILITY)
+        agent: Any = agents.get(agent_capability, EnvConfig.AGENT_CAPABILITY)
         return agent
 
     @staticmethod
     def load_system_prompt():
         """从外部文件加载 system prompt"""
         try:
-            with open("configs/system_prompt.txt", encoding="utf-8") as f:
+            with open("prompts/system_prompt.txt", encoding="utf-8") as f:
                 system_prompt = f.read()
                 system_prompt = system_prompt.format(
                     name=EnvConfig.BOT_NAME,
@@ -128,93 +172,55 @@ class FrontierCognitive:
                 )
                 return system_prompt
         except FileNotFoundError:
-            logger.warning("❌ 未找到 system prompt 文件: configs/system_prompt.txt")
+            logger.warning("❌ 未找到 system prompt 文件: prompts/system_prompt.txt")
             return "Your are a helpful assistant."
 
     @staticmethod
-    async def extract_artifacts(response):
-        """提取响应中的工件"""
-        artifacts = []
-        # 添加安全检查
+    async def extract_uni_messages(response):
+        """直接从响应中提取 UniMessage 对象"""
+        uni_messages = []
+
         if not response or not isinstance(response, dict):
-            logger.warning("⚠️ extract_artifacts: response 为空或不是字典类型")
-            return artifacts
+            logger.warning("⚠️ extract_uni_messages: response 为空或不是字典类型")
+            return uni_messages
+
         if "messages" in response and response["messages"]:
             for message in response["messages"]:
                 # 检查是否是 ToolMessage 并且有 artifact
-                if hasattr(message, "type") and message.type == "tool":
-                    if hasattr(message, "artifact") and message.artifact is not None:
-                        artifact_info = {
-                            "tool_name": getattr(message, "name", "unknown"),
-                            "tool_call_id": getattr(message, "tool_call_id", ""),
-                            "content": message.content,
-                            "artifact": message.artifact,
-                        }
-                        artifacts.append(artifact_info)
-                        logger.info(f"🎯 发现工件: {artifact_info['tool_name']} - 类型: {type(message.artifact)}")
-        logger.info(f"📦 总共提取到 {len(artifacts)} 个工件")
-        return artifacts
+                if (
+                    hasattr(message, "type")
+                    and message.type == "tool"
+                    and hasattr(message, "artifact")
+                    and message.artifact is not None
+                ):
+                    tool_name = getattr(message, "name", "unknown")
+                    uni_messages.append(message.artifact)
+                    logger.info(f"📤 提取 UniMessage: {tool_name} - 类型: {type(message.artifact)}")
 
-    @staticmethod
-    async def process_artifacts(artifacts):
-        """处理工件，提取可直接使用的内容"""
-        processed = []
-        for artifact_info in artifacts:
-            artifact = artifact_info["artifact"]
-            tool_name = artifact_info["tool_name"]
-            processed_item = {
-                "tool_name": tool_name,
-                "type": "uni_message",
-                "content": artifact_info["content"],
-                "uni_message": artifact,
-            }
-            processed.append(processed_item)
-            logger.info(f"✨ 处理工件: {tool_name}")
-        return processed
-
-    @staticmethod
-    async def get_message_segments(processed_artifacts):
-        """从处理后的工件中提取所有 MessageSegment"""
-        message_segments = []
-        for item in processed_artifacts:
-            if item["type"] == "uni_message":
-                message_segments.append(item["uni_message"])
-                logger.info(f"📤 提取 UniMessage: {item['tool_name']}")
-
-        logger.info(f"📨 总共提取到 {len(message_segments)} 个 UniMessage")
-        return message_segments
+        logger.info(f"📨 总共提取到 {len(uni_messages)} 个 UniMessage")
+        return uni_messages
 
     async def chat_agent(self, messages, user_id, user_name, agent_capability: Literal["lite", "normal", "heavy"]):
         start_time = time.time()
-        agent = FrontierCognitive.create_agent(self.prompt_template, self.subagents, self.tools, agent_capability)
-        if not messages:
-            return {
-                "response": {"messages": [AIMessage(content="请提供有效的消息内容")]},
-                "total_time": 0.0,
-                "artifacts": [],
-                "processed_artifacts": [],
-                "uni_messages": [],
-            }
+        agent = FrontierCognitive.create_agent(
+            self.model, self.middleware, self.prompt_template, self.subagents, self.tools, agent_capability
+        )
         logger.info(f"Agent烧烤中~🍖 思考等级: {agent_capability} 用户: {user_name} (ID: {user_id})")
         config: RunnableConfig = {
             "configurable": {
-                "thread_id": f"user_{user_id}_thread",
-                "user_id": f"user_{user_id}",  # 添加用户ID以增强隔离
+                "thread_id": uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=user_id),
             }
         }
         try:
-            response = await agent.ainvoke({"messages": messages}, config=config)
+            response = await agent.ainvoke({"messages": messages, "user_id": user_id}, config=config)
         except Exception as e:
+            logger.error(f"❌ 智能代理系统执行失败: {str(e)}")
             return {
-                "response": {"messages": [AIMessage(f"💥 智能代理系统执行失败: {str(e)}")]},
+                "response": {"messages": [AIMessage("💥 这不是你的问题，也不是我的问题，这是服务商的问题。")]},
                 "total_time": time.time() - start_time,
-                "artifacts": [],
-                "processed_artifacts": [],
                 "uni_messages": [],
             }
-        artifacts = await FrontierCognitive.extract_artifacts(response)
-        processed_artifacts = await FrontierCognitive.process_artifacts(artifacts)
-        message_segments = await FrontierCognitive.get_message_segments(processed_artifacts)
+        uni_messages = await FrontierCognitive.extract_uni_messages(response)
         ai_messages = []
         if response and isinstance(response, dict) and "messages" in response:
             ai_messages = [msg for msg in response["messages"] if hasattr(msg, "type") and msg.type == "ai"]
@@ -224,8 +230,6 @@ class FrontierCognitive:
         response_data = {
             "response": {"messages": [final_response]},
             "total_time": processing_time,
-            "artifacts": artifacts,
-            "processed_artifacts": processed_artifacts,
-            "uni_messages": message_segments,
+            "uni_messages": uni_messages,
         }
         return response_data

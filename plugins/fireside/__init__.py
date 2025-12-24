@@ -2,6 +2,7 @@ import base64
 import time
 from typing import Literal
 
+import uuid_utils
 from nonebot import logger, on_message, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 from pydantic import BaseModel, Field
@@ -9,8 +10,9 @@ from pydantic import BaseModel, Field
 from utils.agents import FrontierCognitive, assistant_agent
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
+from utils.memory import MemoryStore
 from utils.message import (
-    message_check,
+    # message_check,
     message_extract,
     message_gateway,
     send_artifacts,
@@ -23,6 +25,7 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
+memory = MemoryStore()
 
 common = on_message(priority=10)
 
@@ -30,13 +33,22 @@ message_heap = RepeatMessageHeap(capacity=10, threshold=2)
 
 
 class AgentChoice(BaseModel):
-    agent_capability: Literal["lite", "normal", "heavy"] = Field(
-        description="The available capability levels are lite, normal, and heavy."
+    agent_capability: Literal["normal", "heavy"] = Field(
+        description="For lightweight, simple tasks, choose 'normal'; for complex tasks, choose 'heavy'."
+    )
+
+
+class MemoryAnalyze(BaseModel):
+    should_memory: bool = Field(description="Indicates whether this message should be stored in memory.")
+    memory_content: str = Field(
+        description="Concise, factual summary of the specific information to store in long‑term memory (e.g., user preferences, personal details, important decisions, or contextual facts useful for future conversations)."
     )
 
 
 @common.handle()
 async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
+    if EnvConfig.AGENT_MODULE_ENABLED is False:
+        await common.finish(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用")
     user_id = event.get_user_id()
     user_name = event.sender.card if event.sender.card else event.sender.nickname
     text, images = await message_extract(event)
@@ -49,9 +61,6 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
             await common.finish()
         else:
             text = ""
-
-    is_bot = user_id == str(event.self_id)
-
     await messages_db.insert(
         time=int(time.time() * 1000),
         msg_id=event.message_id,
@@ -68,24 +77,23 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     )
 
     # Bot 自己的消息不参与复读检查
-    if is_bot:
-        await common.finish()
-
+    # if user_id == str(event.self_id):
+    #     await common.finish()
     # 复读机检查
-    gid = group_id or 0
-    if text and message_heap.add(gid, text):
-        logger.info(f"🔁 触发复读：群{gid} 消息「{text[:20]}」")
-        await UniMessage.text(text).send()
-        # await common.finish()
+    # gid = group_id or 0
+    # if text and message_heap.add(gid, text):
+    #     logger.info(f"🔁 触发复读：群{gid} 消息「{text[:20]}」")
+    #     await UniMessage.text(text).send()
+    # await common.finish()
 
     if not await message_gateway(event, messages):
         await common.finish()
 
-    _ = await message_check(text, images)
+    # risk_check = await message_check(text, images)
     messages.append(
         {
             "role": "user",
-            "content": [{"type": "text", "text": f"{user_name}  {text}"}]
+            "content": [{"type": "text", "text": str({"metadata": {"user_name": user_name}, "content": text})}]
             + [
                 {"type": "image_url", "image_url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"}
                 for image in images
@@ -93,9 +101,9 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         }
     )
 
-    with open("configs/agent_choice.txt") as f:
+    with open("prompts/agent_choice.txt") as f:
         system_prompt = f.read()
-
+    # ref_history = await memory.mmr_search(str(group_id) if group_id else str(event.user_id), text, 3, filter={"": ""})
     agent_choice: AgentChoice = await assistant_agent(system_prompt, text, response_format=AgentChoice)
     result = await f_cognitive.chat_agent(messages, user_id, user_name, agent_choice.agent_capability)
 
@@ -121,5 +129,17 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
                 content=response["messages"][-1].content,
             )
             await send_messages(group_id, event.message_id, response)
+            with open("./prompts/memory_analyze.txt") as f:
+                MASP = f.read()
+            memory_analyze: MemoryAnalyze = await assistant_agent(
+                MASP, f"user: {text}\n assistant: {response['messages'][-1].content}", response_format=MemoryAnalyze
+            )
+            if memory_analyze.should_memory:
+                await memory.add(
+                    str(group_id) if group_id else str(event.user_id),
+                    [memory_analyze.memory_content],
+                    [uuid_utils.uuid7()],
+                )
+
         else:
             await UniMessage.text(response["messages"]).send()

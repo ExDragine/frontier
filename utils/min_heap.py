@@ -17,10 +17,7 @@ class _GroupMessageHeap:
         now = time.time()
 
         # 清理该消息的过期时间戳
-        self.message_times[message] = [
-            t for t in self.message_times[message]
-            if now - t < self.time_window
-        ]
+        self.message_times[message] = [t for t in self.message_times[message] if now - t < self.time_window]
 
         # 添加新时间戳
         self.message_times[message].append(now)
@@ -35,7 +32,7 @@ class _GroupMessageHeap:
         if len(self.message_times) > self.capacity:
             oldest_msg = min(
                 self.message_times.keys(),
-                key=lambda m: self.message_times[m][0] if self.message_times[m] else float('inf')
+                key=lambda m: self.message_times[m][0] if self.message_times[m] else float("inf"),
             )
             del self.message_times[oldest_msg]
 
@@ -67,9 +64,7 @@ class RepeatMessageHeap:
     def add(self, group_id: int, message: str) -> bool:
         """按群ID管理，每个群有独立计数"""
         if group_id not in self.groups:
-            self.groups[group_id] = _GroupMessageHeap(
-                self.capacity, self.threshold, self.time_window
-            )
+            self.groups[group_id] = _GroupMessageHeap(self.capacity, self.threshold, self.time_window)
         return self.groups[group_id].add(message)
 
     def __repr__(self) -> str:

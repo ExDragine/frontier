@@ -7,9 +7,9 @@
     <link rel="stylesheet" href="https://font.sec.miui.com/font/css?family=MiSans:400,600:MiSans">
     {style_block}
     <!-- KaTeX 配置和加载 -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex/dist/contrib/auto-render.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/katex/dist/katex.min.css">
+    <script defer src="https://unpkg.com/katex/dist/katex.min.js"></script>
+    <script defer src="https://unpkg.com/katex/dist/contrib/auto-render.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             renderMathInElement(document.body, {
@@ -37,15 +37,15 @@
         });
     </script>
     <!-- Mermaid 配置和加载 -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
     <script>mermaid.initialize({startOnLoad:true, theme:"default"});</script>
     <!-- Prism.js 语法高亮（使用 CDN） -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm//themes/prism-tomorrow.min.css" />
-    <script defer src="https://cdn.jsdelivr.net/npm/prismjs/prism.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/prismjs/themes/prism-tomorrow.css" />
+    <script defer src="https://unpkg.com/prismjs/prism.js"></script>
     <!-- 常用语言支持（可按需添加更多组件） -->
-    <script defer src="https://cdn.jsdelivr.net/npm/prismjs/components/prism-python.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/prismjs/components/prism-javascript.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/prismjs/components/prism-bash.min.js"></script>
+    <script defer src="https://unpkg.com/prismjs/components/prism-python.min.js"></script>
+    <script defer src="https://unpkg.com/prismjs/components/prism-javascript.min.js"></script>
+    <script defer src="https://unpkg.com/prismjs/components/prism-bash.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             // 如果 Prism 已加载，则高亮所有代码块并设置标志，供后端截图等待

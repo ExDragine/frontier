@@ -325,6 +325,7 @@ package-lock.json
 mcp.json
 .claude
 cache/
+cache/
 .lock
 uv.lock
 env.toml

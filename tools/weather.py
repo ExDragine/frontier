@@ -1,12 +1,15 @@
 from functools import lru_cache
 
-from httpx import AsyncClient, Client
+import httpx
 from langchain.tools import tool
-from nonebot import logger
+from nonebot import logger, require
 from pypinyin import lazy_pinyin
 
-http_client = Client(timeout=30)
-async_http_client = AsyncClient(timeout=30, http2=True)
+require("nonebot_plugin_alconna")
+from nonebot_plugin_alconna import UniMessage  # noqa: E402
+
+transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
+httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 
 NASA_WEATHER_URL = "https://mars.nasa.gov/rss/api/?feed=weather&category=msl&feedtype=json"
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?format=json"
@@ -14,10 +17,10 @@ OPEN_METEO_WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 
 
 @lru_cache(maxsize=32)
-def geocode(city_name: str) -> tuple[float, float]:
+async def geocode(city_name: str) -> tuple[float, float]:
     """返回 (latitude, longitude)，未找到抛出 ValueError"""
     name_py = "".join(lazy_pinyin(city_name))
-    resp = http_client.get(f"{GEOCODE_URL}?name={name_py}&count=1&language=en")
+    resp = await httpx_client.get(f"{GEOCODE_URL}?name={name_py}&count=1&language=en")
     resp.raise_for_status()
     data = resp.json()
     results = data.get("results")
@@ -28,7 +31,7 @@ def geocode(city_name: str) -> tuple[float, float]:
 
 
 # 通用 JSON 获取
-async def fetch_json(url: str, client: AsyncClient, **kwargs) -> dict:
+async def fetch_json(url: str, client, **kwargs) -> dict:
     resp = await client.get(url, **kwargs)
     resp.raise_for_status()
     return resp.json()
@@ -36,12 +39,12 @@ async def fetch_json(url: str, client: AsyncClient, **kwargs) -> dict:
 
 # 天气与天文工具封装
 class WeatherTool:
-    def __init__(self, client: AsyncClient):
+    def __init__(self, client):
         self.client = client
 
     async def current(self, city: str) -> str:
         try:
-            lat, lon = geocode(city)
+            lat, lon = await geocode(city)
             url = f"{OPEN_METEO_WEATHER_URL}?latitude={lat}&longitude={lon}&current_weather=true&timezone=auto"
             data = await fetch_json(url, self.client)
             cw = data["current_weather"]
@@ -52,7 +55,7 @@ class WeatherTool:
 
     async def forecast(self, city: str, days: int) -> str:
         try:
-            lat, lon = geocode(city)
+            lat, lon = await geocode(city)
             url = f"{OPEN_METEO_WEATHER_URL}?latitude={lat}&longitude={lon}&forecast_days={days}&daily=temperature_2m_max,temperature_2m_min&timezone=auto"
             data = await fetch_json(url, self.client)
             daily = data["daily"]
@@ -66,7 +69,7 @@ class WeatherTool:
             return f"❌ 获取预报失败: {e}"
 
 
-weather_tool = WeatherTool(async_http_client)
+weather_tool = WeatherTool(httpx_client)
 
 
 @tool(response_format="content")
@@ -103,10 +106,28 @@ async def mars_weather() -> str:
         火星天气
     """
     try:
-        resp = http_client.get(NASA_WEATHER_URL)
+        resp = await httpx_client.get(NASA_WEATHER_URL)
         resp.raise_for_status()
         data = resp.json()
         return f"火星天气: {data['descriptions']}"
     except Exception as e:
         logger.error("Mars weather error", exc_info=e)
         return f"❌ 火星天气失败: {e}"
+
+
+@tool(response_format="content_and_artifact")
+async def get_wind_map(name: str) -> tuple[str, UniMessage | None]:
+    """
+    获取风切变或涡旋图像
+
+    Args:
+        name (str): 图像名称，字符串类型
+
+    Returns:
+        tuple[str, UniMessage | None]: 返回构建好的消息串
+    """
+    url = {
+        "wind_shear": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmssht.GIF",
+        "vorticity": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmsvor.GIF",
+    }
+    return "获取成功", UniMessage.image(url=url[name])
