@@ -101,7 +101,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         }
     )
 
-    with open("prompts/agent_choice.txt") as f:
+    with open("prompts/agent_choice.txt", encoding="utf-8") as f:
         system_prompt = f.read()
     # ref_history = await memory.mmr_search(str(group_id) if group_id else str(event.user_id), text, 3, filter={"": ""})
     agent_choice: AgentChoice = await assistant_agent(system_prompt, text, response_format=AgentChoice)
@@ -129,7 +129,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
                 content=response["messages"][-1].content,
             )
             await send_messages(group_id, event.message_id, response)
-            with open("./prompts/memory_analyze.txt") as f:
+            with open("./prompts/memory_analyze.txt", encoding="utf-8") as f:
                 MASP = f.read()
             memory_analyze: MemoryAnalyze = await assistant_agent(
                 MASP, f"user: {text}\n assistant: {response['messages'][-1].content}", response_format=MemoryAnalyze

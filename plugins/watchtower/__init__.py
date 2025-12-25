@@ -37,7 +37,7 @@ async def on_startup():
 @driver.on_bot_connect
 async def on_bot_connect():
     if os.path.exists(".lock"):
-        with open(".lock") as f:
+        with open(".lock", encoding="utf-8") as f:
             start_time = f.read()
         os.remove(".lock")
         for group_id in EnvConfig.ANNOUNCE_GROUP_ID:
@@ -51,7 +51,7 @@ async def handle_updater(event: Event):
     """处理更新命令"""
     try:
         logger.info("开始执行更新操作...")
-        with open(".lock", "w") as f:
+        with open(".lock", "w", encoding="utf-8") as f:
             f.write(str(time.time()))
         await UniMessage.text("🔄 开始更新...").send()
 

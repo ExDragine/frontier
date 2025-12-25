@@ -47,7 +47,7 @@ async def assistant_agent(
         debug=EnvConfig.AGENT_DEBUG_MODE,
     )
     if not system_prompt:
-        with open("prompts/system_prompt.txt") as f:
+        with open("prompts/system_prompt.txt", encoding="utf-8") as f:
             SYSTEM_PROMPT = f.read()
         system_prompt = SYSTEM_PROMPT
     result = await agent.ainvoke({"messages": [{"role": "user", "content": user_prompt}]})

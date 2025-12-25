@@ -49,7 +49,7 @@ async def fetch_earth_image():
         return None
 
     # 保存文件以验证完整性
-    with open(file_path, "wb") as f:
+    with open(file_path, "wb", encoding="utf-8") as f:
         f.write(content)
     print(f"✅ 文件已保存到: {file_path}")
 

@@ -26,7 +26,7 @@ def cpu_check():
                 return "intel" if "intel" in out else "amd"
             return "unknown"
         elif sys.platform == "linux":
-            with open("/proc/cpuinfo") as f:
+            with open("/proc/cpuinfo", encoding="utf-8") as f:
                 info = f.read().lower()
                 if "intel" in info or "amd" in info:
                     return "intel" if "intel" in info else "amd"
