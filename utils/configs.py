@@ -6,7 +6,7 @@ from pydantic import SecretStr
 dotenv.load_dotenv()
 
 
-with open("env.toml", "rb", encoding="utf-8") as f:
+with open("env.toml", "rb") as f:
     config = tomllib.load(f)
 
 information: dict = config.get("information", {})
