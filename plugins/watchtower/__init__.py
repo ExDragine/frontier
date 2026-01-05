@@ -1,8 +1,8 @@
 import os
 import shutil
 import time
-from signal import SIGINT
 
+# from signal import SIGINT
 from git import Repo
 from nonebot import get_driver, logger, on_command, require
 from nonebot.internal.adapter import Event
@@ -59,8 +59,8 @@ async def handle_updater(event: Event):
         repo.git.checkout()
         pull_result = repo.git.pull(rebase=True)
         logger.info(f"Git pull 结果: {pull_result}")
-        pid = os.getpid()
-        os.kill(pid, SIGINT)
+        # pid = os.getpid()
+        # os.kill(pid, SIGINT)
 
     except Exception as e:
         logger.error(f"更新失败: {e}")
