@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "@playwright/mcp": "^0.0.27",
-    "tavily-mcp": "^0.2.1"
-  }
-}

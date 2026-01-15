@@ -12,7 +12,7 @@ from utils.configs import EnvConfig
 from utils.database import MessageDatabase
 from utils.memory import MemoryStore
 from utils.message import (
-    # message_check,
+    message_check,
     message_extract,
     message_gateway,
     send_artifacts,
@@ -89,7 +89,9 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
     if not await message_gateway(event, messages):
         await common.finish()
 
-    # risk_check = await message_check(text, images)
+    risk_check = await message_check(text, images)
+    if not risk_check:
+        await common.send("👀")
     messages.append(
         {
             "role": "user",

@@ -1,17 +1,18 @@
 import ast
 import asyncio
+from io import BytesIO
 
 import httpx
 from nonebot import logger, require
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 from nonebot.exception import ActionFailed
 from nonebot.internal.adapter import Event
+from PIL import Image
 from pydantic import BaseModel, Field
 
 from utils.agents import assistant_agent
 from utils.configs import EnvConfig
-
-# from utils.context_check import ImageCheck, TextCheck
+from utils.context_check import ImageCheck, TextCheck
 from utils.markdown_render import markdown_to_image, markdown_to_text
 
 require("nonebot_plugin_alconna")
@@ -19,8 +20,8 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
 httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
-# text_det = TextCheck()
-# image_det = ImageCheck()
+text_det = TextCheck()
+image_det = ImageCheck()
 
 
 class ReplyCheck(BaseModel):
@@ -124,24 +125,24 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
     return False
 
 
-# async def message_check(text: str | None, images: list | None):
-#     if text:
-#         safe_label, categories = await text_det.predict(text)
-#         if safe_label != "Safe":
-#             warning_msg = (
-#                 f"⚠️ 该消息被检测为 {safe_label}，涉及类别: {', '.join(categories) if categories else '未知'}。"
-#             )
-#             logger.info(warning_msg)
-#             return False
-#         return True
-#     if images:
-#         for image in images:
-#             image = Image.open(io.BytesIO(image))
-#             det_result = await image_det.predict(image)
-#             if not det_result:
-#                 return True
-#             if det_result["label"] == "nsfw":
-#                 logger.info(f"检测到瑟瑟, 置信度为: {det_result['score']:.2f}")
-#                 return False
-#             return True
-#     return True
+async def message_check(text: str | None, images: list | None):
+    if text:
+        safe_label, categories = await text_det.predict(text)
+        if safe_label != "Safe":
+            warning_msg = (
+                f"⚠️ 该消息被检测为 {safe_label}，涉及类别: {', '.join(categories) if categories else '未知'}。"
+            )
+            logger.info(warning_msg)
+            return False
+        return True
+    if images:
+        for image in images:
+            image = Image.open(BytesIO(image))
+            det_result = await image_det.predict(image)
+            if not det_result:
+                return True
+            if det_result["label"] == "nsfw":
+                logger.info(f"检测到瑟瑟, 置信度为: {det_result['score']:.2f}")
+                return False
+            return True
+    return True
