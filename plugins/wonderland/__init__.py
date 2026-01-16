@@ -1,6 +1,6 @@
 import base64
 
-from nonebot import logger, on_command, require
+from nonebot import on_command, require
 from nonebot.internal.adapter import Event
 
 from plugins.wonderland.painter import paint
@@ -34,13 +34,8 @@ async def handle_painter(event: Event):
             ],
         },
     ]
-    # aspect_ratio, image_size = await analyze_config(text)
-    text, images = await paint(messages, None, None)
-    if not text and not images:
+    image = await paint(messages)
+    if image:
+        await UniMessage.image(raw=image).send()
+    else:
         await UniMessage.text("这里空空如也，什么都没有画出来。").send()
-    if text:
-        await UniMessage.text(text).send()
-    if images:
-        logger.info(f"生成了 {len(images)} 张图片")
-        for image in images:
-            await UniMessage.image(raw=image).send()
