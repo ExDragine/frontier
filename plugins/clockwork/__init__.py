@@ -89,6 +89,64 @@ async def earth_now():
             await message.send(target=Target.group(str(group)))
 
 
+@scheduler.scheduled_job(trigger="interval", minutes=1, misfire_grace_time=30)
+async def eq_cenc():
+    URL = "https://api.wolfx.jp/cenc_eew.json"
+    EVENT_NAME = "eq_cenc"
+    new_id = await event_database.select(EVENT_NAME)
+    response = await httpx_client.get(URL)
+    content: dict = response.json()
+
+    if not content or not content.get("features"):
+        logger.info("CENC 没有新的地震")
+        return None
+
+    # 获取最新的地震数据
+    data = content
+    event_id = str(data["ID"])
+
+    # 检查是否是新地震且震级大于限制
+    if new_id != event_id:
+        if not await event_database.select(EVENT_NAME):
+            await event_database.insert(EVENT_NAME, event_id)
+        else:
+            await event_database.update(EVENT_NAME, event_id)
+    else:
+        logger.info("USGS 没有新的地震")
+        return
+    logger.info(f"检测到{data['HypoCenter']}发生{data['Magnitude']}级地震")
+    if data["Magnitude"] < 3:
+        logger.info("震级低于3级，忽略此次地震")
+        return
+    # 准备详细信息
+    detail = [
+        {"label": "⏱️发震时间", "value": data["OriginTime"]},
+        {"label": "🗺️震中位置", "value": data["HypoCenter"]},
+        {"label": "🌐纬度", "value": data["Latitude"]},
+        {"label": "🌐经度", "value": data["Longitude"]},
+    ]
+    # 如果有烈度信息，添加烈度数据
+    if data.get("MaxIntensity"):
+        detail.append({"label": "💢最大烈度", "value": f"{data['MaxIntensity']}"})
+
+    img = await playwright_render(
+        EVENT_NAME,
+        {
+            "title": "CENC地震速报",
+            "detail": detail,
+            "latitude": data["Latitude"],
+            "longitude": data["Longitude"],
+            "magnitude": data["Magnitude"],
+            "depth": data["Depth"],
+        },
+    )
+
+    if img:
+        message = UniMessage().image(raw=img)
+        for group in EnvConfig.EARTHQUAKE_GROUP_ID:
+            await message.send(target=Target.group(str(group)))
+
+
 @scheduler.scheduled_job(trigger="interval", minutes=5, misfire_grace_time=60)
 async def eq_usgs():
     USGS_API_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_hour.geojson"
