@@ -97,7 +97,7 @@ async def eq_cenc():
     response = await httpx_client.get(URL)
     content: dict = response.json()
 
-    if not content or not content.get("features"):
+    if not content:
         logger.info("CENC 没有新的地震")
         return None
 
@@ -112,10 +112,10 @@ async def eq_cenc():
         else:
             await event_database.update(EVENT_NAME, event_id)
     else:
-        logger.info("USGS 没有新的地震")
+        logger.info("CENC 没有新的地震")
         return
     logger.info(f"检测到{data['HypoCenter']}发生{data['Magnitude']}级地震")
-    if data["Magnitude"] < 3:
+    if int(data["Magnitude"]) < 3:
         logger.info("震级低于3级，忽略此次地震")
         return
     # 准备详细信息
