@@ -33,8 +33,8 @@ message_heap = RepeatMessageHeap(capacity=10, threshold=2)
 
 
 class AgentChoice(BaseModel):
-    agent_capability: Literal["normal", "heavy"] = Field(
-        description="For lightweight, simple tasks, choose 'normal'; for complex tasks, choose 'heavy'."
+    agent_capability: Literal["minimal", "low", "medium", "high"] = Field(
+        description="For simple talk ask ,choose 'minimal'; for lightweight, simple tasks, choose 'low'; for medium complexity, choose 'medium'; for complex tasks, choose 'high'."
     )
 
 
@@ -103,8 +103,17 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
         }
     )
 
-    with open("prompts/agent_choice.txt", encoding="utf-8") as f:
-        system_prompt = f.read()
+    try:
+        with open("prompts/agent_choice.txt", encoding="utf-8") as f:
+            system_prompt = f.read()
+    except FileNotFoundError:
+        logger.error("❌ 未找到 agent_choice.txt 文件")
+        await common.finish("⚙️ 系统配置文件缺失，请联系管理员")
+        return
+    except (PermissionError, OSError, UnicodeDecodeError) as e:
+        logger.error(f"❌ 读取 agent_choice.txt 失败: {e}")
+        await common.finish("⚙️ 系统配置错误，请联系管理员")
+        return
     # ref_history = await memory.mmr_search(str(group_id) if group_id else str(event.user_id), text, 3, filter={"": ""})
     agent_choice: AgentChoice = await assistant_agent(system_prompt, text, response_format=AgentChoice)
     result = await f_cognitive.chat_agent(messages, user_id, user_name, agent_choice.agent_capability)
@@ -131,8 +140,15 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
                 content=response["messages"][-1].content,
             )
             await send_messages(group_id, event.message_id, response)
-            with open("./prompts/memory_analyze.txt", encoding="utf-8") as f:
-                MASP = f.read()
+            try:
+                with open("./prompts/memory_analyze.txt", encoding="utf-8") as f:
+                    MASP = f.read()
+            except FileNotFoundError:
+                logger.error("❌ 未找到 memory_analyze.txt 文件")
+                return  # 记忆分析失败不影响主流程
+            except (PermissionError, OSError, UnicodeDecodeError) as e:
+                logger.error(f"❌ 读取 memory_analyze.txt 失败: {e}")
+                return
             memory_analyze: MemoryAnalyze = await assistant_agent(
                 MASP, f"user: {text}\n assistant: {response['messages'][-1].content}", response_format=MemoryAnalyze
             )

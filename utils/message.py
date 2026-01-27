@@ -79,25 +79,47 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
     if content := response["messages"][-1].content:
         try:
             content = ast.literal_eval(content)["content"]
-        except Exception:
-            content = content
-        # _ = await text_det.predict(content)
-        if len(content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID:
-            messages = UniMessage.reply(str(message_id)) + UniMessage.text(
-                (await markdown_to_text(content)).rstrip("\r\n").strip()
-            )
+        except (ValueError, SyntaxError, KeyError) as e:
+            # Content不是字典字面量，使用原始内容
+            logger.debug(f"消息内容不是字典字面量，使用原始内容: {type(e).__name__}")
+        except Exception as e:
+            # 意外错误
+            logger.warning(f"解析消息内容时出现意外错误: {type(e).__name__}: {e}")
+
+        should_send_text = len(content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID
+        if should_send_text:
+            text_content = (await markdown_to_text(content)).rstrip("\r\n").strip()
+            messages = UniMessage.reply(str(message_id)) + UniMessage.text(text_content)
             try:
                 await messages.send()
-            except ActionFailed:
-                result = await markdown_to_image(content)
-                messages = UniMessage.reply(str(message_id)) + UniMessage.image(raw=result)
-                if result:
-                    await messages.send()
-        else:
-            result = await markdown_to_image(content)
-            messages = UniMessage.reply(str(message_id)) + UniMessage.image(raw=result)
-            if result:
-                await messages.send()
+                return
+            except ActionFailed as e:
+                logger.warning(f"文本消息发送失败，尝试图片回退: {e}")
+
+        result = await markdown_to_image(content)
+        if not result:
+            logger.error(f"图片生成失败 (内容长度: {len(content)})")
+            # 尝试发送错误提示
+            try:
+                fallback_msg = UniMessage.reply(str(message_id)) + UniMessage.text("❌ 消息生成失败，请稍后重试。")
+                await fallback_msg.send()
+            except ActionFailed as e:
+                logger.error(f"错误消息发送失败: {e}")
+            return
+
+        messages = UniMessage.reply(str(message_id)) + UniMessage.image(raw=result)
+        try:
+            await messages.send()
+        except ActionFailed as e:
+            logger.error(f"图片消息发送失败: {e}")
+            # 最后尝试发送截断的文本
+            try:
+                text_content = (await markdown_to_text(content)).rstrip("\r\n").strip()
+                truncated = text_content[:500] + "..." if len(text_content) > 500 else text_content
+                fallback = UniMessage.reply(str(message_id)) + UniMessage.text(truncated)
+                await fallback.send()
+            except Exception as final_e:
+                logger.error(f"所有消息发送尝试都失败: {final_e}")
 
 
 async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messages: list):
@@ -121,11 +143,11 @@ async def message_gateway(event: GroupMessageEvent | PrivateMessageEvent, messag
         with open("prompts/reply_check.txt", encoding="utf-8") as f:
             system_prompt = f.read().format(name={EnvConfig.BOT_NAME})
         reply_check: ReplyCheck = await assistant_agent(system_prompt, plain_conv, response_format=ReplyCheck)
-        return True if reply_check.should_reply == "true" and reply_check.confidence > 0.5 else False
+        return reply_check.should_reply == "true" and reply_check.confidence > 0.5
     return False
 
 
-async def message_check(text: str | None, images: list | None):
+async def message_check(text: str | None, images: list | None) -> bool:
     if text:
         safe_label, categories = await text_det.predict(text)
         if safe_label != "Safe":
