@@ -34,7 +34,7 @@ async def playwright_render(name: str, packed_args: dict):
     # 加载模板
 
     match name:
-        case "eq_usgs":
+        case "eq_usgs" | "eq_cenc":
             template = env.get_template("earthquake.html")
             depth = packed_args.get("depth")
             if isinstance(depth, str):
