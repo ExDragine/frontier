@@ -69,7 +69,7 @@ class FrontierCognitive:
         self.tools = agent_tools.all_tools
         self.subagents: list = [fact_check_subagent]
         self.checkpoint = InMemorySaver()
-        self.backend = FilesystemBackend(root_dir="./cache/deep_agents")
+        self.backend = FilesystemBackend(root_dir="./cache/projects")
 
     @staticmethod
     def load_system_prompt():
@@ -137,7 +137,7 @@ class FrontierCognitive:
                     strategy="block",
                 )
             ],
-            skills=None,
+            skills=["./projects/skills/"],
             backend=self.backend,
             subagents=self.subagents,
             checkpointer=self.checkpoint,
