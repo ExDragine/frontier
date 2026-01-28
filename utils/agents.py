@@ -124,7 +124,7 @@ class FrontierCognitive:
             verbosity="low",
             max_retries=2,
             timeout=60,
-            use_responses_api=True,
+            use_responses_api=None,
         )
         agent = create_deep_agent(
             model=model,
