@@ -5,7 +5,6 @@ description = "A bot"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-  # 核心框架
   "nonebot2",
   "nonebot2[fastapi]",
   "nonebot-adapter-onebot",
@@ -13,7 +12,7 @@ dependencies = [
   "nonebot-adapter-console",
   "nonebot-plugin-apscheduler",
   "nb-cli",
-  # AI和机器学习
+
   "langchain",
   "langchain-community",
   "langchain-openai",
@@ -25,12 +24,13 @@ dependencies = [
   "deepagents",
   "sentence-transformers",
   "accelerate",
-  # 网络和数据处理
+  "torchao",
+
   "beautifulsoup4",
   "playwright",
   "websockets",
   "httpx[http2]",
-  # 工具和实用库
+
   "gitpython",
   "pypinyin",
   "sqlmodel",
