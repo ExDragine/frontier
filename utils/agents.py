@@ -138,6 +138,11 @@ class FrontierCognitive:
                 )
             ],
             skills=["./projects/skills/"],
+            interrupt_on={
+                "write_file": False,
+                "read_file": False,
+                "edit_file": False,
+            },
             backend=self.backend,
             subagents=self.subagents,
             checkpointer=self.checkpoint,
