@@ -23,7 +23,7 @@ class ImageCheck:
             outputs = self.model(**inputs)
             logits = outputs.logits
         predicted_label = logits.argmax(-1).item()
-        return (predicted_label, self.model.config.id2label[predicted_label])
+        return self.model.config.id2label[predicted_label]
 
 
 class TextCheck:

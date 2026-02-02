@@ -161,10 +161,8 @@ async def message_check(text: str | None, images: list | None) -> bool:
         for image in images:
             image = Image.open(BytesIO(image))
             det_result = await image_det.predict(image)
-            if not det_result:
-                return True
-            if det_result["label"] == "nsfw":
-                logger.info(f"检测到瑟瑟, 置信度为: {det_result['score']:.2f}")
+            if det_result == "nsfw":
+                logger.info("检测到瑟瑟")
                 return False
             return True
     return True
