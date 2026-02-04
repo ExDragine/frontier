@@ -3,8 +3,7 @@ import time
 from typing import Literal
 
 import uuid_utils
-from arclet.alconna import Alconna, AllParam, Args
-from nonebot import logger, require
+from nonebot import logger, on_message, require
 from nonebot.adapters.milky.event import MessageEvent
 from pydantic import BaseModel, Field
 
@@ -22,18 +21,13 @@ from utils.message import (
 from utils.min_heap import RepeatMessageHeap
 
 require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage, on_alconna  # noqa: E402
+from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
 memory = MemoryStore()
 
-common = on_alconna(
-    Alconna(Args["content?", AllParam]),
-    priority=10,
-    block=False,
-    use_cmd_start=False,
-)
+common = on_message(priority=10)
 
 message_heap = RepeatMessageHeap(capacity=10, threshold=2)
 
