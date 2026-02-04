@@ -12,7 +12,6 @@ dependencies = [
   "nonebot-adapter-console",
   "nonebot-plugin-apscheduler",
   "nb-cli",
-
   "langchain",
   "langchain-community",
   "langchain-openai",
@@ -25,12 +24,10 @@ dependencies = [
   "sentence-transformers",
   "accelerate",
   "torchao",
-
   "beautifulsoup4",
   "playwright",
   "websockets",
   "httpx[http2]",
-
   "gitpython",
   "pypinyin",
   "sqlmodel",
@@ -38,6 +35,7 @@ dependencies = [
   "mdit-py-plugins",
   "pillow",
   # "pypika @ git+https://github.com/pyctrl/pypika.git@v0.48.9-patched",
+  "nonebot-adapter-milky>=1.0.0",
 ]
 
 [[tool.uv.index]]
@@ -55,6 +53,7 @@ builtin_plugins = []
 [tool.nonebot.adapters]
 "@local" = []
 nonebot-adapter-onebot = [{name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11"}]
+nonebot-adapter-milky = [{name = "nonebot-adapter-milky", module_name = "nonebot.adapters.milky"}]
 
 [tool.uv.workspace]
 members = []

@@ -3,8 +3,9 @@ import time
 from typing import Literal
 
 import uuid_utils
-from nonebot import logger, on_message, require
-from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
+from arclet.alconna import Alconna, AllParam, Args
+from nonebot import logger, require
+from nonebot.adapters.milky.event import MessageEvent
 from pydantic import BaseModel, Field
 
 from utils.agents import FrontierCognitive, assistant_agent
@@ -21,13 +22,18 @@ from utils.message import (
 from utils.min_heap import RepeatMessageHeap
 
 require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
+from nonebot_plugin_alconna import UniMessage, on_alconna  # noqa: E402
 
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
 memory = MemoryStore()
 
-common = on_message(priority=10)
+common = on_alconna(
+    Alconna(Args["content?", AllParam]),
+    priority=10,
+    block=False,
+    use_cmd_start=False,
+)
 
 message_heap = RepeatMessageHeap(capacity=10, threshold=2)
 
@@ -46,16 +52,14 @@ class MemoryAnalyze(BaseModel):
 
 
 @common.handle()
-async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
+async def handle_common(event: MessageEvent):
     if EnvConfig.AGENT_MODULE_ENABLED is False:
-        await common.finish(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用")
+        await common.finish(f"{EnvConfig.BOT_NAME}飞升了,暂时不可用")
     user_id = event.get_user_id()
-    user_name = event.sender.card if event.sender.card else event.sender.nickname
-    text, images = await message_extract(event)
-    if isinstance(event, GroupMessageEvent):
-        group_id = int(event.group_id)
-    else:
-        group_id = None
+    user_name = event.data.sender.nickname
+    event_id = event.data.message_seq
+    text, images, *_ = await message_extract(event.data.segments)
+    group_id = event.data.group.group_id if event.data.group else None
     if not text:
         if not event.is_tome():
             await common.finish()
@@ -63,7 +67,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
             text = ""
     await messages_db.insert(
         time=int(time.time() * 1000),
-        msg_id=event.message_id,
+        msg_id=event_id,
         user_id=int(user_id),
         group_id=group_id,
         user_name=user_name,
@@ -139,7 +143,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
                 role="assistant",
                 content=response["messages"][-1].content,
             )
-            await send_messages(group_id, event.message_id, response)
+            await send_messages(group_id, event_id, response)
             try:
                 with open("./prompts/memory_analyze.txt", encoding="utf-8") as f:
                     MASP = f.read()
@@ -154,7 +158,7 @@ async def handle_common(event: GroupMessageEvent | PrivateMessageEvent):
             )
             if memory_analyze.should_memory:
                 await memory.add(
-                    str(group_id) if group_id else str(event.user_id),
+                    str(group_id) if group_id else user_id,
                     [memory_analyze.memory_content],
                     [uuid_utils.uuid7()],
                 )
