@@ -1,0 +1,792 @@
+{
+  "major_arcana": [
+    {
+      "id": 0,
+      "name": "愚者",
+      "name_en": "The Fool",
+      "keywords_upright": ["开始", "冒险", "天真", "自由", "潜能"],
+      "keywords_reversed": ["鲁莽", "风险", "迷茫", "停滞", "逃避"],
+      "suit": "major",
+      "element": "风"
+    },
+    {
+      "id": 1,
+      "name": "魔术师",
+      "name_en": "The Magician",
+      "keywords_upright": ["创造", "技能", "意志", "行动", "专注"],
+      "keywords_reversed": ["操纵", "欺骗", "浪费才能", "缺乏方向"],
+      "suit": "major",
+      "element": "风"
+    },
+    {
+      "id": 2,
+      "name": "女祭司",
+      "name_en": "The High Priestess",
+      "keywords_upright": ["直觉", "智慧", "神秘", "潜意识", "洞察"],
+      "keywords_reversed": ["隐瞒", "困惑", "忽视内心", "表面化"],
+      "suit": "major",
+      "element": "水"
+    },
+    {
+      "id": 3,
+      "name": "皇后",
+      "name_en": "The Empress",
+      "keywords_upright": ["丰盛", "滋养", "创造力", "母性", "感官"],
+      "keywords_reversed": ["依赖", "窒息", "创造力枯竭", "忽视自我"],
+      "suit": "major",
+      "element": "土"
+    },
+    {
+      "id": 4,
+      "name": "皇帝",
+      "name_en": "The Emperor",
+      "keywords_upright": ["权威", "结构", "控制", "稳定", "父性"],
+      "keywords_reversed": ["专制", "僵化", "失控", "缺乏纪律"],
+      "suit": "major",
+      "element": "火"
+    },
+    {
+      "id": 5,
+      "name": "教皇",
+      "name_en": "The Hierophant",
+      "keywords_upright": ["传统", "教导", "信仰", "规范", "仪式"],
+      "keywords_reversed": ["反叛", "打破常规", "质疑传统", "自由思考"],
+      "suit": "major",
+      "element": "土"
+    },
+    {
+      "id": 6,
+      "name": "恋人",
+      "name_en": "The Lovers",
+      "keywords_upright": ["爱情", "选择", "和谐", "结合", "价值观"],
+      "keywords_reversed": ["失衡", "冲突", "错误选择", "价值观分歧"],
+      "suit": "major",
+      "element": "风"
+    },
+    {
+      "id": 7,
+      "name": "战车",
+      "name_en": "The Chariot",
+      "keywords_upright": ["意志", "决心", "胜利", "前进", "控制"],
+      "keywords_reversed": ["失控", "缺乏方向", "冲动", "内心冲突"],
+      "suit": "major",
+      "element": "水"
+    },
+    {
+      "id": 8,
+      "name": "力量",
+      "name_en": "Strength",
+      "keywords_upright": ["勇气", "耐心", "温柔", "内在力量", "同情"],
+      "keywords_reversed": ["软弱", "自我怀疑", "缺乏自控", "暴力"],
+      "suit": "major",
+      "element": "火"
+    },
+    {
+      "id": 9,
+      "name": "隐士",
+      "name_en": "The Hermit",
+      "keywords_upright": ["内省", "独处", "寻找真理", "智慧", "引导"],
+      "keywords_reversed": ["孤立", "孤独", "逃避", "拒绝帮助"],
+      "suit": "major",
+      "element": "土"
+    },
+    {
+      "id": 10,
+      "name": "命运之轮",
+      "name_en": "Wheel of Fortune",
+      "keywords_upright": ["转变", "循环", "命运", "机遇", "好运"],
+      "keywords_reversed": ["坏运", "阻力", "失控", "重复错误"],
+      "suit": "major",
+      "element": "火"
+    },
+    {
+      "id": 11,
+      "name": "正义",
+      "name_en": "Justice",
+      "keywords_upright": ["公平", "真相", "法律", "责任", "因果"],
+      "keywords_reversed": ["不公", "逃避责任", "偏见", "不诚实"],
+      "suit": "major",
+      "element": "风"
+    },
+    {
+      "id": 12,
+      "name": "倒吊人",
+      "name_en": "The Hanged Man",
+      "keywords_upright": ["放手", "新视角", "等待", "牺牲", "顿悟"],
+      "keywords_reversed": ["僵持", "拖延", "抗拒改变", "无意义牺牲"],
+      "suit": "major",
+      "element": "水"
+    },
+    {
+      "id": 13,
+      "name": "死神",
+      "name_en": "Death",
+      "keywords_upright": ["转变", "结束", "新生", "放下", "过渡"],
+      "keywords_reversed": ["抗拒改变", "恐惧", "停滞", "无法放下"],
+      "suit": "major",
+      "element": "水"
+    },
+    {
+      "id": 14,
+      "name": "节制",
+      "name_en": "Temperance",
+      "keywords_upright": ["平衡", "和谐", "耐心", "节制", "融合"],
+      "keywords_reversed": ["失衡", "过度", "缺乏和谐", "冲突"],
+      "suit": "major",
+      "element": "火"
+    },
+    {
+      "id": 15,
+      "name": "恶魔",
+      "name_en": "The Devil",
+      "keywords_upright": ["束缚", "诱惑", "物质", "成瘾", "欲望"],
+      "keywords_reversed": ["解放", "觉察", "打破束缚", "超越诱惑"],
+      "suit": "major",
+      "element": "土"
+    },
+    {
+      "id": 16,
+      "name": "塔",
+      "name_en": "The Tower",
+      "keywords_upright": ["突变", "破坏", "启示", "解放", "崩塌"],
+      "keywords_reversed": ["逃避灾难", "恐惧改变", "延迟不可避免"],
+      "suit": "major",
+      "element": "火"
+    },
+    {
+      "id": 17,
+      "name": "星星",
+      "name_en": "The Star",
+      "keywords_upright": ["希望", "信念", "启发", "疗愈", "宁静"],
+      "keywords_reversed": ["绝望", "信念丧失", "缺乏信心", "怀疑"],
+      "suit": "major",
+      "element": "风"
+    },
+    {
+      "id": 18,
+      "name": "月亮",
+      "name_en": "The Moon",
+      "keywords_upright": ["幻觉", "恐惧", "潜意识", "直觉", "不确定"],
+      "keywords_reversed": ["释放恐惧", "清晰", "真相显现", "摆脱幻觉"],
+      "suit": "major",
+      "element": "水"
+    },
+    {
+      "id": 19,
+      "name": "太阳",
+      "name_en": "The Sun",
+      "keywords_upright": ["成功", "喜悦", "活力", "温暖", "积极"],
+      "keywords_reversed": ["过度乐观", "延迟成功", "缺乏热情"],
+      "suit": "major",
+      "element": "火"
+    },
+    {
+      "id": 20,
+      "name": "审判",
+      "name_en": "Judgement",
+      "keywords_upright": ["觉醒", "更新", "反思", "宽恕", "召唤"],
+      "keywords_reversed": ["自责", "怀疑", "拒绝改变", "无法放下"],
+      "suit": "major",
+      "element": "火"
+    },
+    {
+      "id": 21,
+      "name": "世界",
+      "name_en": "The World",
+      "keywords_upright": ["完成", "成就", "整合", "旅程结束", "圆满"],
+      "keywords_reversed": ["未完成", "缺失", "延迟", "缺乏闭环"],
+      "suit": "major",
+      "element": "土"
+    }
+  ],
+  "minor_arcana": {
+    "wands": [
+      {
+        "id": 1,
+        "name": "权杖王牌",
+        "name_en": "Ace of Wands",
+        "keywords_upright": ["创造力", "灵感", "新开始", "热情", "潜能"],
+        "keywords_reversed": ["缺乏方向", "拖延", "创意枯竭", "错失良机"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 2,
+        "name": "权杖二",
+        "name_en": "Two of Wands",
+        "keywords_upright": ["计划", "决策", "未来", "发现", "选择"],
+        "keywords_reversed": ["犹豫不决", "缺乏计划", "害怕未知", "错误选择"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 3,
+        "name": "权杖三",
+        "name_en": "Three of Wands",
+        "keywords_upright": ["扩展", "远见", "机会", "进步", "前瞻"],
+        "keywords_reversed": ["缺乏远见", "延迟", "障碍", "挫折"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 4,
+        "name": "权杖四",
+        "name_en": "Four of Wands",
+        "keywords_upright": ["庆祝", "和谐", "家庭", "欢乐", "稳定"],
+        "keywords_reversed": ["不稳定", "缺乏支持", "延迟庆祝", "家庭冲突"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 5,
+        "name": "权杖五",
+        "name_en": "Five of Wands",
+        "keywords_upright": ["竞争", "冲突", "挑战", "分歧", "紧张"],
+        "keywords_reversed": ["避免冲突", "和解", "内在冲突", "妥协"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 6,
+        "name": "权杖六",
+        "name_en": "Six of Wands",
+        "keywords_upright": ["胜利", "成功", "认可", "自信", "荣耀"],
+        "keywords_reversed": ["失败", "缺乏认可", "自负", "延迟成功"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 7,
+        "name": "权杖七",
+        "name_en": "Seven of Wands",
+        "keywords_upright": ["防御", "坚持", "挑战", "勇气", "毅力"],
+        "keywords_reversed": ["放弃", "屈服", "不堪重负", "缺乏信心"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 8,
+        "name": "权杖八",
+        "name_en": "Eight of Wands",
+        "keywords_upright": ["快速", "行动", "进展", "消息", "旅行"],
+        "keywords_reversed": ["延迟", "挫折", "缺乏方向", "仓促"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 9,
+        "name": "权杖九",
+        "name_en": "Nine of Wands",
+        "keywords_upright": ["坚韧", "警惕", "坚持", "边界", "防御"],
+        "keywords_reversed": ["偏执", "僵化", "疲惫", "放弃边界"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 10,
+        "name": "权杖十",
+        "name_en": "Ten of Wands",
+        "keywords_upright": ["负担", "责任", "压力", "辛劳", "过度"],
+        "keywords_reversed": ["卸下重担", "委派", "放手", "减轻负担"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 11,
+        "name": "权杖侍从",
+        "name_en": "Page of Wands",
+        "keywords_upright": ["探索", "热情", "自由精神", "新想法", "好奇"],
+        "keywords_reversed": ["缺乏方向", "拖延", "自我怀疑", "不成熟"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 12,
+        "name": "权杖骑士",
+        "name_en": "Knight of Wands",
+        "keywords_upright": ["行动", "冒险", "激情", "冲动", "勇敢"],
+        "keywords_reversed": ["鲁莽", "缺乏自控", "拖延", "挫折"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 13,
+        "name": "权杖王后",
+        "name_en": "Queen of Wands",
+        "keywords_upright": ["自信", "独立", "热情", "魅力", "决心"],
+        "keywords_reversed": ["嫉妒", "不安全", "控制欲", "自我中心"],
+        "suit": "wands",
+        "element": "火"
+      },
+      {
+        "id": 14,
+        "name": "权杖国王",
+        "name_en": "King of Wands",
+        "keywords_upright": ["领导", "愿景", "企业家", "荣誉", "果断"],
+        "keywords_reversed": ["专横", "冲动", "缺乏耐心", "傲慢"],
+        "suit": "wands",
+        "element": "火"
+      }
+    ],
+    "cups": [
+      {
+        "id": 1,
+        "name": "圣杯王牌",
+        "name_en": "Ace of Cups",
+        "keywords_upright": ["爱", "新感情", "情感", "直觉", "灵性"],
+        "keywords_reversed": ["情感封闭", "压抑", "空虚", "失望"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 2,
+        "name": "圣杯二",
+        "name_en": "Two of Cups",
+        "keywords_upright": ["结合", "伙伴", "和谐", "互相吸引", "平衡"],
+        "keywords_reversed": ["失衡", "破裂", "分离", "不和"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 3,
+        "name": "圣杯三",
+        "name_en": "Three of Cups",
+        "keywords_upright": ["庆祝", "友谊", "聚会", "欢乐", "团队"],
+        "keywords_reversed": ["过度放纵", "孤立", "八卦", "独处"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 4,
+        "name": "圣杯四",
+        "name_en": "Four of Cups",
+        "keywords_upright": ["沉思", "冥想", "重新评估", "撤退", "无聊"],
+        "keywords_reversed": ["觉醒", "新机会", "积极性", "接受"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 5,
+        "name": "圣杯五",
+        "name_en": "Five of Cups",
+        "keywords_upright": ["失望", "悲伤", "遗憾", "失落", "专注过去"],
+        "keywords_reversed": ["接受", "前进", "宽恕", "放下"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 6,
+        "name": "圣杯六",
+        "name_en": "Six of Cups",
+        "keywords_upright": ["怀旧", "童年", "天真", "重逢", "回忆"],
+        "keywords_reversed": ["活在过去", "不现实", "无法前进", "幼稚"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 7,
+        "name": "圣杯七",
+        "name_en": "Seven of Cups",
+        "keywords_upright": ["幻想", "选择", "白日梦", "幻觉", "机会"],
+        "keywords_reversed": ["混乱", "缺乏焦点", "幻灭", "清晰"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 8,
+        "name": "圣杯八",
+        "name_en": "Eight of Cups",
+        "keywords_upright": ["离开", "放弃", "寻找更多", "转变", "撤退"],
+        "keywords_reversed": ["恐惧离开", "逃避", "停滞", "回归"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 9,
+        "name": "圣杯九",
+        "name_en": "Nine of Cups",
+        "keywords_upright": ["满足", "愿望成真", "幸福", "感恩", "享受"],
+        "keywords_reversed": ["贪婪", "不满", "物质主义", "自满"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 10,
+        "name": "圣杯十",
+        "name_en": "Ten of Cups",
+        "keywords_upright": ["家庭幸福", "和谐", "快乐", "情感满足", "理想关系"],
+        "keywords_reversed": ["家庭冲突", "破碎", "失望", "不和"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 11,
+        "name": "圣杯侍从",
+        "name_en": "Page of Cups",
+        "keywords_upright": ["创造力", "直觉", "好奇", "温柔", "新感情"],
+        "keywords_reversed": ["情绪不成熟", "不安全", "不现实", "幻想"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 12,
+        "name": "圣杯骑士",
+        "name_en": "Knight of Cups",
+        "keywords_upright": ["浪漫", "魅力", "想象力", "追求", "理想主义"],
+        "keywords_reversed": ["不切实际", "情绪化", "喜怒无常", "失望"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 13,
+        "name": "圣杯王后",
+        "name_en": "Queen of Cups",
+        "keywords_upright": ["同理心", "关怀", "直觉", "敏感", "滋养"],
+        "keywords_reversed": ["情绪不稳", "依赖", "殉道", "不安全"],
+        "suit": "cups",
+        "element": "水"
+      },
+      {
+        "id": 14,
+        "name": "圣杯国王",
+        "name_en": "King of Cups",
+        "keywords_upright": ["情感平衡", "慷慨", "智慧", "外交", "冷静"],
+        "keywords_reversed": ["情感操纵", "不稳定", "冷漠", "压抑"],
+        "suit": "cups",
+        "element": "水"
+      }
+    ],
+    "swords": [
+      {
+        "id": 1,
+        "name": "宝剑王牌",
+        "name_en": "Ace of Swords",
+        "keywords_upright": ["突破", "清晰", "真相", "新想法", "心智力量"],
+        "keywords_reversed": ["混乱", "困惑", "错误信息", "心智阻塞"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 2,
+        "name": "宝剑二",
+        "name_en": "Two of Swords",
+        "keywords_upright": ["僵局", "困难选择", "回避", "平衡", "犹豫"],
+        "keywords_reversed": ["混乱", "信息过载", "决定", "释放"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 3,
+        "name": "宝剑三",
+        "name_en": "Three of Swords",
+        "keywords_upright": ["心碎", "悲伤", "背叛", "痛苦", "分离"],
+        "keywords_reversed": ["疗愈", "宽恕", "释放痛苦", "恢复"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 4,
+        "name": "宝剑四",
+        "name_en": "Four of Swords",
+        "keywords_upright": ["休息", "恢复", "冥想", "暂停", "反思"],
+        "keywords_reversed": ["精疲力竭", "倦怠", "焦虑", "缺乏休息"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 5,
+        "name": "宝剑五",
+        "name_en": "Five of Swords",
+        "keywords_upright": ["冲突", "失败", "自私", "争论", "胜利代价"],
+        "keywords_reversed": ["和解", "原谅", "从冲突中学习", "放下"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 6,
+        "name": "宝剑六",
+        "name_en": "Six of Swords",
+        "keywords_upright": ["过渡", "改变", "离开", "前进", "治愈"],
+        "keywords_reversed": ["抗拒改变", "停滞", "未解决问题", "延迟"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 7,
+        "name": "宝剑七",
+        "name_en": "Seven of Swords",
+        "keywords_upright": ["欺骗", "策略", "秘密", "逃避", "狡猾"],
+        "keywords_reversed": ["良心", "承认错误", "诚实", "暴露"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 8,
+        "name": "宝剑八",
+        "name_en": "Eight of Swords",
+        "keywords_upright": ["限制", "困境", "受困", "无助", "自我束缚"],
+        "keywords_reversed": ["释放", "自由", "新视角", "解脱"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 9,
+        "name": "宝剑九",
+        "name_en": "Nine of Swords",
+        "keywords_upright": ["焦虑", "恐惧", "噩梦", "担忧", "压力"],
+        "keywords_reversed": ["释放恐惧", "希望", "恢复", "寻求帮助"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 10,
+        "name": "宝剑十",
+        "name_en": "Ten of Swords",
+        "keywords_upright": ["痛苦结束", "背叛", "失败", "触底", "转折"],
+        "keywords_reversed": ["恢复", "重生", "走出痛苦", "希望"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 11,
+        "name": "宝剑侍从",
+        "name_en": "Page of Swords",
+        "keywords_upright": ["好奇", "警觉", "新想法", "沟通", "敏锐"],
+        "keywords_reversed": ["八卦", "欺骗", "言语伤害", "不成熟"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 12,
+        "name": "宝剑骑士",
+        "name_en": "Knight of Swords",
+        "keywords_upright": ["行动", "冲动", "野心", "果断", "快速思考"],
+        "keywords_reversed": ["鲁莽", "失控", "攻击性", "缺乏计划"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 13,
+        "name": "宝剑王后",
+        "name_en": "Queen of Swords",
+        "keywords_upright": ["独立", "理性", "洞察力", "直接", "公正"],
+        "keywords_reversed": ["冷酷", "残忍", "苦涩", "报复"],
+        "suit": "swords",
+        "element": "风"
+      },
+      {
+        "id": 14,
+        "name": "宝剑国王",
+        "name_en": "King of Swords",
+        "keywords_upright": ["权威", "真相", "理性", "智慧", "清晰"],
+        "keywords_reversed": ["操纵", "残酷", "冷漠", "滥用权力"],
+        "suit": "swords",
+        "element": "风"
+      }
+    ],
+    "pentacles": [
+      {
+        "id": 1,
+        "name": "星币王牌",
+        "name_en": "Ace of Pentacles",
+        "keywords_upright": ["机会", "繁荣", "新开始", "物质", "显化"],
+        "keywords_reversed": ["失去机会", "贪婪", "不安全", "缺乏计划"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 2,
+        "name": "星币二",
+        "name_en": "Two of Pentacles",
+        "keywords_upright": ["平衡", "适应", "多任务", "灵活", "优先级"],
+        "keywords_reversed": ["失衡", "不堪重负", "混乱", "缺乏组织"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 3,
+        "name": "星币三",
+        "name_en": "Three of Pentacles",
+        "keywords_upright": ["团队合作", "协作", "学习", "技能", "质量"],
+        "keywords_reversed": ["缺乏合作", "不和谐", "低质量", "独自工作"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 4,
+        "name": "星币四",
+        "name_en": "Four of Pentacles",
+        "keywords_upright": ["储蓄", "控制", "保守", "安全", "财产"],
+        "keywords_reversed": ["贪婪", "吝啬", "执着", "不安全"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 5,
+        "name": "星币五",
+        "name_en": "Five of Pentacles",
+        "keywords_upright": ["困难", "贫穷", "失业", "孤立", "担忧"],
+        "keywords_reversed": ["恢复", "改善", "接受帮助", "克服困难"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 6,
+        "name": "星币六",
+        "name_en": "Six of Pentacles",
+        "keywords_upright": ["慷慨", "给予", "分享", "慈善", "平衡"],
+        "keywords_reversed": ["自私", "负债", "不公平", "单向付出"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 7,
+        "name": "星币七",
+        "name_en": "Seven of Pentacles",
+        "keywords_upright": ["评估", "等待", "耐心", "投资", "反思"],
+        "keywords_reversed": ["焦虑", "不耐烦", "缺乏远见", "浪费"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 8,
+        "name": "星币八",
+        "name_en": "Eight of Pentacles",
+        "keywords_upright": ["努力", "专注", "技艺", "勤奋", "精进"],
+        "keywords_reversed": ["完美主义", "缺乏焦点", "低质量", "不满意"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 9,
+        "name": "星币九",
+        "name_en": "Nine of Pentacles",
+        "keywords_upright": ["独立", "成功", "奢华", "自给自足", "享受"],
+        "keywords_reversed": ["过度依赖", "物质主义", "缺乏独立", "不安全"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 10,
+        "name": "星币十",
+        "name_en": "Ten of Pentacles",
+        "keywords_upright": ["财富", "传承", "家族", "稳定", "长期成功"],
+        "keywords_reversed": ["财务损失", "家庭冲突", "不稳定", "短期思维"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 11,
+        "name": "星币侍从",
+        "name_en": "Page of Pentacles",
+        "keywords_upright": ["机会", "学习", "目标", "实际", "计划"],
+        "keywords_reversed": ["拖延", "缺乏进展", "不切实际", "浪费才能"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 12,
+        "name": "星币骑士",
+        "name_en": "Knight of Pentacles",
+        "keywords_upright": ["勤奋", "可靠", "坚持", "效率", "谨慎"],
+        "keywords_reversed": ["懒惰", "停滞", "完美主义", "无聊"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 13,
+        "name": "星币王后",
+        "name_en": "Queen of Pentacles",
+        "keywords_upright": ["滋养", "实际", "安全", "富足", "工作生活平衡"],
+        "keywords_reversed": ["自私", "嫉妒", "不安全", "工作狂"],
+        "suit": "pentacles",
+        "element": "土"
+      },
+      {
+        "id": 14,
+        "name": "星币国王",
+        "name_en": "King of Pentacles",
+        "keywords_upright": ["成功", "富足", "领导", "安全", "智慧"],
+        "keywords_reversed": ["贪婪", "物质主义", "顽固", "控制欲"],
+        "suit": "pentacles",
+        "element": "土"
+      }
+    ]
+  },
+  "spreads": {
+    "single": {
+      "name": "单张牌",
+      "description": "快速洞察当前状态或获得简单指引",
+      "positions": ["当前指引"],
+      "interpretation_hint": "这张牌代表当前最需要关注的能量或指引方向"
+    },
+    "three_card": {
+      "name": "三张牌",
+      "description": "了解过去、现在、未来的发展趋势",
+      "positions": ["过去", "现在", "未来"],
+      "interpretation_hint": "观察三张牌之间的联系，看能量如何从过去流向未来"
+    },
+    "love_cross": {
+      "name": "爱情十字",
+      "description": "深度分析情感关系的各个方面",
+      "positions": ["你的状态", "对方状态", "关系障碍", "关系优势", "发展方向"],
+      "interpretation_hint": "综合分析双方状态和关系动态，找出改善关系的关键点"
+    },
+    "relationship": {
+      "name": "关系牌阵",
+      "description": "全面剖析双方关系的动态和可能性",
+      "positions": ["你的感受", "对方感受", "双方的联结", "面临的挑战", "潜在的力量", "近期发展", "最终结果"],
+      "interpretation_hint": "从感受到结果的完整路径，关注双方的情感联结和可用资源"
+    },
+    "celtic_cross": {
+      "name": "凯尔特十字",
+      "description": "最经典的全面分析牌阵，适合复杂问题的深度探索",
+      "positions": [
+        "当前状况",
+        "挑战/阻碍",
+        "根源/过去影响",
+        "最近的过去",
+        "可能的未来",
+        "即将发生",
+        "你的态度",
+        "外在影响",
+        "希望/恐惧",
+        "最终结果"
+      ],
+      "interpretation_hint": "这是最全面的牌阵，前6张形成十字代表核心问题，后4张柱形代表发展轨迹"
+    },
+    "horseshoe": {
+      "name": "马蹄牌阵",
+      "description": "适合需要做出重要决策时使用",
+      "positions": ["过去经验", "当前状况", "隐藏因素", "建议行动", "周围影响", "障碍", "可能结果"],
+      "interpretation_hint": "从过去到未来的决策路径，重点关注隐藏因素和建议行动"
+    },
+    "spiritual_guidance": {
+      "name": "灵性指引",
+      "description": "寻求精神层面的指引和成长方向",
+      "positions": ["当前能量", "需要释放的", "需要拥抱的", "灵性课题", "指引方向"],
+      "interpretation_hint": "关注内在成长和灵性发展，平衡释放与接纳"
+    },
+    "career_path": {
+      "name": "事业发展",
+      "description": "分析事业发展和职业选择",
+      "positions": ["当前职业状态", "优势/才能", "挑战/障碍", "机会", "建议方向", "长期发展"],
+      "interpretation_hint": "结合个人才能和外在机会，找到最适合的发展路径"
+    },
+    "decision_making": {
+      "name": "决策指引",
+      "description": "在两个选择之间做出决定",
+      "positions": ["当前处境", "选项A的影响", "选项B的影响", "隐藏因素", "建议方向"],
+      "interpretation_hint": "客观比较两个选项的利弊，关注隐藏因素可能带来的影响"
+    },
+    "year_ahead": {
+      "name": "年度展望",
+      "description": "了解未来一年12个月的发展趋势",
+      "positions": [
+        "1月", "2月", "3月", "4月", "5月", "6月",
+        "7月", "8月", "9月", "10月", "11月", "12月"
+      ],
+      "interpretation_hint": "每张牌代表对应月份的主题能量，观察全年的能量变化趋势"
+    }
+  }
+}

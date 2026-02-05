@@ -22,6 +22,7 @@ from .space_weather import (
     sunspot,
     swpc_page,
 )
+from .tarot import list_tarot_spreads, tarot_reading
 from .tavily import tavily_crawl, tavily_extract, tavily_map, tavily_search
 from .weather import get_wind_map, mars_weather
 
@@ -64,6 +65,8 @@ class ModuleTools:
             tavily_extract,
             tavily_crawl,
             tavily_map,
+            tarot_reading,
+            list_tarot_spreads,
         ]
         self.all_tools = self.mcp_tools + self.local_tools
         self.web_tools = [tavily_search, tavily_extract, tavily_crawl, tavily_map]
