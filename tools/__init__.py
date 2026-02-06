@@ -25,6 +25,7 @@ from .space_weather import (
 from .tarot import list_tarot_spreads, tarot_reading
 from .tavily import tavily_crawl, tavily_extract, tavily_map, tavily_search
 from .weather import get_wind_map, mars_weather
+from .iching import iching_divination, list_iching_hexagrams, get_hexagram_detail
 
 
 class ModuleTools:
@@ -67,6 +68,9 @@ class ModuleTools:
             tavily_map,
             tarot_reading,
             list_tarot_spreads,
+            iching_divination,
+            list_iching_hexagrams,
+            get_hexagram_detail,
         ]
         self.all_tools = self.mcp_tools + self.local_tools
         self.web_tools = [tavily_search, tavily_extract, tavily_crawl, tavily_map]
