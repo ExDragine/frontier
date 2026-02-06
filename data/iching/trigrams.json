@@ -1,0 +1,60 @@
+{
+  "trigrams": {
+    "乾": {
+      "symbol": "☰",
+      "nature": "天",
+      "element": "金",
+      "attribute": "刚健",
+      "binary": [1, 1, 1]
+    },
+    "坤": {
+      "symbol": "☷",
+      "nature": "地",
+      "element": "土",
+      "attribute": "柔顺",
+      "binary": [0, 0, 0]
+    },
+    "震": {
+      "symbol": "☳",
+      "nature": "雷",
+      "element": "木",
+      "attribute": "震动",
+      "binary": [1, 0, 0]
+    },
+    "巽": {
+      "symbol": "☴",
+      "nature": "风",
+      "element": "木",
+      "attribute": "顺入",
+      "binary": [0, 1, 1]
+    },
+    "坎": {
+      "symbol": "☵",
+      "nature": "水",
+      "element": "水",
+      "attribute": "险陷",
+      "binary": [0, 1, 0]
+    },
+    "离": {
+      "symbol": "☲",
+      "nature": "火",
+      "element": "火",
+      "attribute": "光明",
+      "binary": [1, 0, 1]
+    },
+    "艮": {
+      "symbol": "☶",
+      "nature": "山",
+      "element": "土",
+      "attribute": "静止",
+      "binary": [0, 0, 1]
+    },
+    "兑": {
+      "symbol": "☱",
+      "nature": "泽",
+      "element": "金",
+      "attribute": "喜悦",
+      "binary": [1, 1, 0]
+    }
+  }
+}
