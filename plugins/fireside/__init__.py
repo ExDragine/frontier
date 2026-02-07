@@ -1,8 +1,8 @@
+import asyncio
 import base64
 import time
 from typing import Literal
 
-import uuid_utils
 from nonebot import logger, on_message, require
 from nonebot.adapters.milky.event import MessageEvent
 from pydantic import BaseModel, Field
@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 from utils.agents import FrontierCognitive, assistant_agent
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
-from utils.memory import MemoryStore
+from utils.memory import get_memory_service
+from utils.memory_types import MemoryAnalyzeResult
 from utils.message import (
     message_check,
     message_extract,
@@ -25,7 +26,7 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
-memory = MemoryStore()
+memory = get_memory_service()
 
 common = on_message(priority=10)
 
@@ -38,15 +39,64 @@ class AgentChoice(BaseModel):
     )
 
 
-class MemoryAnalyze(BaseModel):
-    should_memory: bool = Field(description="Indicates whether this message should be stored in memory.")
-    memory_content: str = Field(
-        description="Concise, factual summary of the specific information to store in long‑term memory (e.g., user preferences, personal details, important decisions, or contextual facts useful for future conversations)."
-    )
+async def store_memory_async(user_text: str, user_id: str, group_id: int | None, source_msg_id: int | None):
+    if not EnvConfig.MEMORY_ENABLED:
+        return
+    allow, sanitized_user_text, reason = memory.apply_privacy_filter(user_text)
+    if not allow:
+        logger.info(f"🔒 记忆写入被隐私策略拒绝 user={user_id} reason={reason}")
+        return
+    try:
+        with open("./prompts/memory_analyze_v2.txt", encoding="utf-8") as f:
+            memory_prompt = f.read()
+    except FileNotFoundError:
+        logger.error("❌ 未找到 memory_analyze_v2.txt 文件")
+        return
+    except (PermissionError, OSError, UnicodeDecodeError) as e:
+        logger.error(f"❌ 读取 memory_analyze_v2.txt 失败: {e}")
+        return
+
+    try:
+        memory_analyze: MemoryAnalyzeResult = await assistant_agent(
+            memory_prompt,
+            sanitized_user_text,
+            response_format=MemoryAnalyzeResult,
+        )
+    except Exception as e:
+        logger.error(f"❌ 记忆分析失败 user={user_id}: {type(e).__name__}: {e}")
+        return
+
+    if not memory_analyze.should_memory:
+        return
+
+    try:
+        saved_ids = await memory.persist_from_analysis(
+            analysis=memory_analyze,
+            raw_user_text=sanitized_user_text,
+            user_id=user_id,
+            group_id=group_id,
+            source_msg_id=source_msg_id,
+        )
+        if saved_ids:
+            logger.info(f"🧠 记忆写入成功 user={user_id} ids={saved_ids}")
+    except Exception as e:
+        logger.error(f"❌ 记忆写入失败 user={user_id}: {type(e).__name__}: {e}")
+
+
+def schedule_memory_write(user_text: str, user_id: str, group_id: int | None, source_msg_id: int | None):
+    task = asyncio.create_task(store_memory_async(user_text, user_id, group_id, source_msg_id))
+
+    def done_callback(done_task: asyncio.Task):
+        if done_task.cancelled():
+            return
+        if exception := done_task.exception():
+            logger.error(f"❌ 异步记忆任务异常: {type(exception).__name__}: {exception}")
+
+    task.add_done_callback(done_callback)
 
 
 @common.handle()
-async def handle_common(event: MessageEvent):
+async def handle_common(event: MessageEvent):  # noqa: C901
     if EnvConfig.AGENT_MODULE_ENABLED is False:
         await common.finish(f"{EnvConfig.BOT_NAME}飞升了,暂时不可用")
     user_id = event.get_user_id()
@@ -114,7 +164,14 @@ async def handle_common(event: MessageEvent):
         return
     # ref_history = await memory.mmr_search(str(group_id) if group_id else str(event.user_id), text, 3, filter={"": ""})
     agent_choice: AgentChoice = await assistant_agent(system_prompt, text, response_format=AgentChoice)
-    result = await f_cognitive.chat_agent(messages, user_id, user_name, agent_choice.agent_capability)
+    result = await f_cognitive.chat_agent(
+        messages,
+        user_id,
+        user_name,
+        agent_choice.agent_capability,
+        group_id=group_id,
+        query_text=text,
+    )
 
     if isinstance(result, dict) and "response" in result:
         response = result["response"]
@@ -138,24 +195,15 @@ async def handle_common(event: MessageEvent):
                 content=response["messages"][-1].content,
             )
             await send_messages(group_id, event_id, response)
-            try:
-                with open("./prompts/memory_analyze.txt", encoding="utf-8") as f:
-                    MASP = f.read()
-            except FileNotFoundError:
-                logger.error("❌ 未找到 memory_analyze.txt 文件")
-                return  # 记忆分析失败不影响主流程
-            except (PermissionError, OSError, UnicodeDecodeError) as e:
-                logger.error(f"❌ 读取 memory_analyze.txt 失败: {e}")
-                return
-            memory_analyze: MemoryAnalyze = await assistant_agent(
-                MASP, f"user: {text}\n assistant: {response['messages'][-1].content}", response_format=MemoryAnalyze
+            schedule_memory_write(
+                user_text=text,
+                user_id=user_id,
+                group_id=group_id,
+                source_msg_id=event_id,
             )
-            if memory_analyze.should_memory:
-                await memory.add(
-                    str(group_id) if group_id else user_id,
-                    [memory_analyze.memory_content],
-                    [uuid_utils.uuid7()],
-                )
 
         else:
             await UniMessage.text(response["messages"]).send()
+
+
+from . import memory_commands  # noqa: E402, F401

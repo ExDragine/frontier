@@ -10,6 +10,7 @@ from nonebot.permission import SUPERUSER
 
 from plugins.watchtower.environment_check import system_check
 from utils.configs import EnvConfig
+from utils.memory import get_memory_service
 from utils.message import (
     message_extract,
 )
@@ -20,6 +21,7 @@ from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
 driver = get_driver()
 updater = on_command("update", priority=1, block=True, aliases={"更新"}, permission=SUPERUSER)
 setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
+memory = get_memory_service()
 
 
 @driver.on_startup
@@ -32,6 +34,10 @@ async def on_startup():
         shutil.copy("env.toml.example", "env.toml")
     if not os.path.exists("mcp.json"):
         shutil.copy("mcp.json.example", "mcp.json")
+    try:
+        memory.ensure_schema_ready()
+    except Exception as e:
+        logger.error(f"❌ memory schema 初始化失败: {type(e).__name__}: {e}")
 
 
 @driver.on_bot_connect
