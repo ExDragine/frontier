@@ -336,7 +336,8 @@ class MemoryServiceV2:
             "status": MemoryStatus.ACTIVE.value,
             "source_msg_id": source_msg_id if source_msg_id is not None else -1,
         }
-        collection.add(ids=[memory_id], documents=[content], metadatas=[metadata])
+        embeddings = self.embeddings.embed_documents([content])
+        collection.add(ids=[memory_id], embeddings=embeddings, documents=[content], metadatas=[metadata])
         return memory_id
 
     async def persist_from_analysis(
@@ -745,8 +746,14 @@ class MemoryServiceV2:
     def _add_sync(self, collection_name: str, documents: list, uuids: list):
         collection = self._get_or_create_collection(collection_name)
         now = self.now_ms()
+        id_list = [str(x) for x in uuids]
+        doc_list = [str(x) for x in documents]
+        if len(id_list) != len(doc_list):
+            raise ValueError("documents 和 uuids 长度不一致。")
+        if not id_list:
+            return
         metadatas = []
-        for memory_id in uuids:
+        for memory_id in id_list:
             metadatas.append(
                 {
                     "memory_id": str(memory_id),
@@ -764,7 +771,8 @@ class MemoryServiceV2:
                     "source_msg_id": -1,
                 }
             )
-        collection.add(ids=[str(x) for x in uuids], documents=[str(x) for x in documents], metadatas=metadatas)
+        embeddings = self.embeddings.embed_documents(doc_list)
+        collection.add(ids=id_list, embeddings=embeddings, documents=doc_list, metadatas=metadatas)
 
     async def delete(self, collection_name: str, ids: list):
         if not self.enabled:
