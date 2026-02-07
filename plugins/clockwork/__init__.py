@@ -51,11 +51,12 @@ async def apod_everyday():
     params = {"api_key": EnvConfig.NASA_API_KEY.get_secret_value()}
     response = await httpx_client.get(url, params=params)
     content = response.json()
+    image = (await httpx_client.get(content["url"])).content
     intro = f"NASA每日一图\n{content['title']}\n{content['explanation']}"
     slm_reply = await assistant_agent("翻译用户给出的天文相关的内容为中文，只返回翻译结果，保留专有词汇为英文", intro)
     messages: list[UniMessage] = [
         UniMessage(Text(slm_reply if slm_reply else intro)),
-        UniMessage(Image(url=content["url"])),
+        UniMessage(Image(raw=image)),
     ]
     for message in messages:
         for group in EnvConfig.APOD_GROUP_ID:
@@ -66,16 +67,13 @@ async def apod_everyday():
 async def earth_now():
     url = "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_DISK_GCLR.JPG"
     content = None
-    for _i in range(3):
-        try:
-            response = await httpx_client.get(url)
-            response.raise_for_status()
-            # 确保完整读取响应体
-            content = await response.aread()
-            break
-        except httpx.HTTPError as e:
-            logger.warning(f"获取Earth Now图片失败: {e}", "准备重试...")
-            continue
+    try:
+        response = await httpx_client.get(url)
+        response.raise_for_status()
+        # 确保完整读取响应体
+        content = await response.aread()
+    except httpx.HTTPError as e:
+        logger.warning(f"获取Earth Now图片失败: {e}", "准备重试...")
     if not content:
         return
     messages: list[UniMessage] = [
@@ -98,7 +96,7 @@ async def eq_cenc():
     content: dict = response.json()
 
     if not content:
-        logger.info("CENC 没有新的地震")
+        logger.debug("CENC 没有新的地震")
         return None
 
     # 获取最新的地震数据
@@ -112,11 +110,11 @@ async def eq_cenc():
         else:
             await event_database.update(EVENT_NAME, event_id)
     else:
-        logger.info("CENC 没有新的地震")
+        logger.debug("CENC 没有新的地震")
         return
     logger.info(f"检测到{data['HypoCenter']}发生{data['Magnitude']}级地震")
     if int(data["Magnitude"]) < 3:
-        logger.info("震级低于3级，忽略此次地震")
+        logger.debug("震级低于3级，忽略此次地震")
         return
     # 准备详细信息
     detail = [
@@ -156,7 +154,7 @@ async def eq_usgs():
     content: dict = response.json()
 
     if not content or not content.get("features"):
-        logger.info("USGS 没有新的地震")
+        logger.debug("USGS 没有新的地震")
         return None
 
     # 获取最新的地震数据
@@ -172,9 +170,9 @@ async def eq_usgs():
         else:
             await event_database.update(EVENT_NAME, event_id)
     else:
-        logger.info("USGS 没有新的地震")
+        logger.debug("USGS 没有新的地震")
         return
-    logger.info(f"检测到{properties['place']}发生{properties['mag']}级地震")
+    logger.debug(f"检测到{properties['place']}发生{properties['mag']}级地震")
     # 准备详细信息
     detail = [
         {
