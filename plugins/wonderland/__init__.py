@@ -3,7 +3,7 @@ import io
 import json
 
 from nonebot import logger, on_command, require
-from nonebot.internal.adapter import Event
+from nonebot.adapters.milky.event import MessageEvent
 from openai import AsyncClient
 from PIL import Image
 
@@ -17,10 +17,10 @@ painter = on_command("画图", priority=3, block=True, aliases={"paint", "绘图
 
 
 @painter.handle()
-async def handle_painter(event: Event):
+async def handle_painter(event: MessageEvent):
     if EnvConfig.PAINT_MODULE_ENABLED is False:
         await painter.finish("么得画了，等升级哇!")
-    text, images = await message_extract(event)
+    text, images, *_ = await message_extract(event.data.segments)
     text = text.replace("/画图", "")
     if not text:
         await UniMessage.text("你想画点什么？").send()

@@ -5,7 +5,7 @@ import time
 # from signal import SIGINT
 from git import Repo
 from nonebot import get_driver, logger, on_command, require
-from nonebot.internal.adapter import Event
+from nonebot.adapters.milky.event import MessageEvent
 from nonebot.permission import SUPERUSER
 
 from plugins.watchtower.environment_check import system_check
@@ -53,7 +53,7 @@ async def on_bot_connect():
 
 
 @updater.handle()
-async def handle_updater(event: Event):
+async def handle_updater(event: MessageEvent):
     """处理更新命令"""
     try:
         logger.info("开始执行更新操作...")
@@ -74,8 +74,8 @@ async def handle_updater(event: Event):
 
 
 @setting.handle()
-async def handle_setting(event: Event):
-    text, images = await message_extract(event)
+async def handle_setting(event: MessageEvent):
+    text, images, *_ = await message_extract(event.data.segments)
     text = text.replace("/model", "")
     if not text:
         await UniMessage.text(
