@@ -1,6 +1,7 @@
 import ast
 import asyncio
 from io import BytesIO
+from typing import Literal
 
 import httpx
 from nonebot import logger, require
@@ -238,21 +239,14 @@ async def message_gateway(event: MessageEvent, messages: list):
     return False
 
 
-async def message_check(text: str | None, images: list | None) -> bool:
+async def message_check(text: str | None, images: list | None) -> Literal["Safe", "Controversial", "Unsafe"]:
     if text:
         safe_label, categories = await text_det.predict(text)
-        if safe_label != "Safe":
-            warning_msg = (
-                f"⚠️ 该消息被检测为 {safe_label}，涉及类别: {', '.join(categories) if categories else '未知'}。"
-            )
-            logger.info(warning_msg)
-            return False
-        return True
+        return safe_label
     if images:
         for image in images:
             image = Image.open(BytesIO(image))
             det_result = await image_det.predict(image)
             if det_result == "nsfw":
-                logger.info("检测到瑟瑟")
-                return False
-    return True
+                return "Unsafe"
+    return "Safe"

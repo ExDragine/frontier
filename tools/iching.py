@@ -8,8 +8,9 @@
 
 import json
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from langchain.tools import tool
 from nonebot import logger
@@ -65,8 +66,8 @@ def load_hexagram_detail(filename: str) -> dict:
     Returns:
         dict: 卦象详细数据
     """
+    hexagram_path = ICHING_HEXAGRAMS_DIR / filename
     try:
-        hexagram_path = ICHING_HEXAGRAMS_DIR / filename
         with open(hexagram_path, encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
@@ -144,11 +145,12 @@ class IChingReader:
             "changing_hexagram": changing_hex,
             "changing_lines": changing_lines,
             "method": "coin",
-            "lines_values": lines  # 保存原始爻值用于显示
+            "lines_values": lines,  # 保存原始爻值用于显示
         }
 
-    def divine_by_time(self, year: int | None = None, month: int | None = None,
-                      day: int | None = None, hour: int | None = None) -> dict:
+    def divine_by_time(
+        self, year: int | None = None, month: int | None = None, day: int | None = None, hour: int | None = None
+    ) -> dict:
         """时间起卦法
 
         Args:
@@ -160,14 +162,22 @@ class IChingReader:
         Returns:
             dict: 占卜结果
         """
-        # 如果未提供时间,使用当前时间
+        now = datetime.now()
+        # 传统命理中，23点之后就是“第二天”了
+        is_next_day = now.hour >= 23
         if year is None:
-            now = datetime.now()
-            year = now.year
+            # 注意：如果是12月31日23:00，年份也可能需要进位，
+            # 建议直接用 timedelta 处理日期进位
+            target_time = now + timedelta(hours=1) if is_next_day else now
+            year = target_time.year
+            month = target_time.month
+            day = target_time.day
+        if month is None:
             month = now.month
+        if day is None:
             day = now.day
-            # 转换为时辰(每2小时一个时辰)
-            hour = ((now.hour + 1) // 2) or 12
+        if hour is None:
+            hour = ((now.hour + 1) // 2 % 12) + 1
 
         # 参数验证
         if not (1900 <= year <= 2100):
@@ -195,9 +205,7 @@ class IChingReader:
         original_hex = self._find_hexagram_by_trigrams(upper_trigram, lower_trigram)
 
         # 计算变卦(翻转动爻)
-        changing_hex = self._calculate_changing_hexagram_simple(
-            original_hex, [changing_line]
-        )
+        changing_hex = self._calculate_changing_hexagram_simple(original_hex, [changing_line])
 
         time_info = f"{year}年{month}月{day}日 {self._hour_to_chinese(hour)}"
 
@@ -206,7 +214,7 @@ class IChingReader:
             "changing_hexagram": changing_hex,
             "changing_lines": [changing_line],
             "method": "time",
-            "time_info": time_info
+            "time_info": time_info,
         }
 
     def divine_by_numbers(self, num1: int | None = None, num2: int | None = None) -> dict:
@@ -242,16 +250,14 @@ class IChingReader:
         lower_trigram = trigram_order[lower_num]
 
         original_hex = self._find_hexagram_by_trigrams(upper_trigram, lower_trigram)
-        changing_hex = self._calculate_changing_hexagram_simple(
-            original_hex, [changing_line]
-        )
+        changing_hex = self._calculate_changing_hexagram_simple(original_hex, [changing_line])
 
         return {
             "original_hexagram": original_hex,
             "changing_hexagram": changing_hex,
             "changing_lines": [changing_line],
             "method": "number",
-            "numbers": (num1, num2)
+            "numbers": (num1, num2),
         }
 
     def _generate_hexagram_from_lines(self, lines: list[int], is_changing: bool) -> dict:
@@ -268,7 +274,7 @@ class IChingReader:
         binary_lines = []
         for i, value in enumerate(lines):
             position = i + 1
-            if is_changing and position in [i+1 for i, v in enumerate(lines) if v in [6, 9]]:
+            if is_changing and position in [i + 1 for i, v in enumerate(lines) if v in [6, 9]]:
                 # 变卦: 老阳变阴, 老阴变阳
                 if value == 9:
                     binary_lines.append(0)  # 阳变阴
@@ -311,8 +317,7 @@ class IChingReader:
 
         raise ValueError(f"未找到卦象: 上卦{upper}, 下卦{lower}")
 
-    def _calculate_changing_hexagram_simple(self, original_hex: dict,
-                                           changing_lines: list[int]) -> dict:
+    def _calculate_changing_hexagram_simple(self, original_hex: dict, changing_lines: list[int]) -> dict:
         """根据动爻计算变卦(简化版,用于时间和报数起卦)
 
         Args:
@@ -377,8 +382,21 @@ class IChingReader:
         Returns:
             str: 中文时辰名
         """
-        hour_names = ["", "子时", "丑时", "寅时", "卯时", "辰时", "巳时",
-                     "午时", "未时", "申时", "酉时", "戌时", "亥时"]
+        hour_names = [
+            "",
+            "子时",
+            "丑时",
+            "寅时",
+            "卯时",
+            "辰时",
+            "巳时",
+            "午时",
+            "未时",
+            "申时",
+            "酉时",
+            "戌时",
+            "亥时",
+        ]
         return hour_names[hour] if 1 <= hour <= 12 else f"{hour}时"
 
     def format_divination_result(
@@ -388,8 +406,8 @@ class IChingReader:
         changing_lines: list[int],
         method: str,
         question: str,
-        extra_info: any = None,
-        lines_values: list[int] | None = None
+        extra_info: Any = None,
+        lines_values: list[int] | None = None,
     ) -> str:
         """格式化占卜结果为清晰的文本输出
 
@@ -405,11 +423,7 @@ class IChingReader:
         Returns:
             str: 格式化的占卜结果
         """
-        method_names = {
-            "coin": "三枚铜钱法",
-            "time": "时间起卦法",
-            "number": "报数起卦法"
-        }
+        method_names = {"coin": "三枚铜钱法", "time": "时间起卦法", "number": "报数起卦法"}
 
         result = "☯️ 周易占卜结果\n\n"
 
@@ -453,16 +467,18 @@ class IChingReader:
 
             yao_names = ["初", "二", "三", "四", "五", "上"]
             for line_pos in changing_lines:
-                if line_pos <= len(original_hex['lines']):
-                    line = original_hex['lines'][line_pos - 1]
-                    result += f"   {yao_names[line_pos-1]}爻动:\n"
+                if line_pos <= len(original_hex["lines"]):
+                    line = original_hex["lines"][line_pos - 1]
+                    result += f"   {yao_names[line_pos - 1]}爻动:\n"
                     result += f"      {line['text']}\n"
                     result += f"      {line['vernacular']}\n\n"
 
         # 变卦信息
         if changing_hex:
             result += "━" * 50 + "\n\n"
-            result += f"🔄 变卦: {changing_hex['full_symbol']} 第{changing_hex['number']}卦 - {changing_hex['name']}卦\n\n"
+            result += (
+                f"🔄 变卦: {changing_hex['full_symbol']} 第{changing_hex['number']}卦 - {changing_hex['name']}卦\n\n"
+            )
             result += f"   🎴 卦名: {changing_hex['nature']}\n"
             result += f"   ⚡ 五行: {changing_hex['element']}\n\n"
 
@@ -477,11 +493,11 @@ class IChingReader:
         result += "━" * 50 + "\n\n"
         result += "💡 解读提示:\n\n"
 
-        hints = original_hex['interpretation_hints']
+        hints = original_hex["interpretation_hints"]
         result += f"🔮 运势: {hints['fortune']}\n"
         result += f"💼 事业: {hints['career']}\n"
         result += f"💕 感情: {hints['relationship']}\n"
-        if 'health' in hints:
+        if "health" in hints:
             result += f"🏥 健康: {hints['health']}\n"
         result += f"📝 建议: {hints['advice']}\n\n"
 
@@ -499,8 +515,9 @@ class IChingReader:
 
         return result
 
-    def _draw_hexagram_lines(self, hexagram: dict, changing_lines: list[int],
-                            lines_values: list[int] | None = None) -> str:
+    def _draw_hexagram_lines(
+        self, hexagram: dict, changing_lines: list[int], lines_values: list[int] | None = None
+    ) -> str:
         """绘制卦象的六爻图形
 
         Args:
@@ -551,6 +568,7 @@ class IChingReader:
 
 # ===== 工具函数 =====
 
+
 @tool(response_format="content")
 async def iching_divination(
     method: str = "coin",
@@ -560,7 +578,7 @@ async def iching_divination(
     day: int | None = None,
     hour: int | None = None,
     num1: int | None = None,
-    num2: int | None = None
+    num2: int | None = None,
 ) -> str:
     """进行周易占卜
 
@@ -637,7 +655,7 @@ async def iching_divination(
             method=method,
             question=question,
             extra_info=result.get("time_info") or result.get("numbers"),
-            lines_values=result.get("lines_values")
+            lines_values=result.get("lines_values"),
         )
 
         logger.info(
@@ -688,7 +706,7 @@ async def list_iching_hexagrams(filter_type: str = "all") -> str:
                 if detail:
                     result += f"{h['symbol']} {h['number']}.{h['name']}卦 ({h['nature']})\n"
                     result += f"   五行: {detail.get('element', '未知')}\n"
-                    if 'judgment' in detail:
+                    if "judgment" in detail:
                         result += f"   卦辞: {detail['judgment']['vernacular']}\n"
                     result += "\n"
 
@@ -700,8 +718,8 @@ async def list_iching_hexagrams(filter_type: str = "all") -> str:
             elements = {"金": [], "木": [], "水": [], "火": [], "土": []}
             for h in hexagrams:
                 detail = load_hexagram_detail(h["file"])
-                if detail and 'element' in detail:
-                    element = detail['element']
+                if detail and "element" in detail:
+                    element = detail["element"]
                     if element in elements:
                         elements[element].append((h, detail))
 
@@ -718,11 +736,8 @@ async def list_iching_hexagrams(filter_type: str = "all") -> str:
 
             # 每行8卦
             for i in range(0, 64, 8):
-                line_hexagrams = hexagrams[i:i+8]
-                result += "  ".join([
-                    f"{h['symbol']}{h['number']:02d}.{h['name']}"
-                    for h in line_hexagrams
-                ]) + "\n"
+                line_hexagrams = hexagrams[i : i + 8]
+                result += "  ".join([f"{h['symbol']}{h['number']:02d}.{h['name']}" for h in line_hexagrams]) + "\n"
 
             result += "\n" + "━" * 50 + "\n\n"
             result += "💡 提示:\n"
@@ -788,18 +803,18 @@ async def get_hexagram_detail(hexagram_name: str) -> str:
         result += "━" * 50 + "\n\n"
 
         result += "📍 六爻爻辞:\n"
-        for line in hexagram['lines']:
+        for line in hexagram["lines"]:
             result += f"   {line['position']}. {line['text']}\n"
             result += f"      {line['vernacular']}\n"
 
         result += "\n" + "━" * 50 + "\n\n"
 
         result += "💡 解读提示:\n"
-        hints = hexagram['interpretation_hints']
+        hints = hexagram["interpretation_hints"]
         result += f"   🔮 运势: {hints['fortune']}\n"
         result += f"   💼 事业: {hints['career']}\n"
         result += f"   💕 感情: {hints['relationship']}\n"
-        if 'health' in hints:
+        if "health" in hints:
             result += f"   🏥 健康: {hints['health']}\n"
         result += f"   📝 建议: {hints['advice']}\n"
 

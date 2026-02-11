@@ -572,7 +572,9 @@ class MemoryServiceV2:
             confidence=self._clamp_score(metadata.get("confidence")),
             created_at=self._to_int(metadata.get("created_at"), self.now_ms()) or self.now_ms(),
             updated_at=self._to_int(metadata.get("updated_at"), self.now_ms()) or self.now_ms(),
-            expires_at=None if self._to_int(metadata.get("expires_at")) == -1 else self._to_int(metadata.get("expires_at")),
+            expires_at=None
+            if self._to_int(metadata.get("expires_at")) == -1
+            else self._to_int(metadata.get("expires_at")),
             status=self._status_from_value(str(metadata.get("status"))),
             source_msg_id=source_msg_id,
         )

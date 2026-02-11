@@ -1,4 +1,5 @@
 import re
+from typing import Any, Literal
 
 import torch
 from torchao.quantization import Int8WeightOnlyConfig, quantize_
@@ -37,12 +38,12 @@ class TextCheck:
     def extract_label_and_categories(self, content):
         safe_pattern = r"Safety: (Safe|Unsafe|Controversial)"
         category_pattern = r"(Violent|Non-violent Illegal Acts|Sexual Content or Sexual Acts|PII|Suicide & Self-Harm|Unethical Acts|Politically Sensitive Topics|Copyright Violation|Jailbreak|None)"
-        safe_label_match = re.search(safe_pattern, content)  # type: ignore
+        safe_label_match = re.search(safe_pattern, content)
         label = safe_label_match.group(1) if safe_label_match else None
-        categories = re.findall(category_pattern, content)  # type: ignore
+        categories = re.findall(category_pattern, content)
         return label, categories
 
-    async def predict(self, prompt: str):
+    async def predict(self, prompt: str) -> tuple[Literal["Safe", "Unsafe", "Controversial"] | Any, list[Any]]:
         # for prompt moderation
         messages = [{"role": "user", "content": prompt}]
         text = self.tokenizer.apply_chat_template(messages, tokenize=False)
@@ -55,4 +56,4 @@ class TextCheck:
         content = self.tokenizer.decode(output_ids, skip_special_tokens=True)
 
         safe_label, categories = self.extract_label_and_categories(content)
-        return (safe_label, categories)
+        return safe_label, categories

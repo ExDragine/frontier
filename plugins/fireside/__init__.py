@@ -138,8 +138,13 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         await common.finish()
 
     risk_check = await message_check(text, images)
-    if not risk_check:
-        await common.send("👀")
+    match risk_check:
+        case "Safe":
+            pass
+        case "Controversial":
+            await common.send("👀")
+        case "Unsafe":
+            await common.send("😮")
     messages.append(
         {
             "role": "user",
@@ -204,6 +209,3 @@ async def handle_common(event: MessageEvent):  # noqa: C901
 
         else:
             await UniMessage.text(response["messages"]).send()
-
-
-from . import memory_commands  # noqa: E402, F401
