@@ -7,7 +7,6 @@ requires-python = ">=3.12"
 dependencies = [
   "nonebot2",
   "nonebot2[fastapi]",
-  "nonebot-adapter-onebot",
   "nonebot-plugin-alconna",
   "nonebot-adapter-console",
   "nonebot-plugin-apscheduler",
@@ -54,7 +53,6 @@ builtin_plugins = []
 
 [tool.nonebot.adapters]
 "@local" = []
-nonebot-adapter-onebot = [{name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11"}]
 nonebot-adapter-milky = [{name = "nonebot-adapter-milky", module_name = "nonebot.adapters.milky"}]
 
 [tool.uv.workspace]
