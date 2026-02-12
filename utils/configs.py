@@ -17,6 +17,7 @@ message: dict = config.get("message", {})
 database: dict = config.get("database", {})
 debug: dict = config.get("debug", {})
 memory: dict = config.get("memory", {})
+dashboard: dict = config.get("dashboard", {})
 
 
 class EnvConfig:
@@ -68,3 +69,7 @@ class EnvConfig:
     MEMORY_RETRIEVAL_GROUP_K: int = int(memory.get("retrieval_group_k", 6))
     MEMORY_PRIVACY_MODE: str = str(memory.get("privacy_mode", "balanced"))
     MEMORY_INJECT_TIMEOUT_MS: int = int(memory.get("inject_timeout_ms", 500))
+
+    DASHBOARD_PASSWORD: str = dashboard.get("password", "admin")
+    DASHBOARD_JWT_SECRET: str = dashboard.get("jwt_secret", "frontier-dashboard-default-secret")
+    DASHBOARD_JWT_EXPIRE_HOURS: int = int(dashboard.get("jwt_expire_hours", 24))
