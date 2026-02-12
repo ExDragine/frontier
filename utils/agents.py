@@ -208,7 +208,7 @@ class FrontierCognitive:
                 model=EnvConfig.ADVAN_MODEL,
                 streaming=False,
                 reasoning_effort=capability,
-                verbosity="medium",
+                verbosity="low",
                 max_retries=2,
                 timeout=60,
                 use_responses_api=None,
