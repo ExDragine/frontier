@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from sqlmodel import SQLModel, create_engine
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "plugins"
+PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "plugins"
 
 plugins_pkg = types.ModuleType("plugins")
 plugins_pkg.__path__ = [str(PACKAGE_ROOT)]

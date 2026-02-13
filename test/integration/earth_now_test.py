@@ -6,8 +6,8 @@ import httpx
 # 当前文件所在目录（绝对路径）
 current_dir = Path(__file__).resolve().parent
 
-# 上级目录的 temp 文件夹
-temp_dir = current_dir.parent / "temp"
+# 项目根目录下的 temp 文件夹
+temp_dir = current_dir.parents[2] / "temp"
 
 # 如果 temp 文件夹不存在就创建
 temp_dir.mkdir(parents=True, exist_ok=True)
