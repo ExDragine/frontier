@@ -5,10 +5,13 @@ import zoneinfo
 from nonebot import get_driver, on_command
 from nonebot.adapters.milky.event import MessageEvent
 
+
 # 延迟导入避免循环依赖
 def get_task_manager():
     from . import task_manager
+
     return task_manager
+
 
 task_cmd = on_command("task", priority=6, block=True, aliases={"任务", "定时任务"})
 
@@ -179,10 +182,14 @@ async def handle_task_info(args: list[str]):
     # 格式化时间
     created_at = datetime.datetime.fromtimestamp(task.created_at).strftime("%Y-%m-%d %H:%M:%S")
     last_run = (
-        datetime.datetime.fromtimestamp(task.last_run_time).strftime("%Y-%m-%d %H:%M:%S") if task.last_run_time else "从未执行"
+        datetime.datetime.fromtimestamp(task.last_run_time).strftime("%Y-%m-%d %H:%M:%S")
+        if task.last_run_time
+        else "从未执行"
     )
     next_run = (
-        datetime.datetime.fromtimestamp(task.next_run_time).strftime("%Y-%m-%d %H:%M:%S") if task.next_run_time else "无"
+        datetime.datetime.fromtimestamp(task.next_run_time).strftime("%Y-%m-%d %H:%M:%S")
+        if task.next_run_time
+        else "无"
     )
 
     # 计算成功率
@@ -191,7 +198,7 @@ async def handle_task_info(args: list[str]):
     info = f"""任务详情:
 📋 名称: {task.name}
 🆔 ID: {task.job_id}
-📝 描述: {task.description or '无'}
+📝 描述: {task.description or "无"}
 ⚙️ 处理函数: {task.handler_module}.{task.handler_function}
 
 ⏰ 触发器:
@@ -200,7 +207,7 @@ async def handle_task_info(args: list[str]):
   容错时间: {task.misfire_grace_time}秒
 
 📊 状态:
-  当前状态: {'✅ 启用' if task.enabled else '⏸️ 禁用'}
+  当前状态: {"✅ 启用" if task.enabled else "⏸️ 禁用"}
   创建时间: {created_at}
   上次执行: {last_run}
   下次执行: {next_run}
@@ -441,13 +448,13 @@ async def handle_task_stats(args: list[str]):
         else "无"
     )
 
-    stats_text = f"""任务统计: {stats['name']} ({stats['job_id']})
+    stats_text = f"""任务统计: {stats["name"]} ({stats["job_id"]})
 
 📊 执行统计:
-  总执行次数: {stats['total_runs']}
-  成功次数: {stats['success_runs']}
-  失败次数: {stats['failed_runs']}
-  成功率: {stats['success_rate'] * 100:.1f}%
+  总执行次数: {stats["total_runs"]}
+  成功次数: {stats["success_runs"]}
+  失败次数: {stats["failed_runs"]}
+  成功率: {stats["success_rate"] * 100:.1f}%
 
 ⏰ 时间信息:
   上次执行: {last_run}

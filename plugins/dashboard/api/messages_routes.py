@@ -84,13 +84,7 @@ async def list_groups(user: dict = Depends(require_auth)):
         )
         results = session.exec(statement).all()
 
-        return {
-            "groups": [
-                {"group_id": row[0], "message_count": row[1]}
-                for row in results
-                if row[0] is not None
-            ]
-        }
+        return {"groups": [{"group_id": row[0], "message_count": row[1]} for row in results if row[0] is not None]}
 
 
 @router.get("/users")

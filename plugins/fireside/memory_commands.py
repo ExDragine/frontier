@@ -71,12 +71,7 @@ def _parse_scope(token: str | None) -> MemoryScope | None:
 
 
 def _help_message() -> str:
-    return (
-        "记忆命令:\n"
-        "/记忆 查看 [个人|群] [数量]\n"
-        "/记忆 删除 [个人|群] <memory_id>\n"
-        "/记忆 清空 [个人|群]"
-    )
+    return "记忆命令:\n/记忆 查看 [个人|群] [数量]\n/记忆 删除 [个人|群] <memory_id>\n/记忆 清空 [个人|群]"
 
 
 @memory_cmd.handle()

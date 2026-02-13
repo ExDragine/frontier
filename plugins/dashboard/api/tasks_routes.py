@@ -30,9 +30,7 @@ async def list_tasks(
     except ImportError:
         raise HTTPException(status_code=503, detail="任务管理系统未加载")
 
-    tasks = await task_manager.list_tasks(
-        enabled=enabled, keyword=keyword
-    )
+    tasks = await task_manager.list_tasks(enabled=enabled, keyword=keyword)
 
     result = []
     for task in tasks:
@@ -135,18 +133,14 @@ async def disable_task(job_id: str, user: dict = Depends(require_auth)):
 
 
 @router.put("/{job_id}/trigger")
-async def update_trigger(
-    job_id: str, body: TriggerUpdate, user: dict = Depends(require_auth)
-):
+async def update_trigger(job_id: str, body: TriggerUpdate, user: dict = Depends(require_auth)):
     """修改任务触发器"""
     try:
         from plugins.clockwork import task_manager
     except ImportError:
         raise HTTPException(status_code=503, detail="任务管理系统未加载")
 
-    success = await task_manager.update_task_trigger(
-        job_id, body.trigger_type, body.trigger_args
-    )
+    success = await task_manager.update_task_trigger(job_id, body.trigger_type, body.trigger_args)
     if not success:
         raise HTTPException(status_code=400, detail="更新触发器失败")
 
@@ -154,9 +148,7 @@ async def update_trigger(
 
 
 @router.put("/{job_id}/groups")
-async def update_groups(
-    job_id: str, body: GroupsUpdate, user: dict = Depends(require_auth)
-):
+async def update_groups(job_id: str, body: GroupsUpdate, user: dict = Depends(require_auth)):
     """修改任务推送群组"""
     try:
         from plugins.clockwork import task_manager
@@ -171,9 +163,7 @@ async def update_groups(
 
 
 @router.get("/{job_id}/history")
-async def get_history(
-    job_id: str, limit: int = Query(default=50, ge=1, le=500), user: dict = Depends(require_auth)
-):
+async def get_history(job_id: str, limit: int = Query(default=50, ge=1, le=500), user: dict = Depends(require_auth)):
     """获取任务执行历史"""
     try:
         from plugins.clockwork import task_manager
