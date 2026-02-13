@@ -14,7 +14,7 @@ async def test_assistant_agent_model_selection(monkeypatch):
     original_open = builtins.open
 
     def fake_open(path, *args, **kwargs):
-        if str(path).endswith("system_prompt.txt"):
+        if str(path).endswith("system_prompt.md"):
             raise FileNotFoundError()
         return original_open(path, *args, **kwargs)
 
@@ -45,7 +45,7 @@ def test_frontier_load_system_prompt_missing(monkeypatch):
     original_open = builtins.open
 
     def fake_open(path, *args, **kwargs):
-        if str(path).endswith("system_prompt.txt"):
+        if str(path).endswith("system_prompt.md"):
             raise FileNotFoundError()
         return original_open(path, *args, **kwargs)
 

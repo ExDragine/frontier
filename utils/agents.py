@@ -33,10 +33,10 @@ async def assistant_agent(
 ) -> Any:
     if not system_prompt:
         try:
-            with open("prompts/system_prompt.txt", encoding="utf-8") as f:
+            with open("prompts/system_prompt.md", encoding="utf-8") as f:
                 system_prompt = f.read()
         except FileNotFoundError:
-            logger.warning("❌ 未找到 system prompt 文件: prompts/system_prompt.txt")
+            logger.warning("❌ 未找到 system prompt 文件: prompts/system_prompt.md")
             system_prompt = "You are a helpful assistant."
     if "gemini" in use_model.lower():
         model = ChatGoogleGenerativeAI(
@@ -101,7 +101,7 @@ class FrontierCognitive:
     def load_system_prompt():
         """从外部文件加载 system prompt"""
         try:
-            with open("prompts/system_prompt.txt", encoding="utf-8") as f:
+            with open("prompts/system_prompt.md", encoding="utf-8") as f:
                 system_prompt = f.read()
                 system_prompt = system_prompt.format(
                     name=EnvConfig.BOT_NAME,
@@ -111,7 +111,7 @@ class FrontierCognitive:
                 )
                 return system_prompt
         except FileNotFoundError:
-            logger.error("❌ 未找到 system prompt 文件: prompts/system_prompt.txt")
+            logger.error("❌ 未找到 system prompt 文件: prompts/system_prompt.md")
             return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: system prompt文件缺失]"
         except PermissionError as e:
             logger.error(f"❌ 无权限读取 system prompt 文件: {e}")
