@@ -17,6 +17,15 @@ from .task_models import TaskConfig, TaskExecutionHistory, TaskGroupMapping
 class TaskManager:
     """定时任务管理器 - 统一管理所有定时任务"""
 
+    JOB_ID_TO_CONFIG_KEY = {
+        "apod_everyday": "APOD_GROUP_ID",
+        "earth_now": "EARTH_NOW_GROUP_ID",
+        "eq_cenc": "EARTHQUAKE_GROUP_ID",
+        "eq_usgs": "EARTHQUAKE_GROUP_ID",
+        "daily_news": "NEWS_SUMMARY_GROUP_ID",
+        "happy_new_year": None,  # 特殊处理：发送所有群
+    }
+
     def __init__(self, scheduler: AsyncIOScheduler, engine: Engine):
         self.scheduler = scheduler
         self.engine = engine
@@ -99,6 +108,8 @@ class TaskManager:
                 session.add(mapping)
             session.commit()
 
+            self._sync_group_config(job_id, group_ids)
+
             self.logger.info(f"任务 {job_id} 注册成功")
             return task
 
@@ -112,21 +123,23 @@ class TaskManager:
                 self.logger.warning(f"任务 {job_id} 不存在")
                 return False
 
+            # 先尝试更新 APScheduler，失败则不写入数据库
+            try:
+                self.scheduler.reschedule_job(job_id, trigger=trigger_type, **trigger_args)
+            except Exception as e:
+                self.logger.error(f"更新任务 {job_id} 触发器失败: {e}")
+                session.rollback()
+                return False
+
+            task.updated_at = int(time.time())
             # 更新数据库
             task.trigger_type = trigger_type
             task.trigger_args = json.dumps(trigger_args)
-            task.updated_at = int(time.time())
             session.add(task)
             session.commit()
 
-            # 更新APScheduler
-            try:
-                self.scheduler.reschedule_job(job_id, trigger=trigger_type, **trigger_args)
-                self.logger.info(f"任务 {job_id} 触发器已更新")
-                return True
-            except Exception as e:
-                self.logger.error(f"更新任务 {job_id} 触发器失败: {e}")
-                return False
+            self.logger.info(f"任务 {job_id} 触发器已更新")
+            return True
 
     async def update_task_groups(self, job_id: str, group_ids: list[int]) -> bool:
         """修改任务推送群组"""
@@ -145,7 +158,7 @@ class TaskManager:
                 session.delete(mapping)
 
             # 添加新的群组映射
-            for group_id in group_ids:
+            for group_id in sorted(set(group_ids)):
                 mapping = TaskGroupMapping(job_id=job_id, group_id=group_id)
                 session.add(mapping)
 
@@ -153,6 +166,7 @@ class TaskManager:
             session.add(task)
             session.commit()
 
+            self._sync_group_config(job_id, group_ids)
             self.logger.info(f"任务 {job_id} 群组配置已更新")
             return True
 
@@ -230,6 +244,8 @@ class TaskManager:
             # 删除任务配置
             session.delete(task)
             session.commit()
+
+            self._sync_group_config(job_id, [])
 
             # 从APScheduler中移除
             try:
@@ -389,10 +405,8 @@ class TaskManager:
             self.log_execution(
                 job_id=job_id,
                 status="missed",
-                execution_time=int(time.time() * 1000),
-                scheduled_time=int(event.scheduled_run_time.timestamp() * 1000)
-                if event.scheduled_run_time
-                else None,
+                execution_time=int(time.time()),
+                scheduled_time=int(event.scheduled_run_time.timestamp()) if event.scheduled_run_time else None,
             )
         )
         self.logger.warning(f"任务 {job_id} 执行被跳过 (missed)")
@@ -403,24 +417,23 @@ class TaskManager:
         """初始化时同步群组配置到EnvConfig"""
         from utils.configs import EnvConfig
 
-        # job_id 到 EnvConfig 键名的映射
-        JOB_ID_TO_CONFIG_KEY = {
-            "apod_everyday": "APOD_GROUP_ID",
-            "earth_now": "EARTH_NOW_GROUP_ID",
-            "eq_cenc": "EARTHQUAKE_GROUP_ID",
-            "eq_usgs": "EARTHQUAKE_GROUP_ID",
-            "daily_news": "NEWS_SUMMARY_GROUP_ID",
-            "happy_new_year": None,  # 特殊处理：发送所有群
-        }
-
         tasks = await self.list_tasks()
 
         for task in tasks:
             group_ids = await self.get_task_groups(task.job_id)
-            config_key = JOB_ID_TO_CONFIG_KEY.get(task.job_id)
+            config_key = self.JOB_ID_TO_CONFIG_KEY.get(task.job_id)
             if config_key:
                 setattr(EnvConfig, config_key, group_ids)
                 self.logger.info(f"同步群组配置: {config_key} = {group_ids}")
+
+    def _sync_group_config(self, job_id: str, group_ids: list[int]) -> None:
+        """运行期同步群组配置到 EnvConfig"""
+        from utils.configs import EnvConfig
+
+        config_key = self.JOB_ID_TO_CONFIG_KEY.get(job_id)
+        if config_key:
+            setattr(EnvConfig, config_key, group_ids)
+            self.logger.info(f"同步群组配置: {config_key} = {group_ids}")
 
 
 class TaskExecutor:
@@ -438,7 +451,7 @@ class TaskExecutor:
         4. 记录执行结果
         """
         start_time = time.time()
-        execution_time = int(start_time * 1000)
+        execution_time = int(start_time)
 
         try:
             # 获取任务配置
