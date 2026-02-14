@@ -143,11 +143,11 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             if group_id:
                 try:
                     await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="👀", is_add=True
+                        group_id=group_id, message_seq=event_id, reaction="277", is_add=True
                     )
                 except Exception as e:
                     logger.warning(f"表情回复发送失败，使用文本消息: {e}")
-                    await common.send("277")
+                    await common.send("🔮")
             else:
                 await common.send("🔮")
         case "Controversial":
@@ -155,11 +155,11 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             if group_id:
                 try:
                     await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="👀", is_add=True
+                        group_id=group_id, message_seq=event_id, reaction="32", is_add=True
                     )
                 except Exception as e:
                     logger.warning(f"表情回复发送失败，使用文本消息: {e}")
-                    await common.send("32")
+                    await common.send("👀")
             else:
                 # 私聊场景，直接发送文本
                 await common.send("👀")
@@ -167,11 +167,11 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             if group_id:
                 try:
                     await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="👀", is_add=True
+                        group_id=group_id, message_seq=event_id, reaction="267", is_add=True
                     )
                 except Exception as e:
                     logger.warning(f"表情回复发送失败，使用文本消息: {e}")
-                    await common.send("267")
+                    await common.send("😅")
             else:
                 # 私聊场景，直接发送文本
                 await common.send("😅")
