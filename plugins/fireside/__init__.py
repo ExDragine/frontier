@@ -143,7 +143,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             if group_id:
                 try:
                     await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="277", is_add=True
+                        group_id=group_id, message_seq=event_id, reaction="333", is_add=True
                     )
                 except Exception as e:
                     logger.warning(f"表情回复发送失败，使用文本消息: {e}")
