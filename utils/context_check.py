@@ -1,28 +1,30 @@
 import re
+from typing import Any, Literal
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-
-MODEL_ID = "Falconsai/nsfw_image_detection"
-MODEL_CAHCE_PATH = "./cache/models/"
+import torch
+from torchao.quantization import Int8WeightOnlyConfig, quantize_
+from transformers import (
+    AutoModelForCausalLM,
+    AutoModelForImageClassification,
+    AutoTokenizer,
+    ViTImageProcessor,
+)
 
 
 class ImageCheck:
     def __init__(self) -> None:
-        self.classifier = pipeline("image-classification", model="Falconsai/nsfw_image_detection", use_fast=True)
+        self.model = AutoModelForImageClassification.from_pretrained("Falconsai/nsfw_image_detection")
+        self.processor = ViTImageProcessor.from_pretrained("Falconsai/nsfw_image_detection")
+        self.model.eval()
+        quantize_(self.model, Int8WeightOnlyConfig(version=2))
 
     async def predict(self, img):
-        result = self.classifier(img)
-        if isinstance(result, list):
-            normal_score, nsfw_score = 0, 0
-            for i in result:
-                if i.get("label") == "normal":
-                    normal_score = i.get("score", 0)
-                else:
-                    nsfw_score = i.get("score", 0)
-            if float(normal_score) > float(nsfw_score):
-                return {"label": "normal", "score": normal_score}
-            else:
-                return {"label": "nsfw", "score": nsfw_score}
+        with torch.inference_mode():
+            inputs = self.processor(images=img, return_tensors="pt")
+            outputs = self.model(**inputs)
+            logits = outputs.logits
+        predicted_label = logits.argmax(-1).item()
+        return self.model.config.id2label[predicted_label]
 
 
 class TextCheck:
@@ -30,16 +32,18 @@ class TextCheck:
         # load the tokenizer and the model
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto", device_map="auto")
+        self.model.eval()
+        quantize_(self.model, Int8WeightOnlyConfig(version=2))
 
     def extract_label_and_categories(self, content):
         safe_pattern = r"Safety: (Safe|Unsafe|Controversial)"
         category_pattern = r"(Violent|Non-violent Illegal Acts|Sexual Content or Sexual Acts|PII|Suicide & Self-Harm|Unethical Acts|Politically Sensitive Topics|Copyright Violation|Jailbreak|None)"
-        safe_label_match = re.search(safe_pattern, content)  # type: ignore
+        safe_label_match = re.search(safe_pattern, content)
         label = safe_label_match.group(1) if safe_label_match else None
-        categories = re.findall(category_pattern, content)  # type: ignore
+        categories = re.findall(category_pattern, content)
         return label, categories
 
-    async def predict(self, prompt: str):
+    async def predict(self, prompt: str) -> tuple[Literal["Safe", "Unsafe", "Controversial"] | Any, list[Any]]:
         # for prompt moderation
         messages = [{"role": "user", "content": prompt}]
         text = self.tokenizer.apply_chat_template(messages, tokenize=False)
@@ -52,4 +56,4 @@ class TextCheck:
         content = self.tokenizer.decode(output_ids, skip_special_tokens=True)
 
         safe_label, categories = self.extract_label_and_categories(content)
-        return (safe_label, categories)
+        return safe_label, categories

@@ -1,170 +1,62 @@
-import datetime
-import zoneinfo
+from nonebot import get_driver, logger, require
+from sqlmodel import create_engine
 
-import httpx
-from nonebot import logger, require
-
-from tools import agent_tools
-from utils.agents import assistant_agent
-from utils.configs import EnvConfig
-from utils.database import EventDatabase
-from utils.markdown_render import markdown_to_image
-from utils.render import playwright_render
+from utils.database import DATABASE_FILE
 
 require("nonebot_plugin_apscheduler")
 require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import Image, Target, Text, UniMessage  # noqa: E402
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
-event_database = EventDatabase()
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
-tools = agent_tools.mcp_tools + agent_tools.web_tools
+from .task_manager import TaskExecutor, TaskManager  # noqa: E402
+from .task_migration import migrate_existing_tasks  # noqa: E402
+from .task_models import TaskConfig, TaskExecutionHistory, TaskGroupMapping  # noqa: E402
+
+# 初始化任务管理系统
+engine = create_engine(DATABASE_FILE)
+task_manager = TaskManager(scheduler, engine)
+task_executor = TaskExecutor(task_manager)
+task_manager.set_job_func(task_executor.execute)
+
+driver = get_driver()
+
+# 导入命令和处理器（必须在 task_manager 创建之后）
+from . import task_commands, task_handlers  # noqa: E402, F401
 
 
-async def github_post_news():
-    GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
-    query = """
-    query {
-        repository(owner:"UnrealUpdateTracker", name:"UnrealEngine") {
-            discussions(first: 5) {
-                node {
-                    title
-                    createdAt
-                    body
-                }
-            }
-        }
-    }
-    """
-    response = await httpx_client.post(
-        GITHUB_GRAPHQL_URL,
-        headers={"Authorization": f"Bearer {EnvConfig.GITHUB_PAT.get_secret_value()}"},
-        json={"query": query},
-    )
-    print(response.json())
+# ==================== 任务管理系统初始化 ====================
 
 
-@scheduler.scheduled_job("cron", hour="19", misfire_grace_time=60)
-async def apod_everyday():
-    url = "https://api.nasa.gov/planetary/apod"
-    params = {"api_key": EnvConfig.NASA_API_KEY.get_secret_value()}
-    response = await httpx_client.get(url, params=params)
-    content = response.json()
-    intro = f"NASA每日一图\n{content['title']}\n{content['explanation']}"
-    slm_reply = await assistant_agent("翻译用户给出的天文相关的内容为中文，只返回翻译结果，保留专有词汇为英文", intro)
-    messages: list[UniMessage] = [
-        UniMessage(Text(slm_reply if slm_reply else intro)),
-        UniMessage(Image(url=content["url"])),
-    ]
-    for message in messages:
-        for group in EnvConfig.APOD_GROUP_ID:
-            await message.send(target=Target.group(str(group)))
+@driver.on_startup
+async def init_task_system():
+    """启动时初始化任务系统"""
+    logger.info("正在初始化定时任务管理系统...")
 
+    # 1. 创建数据库表
+    TaskConfig.metadata.create_all(engine)
+    TaskGroupMapping.metadata.create_all(engine)
+    TaskExecutionHistory.metadata.create_all(engine)
+    logger.info("数据库表创建完成")
 
-@scheduler.scheduled_job(trigger="cron", hour="8,12,18", minute="30", misfire_grace_time=180)
-async def earth_now():
-    url = "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_DISK_GCLR.JPG"
-    content = None
-    for _i in range(3):
-        try:
-            response = await httpx_client.get(url)
-            response.raise_for_status()
-            # 确保完整读取响应体
-            content = await response.aread()
-            break
-        except httpx.HTTPError as e:
-            logger.warning(f"获取Earth Now图片失败: {e}", "准备重试...")
-            continue
-    if not content:
-        return
-    messages: list[UniMessage] = [
-        UniMessage(
-            Text("来看看半个钟前的地球吧"),
-        ),
-        UniMessage(Image(raw=content)),
-    ]
-    for message in messages:
-        for group in EnvConfig.EARTH_NOW_GROUP_ID:
-            await message.send(target=Target.group(str(group)))
+    # 2. 检查是否需要迁移
+    tasks = await task_manager.list_tasks()
 
-
-@scheduler.scheduled_job(trigger="interval", minutes=5, misfire_grace_time=60)
-async def eq_usgs():
-    USGS_API_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_hour.geojson"
-    EVENT_NAME = "eq_usgs"
-    new_id = await event_database.select(EVENT_NAME)
-    response = await httpx_client.get(USGS_API_URL)
-    content: dict = response.json()
-
-    if not content or not content.get("features"):
-        logger.info("USGS 没有新的地震")
-        return None
-
-    # 获取最新的地震数据
-    data = content["features"][0]
-    event_id = str(data["id"])
-    properties = data["properties"]
-    coordinates = data["geometry"]["coordinates"]
-
-    # 检查是否是新地震且震级大于限制
-    if new_id != event_id:
-        if not await event_database.select(EVENT_NAME):
-            await event_database.insert(EVENT_NAME, event_id)
-        else:
-            await event_database.update(EVENT_NAME, event_id)
+    if len(tasks) == 0:
+        logger.info("检测到首次启动，开始迁移现有任务...")
+        await migrate_existing_tasks(task_manager)
+        tasks = await task_manager.list_tasks()
     else:
-        logger.info("USGS 没有新的地震")
-        return
-    logger.info(f"检测到{properties['place']}发生{properties['mag']}级地震")
-    # 准备详细信息
-    detail = [
-        {
-            "label": "⏱️发震时间",
-            "value": datetime.datetime.fromtimestamp(properties["time"] / 1000)
-            .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
-            .strftime("%Y-%m-%d %H:%M:%S"),
-        },
-        {"label": "🗺️震中位置", "value": properties["place"]},
-        {"label": "🌐纬度", "value": coordinates[1]},
-        {"label": "🌐经度", "value": coordinates[0]},
-    ]
+        logger.info(f"发现 {len(tasks)} 个已存在的任务配置")
 
-    # 如果有海啸警报，添加警告信息
-    if properties.get("tsunami") == 1:
-        detail.append({"label": "🌊警告", "value": "可能发生海啸"})
+    # 3. 注册所有任务到 APScheduler（每次启动都执行）
+    for task in tasks:
+        try:
+            task_manager.add_job_to_scheduler(task)
+            status = "已暂停" if not task.enabled else "已启用"
+            logger.info(f"任务 {task.job_id} ({task.name}) 已注册到调度器（{status}）")
+        except Exception as e:
+            logger.error(f"注册任务 {task.job_id} 到调度器失败: {e}")
 
-    # 如果有烈度信息，添加烈度数据
-    if properties.get("mmi"):
-        detail.append({"label": "💢最大烈度", "value": f"{properties['mmi']}"})
+    # 4. 同步群组配置到 EnvConfig
+    await task_manager.initialize()
 
-    img = await playwright_render(
-        EVENT_NAME,
-        {
-            "title": "USGS地震速报",
-            "detail": detail,
-            "latitude": coordinates[1],
-            "longitude": coordinates[0],
-            "magnitude": properties["mag"],
-            "depth": coordinates[2],
-        },
-    )
-
-    if img:
-        message = UniMessage().image(raw=img)
-        for group in EnvConfig.EARTHQUAKE_GROUP_ID:
-            await message.send(target=Target.group(str(group)))
-
-
-@scheduler.scheduled_job("cron", hour="9,18", minute="30", misfire_grace_time=120)
-async def daily_news():
-    logger.info("开始获取每日新闻摘要")
-    today = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日")
-    with open("prompts/daily_news.txt") as f:
-        system_prompt = f.read().format(current_time=today)
-    user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的主要新闻。"
-    summary = await assistant_agent(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
-    if summary:
-        message = UniMessage().image(raw=await markdown_to_image(summary))
-        for group in EnvConfig.NEWS_SUMMARY_GROUP_ID:
-            await message.send(target=Target.group(str(group)))
+    logger.info("定时任务管理系统初始化完成！")

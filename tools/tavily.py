@@ -3,7 +3,7 @@ from langchain_tavily import TavilyCrawl, TavilyExtract, TavilyMap, TavilySearch
 
 dotenv.load_dotenv()
 tavily_search = TavilySearch(
-    max_results=50,
+    max_results=10,
     topic="general",
 )
 tavily_extract = TavilyExtract(

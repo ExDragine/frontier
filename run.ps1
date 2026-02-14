@@ -1,3 +1,5 @@
+$env:HF_ENDPOINT="https://hf-mirror.com"
+
 .venv/Scripts/Activate.ps1
-uv sync --frozen
-nb run
+uv sync --upgrade
+nb run --reload

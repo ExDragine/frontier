@@ -17,6 +17,7 @@ message: dict = config.get("message", {})
 database: dict = config.get("database", {})
 debug: dict = config.get("debug", {})
 memory: dict = config.get("memory", {})
+dashboard: dict = config.get("dashboard", {})
 
 
 class EnvConfig:
@@ -58,4 +59,17 @@ class EnvConfig:
 
     AGENT_DEBUG_MODE: bool = debug["agent_debug_mode"]
 
+    MEMORY_ENABLED: bool = memory.get("enabled", True)
+    MEMORY_SCHEMA_VERSION: str = str(memory.get("schema_version", "v2"))
+    MEMORY_AUTO_REBUILD_ON_STARTUP: bool = memory.get("auto_rebuild_on_startup", True)
     MEMORY_EMBEDDING_MODEL: str = memory.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
+    MEMORY_DEFAULT_TASK_TTL_DAYS: int = int(memory.get("default_task_ttl_days", 30))
+    MEMORY_MAX_INJECTED_MEMORIES: int = int(memory.get("max_injected_memories", 4))
+    MEMORY_RETRIEVAL_USER_K: int = int(memory.get("retrieval_user_k", 6))
+    MEMORY_RETRIEVAL_GROUP_K: int = int(memory.get("retrieval_group_k", 6))
+    MEMORY_PRIVACY_MODE: str = str(memory.get("privacy_mode", "balanced"))
+    MEMORY_INJECT_TIMEOUT_MS: int = int(memory.get("inject_timeout_ms", 500))
+
+    DASHBOARD_PASSWORD: str = dashboard.get("password", "admin")
+    DASHBOARD_JWT_SECRET: str = dashboard.get("jwt_secret", "frontier-dashboard-default-secret")
+    DASHBOARD_JWT_EXPIRE_HOURS: int = int(dashboard.get("jwt_expire_hours", 24))
