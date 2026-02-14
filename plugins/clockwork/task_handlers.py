@@ -5,6 +5,7 @@ import zoneinfo
 
 import httpx
 from nonebot import get_bot, logger
+from nonebot_plugin_alconna import Image, Target, Text, UniMessage
 
 from tools import agent_tools
 from utils.agents import assistant_agent
@@ -12,7 +13,6 @@ from utils.configs import EnvConfig
 from utils.database import EventDatabase
 from utils.markdown_render import markdown_to_image
 from utils.render import playwright_render
-from nonebot_plugin_alconna import Image, Target, Text, UniMessage
 
 # 共享的资源
 event_database = EventDatabase()
@@ -216,7 +216,7 @@ async def daily_news():
     """每日新闻摘要 - 每天8:30、14:30、20:30推送"""
     logger.info("开始获取每日新闻摘要")
     today = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日")
-    with open("prompts/daily_news.txt", encoding="utf-8") as f:
+    with open("prompts/daily_news.md", encoding="utf-8") as f:
         system_prompt = f.read().format(current_time=today)
     user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的全球地区和中国的主要新闻。不需要再另行询问。"
     summary = await assistant_agent(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)

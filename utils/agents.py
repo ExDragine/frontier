@@ -94,7 +94,7 @@ class FrontierCognitive:
         self.tools = agent_tools.all_tools
         self.subagents: list = [fact_check_subagent]
         self.checkpoint = InMemorySaver()
-        self.backend = FilesystemBackend(root_dir="./cache/projects")
+        self.backend = FilesystemBackend(root_dir="./cache/sandbox")
         self.memory = get_memory_service()
 
     @staticmethod
@@ -224,7 +224,7 @@ class FrontierCognitive:
                     strategy="block",
                 )
             ],
-            skills=["./projects/skills/"],
+            skills=["./sandbox/skills/"],
             interrupt_on={
                 "write_file": False,
                 "read_file": False,

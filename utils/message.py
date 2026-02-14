@@ -232,7 +232,7 @@ async def message_gateway(event: MessageEvent, messages: list):
         messages.append({"role": "user", "content": str({"metadata": {}, "content": event.get_plaintext().strip()})})
         temp_conv: list[dict] = messages[-5:]
         plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
-        with open("prompts/reply_check.txt", encoding="utf-8") as f:
+        with open("prompts/reply_check.md", encoding="utf-8") as f:
             system_prompt = f.read().format(name={EnvConfig.BOT_NAME})
         reply_check: ReplyCheck = await assistant_agent(system_prompt, plain_conv, response_format=ReplyCheck)
         return reply_check.should_reply == "true" and reply_check.confidence > 0.5

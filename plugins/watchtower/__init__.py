@@ -28,6 +28,7 @@ memory = get_memory_service()
 async def on_startup():
     system_check()
     os.makedirs("./cache", exist_ok=True)
+    os.makedirs("./sandbox", exist_ok=True)
     if not os.path.exists(".env"):
         shutil.copy(".env.example", ".env")
     if not os.path.exists("env.toml"):

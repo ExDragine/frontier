@@ -1,6 +1,5 @@
 # ruff: noqa: S101
 
-import types
 
 import pytest
 
@@ -49,7 +48,7 @@ async def test_store_memory_async_success(monkeypatch):
     original_open = builtins.open
 
     def fake_open(path, *args, **kwargs):
-        if str(path).endswith("memory_analyze_v2.txt"):
+        if str(path).endswith("memory_analyze_v2.md"):
             return DummyFile()
         return original_open(path, *args, **kwargs)
 

@@ -3,7 +3,7 @@ import base64
 import time
 from typing import Literal
 
-from nonebot import logger, on_message, require
+from nonebot import get_bot, logger, on_message, require
 from nonebot.adapters.milky.event import MessageEvent
 from pydantic import BaseModel, Field
 
@@ -47,13 +47,13 @@ async def store_memory_async(user_text: str, user_id: str, group_id: int | None,
         logger.info(f"🔒 记忆写入被隐私策略拒绝 user={user_id} reason={reason}")
         return
     try:
-        with open("./prompts/memory_analyze_v2.txt", encoding="utf-8") as f:
+        with open("./prompts/memory_analyze_v2.md", encoding="utf-8") as f:
             memory_prompt = f.read()
     except FileNotFoundError:
-        logger.error("❌ 未找到 memory_analyze_v2.txt 文件")
+        logger.error("❌ 未找到 memory_analyze_v2.md 文件")
         return
     except (PermissionError, OSError, UnicodeDecodeError) as e:
-        logger.error(f"❌ 读取 memory_analyze_v2.txt 失败: {e}")
+        logger.error(f"❌ 读取 memory_analyze_v2.md 失败: {e}")
         return
 
     try:
@@ -99,6 +99,7 @@ def schedule_memory_write(user_text: str, user_id: str, group_id: int | None, so
 async def handle_common(event: MessageEvent):  # noqa: C901
     if EnvConfig.AGENT_MODULE_ENABLED is False:
         await common.finish(f"{EnvConfig.BOT_NAME}飞升了,暂时不可用")
+    bot = get_bot()
     user_id = event.get_user_id()
     user_name = event.data.sender.nickname
     event_id = event.data.message_seq
@@ -136,15 +137,44 @@ async def handle_common(event: MessageEvent):  # noqa: C901
 
     if not await message_gateway(event, messages):
         await common.finish()
-
     risk_check = await message_check(text, images)
     match risk_check:
         case "Safe":
-            pass
+            if group_id:
+                try:
+                    await bot.send_group_message_reaction(
+                        group_id=group_id, message_seq=event_id, reaction="👀", is_add=True
+                    )
+                except Exception as e:
+                    logger.warning(f"表情回复发送失败，使用文本消息: {e}")
+                    await common.send("277")
+            else:
+                await common.send("🔮")
         case "Controversial":
-            await common.send("👀")
+            # 使用表情回复功能
+            if group_id:
+                try:
+                    await bot.send_group_message_reaction(
+                        group_id=group_id, message_seq=event_id, reaction="👀", is_add=True
+                    )
+                except Exception as e:
+                    logger.warning(f"表情回复发送失败，使用文本消息: {e}")
+                    await common.send("32")
+            else:
+                # 私聊场景，直接发送文本
+                await common.send("👀")
         case "Unsafe":
-            await common.send("😮")
+            if group_id:
+                try:
+                    await bot.send_group_message_reaction(
+                        group_id=group_id, message_seq=event_id, reaction="👀", is_add=True
+                    )
+                except Exception as e:
+                    logger.warning(f"表情回复发送失败，使用文本消息: {e}")
+                    await common.send("267")
+            else:
+                # 私聊场景，直接发送文本
+                await common.send("😅")
     messages.append(
         {
             "role": "user",
@@ -157,14 +187,14 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     )
 
     try:
-        with open("prompts/agent_choice.txt", encoding="utf-8") as f:
+        with open("prompts/agent_choice.md", encoding="utf-8") as f:
             system_prompt = f.read()
     except FileNotFoundError:
-        logger.error("❌ 未找到 agent_choice.txt 文件")
+        logger.error("❌ 未找到 agent_choice.md 文件")
         await common.finish("⚙️ 系统配置文件缺失，请联系管理员")
         return
     except (PermissionError, OSError, UnicodeDecodeError) as e:
-        logger.error(f"❌ 读取 agent_choice.txt 失败: {e}")
+        logger.error(f"❌ 读取 agent_choice.md 失败: {e}")
         await common.finish("⚙️ 系统配置错误，请联系管理员")
         return
     # ref_history = await memory.mmr_search(str(group_id) if group_id else str(event.user_id), text, 3, filter={"": ""})
