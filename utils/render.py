@@ -41,11 +41,13 @@ async def playwright_render(name: str, packed_args: dict):
                 pattern = re.compile(r"[\d.]+")
                 result = pattern.search(depth)
                 if result:
-                    depth = result.group(0)
+                    depth = float(result.group(0))
                 else:
                     depth = 10.0
+            elif depth is not None:
+                depth = float(depth)
             else:
-                depth = depth
+                depth = 10.0
 
             # 渲染模板
             rendered_html = template.render(
@@ -54,7 +56,7 @@ async def playwright_render(name: str, packed_args: dict):
                 latitude=float(packed_args["latitude"]),
                 longitude=float(packed_args["longitude"]),
                 magnitude=float(packed_args["magnitude"]),
-                depth=float(packed_args["depth"]),
+                depth=depth,
             )
         case _:
             return None
