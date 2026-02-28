@@ -189,7 +189,7 @@ class FrontierCognitive:
                 model=EnvConfig.ADVAN_MODEL,
                 streaming=False,
                 max_retries=2,
-                timeout=60,
+                timeout=300,
             )
         elif "claude" in EnvConfig.ADVAN_MODEL.lower():
             model = ChatAnthropic(
@@ -198,7 +198,7 @@ class FrontierCognitive:
                 model_name=EnvConfig.ADVAN_MODEL,
                 streaming=False,
                 max_retries=2,
-                timeout=60,
+                timeout=300,
                 stop=None,
             )
         else:
@@ -210,7 +210,7 @@ class FrontierCognitive:
                 reasoning_effort=capability,
                 verbosity="low",
                 max_retries=2,
-                timeout=60,
+                timeout=300,
                 use_responses_api=None,
             )
         agent = create_deep_agent(
