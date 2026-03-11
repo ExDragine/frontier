@@ -214,6 +214,7 @@ class FrontierCognitive:
                 use_responses_api=None,
             )
         agent = create_deep_agent(
+            name=EnvConfig.BOT_NAME,
             model=model,
             system_prompt=self.load_system_prompt(),
             tools=self.tools,
@@ -251,28 +252,6 @@ class FrontierCognitive:
                 {"messages": prepared_messages, "user_id": user_id, "group_id": group_id},
                 config=config,
             )
-        except TimeoutError as e:
-            logger.error(f"❌ Agent请求超时 用户{user_id}: {e}")
-            return {
-                "response": {"messages": [AIMessage("⏱️ 请求超时，请稍后重试。")]},
-                "total_time": time.time() - start_time,
-                "uni_messages": [],
-            }
-        except (ConnectionError, OSError) as e:
-            logger.error(f"❌ Agent网络错误 用户{user_id}: {e}")
-            return {
-                "response": {"messages": [AIMessage("🌐 网络连接失败，请稍后重试。")]},
-                "total_time": time.time() - start_time,
-                "uni_messages": [],
-            }
-        except (KeyError, AttributeError, ValueError) as e:
-            logger.error(f"❌ Agent配置/数据错误 用户{user_id}: {type(e).__name__}: {e}")
-            logger.exception("完整错误堆栈:")
-            return {
-                "response": {"messages": [AIMessage("⚙️ 系统配置错误，请联系管理员。")]},
-                "total_time": time.time() - start_time,
-                "uni_messages": [],
-            }
         except Exception as e:
             # 其他意外错误，记录详细信息
             logger.error(f"❌ Agent执行出现意外错误 用户{user_id}: {type(e).__name__}: {e}")
