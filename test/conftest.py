@@ -234,7 +234,7 @@ github_pat = "ghp-test"
 [function]
 agent_module_enabled = true
 paint_module_enabled = true
-agent_capability = "minimal"
+agent_capability = "none"
 agent_whitelist_mode = false
 agent_whitelist_person_list = []
 agent_whitelist_group_list = []

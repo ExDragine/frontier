@@ -157,7 +157,7 @@ class FrontierCognitive:
         messages,
         user_id,
         user_name,
-        capability: str = "minimal",
+        capability: str = "none",
         group_id: int | None = None,
         query_text: str = "",
     ):

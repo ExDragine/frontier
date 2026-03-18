@@ -34,8 +34,8 @@ message_heap = RepeatMessageHeap(capacity=10, threshold=2)
 
 
 class AgentChoice(BaseModel):
-    agent_capability: Literal["minimal", "low", "medium", "high"] = Field(
-        description="For simple talk ask ,choose 'minimal'; for lightweight, simple tasks, choose 'low'; for medium complexity, choose 'medium'; for complex tasks, choose 'high'."
+    agent_capability: Literal["none", "low", "medium", "high", "xhigh"] = Field(
+        description="Choose 'none' for casual chat; 'low' for simple factual questions; 'medium' for typical tasks with moderate reasoning; 'high' for complex multi-step tasks; 'xhigh' for deep research or architectural decisions."
     )
 
 
