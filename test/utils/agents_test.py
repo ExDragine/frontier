@@ -1,5 +1,3 @@
-# ruff: noqa: S101
-
 import builtins
 import types
 
@@ -22,7 +20,7 @@ async def test_assistant_agent_model_selection(monkeypatch):
 
     class DummyAgent:
         async def ainvoke(self, payload):
-            return {"messages": [types.SimpleNamespace(type="ai", content="ok")]}
+            return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok")]}
 
     def fake_create_agent(**_kwargs):
         return DummyAgent()
@@ -34,8 +32,6 @@ async def test_assistant_agent_model_selection(monkeypatch):
             pass
 
     monkeypatch.setattr(agents, "ChatOpenAI", DummyModel)
-    monkeypatch.setattr(agents, "ChatAnthropic", DummyModel)
-    monkeypatch.setattr(agents, "ChatGoogleGenerativeAI", DummyModel)
 
     result = await agents.assistant_agent(user_prompt="hello", use_model="claude-3")
     assert result == "ok"

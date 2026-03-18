@@ -227,7 +227,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                 group_id=group_id,
                 user_name="Assistant",
                 role="assistant",
-                content=response["messages"][-1].content,
+                content=str(response["messages"][-1].text) if hasattr(response["messages"][-1], "text") else response["messages"][-1].content,
             )
             await send_messages(group_id, event_id, response)
             schedule_memory_write(

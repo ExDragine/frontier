@@ -10,9 +10,7 @@ from deepagents.backends import FilesystemBackend
 from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import PIIMiddleware
 from langchain.messages import AIMessage
-from langchain_anthropic import ChatAnthropic
 from langchain_core.runnables import RunnableConfig
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 from nonebot import logger
@@ -38,34 +36,15 @@ async def assistant_agent(
         except FileNotFoundError:
             logger.warning("❌ 未找到 system prompt 文件: prompts/system_prompt.md")
             system_prompt = "You are a helpful assistant."
-    if "gemini" in use_model.lower():
-        model = ChatGoogleGenerativeAI(
-            api_key=EnvConfig.OPENAI_API_KEY,
-            base_url=EnvConfig.OPENAI_BASE_URL,
-            model=use_model,
-            streaming=False,
-            max_retries=2,
-            timeout=30,
-        )
-    elif "claude" in use_model.lower():
-        model = ChatAnthropic(
-            api_key=EnvConfig.OPENAI_API_KEY,
-            base_url=EnvConfig.OPENAI_BASE_URL,
-            model_name=use_model,
-            streaming=False,
-            max_retries=2,
-            timeout=30,
-            stop=None,
-        )
-    else:
-        model = ChatOpenAI(
-            api_key=EnvConfig.OPENAI_API_KEY,
-            base_url=EnvConfig.OPENAI_BASE_URL,
-            model=use_model,
-            streaming=False,
-            max_retries=2,
-            timeout=30,
-        )
+    model = ChatOpenAI(
+        api_key=EnvConfig.OPENAI_API_KEY,
+        base_url=EnvConfig.OPENAI_BASE_URL,
+        model=use_model,
+        streaming=False,
+        max_retries=2,
+        timeout=30,
+        use_responses_api=True,
+    )
     agent = create_agent(
         model=model,
         tools=tools,
@@ -79,8 +58,8 @@ async def assistant_agent(
         return result["structured_response"]
     content = ""
     for msg in result["messages"]:
-        if msg.type == "ai" and not isinstance(msg.content, list):
-            content += msg.content
+        if msg.type == "ai" and msg.text:
+            content += str(msg.text)
     return content
 
 
@@ -182,37 +161,17 @@ class FrontierCognitive:
         group_id: int | None = None,
         query_text: str = "",
     ):
-        if "gemini" in EnvConfig.ADVAN_MODEL.lower():
-            model = ChatGoogleGenerativeAI(
-                api_key=EnvConfig.OPENAI_API_KEY,
-                base_url=EnvConfig.OPENAI_BASE_URL,
-                model=EnvConfig.ADVAN_MODEL,
-                streaming=False,
-                max_retries=2,
-                timeout=300,
-            )
-        elif "claude" in EnvConfig.ADVAN_MODEL.lower():
-            model = ChatAnthropic(
-                api_key=EnvConfig.OPENAI_API_KEY,
-                base_url=EnvConfig.OPENAI_BASE_URL,
-                model_name=EnvConfig.ADVAN_MODEL,
-                streaming=False,
-                max_retries=2,
-                timeout=300,
-                stop=None,
-            )
-        else:
-            model = ChatOpenAI(
-                api_key=EnvConfig.OPENAI_API_KEY,
-                base_url=EnvConfig.OPENAI_BASE_URL,
-                model=EnvConfig.ADVAN_MODEL,
-                streaming=False,
-                reasoning_effort=capability,
-                verbosity="low",
-                max_retries=2,
-                timeout=300,
-                use_responses_api=None,
-            )
+        model = ChatOpenAI(
+            api_key=EnvConfig.OPENAI_API_KEY,
+            base_url=EnvConfig.OPENAI_BASE_URL,
+            model=EnvConfig.ADVAN_MODEL,
+            streaming=False,
+            reasoning_effort=capability,
+            verbosity="low",
+            max_retries=2,
+            timeout=300,
+            use_responses_api=True,
+        )
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,

@@ -166,7 +166,9 @@ async def send_artifacts(artifacts):
 
 
 async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
-    if content := response["messages"][-1].content:
+    raw = response["messages"][-1]
+    content = str(raw.text) if hasattr(raw, "text") else raw.content
+    if content:
         try:
             content = ast.literal_eval(content)["content"]
         except (ValueError, SyntaxError, KeyError) as e:
