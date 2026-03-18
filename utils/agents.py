@@ -204,6 +204,8 @@ class FrontierCognitive:
         config: RunnableConfig = {
             "configurable": {
                 "thread_id": uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=user_id),
+                "user_id": user_id,
+                "group_id": group_id,
             }
         }
         try:

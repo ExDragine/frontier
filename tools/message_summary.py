@@ -1,9 +1,8 @@
 import datetime
 import zoneinfo
-from typing import Annotated
 
 from langchain.tools import tool
-from langgraph.prebuilt import InjectedState
+from langchain_core.runnables import RunnableConfig
 from nonebot import logger
 
 from utils.configs import EnvConfig
@@ -98,8 +97,7 @@ def _build_statistics(messages: list, capped: bool) -> str:
 async def summarize_messages(
     start_date: str,
     end_date: str,
-    user_id: Annotated[str, InjectedState("user_id")],
-    group_id: Annotated[int | None, InjectedState("group_id")] = None,
+    config: RunnableConfig,
     target_user_id: int | None = None,
 ) -> str:
     """
@@ -113,6 +111,9 @@ async def summarize_messages(
     Returns:
         str: 消息统计信息与内容摘要
     """
+    cfg = config.get("configurable", {})
+    user_id: str = cfg.get("user_id", "")
+    group_id: int | None = cfg.get("group_id")
     try:
         start_ms = _parse_datetime_to_ms(start_date, end_of_day=False)
         end_ms = _parse_datetime_to_ms(end_date, end_of_day=True)
