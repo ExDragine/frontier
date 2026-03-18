@@ -6,7 +6,6 @@ from langchain.tools import tool
 from langgraph.prebuilt import InjectedState
 from nonebot import logger
 
-from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
 
@@ -149,6 +148,8 @@ async def summarize_messages(
         return f"{stats}\n\n---\n\n{formatted}"
 
     try:
+        from utils.agents import assistant_agent  # 延迟导入避免循环依赖
+
         summary = await assistant_agent(
             system_prompt=_SUMMARIZE_PROMPT,
             user_prompt=formatted,
