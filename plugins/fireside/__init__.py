@@ -180,7 +180,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             "role": "user",
             "content": [{"type": "text", "text": str({"metadata": {"user_name": user_name}, "content": text})}]
             + [
-                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"}
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"}}
                 for image in images
             ],
         }
