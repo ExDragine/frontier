@@ -70,7 +70,7 @@ class CustomAgentState(AgentState):
 
 class FrontierCognitive:
     def __init__(self):
-        self.tools = agent_tools.all_tools
+        self.tools = agent_tools.all_tools + [{"type": "web_search_preview"}]
         self.subagents: list = [fact_check_subagent]
         self.checkpoint = InMemorySaver()
         self.backend = FilesystemBackend(root_dir="./cache/sandbox")
