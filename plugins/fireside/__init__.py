@@ -1,15 +1,17 @@
 import asyncio
 import base64
+import datetime
+import os
 import time
 from typing import Literal
 
-from nonebot import get_bot, logger, on_message, require
+from nonebot import get_bot, get_driver, logger, on_message, require
 from nonebot.adapters.milky.event import MessageEvent
 from pydantic import BaseModel, Field
 
 from utils.agents import FrontierCognitive, assistant_agent
 from utils.configs import EnvConfig
-from utils.database import MessageDatabase
+from utils.database import MessageDatabase, MessageImage
 from utils.memory import get_memory_service
 from utils.memory_types import MemoryAnalyzeResult
 from utils.message import (
@@ -27,6 +29,7 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
 memory = get_memory_service()
+driver = get_driver()
 
 common = on_message(priority=10)
 
@@ -95,6 +98,65 @@ def schedule_memory_write(user_text: str, user_id: str, group_id: int | None, so
     task.add_done_callback(done_callback)
 
 
+async def store_image_summary_async(msg_time: int, user_id: int, group_id: int | None):
+    if not EnvConfig.IMAGE_ENABLED:
+        return
+    try:
+        with open("./prompts/image_summary.md", encoding="utf-8") as f:
+            summary_prompt = f.read()
+    except (FileNotFoundError, OSError) as e:
+        logger.error(f"❌ 读取 image_summary.md 失败: {e}")
+        return
+
+    from sqlmodel import Session, select
+
+    with Session(messages_db.engine) as session:
+        stmt = select(MessageImage).where(MessageImage.msg_time == msg_time).order_by(MessageImage.index)
+        img_records = session.exec(stmt).all()
+
+    for img in img_records:
+        full_path = os.path.join(os.getcwd(), img.file_path)
+        if not os.path.exists(full_path):
+            continue
+        try:
+            with open(full_path, "rb") as f:
+                img_bytes = f.read()
+            summary = await assistant_agent(
+                system_prompt=summary_prompt,
+                user_prompt="请描述这张图片。",
+                images=[img_bytes],
+            )
+            if summary:
+                with Session(messages_db.engine) as session:
+                    record = session.get(MessageImage, img.id)
+                    if record:
+                        record.ai_summary = summary.strip()
+                        session.add(record)
+                        session.commit()
+                logger.info(f"🖼️ 图片摘要生成成功 msg_time={msg_time} index={img.index}")
+        except Exception as e:
+            logger.error(f"❌ 图片摘要生成失败 msg_time={msg_time} index={img.index}: {e}")
+
+
+def schedule_image_summary_write(msg_time: int, user_id: int, group_id: int | None):
+    task = asyncio.create_task(store_image_summary_async(msg_time, user_id, group_id))
+
+    def done_callback(done_task: asyncio.Task):
+        if done_task.cancelled():
+            return
+        if exception := done_task.exception():
+            logger.error(f"❌ 异步图片摘要任务异常: {type(exception).__name__}: {exception}")
+
+    task.add_done_callback(done_callback)
+
+
+@driver.on_startup
+async def on_startup():
+    if EnvConfig.IMAGE_AUTO_CLEANUP:
+        cleaned = await messages_db.cleanup_expired_images()
+        logger.info(f"🗑️ 清理过期图片 {cleaned} 张")
+
+
 @common.handle()
 async def handle_common(event: MessageEvent):  # noqa: C901
     if EnvConfig.AGENT_MODULE_ENABLED is False:
@@ -110,8 +172,9 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             await common.finish()
         else:
             text = ""
+    msg_time = int(time.time() * 1000)
     await messages_db.insert(
-        time=int(time.time() * 1000),
+        time=msg_time,
         msg_id=event_id,
         user_id=int(user_id),
         group_id=group_id,
@@ -119,10 +182,17 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         role="user" if user_id != str(event.self_id) else "assistant",
         content=text,
     )
+    if images and EnvConfig.IMAGE_ENABLED:
+        try:
+            await messages_db.insert_images(msg_time=msg_time, user_id=int(user_id), group_id=group_id, images=images)
+            schedule_image_summary_write(msg_time=msg_time, user_id=int(user_id), group_id=group_id)
+        except Exception as e:
+            logger.warning(f"⚠️ 图片保存失败（不影响主流程）: {e}")
     messages = await messages_db.prepare_message(
         int(user_id),
         group_id,
         query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
+        image_window_size=EnvConfig.IMAGE_WINDOW_SIZE,
     )
 
     # Bot 自己的消息不参与复读检查
@@ -178,7 +248,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     messages.append(
         {
             "role": "user",
-            "content": [{"type": "text", "text": str({"metadata": {"user_name": user_name}, "content": text})}]
+            "content": [{"type": "text", "text": str({"metadata": {"time": datetime.datetime.fromtimestamp(msg_time / 1000).astimezone(datetime.timezone(datetime.timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S"), "user_name": user_name}, "content": text})}]
             + [
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"}}
                 for image in images

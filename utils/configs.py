@@ -18,6 +18,7 @@ database: dict = config.get("database", {})
 debug: dict = config.get("debug", {})
 memory: dict = config.get("memory", {})
 dashboard: dict = config.get("dashboard", {})
+image_memory: dict = config.get("image_memory", {})
 
 
 class EnvConfig:
@@ -73,3 +74,8 @@ class EnvConfig:
     DASHBOARD_PASSWORD: str = dashboard.get("password", "admin")
     DASHBOARD_JWT_SECRET: str = dashboard.get("jwt_secret", "frontier-dashboard-default-secret")
     DASHBOARD_JWT_EXPIRE_HOURS: int = int(dashboard.get("jwt_expire_hours", 24))
+
+    IMAGE_ENABLED: bool = image_memory.get("enabled", True)
+    IMAGE_WINDOW_SIZE: int = int(image_memory.get("window_size", 10))
+    IMAGE_TTL_DAYS: int = int(image_memory.get("ttl_days", 30))
+    IMAGE_AUTO_CLEANUP: bool = image_memory.get("auto_cleanup", True)

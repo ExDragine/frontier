@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import time
 import uuid
 import zoneinfo
@@ -21,6 +22,15 @@ from utils.memory import get_memory_service
 from utils.subagents import fact_check_subagent
 
 
+def _build_user_content(text: str, images: list[bytes] | None) -> str | list:
+    if not images:
+        return text
+    return [{"type": "text", "text": text}] + [
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(b).decode()}"}}
+        for b in images
+    ]
+
+
 async def assistant_agent(
     system_prompt: str = "",
     user_prompt: str = "",
@@ -28,6 +38,7 @@ async def assistant_agent(
     tools=None,
     response_format=None,
     middleware=None,
+    images: list[bytes] | None = None,
 ) -> Any:
     if not system_prompt:
         try:
@@ -53,7 +64,7 @@ async def assistant_agent(
         response_format=response_format,
         debug=EnvConfig.AGENT_DEBUG_MODE,
     )
-    result = await agent.ainvoke({"messages": [{"role": "user", "content": user_prompt}]})
+    result = await agent.ainvoke({"messages": [{"role": "user", "content": _build_user_content(user_prompt, images)}]})
     if response_format:
         return result["structured_response"]
     content = ""

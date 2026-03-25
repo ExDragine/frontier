@@ -1,7 +1,10 @@
+import base64
 import datetime
+import os
+import time
 import zoneinfo
 
-from sqlmodel import Field, Session, SQLModel, create_engine, desc, select
+from sqlmodel import Field, Session, SQLModel, col, create_engine, desc, select
 
 DATABASE_FILE = "sqlite:///frontier.db"
 
@@ -25,6 +28,19 @@ class Message(SQLModel, table=True):
 class TimeStamp(SQLModel, table=True):
     name: str = Field(primary_key=True, index=True)
     id: str | None
+
+
+class MessageImage(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    msg_time: int = Field(index=True)
+    user_id: int = Field(index=True)
+    group_id: int | None = None
+    index: int = 0
+    file_path: str
+    file_size: int | None = None
+    created_at: int
+    expires_at: int
+    ai_summary: str | None = None
 
 
 class UserDatabase:
@@ -63,6 +79,7 @@ class MessageDatabase:
     def __init__(self):
         self.engine = create_engine(DATABASE_FILE)
         Message.metadata.create_all(self.engine)
+        MessageImage.metadata.create_all(self.engine)
 
     async def insert(
         self,
@@ -108,15 +125,46 @@ class MessageDatabase:
             results = session.exec(statement)
             return results.all()
 
-    async def prepare_message(self, user_id: int | None = None, group_id: int | None = None, query_numbers: int = 20):
+    async def prepare_message(self, user_id: int | None = None, group_id: int | None = None, query_numbers: int = 20, image_window_size: int = 10):
         messages = await self.select(user_id=user_id, group_id=group_id, query_numbers=query_numbers)
         if not messages:
             return []
         messages_seq = []
-        messages = reversed(messages)
-        messages = list(messages)[:-1]
+        messages = list(reversed(messages))[:-1]
+        if not messages:
+            return []
+
+        all_msg_times = [m.time for m in messages]
+        window_times = set(all_msg_times[-image_window_size:])
+
+        images_by_time: dict[int, list[MessageImage]] = {}
+        with Session(self.engine) as session:
+            stmt = select(MessageImage).where(col(MessageImage.msg_time).in_(all_msg_times))
+            for img in session.exec(stmt).all():
+                images_by_time.setdefault(img.msg_time, []).append(img)
+
         for message in messages:
-            content = str(
+            msg_images = images_by_time.get(message.time, [])
+            in_window = message.time in window_times
+            content_text = message.content
+            file_images: list[bytes] = []
+
+            if msg_images:
+                sorted_imgs = sorted(msg_images, key=lambda x: x.index)
+                if in_window:
+                    for img in sorted_imgs:
+                        full_path = os.path.join(os.getcwd(), img.file_path)
+                        if os.path.exists(full_path):
+                            with open(full_path, "rb") as f:
+                                file_images.append(f.read())
+                if not file_images:
+                    summaries = [img.ai_summary for img in sorted_imgs if img.ai_summary]
+                    if summaries:
+                        content_text += "\n" + " ".join(f"[图片摘要: {s}]" for s in summaries)
+                    else:
+                        content_text += "\n" + " ".join("[图片]" for _ in sorted_imgs)
+
+            text_str = str(
                 {
                     "metadata": {
                         "time": datetime.datetime.fromtimestamp(int(message.time / 1000))
@@ -124,27 +172,73 @@ class MessageDatabase:
                         .strftime("%Y-%m-%d %H:%M:%S"),
                         "user_name": message.user_name,
                     },
-                    "content": message.content,
+                    "content": content_text,
                 }
             )
-            if not messages_seq:
-                messages_seq.append(
+
+            if file_images:
+                content = [{"type": "text", "text": text_str}] + [
                     {
-                        "role": message.role,
-                        "content": content,
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(b).decode()}"},
                     }
-                )
-                continue
-            if message.role == messages_seq[-1]["role"]:
-                messages_seq[-1]["content"] += f"\n{content}"
+                    for b in file_images
+                ]
             else:
-                messages_seq.append(
-                    {
-                        "role": message.role,
-                        "content": content,
-                    }
-                )
+                content = text_str
+
+            if not messages_seq:
+                messages_seq.append({"role": message.role, "content": content})
+                continue
+
+            last = messages_seq[-1]
+            if message.role == last["role"] and isinstance(content, str) and isinstance(last["content"], str):
+                last["content"] += f"\n{content}"
+            else:
+                messages_seq.append({"role": message.role, "content": content})
+
         return messages_seq
+
+    async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
+        from utils.configs import EnvConfig
+
+        now_ms = int(time.time() * 1000)
+        expires_ms = now_ms + EnvConfig.IMAGE_TTL_DAYS * 86400 * 1000
+        dir_path = os.path.join(os.getcwd(), "cache", "images", str(user_id))
+        os.makedirs(dir_path, exist_ok=True)
+        paths = []
+        with Session(self.engine) as session:
+            for i, image_bytes in enumerate(images):
+                file_path = os.path.join("cache", "images", str(user_id), f"{msg_time}_{i}.jpg")
+                with open(os.path.join(os.getcwd(), file_path), "wb") as f:
+                    f.write(image_bytes)
+                session.add(MessageImage(
+                    msg_time=msg_time,
+                    user_id=user_id,
+                    group_id=group_id,
+                    index=i,
+                    file_path=file_path,
+                    file_size=len(image_bytes),
+                    created_at=now_ms,
+                    expires_at=expires_ms,
+                ))
+                paths.append(file_path)
+            session.commit()
+        return paths
+
+    async def cleanup_expired_images(self) -> int:
+        now_ms = int(time.time() * 1000)
+        cleaned = 0
+        with Session(self.engine) as session:
+            expired = session.exec(select(MessageImage).where(MessageImage.expires_at < now_ms)).all()
+            for record in expired:
+                full_path = os.path.join(os.getcwd(), record.file_path)
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+                session.delete(record)
+                cleaned += 1
+            session.commit()
+        return cleaned
 
     async def select_by_time_range(
         self,
