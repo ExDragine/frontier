@@ -256,24 +256,28 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         }
     )
 
-    try:
-        with open("prompts/agent_choice.md", encoding="utf-8") as f:
-            system_prompt = f.read()
-    except FileNotFoundError:
-        logger.error("❌ 未找到 agent_choice.md 文件")
-        await common.finish("⚙️ 系统配置文件缺失，请联系管理员")
-        return
-    except (PermissionError, OSError, UnicodeDecodeError) as e:
-        logger.error(f"❌ 读取 agent_choice.md 失败: {e}")
-        await common.finish("⚙️ 系统配置错误，请联系管理员")
-        return
-    # ref_history = await memory.mmr_search(str(group_id) if group_id else str(event.user_id), text, 3, filter={"": ""})
-    agent_choice: AgentChoice = await assistant_agent(system_prompt, text, response_format=AgentChoice)
+    if EnvConfig.AGENT_CAPABILITY == "auto":
+        try:
+            with open("prompts/agent_choice.md", encoding="utf-8") as f:
+                system_prompt = f.read()
+        except FileNotFoundError:
+            logger.error("❌ 未找到 agent_choice.md 文件")
+            await common.finish("⚙️ 系统配置文件缺失，请联系管理员")
+            return
+        except (PermissionError, OSError, UnicodeDecodeError) as e:
+            logger.error(f"❌ 读取 agent_choice.md 失败: {e}")
+            await common.finish("⚙️ 系统配置错误，请联系管理员")
+            return
+        # ref_history = await memory.mmr_search(str(group_id) if group_id else str(event.user_id), text, 3, filter={"": ""})
+        agent_choice: AgentChoice = await assistant_agent(system_prompt, text, response_format=AgentChoice)
+        capability = agent_choice.agent_capability
+    else:
+        capability = EnvConfig.AGENT_CAPABILITY
     result = await f_cognitive.chat_agent(
         messages,
         user_id,
         user_name,
-        agent_choice.agent_capability,
+        capability,
         group_id=group_id,
         query_text=text,
     )
