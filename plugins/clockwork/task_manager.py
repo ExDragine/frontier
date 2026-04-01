@@ -109,6 +109,7 @@ class TaskManager:
             session.commit()
 
             self._sync_group_config(job_id, group_ids)
+            self.add_job_to_scheduler(task)
 
             self.logger.info(f"任务 {job_id} 注册成功")
             return task
@@ -466,8 +467,8 @@ class TaskExecutor:
             # 获取推送群组
             group_ids = await self.task_manager.get_task_groups(job_id)
 
-            # 执行任务（原始函数内部会读取EnvConfig）
-            await handler()
+            # 执行任务
+            await handler(job_id=job_id)
 
             # 记录成功
             duration = int((time.time() - start_time) * 1000)

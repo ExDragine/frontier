@@ -21,7 +21,7 @@ httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 tools = agent_tools.mcp_tools + agent_tools.web_tools
 
 
-async def github_post_news():
+async def github_post_news(**kwargs):
     """GitHub 新闻推送（未启用）"""
     GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
     query = """
@@ -45,7 +45,7 @@ async def github_post_news():
     print(response.json())
 
 
-async def apod_everyday():
+async def apod_everyday(**kwargs):
     """NASA每日一图 - 每天19:00推送"""
     url = "https://api.nasa.gov/planetary/apod"
     params = {"api_key": EnvConfig.NASA_API_KEY.get_secret_value()}
@@ -63,7 +63,7 @@ async def apod_everyday():
             await message.send(target=Target.group(str(group)))
 
 
-async def earth_now():
+async def earth_now(**kwargs):
     """实时地球图 - 每天8:30、12:30、18:30推送"""
     url = "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_DISK_GCLR.JPG"
     content = None
@@ -87,7 +87,7 @@ async def earth_now():
             await message.send(target=Target.group(str(group)))
 
 
-async def eq_cenc():
+async def eq_cenc(**kwargs):
     """中国地震速报 - 每分钟检测"""
     URL = "https://api.wolfx.jp/cenc_eew.json"
     EVENT_NAME = "eq_cenc"
@@ -145,7 +145,7 @@ async def eq_cenc():
             await message.send(target=Target.group(str(group)))
 
 
-async def eq_usgs():
+async def eq_usgs(**kwargs):
     """美国地震速报 - 每5分钟检测"""
     USGS_API_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_hour.geojson"
     EVENT_NAME = "eq_usgs"
@@ -212,7 +212,7 @@ async def eq_usgs():
             await message.send(target=Target.group(str(group)))
 
 
-async def daily_news():
+async def daily_news(**kwargs):
     """每日新闻摘要 - 每天8:30、14:30、20:30推送"""
     logger.info("开始获取每日新闻摘要")
     today = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日")
@@ -226,7 +226,7 @@ async def daily_news():
             await message.send(target=Target.group(str(group)))
 
 
-async def happy_new_year():
+async def happy_new_year(**kwargs):
     """新年贺词 - 2026年2月16日23:59:59发送"""
     message = UniMessage().text("新年快乐！祝大家在新的一年里身体健康，万事如意！🎉🎊")
     milky_bot = get_bot()

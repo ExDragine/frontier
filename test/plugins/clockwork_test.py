@@ -85,8 +85,8 @@ async def test_register_and_update_task(task_manager):
         trigger_args={"minutes": 5},
         group_ids=[1, 1, 2],
     )
-    with pytest.raises(Exception):
-        _ = task.job_id
+    assert task.job_id == "job1"
+    assert "job1" in task_manager.scheduler.jobs
 
     duplicate = await task_manager.register_task(
         job_id="job1",
@@ -126,7 +126,7 @@ async def test_log_execution_updates_stats(task_manager):
 async def test_task_executor_execute_paths(monkeypatch, task_manager):
     handler_called = {"count": 0}
 
-    async def handler():
+    async def handler(**kwargs):
         handler_called["count"] += 1
 
     await task_manager.register_task(
@@ -145,7 +145,7 @@ async def test_task_executor_execute_paths(monkeypatch, task_manager):
     await executor.execute("job3")
     assert handler_called["count"] == 1
 
-    async def failing_handler():
+    async def failing_handler(**kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(executor, "_load_handler", lambda m, f: failing_handler)

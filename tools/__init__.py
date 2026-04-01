@@ -27,6 +27,7 @@ from .tarot import list_tarot_spreads, tarot_reading
 from .tavily import tavily_crawl, tavily_extract, tavily_map, tavily_search
 from .weather import get_wind_map, mars_weather
 from .iching import iching_divination, list_iching_hexagrams, get_hexagram_detail
+from .reminder import create_reminder
 
 
 class ModuleTools:
@@ -73,6 +74,7 @@ class ModuleTools:
             iching_divination,
             list_iching_hexagrams,
             get_hexagram_detail,
+            create_reminder,
         ]
         self.all_tools = self.mcp_tools + self.local_tools
         self.web_tools = [tavily_search, tavily_extract, tavily_crawl, tavily_map]
