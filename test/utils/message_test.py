@@ -100,6 +100,62 @@ async def test_message_gateway_blacklist(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_message_gateway_whitelist_numeric_id(monkeypatch):
+    """白名单模式下：get_user_id() 返回字符串，TOML 列表为整数，应能正确匹配。"""
+
+    class DummyEvent:
+        def __init__(self):
+            self.data = types.SimpleNamespace(group=types.SimpleNamespace(group_id=5))
+
+        def get_user_id(self):
+            return "12345"  # string, as returned by NoneBot
+
+        def is_tome(self):
+            return True
+
+        def get_plaintext(self):
+            return "hello"
+
+        to_me = True
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", True)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_GROUP_LIST", [5])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_PERSON_LIST", [12345])  # int from TOML
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    result = await message_module.message_gateway(DummyEvent(), [])
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_whitelist_dm_allowed(monkeypatch):
+    """白名单模式下：私聊（group_id=0）不应被群白名单拦截，通过用户白名单即可放行。"""
+
+    class DummyEvent:
+        def __init__(self):
+            self.data = types.SimpleNamespace(group=None)  # DM
+
+        def get_user_id(self):
+            return "12345"
+
+        def is_tome(self):
+            return True
+
+        def get_plaintext(self):
+            return "hello"
+
+        to_me = True
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", True)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_GROUP_LIST", [99])  # user not in this group
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_PERSON_LIST", [12345])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    result = await message_module.message_gateway(DummyEvent(), [])
+    assert result is True
+
+
+@pytest.mark.asyncio
 async def test_message_check_text(monkeypatch):
     async def fake_predict(text):
         return "Safe", []

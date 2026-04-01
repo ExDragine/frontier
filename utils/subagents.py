@@ -20,10 +20,12 @@ model = ChatOpenAI(
     timeout=30,
     use_responses_api=True,
 )
-fact_check_subagent = {
-    "name": "fact_check_agent",
-    "description": "核查信息中提到的关键内容的真实性，提供准确的事实依据。",
-    "system_prompt": f"""
+def get_fact_check_subagent() -> dict:
+    current_time = datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
+    return {
+        "name": "fact_check_agent",
+        "description": "核查信息中提到的关键内容的真实性，提供准确的事实依据。",
+        "system_prompt": f"""
         ## Basic Requirements
         Verify the authenticity of the key information mentioned in the information provided by the user.
         Please provide accurate factual evidence based on reliable sources and data. The following are a few guiding principles:
@@ -32,17 +34,18 @@ fact_check_subagent = {
         3. Provide citations: Provide citations for the sources of information in the answer for users to consult further.
         4. Avoid bias: Ensure the neutrality of the information, avoiding any form of bias and misinformation.
         Please verify the information provided by the user according to the above guiding principles and provide accurate factual evidence.
-        
+
         Please follow the following guidelines when replying:
         1.  Point out the information points that need correction and provide the correct factual basis.
         2.  Provide citations for the sources of the information to facilitate further verification by the user.
         3.  Keep it brief and clear, and avoid lengthy explanations.
-        
+
         ## Additional Instructions
-        The current time is UTC+8: {datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")}
+        The current time is UTC+8: {current_time}
     """,
-    "tools": agent_tools.web_tools,
-    "model": model,
-    # "middleware": [],
-    # "interrupt_on": {},
-}
+        "tools": agent_tools.web_tools,
+        "model": model,
+        # "middleware": [],
+        # "interrupt_on": {},
+    }
+

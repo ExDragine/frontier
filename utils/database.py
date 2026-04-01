@@ -116,7 +116,7 @@ class MessageDatabase:
             elif user_id:
                 statement = (
                     select(Message)
-                    .where(Message.user_id == user_id and Message.group_id is None)
+                    .where(Message.user_id == user_id)
                     .order_by(desc(Message.time))
                     .limit(query_numbers)
                 )
@@ -290,7 +290,7 @@ class EventDatabase:
         with Session(self.engine) as session:
             target = session.get(TimeStamp, name)
             if target:
-                session.delete(name)
+                session.delete(target)
                 session.commit()
 
     async def update(self, name, id):

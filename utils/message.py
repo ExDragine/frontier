@@ -216,14 +216,18 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
 
 async def message_gateway(event: MessageEvent, messages: list):
     group_id = event.data.group.group_id if event.data.group else 0
-    user_id = event.get_user_id()
+    user_id_raw = event.get_user_id()
+    try:
+        user_id: int | str = int(user_id_raw)
+    except ValueError:
+        user_id = user_id_raw
 
-    if EnvConfig.AGENT_WITHELIST_MODE and group_id in EnvConfig.AGENT_WITHELIST_GROUP_LIST:
-        pass
+    if group_id != 0 and EnvConfig.AGENT_WHITELIST_MODE and group_id not in EnvConfig.AGENT_WHITELIST_GROUP_LIST:
+        return False
     if group_id in EnvConfig.AGENT_BLACKLIST_GROUP_LIST:
         return False
-    if EnvConfig.AGENT_WITHELIST_MODE and user_id in EnvConfig.AGENT_WITHELIST_PERSON_LIST:
-        pass
+    if EnvConfig.AGENT_WHITELIST_MODE and user_id not in EnvConfig.AGENT_WHITELIST_PERSON_LIST:
+        return False
     if user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST:
         return False
     if event.is_tome() or event.to_me:

@@ -19,7 +19,7 @@ from nonebot import logger
 from tools import agent_tools
 from utils.configs import EnvConfig
 from utils.memory import get_memory_service
-from utils.subagents import fact_check_subagent
+from utils.subagents import get_fact_check_subagent
 
 
 def _build_user_content(text: str, images: list[bytes] | None) -> str | list:
@@ -82,7 +82,7 @@ class CustomAgentState(AgentState):
 class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.all_tools
-        self.subagents: list = [fact_check_subagent]
+        self.subagents: list = [get_fact_check_subagent()]
         self.checkpoint = InMemorySaver()
         self.backend = FilesystemBackend(root_dir="./cache/sandbox")
         self.memory = get_memory_service()

@@ -111,20 +111,20 @@ def _reload_env_config():
     EnvConfig.AGENT_MODULE_ENABLED = fn.get("agent_module_enabled", EnvConfig.AGENT_MODULE_ENABLED)
     EnvConfig.PAINT_MODULE_ENABLED = fn.get("paint_module_enabled", EnvConfig.PAINT_MODULE_ENABLED)
     EnvConfig.AGENT_CAPABILITY = fn.get("agent_capability", EnvConfig.AGENT_CAPABILITY)
-    EnvConfig.AGENT_WITHELIST_MODE = fn.get("agent_whitelist_mode", EnvConfig.AGENT_WITHELIST_MODE)
-    EnvConfig.AGENT_WITHELIST_PERSON_LIST = fn.get(
-        "agent_whitelist_person_list", EnvConfig.AGENT_WITHELIST_PERSON_LIST
+    EnvConfig.AGENT_WHITELIST_MODE = fn.get("agent_whitelist_mode", EnvConfig.AGENT_WHITELIST_MODE)
+    EnvConfig.AGENT_WHITELIST_PERSON_LIST = fn.get(
+        "agent_whitelist_person_list", EnvConfig.AGENT_WHITELIST_PERSON_LIST
     )
-    EnvConfig.AGENT_WITHELIST_GROUP_LIST = fn.get("agent_whitelist_group_list", EnvConfig.AGENT_WITHELIST_GROUP_LIST)
+    EnvConfig.AGENT_WHITELIST_GROUP_LIST = fn.get("agent_whitelist_group_list", EnvConfig.AGENT_WHITELIST_GROUP_LIST)
     EnvConfig.AGENT_BLACKLIST_PERSON_LIST = fn.get(
         "agent_blacklist_person_list", EnvConfig.AGENT_BLACKLIST_PERSON_LIST
     )
     EnvConfig.AGENT_BLACKLIST_GROUP_LIST = fn.get("agent_blacklist_group_list", EnvConfig.AGENT_BLACKLIST_GROUP_LIST)
-    EnvConfig.PAINT_WITHELIST_MODE = fn.get("paint_whitelist_mode", EnvConfig.PAINT_WITHELIST_MODE)
-    EnvConfig.PAINT_WITHELIST_PERSON_LIST = fn.get(
-        "paint_whitelist_person_list", EnvConfig.PAINT_WITHELIST_PERSON_LIST
+    EnvConfig.PAINT_WHITELIST_MODE = fn.get("paint_whitelist_mode", EnvConfig.PAINT_WHITELIST_MODE)
+    EnvConfig.PAINT_WHITELIST_PERSON_LIST = fn.get(
+        "paint_whitelist_person_list", EnvConfig.PAINT_WHITELIST_PERSON_LIST
     )
-    EnvConfig.PAINT_WITHELIST_GROUP_LIST = fn.get("paint_whitelist_group_list", EnvConfig.PAINT_WITHELIST_GROUP_LIST)
+    EnvConfig.PAINT_WHITELIST_GROUP_LIST = fn.get("paint_whitelist_group_list", EnvConfig.PAINT_WHITELIST_GROUP_LIST)
     EnvConfig.PAINT_BLACKLIST_PERSON_LIST = fn.get(
         "paint_blacklist_person_list", EnvConfig.PAINT_BLACKLIST_PERSON_LIST
     )
