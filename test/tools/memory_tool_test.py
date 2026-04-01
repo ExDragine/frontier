@@ -20,7 +20,7 @@ async def test_get_memory_disabled(load_tool_module, monkeypatch):
     monkeypatch.setitem(sys.modules, "utils.memory", fake_utils_memory)
     mod = load_tool_module("memory")
     monkeypatch.setattr(mod.EnvConfig, "MEMORY_ENABLED", False)
-    result = await mod.get_memory("你好", user_id="u1", group_id=1)
+    result = await mod.get_memory("你好", config={"configurable": {"user_id": "u1", "group_id": 1}})
     assert result == "记忆系统未启用。"
 
 
@@ -37,7 +37,7 @@ async def test_get_memory_no_results(load_tool_module, monkeypatch):
             return []
 
     monkeypatch.setattr(mod, "memory", DummyMemory())
-    result = await mod.get_memory("天气", user_id="u1", group_id=1)
+    result = await mod.get_memory("天气", config={"configurable": {"user_id": "u1", "group_id": 1}})
     assert result == "未找到相关记忆。"
 
 
@@ -58,7 +58,7 @@ async def test_get_memory_formats_user_and_group(load_tool_module, monkeypatch):
             ]
 
     monkeypatch.setattr(mod, "memory", DummyMemory())
-    result = await mod.get_memory("规则", user_id="u1", group_id=1)
+    result = await mod.get_memory("规则", config={"configurable": {"user_id": "u1", "group_id": 1}})
     assert "用户记忆:" in result
     assert "* 用户偏好A" in result
     assert "群记忆:" in result

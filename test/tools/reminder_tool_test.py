@@ -27,20 +27,22 @@ def future_time() -> str:
 @pytest.fixture
 def reminder_mod(load_tool_module, monkeypatch):
     """Load reminder module with clockwork task_manager stubbed out."""
-    # Stub plugins.clockwork as a module with a mock task_manager attribute
     clockwork_stub = types.ModuleType("plugins.clockwork")
     mock_tm = _make_clockwork_task_manager_stub()
     clockwork_stub.task_manager = mock_tm
     monkeypatch.setitem(sys.modules, "plugins.clockwork", clockwork_stub)
 
-    # Also need plugins package
     if "plugins" not in sys.modules:
         plugins_stub = types.ModuleType("plugins")
         monkeypatch.setitem(sys.modules, "plugins", plugins_stub)
 
     mod = load_tool_module("reminder")
-    mod._mock_tm = mock_tm  # convenience reference
+    mod._mock_tm = mock_tm
     return mod
+
+
+def _cfg(user_id: str, group_id=None) -> dict:
+    return {"configurable": {"user_id": user_id, "group_id": group_id}}
 
 
 @pytest.mark.asyncio
@@ -50,8 +52,7 @@ async def test_create_reminder_group_context(reminder_mod, future_time):
         reminder_text="开会",
         remind_time=future_time,
         private=False,
-        user_id="12345",
-        group_id=100,
+        config=_cfg("12345", 100),
     )
 
     assert "开会" in result
@@ -75,8 +76,7 @@ async def test_create_reminder_dm_context(reminder_mod, future_time):
         reminder_text="取快递",
         remind_time=future_time,
         private=False,
-        user_id="99999",
-        group_id=None,
+        config=_cfg("99999", None),
     )
 
     assert "取快递" in result
@@ -92,8 +92,7 @@ async def test_create_reminder_past_time_rejected(reminder_mod):
     result = await reminder_mod.create_reminder(
         reminder_text="做梦",
         remind_time="2020-01-01 00:00:00",
-        user_id="1",
-        group_id=None,
+        config=_cfg("1"),
     )
 
     assert "将来" in result or "错误" in result
@@ -106,8 +105,7 @@ async def test_create_reminder_invalid_format(reminder_mod):
     result = await reminder_mod.create_reminder(
         reminder_text="测试",
         remind_time="明天下午三点",
-        user_id="1",
-        group_id=None,
+        config=_cfg("1"),
     )
 
     assert "格式" in result
@@ -121,8 +119,7 @@ async def test_create_reminder_job_id_format(reminder_mod, future_time):
     await reminder_mod.create_reminder(
         reminder_text="喝水",
         remind_time=future_time,
-        user_id="42",
-        group_id=None,
+        config=_cfg("42"),
     )
     after_ms = int(time.time() * 1000)
 

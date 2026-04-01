@@ -4,10 +4,8 @@ import json
 import time
 import datetime
 import zoneinfo
-from typing import Annotated
-
 from langchain.tools import tool
-from langgraph.prebuilt import InjectedState
+from langchain_core.runnables import RunnableConfig
 
 _SHANGHAI = zoneinfo.ZoneInfo("Asia/Shanghai")
 _TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S")
@@ -27,8 +25,7 @@ async def create_reminder(
     reminder_text: str,
     remind_time: str,
     private: bool = False,
-    user_id: Annotated[str, InjectedState("user_id")] = "",
-    group_id: Annotated[int | None, InjectedState("group_id")] = None,
+    config: RunnableConfig | None = None,
 ) -> str:
     """创建定时提醒。到达指定时间后自动发送提醒消息给用户。
 
@@ -38,6 +35,10 @@ async def create_reminder(
         private: 是否通过私聊发送。True=私聊，False=在原群聊@用户（默认）
     """
     from plugins.clockwork import task_manager
+
+    configurable = (config or {}).get("configurable", {})
+    user_id: str = str(configurable.get("user_id", ""))
+    group_id: int | None = configurable.get("group_id")
 
     dt = _parse_time(remind_time)
     if dt is None:
@@ -61,7 +62,7 @@ async def create_reminder(
         handler_module="plugins.clockwork.reminder_handler",
         handler_function="fire_reminder",
         trigger_type="date",
-        trigger_args={"run_date": dt.strftime("%Y-%m-%d %H:%M:%S")},
+        trigger_args={"run_date": dt.isoformat()},
         group_ids=[group_id] if group_id else [],
         description=json.dumps(payload, ensure_ascii=False),
         enabled=True,

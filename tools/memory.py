@@ -1,7 +1,5 @@
-from typing import Annotated
-
 from langchain.tools import tool
-from langgraph.prebuilt import InjectedState
+from langchain_core.runnables import RunnableConfig
 
 from utils.configs import EnvConfig
 from utils.memory import get_memory_service
@@ -13,8 +11,7 @@ memory = get_memory_service()
 @tool(response_format="content")
 async def get_memory(
     query: str,
-    user_id: Annotated[str, InjectedState("user_id")],
-    group_id: Annotated[int | None, InjectedState("group_id")] = None,
+    config: RunnableConfig | None = None,
 ):
     """
     检索之前的记忆，返回与查询最相关的内容。
@@ -26,6 +23,10 @@ async def get_memory(
     """
     if not EnvConfig.MEMORY_ENABLED:
         return "记忆系统未启用。"
+
+    configurable = (config or {}).get("configurable", {})
+    user_id: str = str(configurable.get("user_id", ""))
+    group_id: int | None = configurable.get("group_id")
 
     items = await memory.retrieve_for_injection(
         query=query,
