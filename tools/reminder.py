@@ -25,7 +25,7 @@ async def create_reminder(
     reminder_text: str,
     remind_time: str,
     private: bool = False,
-    config: RunnableConfig | None = None,
+    config: RunnableConfig = None,
 ) -> str:
     """创建定时提醒。到达指定时间后自动发送提醒消息给用户。
 

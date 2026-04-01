@@ -11,7 +11,7 @@ memory = get_memory_service()
 @tool(response_format="content")
 async def get_memory(
     query: str,
-    config: RunnableConfig | None = None,
+    config: RunnableConfig = None,
 ):
     """
     检索之前的记忆，返回与查询最相关的内容。
