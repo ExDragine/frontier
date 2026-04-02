@@ -53,7 +53,7 @@ async def assistant_agent(
         model=use_model,
         streaming=False,
         max_retries=2,
-        timeout=30,
+        timeout=300,
         use_responses_api=True,
     )
     agent = create_agent(

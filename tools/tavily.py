@@ -4,7 +4,6 @@ from langchain_tavily import TavilyCrawl, TavilyExtract, TavilyMap, TavilySearch
 dotenv.load_dotenv()
 tavily_search = TavilySearch(
     max_results=10,
-    topic="general",
 )
 tavily_extract = TavilyExtract(
     extract_depth="advanced", include_images=False, include_favicon=False, format="markdown"

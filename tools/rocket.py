@@ -20,7 +20,7 @@ async def get_launches(days: int = 7):
     Returns:
         str: 火箭发射计划的详细信息。"""
     messages = ""
-    url = "https://lldev.thespacedevs.com/2.3.0/launches/"
+    url = TLP_LAUNCH_URL
 
     now = datetime.now(UTC)
 
