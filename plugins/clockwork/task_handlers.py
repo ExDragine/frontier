@@ -212,14 +212,51 @@ async def eq_usgs(**kwargs):
             await message.send(target=Target.group(str(group)))
 
 
+SPACEFLIGHT_NEWS_URL = "https://api.spaceflightnewsapi.net/v4/articles/"
+
+
 async def daily_news(**kwargs):
-    """每日新闻摘要 - 每天8:30、14:30、20:30推送"""
-    logger.info("开始获取每日新闻摘要")
-    today = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日")
+    """每日航天新闻摘要 - 每天17:00推送"""
+    logger.info("开始获取每日航天新闻")
+
+    now_cn = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
+    today = now_cn.strftime("%Y年%m月%d日")
+    start_of_day_utc = now_cn.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(datetime.UTC)
+
+    params = {
+        "published_at_gte": start_of_day_utc.isoformat(),
+        "ordering": "-published_at",
+        "limit": 10,
+    }
+
+    try:
+        response = await httpx_client.get(SPACEFLIGHT_NEWS_URL, params=params)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        logger.error(f"获取航天新闻失败: {e}")
+        return
+
+    articles = data.get("results", [])
+    if not articles:
+        logger.info("今日暂无航天新闻")
+        return
+
+    articles_text = ""
+    for i, article in enumerate(articles, 1):
+        articles_text += (
+            f"\n## Article {i}\n"
+            f"**Title**: {article.get('title', 'N/A')}\n"
+            f"**Summary**: {article.get('summary', 'N/A')}\n"
+            f"**Source**: {article.get('news_site', 'N/A')}\n"
+            f"**Published**: {article.get('published_at', 'N/A')}\n"
+        )
+
     with open("prompts/daily_news.md", encoding="utf-8") as f:
         system_prompt = f.read().format(current_time=today)
-    user_prompt = f"请总结今天{'早上' if datetime.datetime.now().astimezone(zoneinfo.ZoneInfo('Asia/Shanghai')).hour < 12 else '下午'}的全球地区和中国的主要新闻。不需要再另行询问。"
-    summary = await assistant_agent(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
+
+    user_prompt = f"以下是今日最新航天新闻，请按照要求整理并翻译为中文：\n{articles_text}"
+    summary = await assistant_agent(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL)
     if summary:
         message = UniMessage().image(raw=await markdown_to_image(summary))
         for group in EnvConfig.NEWS_SUMMARY_GROUP_ID:
