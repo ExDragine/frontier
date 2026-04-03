@@ -35,7 +35,7 @@ async def get_launches(days: int = 7):
 
         data = response.json()
         results = data.get("results", [])
-        messages += f"✅ 未来 {days} 天共有 {data['count']} 次发射计划：\n\n"
+        messages += f"✅ 未来 {days} 天共有 {data.get('count', len(results))} 次发射计划：\n\n"
 
         tz_cn = zoneinfo.ZoneInfo("Asia/Shanghai")
 
