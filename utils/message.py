@@ -20,8 +20,8 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
 httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
-text_det = TextCheck()
-image_det = ImageCheck()
+text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
+image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 
 
 class ReplyCheck(BaseModel):
@@ -246,6 +246,8 @@ async def message_gateway(event: MessageEvent, messages: list):
 
 
 async def message_check(text: str | None, images: list | None) -> Literal["Safe", "Controversial", "Unsafe"]:
+    if not EnvConfig.CONTENT_CHECK_ENABLED:
+        return "Safe"
     if text:
         safe_label, categories = await text_det.predict(text)
         return safe_label

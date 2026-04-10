@@ -157,9 +157,34 @@ async def test_message_gateway_whitelist_dm_allowed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_message_check_text(monkeypatch):
+    """CONTENT_CHECK_ENABLED=True 时，调用 text_det 进行检测"""
+    import types
+
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", True)
+
+    fake_det = types.SimpleNamespace()
+
     async def fake_predict(text):
         return "Safe", []
 
-    monkeypatch.setattr(message_module.text_det, "predict", fake_predict)
+    fake_det.predict = fake_predict
+    monkeypatch.setattr(message_module, "text_det", fake_det)
+
     result = await message_module.message_check("hello", None)
+    assert result == "Safe"
+
+
+@pytest.mark.asyncio
+async def test_message_check_disabled_returns_safe(monkeypatch):
+    """CONTENT_CHECK_ENABLED=False 时，message_check 直接返回 Safe，不调用检测器"""
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+    result = await message_module.message_check("任意内容", None)
+    assert result == "Safe"
+
+
+@pytest.mark.asyncio
+async def test_message_check_disabled_with_images_returns_safe(monkeypatch):
+    """CONTENT_CHECK_ENABLED=False 时，即使有图片也直接返回 Safe"""
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+    result = await message_module.message_check(None, [b"fake_image_bytes"])
     assert result == "Safe"
