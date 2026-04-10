@@ -66,3 +66,4 @@ jwt_secret = "secret"
     assert configs.EnvConfig.DASHBOARD_PASSWORD == "admin"
     assert isinstance(configs.EnvConfig.OPENAI_API_KEY, SecretStr)
     assert configs.EnvConfig.ANNOUNCE_GROUP_ID == configs.EnvConfig.TEST_GROUP_ID
+    assert configs.EnvConfig.CONTENT_CHECK_ENABLED is False
