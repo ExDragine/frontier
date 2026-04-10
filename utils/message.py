@@ -248,6 +248,9 @@ async def message_gateway(event: MessageEvent, messages: list):
 async def message_check(text: str | None, images: list | None) -> Literal["Safe", "Controversial", "Unsafe"]:
     if not EnvConfig.CONTENT_CHECK_ENABLED:
         return "Safe"
+    if text_det is None or image_det is None:
+        logger.error("CONTENT_CHECK_ENABLED is True but detectors are None; returning Safe")
+        return "Safe"
     if text:
         safe_label, categories = await text_det.predict(text)
         return safe_label
