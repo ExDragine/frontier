@@ -49,5 +49,5 @@ async def test_event_database_ops(monkeypatch, memory_engine):
     assert await database.select("event") == "1"
     await database.update("event", "2")
     assert await database.select("event") == "2"
-    with pytest.raises(Exception):
-        await database.delete("event")
+    await database.delete("event")
+    assert await database.select("event") is None

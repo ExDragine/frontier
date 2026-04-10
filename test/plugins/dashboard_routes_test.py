@@ -42,7 +42,7 @@ async def test_status_overview_handles_missing_task_plugin(monkeypatch):
             AGENT_MODULE_ENABLED=True,
             PAINT_MODULE_ENABLED=True,
             MEMORY_ENABLED=True,
-            AGENT_CAPABILITY="minimal",
+            AGENT_CAPABILITY="none",
             AGENT_DEBUG_MODE=False,
             BASIC_MODEL="b",
             ADVAN_MODEL="a",

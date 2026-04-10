@@ -19,6 +19,8 @@ class ImageCheck:
         quantize_(self.model, Int8WeightOnlyConfig(version=2))
 
     async def predict(self, img):
+        if img.mode != "RGB":
+            img = img.convert("RGB")
         with torch.inference_mode():
             inputs = self.processor(images=img, return_tensors="pt")
             outputs = self.model(**inputs)

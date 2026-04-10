@@ -7,6 +7,7 @@ from .earthquake import get_china_earthquake, get_japan_earthquake
 from .heavens_above import station_location
 from .mcp_client import mcp_get_tools
 from .memory import get_memory
+from .message_summary import summarize_messages
 from .radar import get_static_china_radar
 from .rocket import get_launches
 from .satellite import get_fy4b_cloud_map, get_fy4b_geos_cloud_map, get_himawari_satellite_image
@@ -26,6 +27,7 @@ from .tarot import list_tarot_spreads, tarot_reading
 from .tavily import tavily_crawl, tavily_extract, tavily_map, tavily_search
 from .weather import get_wind_map, mars_weather
 from .iching import iching_divination, list_iching_hexagrams, get_hexagram_detail
+from .reminder import create_reminder
 
 
 class ModuleTools:
@@ -37,6 +39,7 @@ class ModuleTools:
             get_fy4b_geos_cloud_map,
             get_bilibili_video_info,
             get_memory,
+            summarize_messages,
             get_himawari_satellite_image,
             get_china_earthquake,
             get_japan_earthquake,
@@ -71,6 +74,7 @@ class ModuleTools:
             iching_divination,
             list_iching_hexagrams,
             get_hexagram_detail,
+            create_reminder,
         ]
         self.all_tools = self.mcp_tools + self.local_tools
         self.web_tools = [tavily_search, tavily_extract, tavily_crawl, tavily_map]

@@ -27,7 +27,7 @@ github_pat = "gh"
 [function]
 agent_module_enabled = true
 paint_module_enabled = true
-agent_capability = "minimal"
+agent_capability = "none"
 agent_whitelist_mode = false
 agent_whitelist_person_list = []
 agent_whitelist_group_list = []
@@ -66,3 +66,4 @@ jwt_secret = "secret"
     assert configs.EnvConfig.DASHBOARD_PASSWORD == "admin"
     assert isinstance(configs.EnvConfig.OPENAI_API_KEY, SecretStr)
     assert configs.EnvConfig.ANNOUNCE_GROUP_ID == configs.EnvConfig.TEST_GROUP_ID
+    assert configs.EnvConfig.CONTENT_CHECK_ENABLED is False

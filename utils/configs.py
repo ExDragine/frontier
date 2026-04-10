@@ -18,6 +18,8 @@ database: dict = config.get("database", {})
 debug: dict = config.get("debug", {})
 memory: dict = config.get("memory", {})
 dashboard: dict = config.get("dashboard", {})
+image_memory: dict = config.get("image_memory", {})
+content_check: dict = config.get("content_check", {})
 
 
 class EnvConfig:
@@ -36,14 +38,14 @@ class EnvConfig:
     GITHUB_PAT: SecretStr = SecretStr(key["github_pat"])
 
     AGENT_CAPABILITY = function_list["agent_capability"]
-    AGENT_WITHELIST_MODE: bool = function_list["agent_whitelist_mode"]
-    AGENT_WITHELIST_PERSON_LIST: list = function_list["agent_whitelist_person_list"]
-    AGENT_BLACKLIST_GROUP_LIST: list = function_list["agent_whitelist_group_list"]
+    AGENT_WHITELIST_MODE: bool = function_list["agent_whitelist_mode"]
+    AGENT_WHITELIST_PERSON_LIST: list = function_list["agent_whitelist_person_list"]
+    AGENT_WHITELIST_GROUP_LIST: list = function_list["agent_whitelist_group_list"]
     AGENT_BLACKLIST_PERSON_LIST: list = function_list["agent_blacklist_person_list"]
-    AGENT_WITHELIST_GROUP_LIST: list = function_list["agent_blacklist_group_list"]
-    PAINT_WITHELIST_MODE: bool = function_list["paint_whitelist_mode"]
-    PAINT_WITHELIST_PERSON_LIST: list = function_list["paint_whitelist_person_list"]
-    PAINT_WITHELIST_GROUP_LIST: list = function_list["paint_whitelist_group_list"]
+    AGENT_BLACKLIST_GROUP_LIST: list = function_list["agent_blacklist_group_list"]
+    PAINT_WHITELIST_MODE: bool = function_list["paint_whitelist_mode"]
+    PAINT_WHITELIST_PERSON_LIST: list = function_list["paint_whitelist_person_list"]
+    PAINT_WHITELIST_GROUP_LIST: list = function_list["paint_whitelist_group_list"]
     PAINT_BLACKLIST_PERSON_LIST: list = function_list["paint_blacklist_person_list"]
     PAINT_BLACKLIST_GROUP_LIST: list = function_list["paint_blacklist_group_list"]
 
@@ -73,3 +75,10 @@ class EnvConfig:
     DASHBOARD_PASSWORD: str = dashboard.get("password", "admin")
     DASHBOARD_JWT_SECRET: str = dashboard.get("jwt_secret", "frontier-dashboard-default-secret")
     DASHBOARD_JWT_EXPIRE_HOURS: int = int(dashboard.get("jwt_expire_hours", 24))
+
+    IMAGE_ENABLED: bool = image_memory.get("enabled", True)
+    IMAGE_WINDOW_SIZE: int = int(image_memory.get("window_size", 10))
+    IMAGE_TTL_DAYS: int = int(image_memory.get("ttl_days", 30))
+    IMAGE_AUTO_CLEANUP: bool = image_memory.get("auto_cleanup", True)
+
+    CONTENT_CHECK_ENABLED: bool = content_check.get("enabled", False)

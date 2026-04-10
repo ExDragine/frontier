@@ -8,7 +8,6 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 from .task_manager import TaskExecutor, TaskManager  # noqa: E402
-from .task_migration import migrate_existing_tasks  # noqa: E402
 from .task_models import TaskConfig, TaskExecutionHistory, TaskGroupMapping  # noqa: E402
 
 # 初始化任务管理系统
@@ -37,15 +36,9 @@ async def init_task_system():
     TaskExecutionHistory.metadata.create_all(engine)
     logger.info("数据库表创建完成")
 
-    # 2. 检查是否需要迁移
+    # 2. 读取所有任务配置
     tasks = await task_manager.list_tasks()
-
-    if len(tasks) == 0:
-        logger.info("检测到首次启动，开始迁移现有任务...")
-        await migrate_existing_tasks(task_manager)
-        tasks = await task_manager.list_tasks()
-    else:
-        logger.info(f"发现 {len(tasks)} 个已存在的任务配置")
+    logger.info(f"发现 {len(tasks)} 个已存在的任务配置")
 
     # 3. 注册所有任务到 APScheduler（每次启动都执行）
     for task in tasks:

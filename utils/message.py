@@ -20,8 +20,8 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
 httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
-text_det = TextCheck()
-image_det = ImageCheck()
+text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
+image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 
 
 class ReplyCheck(BaseModel):
@@ -166,7 +166,9 @@ async def send_artifacts(artifacts):
 
 
 async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
-    if content := response["messages"][-1].content:
+    raw = response["messages"][-1]
+    content = str(raw.text) if hasattr(raw, "text") else raw.content
+    if content:
         try:
             content = ast.literal_eval(content)["content"]
         except (ValueError, SyntaxError, KeyError) as e:
@@ -214,14 +216,18 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
 
 async def message_gateway(event: MessageEvent, messages: list):
     group_id = event.data.group.group_id if event.data.group else 0
-    user_id = event.get_user_id()
+    user_id_raw = event.get_user_id()
+    try:
+        user_id: int | str = int(user_id_raw)
+    except ValueError:
+        user_id = user_id_raw
 
-    if EnvConfig.AGENT_WITHELIST_MODE and group_id in EnvConfig.AGENT_WITHELIST_GROUP_LIST:
-        pass
+    if group_id != 0 and EnvConfig.AGENT_WHITELIST_MODE and group_id not in EnvConfig.AGENT_WHITELIST_GROUP_LIST:
+        return False
     if group_id in EnvConfig.AGENT_BLACKLIST_GROUP_LIST:
         return False
-    if EnvConfig.AGENT_WITHELIST_MODE and user_id in EnvConfig.AGENT_WITHELIST_PERSON_LIST:
-        pass
+    if EnvConfig.AGENT_WHITELIST_MODE and user_id not in EnvConfig.AGENT_WHITELIST_PERSON_LIST:
+        return False
     if user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST:
         return False
     if event.is_tome() or event.to_me:
@@ -240,6 +246,11 @@ async def message_gateway(event: MessageEvent, messages: list):
 
 
 async def message_check(text: str | None, images: list | None) -> Literal["Safe", "Controversial", "Unsafe"]:
+    if not EnvConfig.CONTENT_CHECK_ENABLED:
+        return "Safe"
+    if text_det is None or image_det is None:
+        logger.warning("CONTENT_CHECK_ENABLED is True but detectors are None; returning Safe")
+        return "Safe"
     if text:
         safe_label, categories = await text_det.predict(text)
         return safe_label

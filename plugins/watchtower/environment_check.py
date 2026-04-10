@@ -44,7 +44,7 @@ def cpu_check():
         logger.warning("无法通过系统命令获取CPU信息，尝试使用platform模块", exc_info=True)
         pass
     try:
-        if "intel" or "amd" in platform.processor().lower():
+        if "intel" in platform.processor().lower() or "amd" in platform.processor().lower():
             return "intel" if "intel" in platform.processor().lower() else "amd"
         return "unknown"
     except Exception:

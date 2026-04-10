@@ -20,7 +20,7 @@ async def get_launches(days: int = 7):
     Returns:
         str: 火箭发射计划的详细信息。"""
     messages = ""
-    url = "https://lldev.thespacedevs.com/2.3.0/launches/"
+    url = TLP_LAUNCH_URL
 
     now = datetime.now(UTC)
 
@@ -34,8 +34,8 @@ async def get_launches(days: int = 7):
             return f"❌ 请求失败: {response.status_code}"
 
         data = response.json()
-        results = data.get("results", [])
-        messages += f"✅ 未来 {days} 天共有 {data['count']} 次发射计划：\n\n"
+        results = data.get("data", [])
+        messages += f"✅ 未来 {days} 天共有 {data.get('pagination', {}).get('total', len(results))} 次发射计划：\n\n"
 
         tz_cn = zoneinfo.ZoneInfo("Asia/Shanghai")
 
@@ -45,17 +45,17 @@ async def get_launches(days: int = 7):
             if " | " in full_name:
                 rocket, payload = full_name.split(" | ", 1)
             else:
-                rocket = launch.get("rocket", {}).get("configuration", {}).get("name", full_name)
+                rocket = launch.get("rocket", full_name)
                 payload = "N/A"
 
             # 2. 提取核心信息
-            country = launch.get("pad", {}).get("location", {}).get("country_code", "Unknown")
-            company = launch.get("launch_service_provider", {}).get("name", "Unknown")
-            net_str = launch.get("net")
+            site = launch.get("site", "Unknown")
+            company = launch.get("provider", "Unknown")
+            net_str = launch.get("launch_date")
 
             # 3. 时间与倒计时计算
             if net_str:
-                t_utc = datetime.fromisoformat(net_str)
+                t_utc = datetime.fromisoformat(net_str.replace("Z", "+00:00"))
                 t_cn = t_utc.astimezone(tz_cn)
 
                 diff = t_utc - now
@@ -74,7 +74,7 @@ async def get_launches(days: int = 7):
             # 4. 打印输出
             messages += (
                 f"🚀 火箭: {rocket}\n"
-                f"🌍 国家: {country}\n"
+                f"🌍 发射场: {site}\n"
                 f"⏰ 时间: {time_str}\n"
                 f"⏱️ 倒计时: {countdown}\n"
                 f"📦 载荷: {payload}\n"

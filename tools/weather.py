@@ -1,5 +1,3 @@
-from functools import lru_cache
-
 import httpx
 from langchain.tools import tool
 from nonebot import logger, require
@@ -11,14 +9,17 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
 httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 
+_geocode_cache: dict[str, tuple[float, float]] = {}
+
 NASA_WEATHER_URL = "https://mars.nasa.gov/rss/api/?feed=weather&category=msl&feedtype=json"
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?format=json"
 OPEN_METEO_WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 
 
-@lru_cache(maxsize=32)
 async def geocode(city_name: str) -> tuple[float, float]:
     """返回 (latitude, longitude)，未找到抛出 ValueError"""
+    if city_name in _geocode_cache:
+        return _geocode_cache[city_name]
     name_py = "".join(lazy_pinyin(city_name))
     resp = await httpx_client.get(f"{GEOCODE_URL}?name={name_py}&count=1&language=en")
     resp.raise_for_status()
@@ -27,7 +28,9 @@ async def geocode(city_name: str) -> tuple[float, float]:
     if not results:
         raise ValueError(f"未找到城市: {city_name}")
     loc = results[0]
-    return loc["latitude"], loc["longitude"]
+    result = loc["latitude"], loc["longitude"]
+    _geocode_cache[city_name] = result
+    return result
 
 
 # 通用 JSON 获取
