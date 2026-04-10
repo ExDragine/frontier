@@ -19,6 +19,7 @@ debug: dict = config.get("debug", {})
 memory: dict = config.get("memory", {})
 dashboard: dict = config.get("dashboard", {})
 image_memory: dict = config.get("image_memory", {})
+content_check: dict = config.get("content_check", {})
 
 
 class EnvConfig:
@@ -79,3 +80,5 @@ class EnvConfig:
     IMAGE_WINDOW_SIZE: int = int(image_memory.get("window_size", 10))
     IMAGE_TTL_DAYS: int = int(image_memory.get("ttl_days", 30))
     IMAGE_AUTO_CLEANUP: bool = image_memory.get("auto_cleanup", True)
+
+    CONTENT_CHECK_ENABLED: bool = content_check.get("enabled", False)
