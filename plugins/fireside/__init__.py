@@ -207,7 +207,10 @@ async def handle_common(event: MessageEvent):  # noqa: C901
 
     if not await message_gateway(event, messages):
         await common.finish()
-    risk_check = await message_check(text, images)
+    if EnvConfig.CONTENT_CHECK_ENABLED:
+        risk_check = await message_check(text, images)
+    else:
+        risk_check = "Safe"
     match risk_check:
         case "Safe":
             if group_id:
