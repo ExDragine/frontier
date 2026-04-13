@@ -54,7 +54,7 @@ async def assistant_agent(
         streaming=False,
         max_retries=2,
         timeout=300,
-        use_responses_api=True,
+        use_responses_api=EnvConfig.BASIC_MODEL_USE_RESPONSES_API,
     )
     agent = create_agent(
         model=model,

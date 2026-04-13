@@ -139,3 +139,44 @@ def test_subagents_model_respects_config(monkeypatch):
     import utils.subagents
 
     assert created_kwargs.get("use_responses_api") is False
+
+
+@pytest.mark.asyncio
+async def test_assistant_agent_uses_basic_model_config(monkeypatch):
+    import builtins
+    import types
+    from utils import agents
+    from utils.configs import EnvConfig
+
+    original_open = builtins.open
+
+    def fake_open(path, *args, **kwargs):
+        if str(path).endswith("system_prompt.md"):
+            raise FileNotFoundError()
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
+
+    class DummyAgent:
+        async def ainvoke(self, payload):
+            return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok")]}
+
+    def fake_create_agent(**_kwargs):
+        return DummyAgent()
+
+    monkeypatch.setattr(agents, "create_agent", fake_create_agent)
+
+    captured = {}
+
+    class CapturingModel:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(agents, "ChatOpenAI", CapturingModel)
+
+    # Monkeypatch the EnvConfig in the agents module
+    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_USE_RESPONSES_API", False)
+
+    await agents.assistant_agent(user_prompt="hello")
+
+    assert captured.get("use_responses_api") is False
