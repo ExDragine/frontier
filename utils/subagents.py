@@ -18,7 +18,7 @@ model = ChatOpenAI(
     model=BASIC_MODEL,
     max_retries=2,
     timeout=30,
-    use_responses_api=True,
+    use_responses_api=EnvConfig.BASIC_MODEL_USE_RESPONSES_API,
 )
 def get_fact_check_subagent() -> dict:
     current_time = datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")

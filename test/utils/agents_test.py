@@ -115,3 +115,27 @@ def test_env_config_responses_api_defaults():
     from utils.configs import EnvConfig
     assert EnvConfig.BASIC_MODEL_USE_RESPONSES_API is True
     assert EnvConfig.ADVAN_MODEL_USE_RESPONSES_API is True
+
+
+def test_subagents_model_respects_config(monkeypatch):
+    import importlib
+    import sys
+    import langchain_openai
+    from utils.configs import EnvConfig
+
+    created_kwargs = {}
+
+    class CapturingModel:
+        def __init__(self, **kwargs):
+            created_kwargs.update(kwargs)
+
+    monkeypatch.setattr(langchain_openai, "ChatOpenAI", CapturingModel)
+    monkeypatch.setattr(EnvConfig, "BASIC_MODEL_USE_RESPONSES_API", False)
+
+    # Remove the module from sys.modules to ensure fresh import
+    if 'utils.subagents' in sys.modules:
+        del sys.modules['utils.subagents']
+
+    import utils.subagents
+
+    assert created_kwargs.get("use_responses_api") is False
