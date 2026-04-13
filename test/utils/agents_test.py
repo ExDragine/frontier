@@ -109,3 +109,9 @@ async def test_extract_uni_messages():
     }
     result = await agents.FrontierCognitive.extract_uni_messages(response)
     assert result == ["payload"]
+
+
+def test_env_config_responses_api_defaults():
+    from utils.configs import EnvConfig
+    assert EnvConfig.BASIC_MODEL_USE_RESPONSES_API is True
+    assert EnvConfig.ADVAN_MODEL_USE_RESPONSES_API is True
