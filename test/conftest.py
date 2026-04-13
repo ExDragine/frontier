@@ -228,6 +228,8 @@ openai_base_url = "https://example.com"
 basic_model = "basic"
 advan_model = "advan"
 paint_model = "paint"
+basic_model_use_responses_api = true
+advan_model_use_responses_api = true
 
 [key]
 openai_api_key = "sk-test"

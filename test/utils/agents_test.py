@@ -118,9 +118,9 @@ def test_env_config_responses_api_defaults():
 
 
 def test_subagents_model_respects_config(monkeypatch):
-    import importlib
     import sys
     import langchain_openai
+    import utils.subagents as subagents_module
     from utils.configs import EnvConfig
 
     created_kwargs = {}
@@ -129,14 +129,14 @@ def test_subagents_model_respects_config(monkeypatch):
         def __init__(self, **kwargs):
             created_kwargs.update(kwargs)
 
+    # Register original module with monkeypatch so it's restored on teardown
+    monkeypatch.setitem(sys.modules, "utils.subagents", subagents_module)
+
     monkeypatch.setattr(langchain_openai, "ChatOpenAI", CapturingModel)
     monkeypatch.setattr(EnvConfig, "BASIC_MODEL_USE_RESPONSES_API", False)
 
-    # Remove the module from sys.modules to ensure fresh import
-    if 'utils.subagents' in sys.modules:
-        del sys.modules['utils.subagents']
-
-    import utils.subagents
+    del sys.modules["utils.subagents"]
+    import utils.subagents  # noqa: F401
 
     assert created_kwargs.get("use_responses_api") is False
 
