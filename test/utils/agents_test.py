@@ -180,3 +180,97 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
     await agents.assistant_agent(user_prompt="hello")
 
     assert captured.get("use_responses_api") is False
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypatch):
+    import types
+    import uuid
+    from utils import agents
+    from utils.configs import EnvConfig
+
+    class DummyAgent:
+        async def ainvoke(self, payload, config=None):
+            return {
+                "messages": [
+                    types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)
+                ]
+            }
+
+    def fake_create_deep_agent(**_kwargs):
+        return DummyAgent()
+
+    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
+
+    captured = {}
+
+    class CapturingModel:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(agents, "ChatOpenAI", CapturingModel)
+    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_USE_RESPONSES_API", False)
+
+    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier.tools = []
+    frontier.subagents = []
+    frontier.checkpoint = None
+    frontier.backend = None
+    frontier.memory = None
+
+    await frontier.chat_agent(
+        messages=[{"role": "user", "content": "hi"}],
+        user_id="u1",
+        user_name="test",
+    )
+
+    assert captured.get("use_responses_api") is False
+    assert "reasoning_effort" not in captured
+    assert "verbosity" not in captured
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypatch):
+    import types
+    from utils import agents
+    from utils.configs import EnvConfig
+
+    class DummyAgent:
+        async def ainvoke(self, payload, config=None):
+            return {
+                "messages": [
+                    types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)
+                ]
+            }
+
+    def fake_create_deep_agent(**_kwargs):
+        return DummyAgent()
+
+    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
+
+    captured = {}
+
+    class CapturingModel:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(agents, "ChatOpenAI", CapturingModel)
+    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_USE_RESPONSES_API", True)
+
+    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier.tools = []
+    frontier.subagents = []
+    frontier.checkpoint = None
+    frontier.backend = None
+    frontier.memory = None
+
+    await frontier.chat_agent(
+        messages=[{"role": "user", "content": "hi"}],
+        user_id="u1",
+        user_name="test",
+        capability="medium",
+    )
+
+    assert captured.get("use_responses_api") is True
+    assert captured.get("reasoning_effort") == "medium"
+    assert captured.get("verbosity") == "low"

@@ -172,17 +172,19 @@ class FrontierCognitive:
         group_id: int | None = None,
         query_text: str = "",
     ):
-        model = ChatOpenAI(
-            api_key=EnvConfig.OPENAI_API_KEY,
-            base_url=EnvConfig.OPENAI_BASE_URL,
-            model=EnvConfig.ADVAN_MODEL,
-            streaming=False,
-            reasoning_effort=capability,
-            verbosity="low",
-            max_retries=2,
-            timeout=300,
-            use_responses_api=True,
-        )
+        model_kwargs: dict = {
+            "api_key": EnvConfig.OPENAI_API_KEY,
+            "base_url": EnvConfig.OPENAI_BASE_URL,
+            "model": EnvConfig.ADVAN_MODEL,
+            "streaming": False,
+            "max_retries": 2,
+            "timeout": 300,
+            "use_responses_api": EnvConfig.ADVAN_MODEL_USE_RESPONSES_API,
+        }
+        if EnvConfig.ADVAN_MODEL_USE_RESPONSES_API:
+            model_kwargs["reasoning_effort"] = capability
+            model_kwargs["verbosity"] = "low"
+        model = ChatOpenAI(**model_kwargs)
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,

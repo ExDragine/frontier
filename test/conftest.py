@@ -85,7 +85,10 @@ def _install_third_party_stubs():
         create_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}),
     )
     _install_stub("langchain.tools", tool=lambda func=None, **_kwargs: func if func else (lambda f: f))
-    _install_stub("langchain.agents.middleware", PIIMiddleware=object)
+    _install_stub(
+        "langchain.agents.middleware",
+        PIIMiddleware=type("PIIMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
+    )
     _install_stub(
         "langchain.messages",
         AIMessage=type("AIMessage", (), {"__init__": lambda self, content=None: setattr(self, "content", content)}),
