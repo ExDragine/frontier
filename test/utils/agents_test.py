@@ -185,7 +185,6 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
 @pytest.mark.asyncio
 async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypatch):
     import types
-    import uuid
     from utils import agents
     from utils.configs import EnvConfig
 
