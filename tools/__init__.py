@@ -1,83 +1,41 @@
-from .adapter import send_audio, send_emoji, send_image, send_video
-from .aurora import aurora_live
-from .bilibili import get_bilibili_video_info
-from .calculator import simple_calculator
-from .comet import comet_information, comet_list
-from .earthquake import get_china_earthquake, get_japan_earthquake
-from .heavens_above import station_location
+import importlib
+import pkgutil
+from pathlib import Path
+
+from langchain.tools import BaseTool
+
 from .mcp_client import mcp_get_tools
-from .memory import get_memory
-from .message_summary import summarize_messages
-from .radar import get_static_china_radar
-from .rocket import get_launches
-from .satellite import get_fy4b_cloud_map, get_fy4b_geos_cloud_map, get_himawari_satellite_image
-from .space_weather import (
-    geospace,
-    goes_suvi,
-    noaa_enlil_predict,
-    planets_weather,
-    realtime_solarwind,
-    soho_realtime_solarwind,
-    solar_flare,
-    solar_image,
-    sunspot,
-    swpc_page,
-)
-from .tarot import list_tarot_spreads, tarot_reading
-from .tavily import tavily_crawl, tavily_extract, tavily_map, tavily_search
-from .weather import get_wind_map, mars_weather
-from .iching import iching_divination, list_iching_hexagrams, get_hexagram_detail
-from .reminder import create_reminder
+
+# 跳过不含工具定义的模块
+_EXCLUDED_MODULES = {"__init__", "mcp_client"}
+
+# 这些模块的工具归入 web_tools 分组
+_WEB_TOOL_MODULES = {"tavily"}
+
+
+def _discover_tools() -> tuple[list[BaseTool], list[BaseTool]]:
+    """扫描 tools 包，收集所有被 @tool 装饰的函数。"""
+    tools_dir = Path(__file__).parent
+    local_tools: list[BaseTool] = []
+    web_tools: list[BaseTool] = []
+
+    for mod_info in pkgutil.iter_modules([str(tools_dir)]):
+        if mod_info.name in _EXCLUDED_MODULES:
+            continue
+        module = importlib.import_module(f".{mod_info.name}", package=__package__)
+        found = [obj for obj in vars(module).values() if isinstance(obj, BaseTool)]
+        local_tools.extend(found)
+        if mod_info.name in _WEB_TOOL_MODULES:
+            web_tools.extend(found)
+
+    return local_tools, web_tools
 
 
 class ModuleTools:
     def __init__(self):
         self.mcp_tools = mcp_get_tools()
-        self.local_tools = [
-            get_static_china_radar,
-            get_fy4b_cloud_map,
-            get_fy4b_geos_cloud_map,
-            get_bilibili_video_info,
-            get_memory,
-            summarize_messages,
-            get_himawari_satellite_image,
-            get_china_earthquake,
-            get_japan_earthquake,
-            get_launches,
-            aurora_live,
-            station_location,
-            simple_calculator,
-            comet_information,
-            comet_list,
-            mars_weather,
-            solar_flare,
-            realtime_solarwind,
-            soho_realtime_solarwind,
-            geospace,
-            noaa_enlil_predict,
-            solar_image,
-            goes_suvi,
-            sunspot,
-            swpc_page,
-            planets_weather,
-            get_wind_map,
-            send_image,
-            send_audio,
-            send_video,
-            send_emoji,
-            tavily_search,
-            tavily_extract,
-            tavily_crawl,
-            tavily_map,
-            tarot_reading,
-            list_tarot_spreads,
-            iching_divination,
-            list_iching_hexagrams,
-            get_hexagram_detail,
-            create_reminder,
-        ]
+        self.local_tools, self.web_tools = _discover_tools()
         self.all_tools = self.mcp_tools + self.local_tools
-        self.web_tools = [tavily_search, tavily_extract, tavily_crawl, tavily_map]
 
 
 agent_tools = ModuleTools()

@@ -47,27 +47,51 @@ def _make_alconna_module() -> types.ModuleType:
 
     class UniMessage:
         def __init__(self, content=None):
+            # content 为 dict 表示单段消息，list 表示多段组合消息
             self.content = content
 
         @classmethod
-        def image(cls, url=None, raw=None):
-            return cls({"type": "image", "url": url, "raw": raw})
+        def image(cls, url=None, path=None, raw=None, **kwargs):
+            return cls({"type": "image", "url": url, "path": str(path) if path else None, "raw": raw})
 
         @classmethod
-        def audio(cls, url=None, raw=None):
-            return cls({"type": "audio", "url": url, "raw": raw})
+        def audio(cls, url=None, path=None, raw=None, **kwargs):
+            return cls({"type": "audio", "url": url, "path": str(path) if path else None, "raw": raw})
 
         @classmethod
-        def video(cls, url=None, raw=None):
-            return cls({"type": "video", "url": url, "raw": raw})
+        def voice(cls, url=None, path=None, raw=None, **kwargs):
+            return cls({"type": "voice", "url": url, "path": str(path) if path else None, "raw": raw})
 
         @classmethod
-        def emoji(cls, id=None):
+        def video(cls, url=None, path=None, raw=None, **kwargs):
+            return cls({"type": "video", "url": url, "path": str(path) if path else None, "raw": raw})
+
+        @classmethod
+        def file(cls, url=None, path=None, name="file.bin", **kwargs):
+            return cls({"type": "file", "url": url, "path": str(path) if path else None, "name": name})
+
+        @classmethod
+        def emoji(cls, id=None, **kwargs):
             return cls({"type": "emoji", "id": id})
 
         @classmethod
         def text(cls, text: str):
             return cls({"type": "text", "text": text})
+
+        @classmethod
+        def at(cls, user_id: str):
+            return cls({"type": "at", "user_id": user_id})
+
+        @classmethod
+        def at_all(cls, online: bool = False):
+            return cls({"type": "at_all", "online": online})
+
+        def extend(self, other: "UniMessage") -> "UniMessage":
+            """将 other 的段追加到自身，content 升级为列表。"""
+            self_seg = self.content if isinstance(self.content, list) else [self.content]
+            other_seg = other.content if isinstance(other.content, list) else [other.content]
+            self.content = self_seg + other_seg
+            return self
 
         async def send(self, *args, **kwargs):
             return None
