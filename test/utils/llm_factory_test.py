@@ -147,3 +147,33 @@ def test_google_no_base_url_field(monkeypatch):
     kw = mock_cls.call_args.kwargs
     assert "openai_api_base" not in kw
     assert "base_url" not in kw
+
+
+def test_vendor_prefix_stripped_openai(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
+
+    factory.create_llm(model="openai/gpt-5.4-nano")
+
+    kw = mock_cls.call_args.kwargs
+    assert kw["model"] == "gpt-5.4-nano"
+
+
+def test_vendor_prefix_stripped_google(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatGoogleGenerativeAI", mock_cls)
+
+    factory.create_llm(model="google/gemini-2.5-flash")
+
+    kw = mock_cls.call_args.kwargs
+    assert kw["model"] == "gemini-2.5-flash"
+
+
+def test_vendor_prefix_stripped_anthropic(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatAnthropic", mock_cls)
+
+    factory.create_llm(model="anthropic/claude-3-5-sonnet-20241022")
+
+    kw = mock_cls.call_args.kwargs
+    assert kw["model"] == "claude-3-5-sonnet-20241022"

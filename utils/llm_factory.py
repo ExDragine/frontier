@@ -71,7 +71,12 @@ PROVIDERS: list[tuple[str, ProviderConfig]] = [
 
 
 def create_llm(model: str, **kwargs) -> BaseChatModel:
-    """根据模型名称前缀路由到对应 Provider，自动过滤不支持的 kwargs。"""
+    """根据模型名称前缀路由到对应 Provider，自动过滤不支持的 kwargs。
+
+    模型名支持 vendor/model 格式（如 "openai/gpt-4o"），vendor 前缀会被自动剥离。
+    """
+    if "/" in model:
+        model = model.split("/", 1)[1]
     for prefix, config in PROVIDERS:
         if model.startswith(prefix):
             cls = config.cls_fn()
