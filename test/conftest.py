@@ -235,6 +235,8 @@ advan_model_use_responses_api = true
 openai_api_key = "sk-test"
 nasa_api_key = "nasa-test"
 github_pat = "ghp-test"
+google_api_key = "ggl-test"
+anthropic_api_key = "ant-test"
 
 [function]
 agent_module_enabled = true

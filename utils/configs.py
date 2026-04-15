@@ -38,6 +38,8 @@ class EnvConfig:
     OPENAI_API_KEY: SecretStr = SecretStr(key["openai_api_key"])
     NASA_API_KEY: SecretStr = SecretStr(key["nasa_api_key"])
     GITHUB_PAT: SecretStr = SecretStr(key["github_pat"])
+    GOOGLE_API_KEY: SecretStr = SecretStr(key.get("google_api_key", ""))
+    ANTHROPIC_API_KEY: SecretStr = SecretStr(key.get("anthropic_api_key", ""))
 
     AGENT_CAPABILITY = function_list["agent_capability"]
     AGENT_WHITELIST_MODE: bool = function_list["agent_whitelist_mode"]
