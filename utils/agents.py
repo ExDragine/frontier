@@ -9,7 +9,12 @@ from typing import Any
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
 from langchain.agents import AgentState, create_agent
-from langchain.agents.middleware import PIIMiddleware
+from langchain.agents.middleware import (
+    FilesystemFileSearchMiddleware,
+    ModelRetryMiddleware,
+    PIIMiddleware,
+    ToolRetryMiddleware,
+)
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
@@ -191,7 +196,10 @@ class FrontierCognitive:
                     "api_key",
                     detector=r"sk-[a-zA-Z0-9]{32}",
                     strategy="block",
-                )
+                ),
+                ToolRetryMiddleware(),
+                ModelRetryMiddleware(),
+                FilesystemFileSearchMiddleware(root_path="./sandbox/"),
             ],
             skills=["./sandbox/skills/"],
             interrupt_on={
