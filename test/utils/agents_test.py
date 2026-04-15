@@ -28,10 +28,9 @@ async def test_assistant_agent_model_selection(monkeypatch):
     monkeypatch.setattr(agents, "create_agent", fake_create_agent)
 
     class DummyModel:
-        def __init__(self, **_kwargs):
-            pass
+        pass
 
-    monkeypatch.setattr(agents, "ChatOpenAI", DummyModel)
+    monkeypatch.setattr(agents, "create_llm", lambda model, **_kw: DummyModel())
 
     result = await agents.assistant_agent(user_prompt="hello", use_model="claude-3")
     assert result == "ok"
@@ -168,11 +167,16 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
 
     captured = {}
 
-    class CapturingModel:
-        def __init__(self, **kwargs):
-            captured.update(kwargs)
+    def capturing_create_llm(model, **kwargs):
+        captured.update(kwargs)
+        captured["model"] = model
 
-    monkeypatch.setattr(agents, "ChatOpenAI", CapturingModel)
+        class DummyModel:
+            pass
+
+        return DummyModel()
+
+    monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
 
     # Monkeypatch the EnvConfig in the agents module
     monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_USE_RESPONSES_API", False)
@@ -203,11 +207,15 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
 
     captured = {}
 
-    class CapturingModel:
-        def __init__(self, **kwargs):
-            captured.update(kwargs)
+    def capturing_create_llm(**kwargs):
+        captured.update(kwargs)
 
-    monkeypatch.setattr(agents, "ChatOpenAI", CapturingModel)
+        class DummyModel:
+            pass
+
+        return DummyModel()
+
+    monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
     monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_USE_RESPONSES_API", False)
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
@@ -249,11 +257,15 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
 
     captured = {}
 
-    class CapturingModel:
-        def __init__(self, **kwargs):
-            captured.update(kwargs)
+    def capturing_create_llm(**kwargs):
+        captured.update(kwargs)
 
-    monkeypatch.setattr(agents, "ChatOpenAI", CapturingModel)
+        class DummyModel:
+            pass
+
+        return DummyModel()
+
+    monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
     monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_USE_RESPONSES_API", True)
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)

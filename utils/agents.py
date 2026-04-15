@@ -12,7 +12,7 @@ from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import PIIMiddleware
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_openai import ChatOpenAI
+from utils.llm_factory import create_llm
 from langgraph.checkpoint.memory import InMemorySaver
 from nonebot import logger
 
@@ -47,9 +47,7 @@ async def assistant_agent(
         except FileNotFoundError:
             logger.warning("❌ 未找到 system prompt 文件: prompts/system_prompt.md")
             system_prompt = "You are a helpful assistant."
-    model = ChatOpenAI(
-        api_key=EnvConfig.OPENAI_API_KEY,
-        base_url=EnvConfig.OPENAI_BASE_URL,
+    model = create_llm(
         model=use_model,
         streaming=False,
         max_retries=2,
@@ -173,8 +171,6 @@ class FrontierCognitive:
         query_text: str = "",
     ):
         model_kwargs: dict = {
-            "api_key": EnvConfig.OPENAI_API_KEY,
-            "base_url": EnvConfig.OPENAI_BASE_URL,
             "model": EnvConfig.ADVAN_MODEL,
             "streaming": False,
             "max_retries": 2,
@@ -184,7 +180,7 @@ class FrontierCognitive:
         if EnvConfig.ADVAN_MODEL_USE_RESPONSES_API:
             model_kwargs["reasoning_effort"] = capability
             model_kwargs["verbosity"] = "low"
-        model = ChatOpenAI(**model_kwargs)
+        model = create_llm(**model_kwargs)
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
