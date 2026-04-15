@@ -1,20 +1,16 @@
 import zoneinfo
 from datetime import datetime
 
-from langchain_openai import ChatOpenAI
+from utils.llm_factory import create_llm
 
 from tools import agent_tools
 from utils.configs import EnvConfig
 
 ADVAN_MODEL = EnvConfig.ADVAN_MODEL
 BASIC_MODEL = EnvConfig.BASIC_MODEL
-OPENAI_BASE_URL = EnvConfig.OPENAI_BASE_URL
-OPENAI_API_KEY = EnvConfig.OPENAI_API_KEY
 AGENT_DEBUG_MODE = EnvConfig.AGENT_DEBUG_MODE
 
-model = ChatOpenAI(
-    api_key=OPENAI_API_KEY,
-    base_url=OPENAI_BASE_URL,
+model = create_llm(
     model=BASIC_MODEL,
     max_retries=2,
     timeout=30,
