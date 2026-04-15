@@ -118,7 +118,7 @@ def test_env_config_responses_api_defaults():
 
 def test_subagents_model_respects_config(monkeypatch):
     import sys
-    import langchain_openai
+    import utils.llm_factory as factory
     import utils.subagents as subagents_module
     from utils.configs import EnvConfig
 
@@ -131,7 +131,7 @@ def test_subagents_model_respects_config(monkeypatch):
     # Register original module with monkeypatch so it's restored on teardown
     monkeypatch.setitem(sys.modules, "utils.subagents", subagents_module)
 
-    monkeypatch.setattr(langchain_openai, "ChatOpenAI", CapturingModel)
+    monkeypatch.setattr(factory, "ChatOpenAI", CapturingModel)
     monkeypatch.setattr(EnvConfig, "BASIC_MODEL_USE_RESPONSES_API", False)
 
     del sys.modules["utils.subagents"]

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -34,15 +33,8 @@ _OPENAI_VALID = {
 _GOOGLE_VALID = {"streaming", "max_retries", "timeout", "temperature"}
 _ANTHROPIC_VALID = {"streaming", "max_retries", "timeout", "temperature"}
 
-# Store original references for comparison
-_ORIG_OPENAI = ChatOpenAI
-_ORIG_GOOGLE = ChatGoogleGenerativeAI
-_ORIG_ANTHROPIC = ChatAnthropic
-
 _openai_config = ProviderConfig(
-    cls_fn=lambda: (getattr(sys.modules.get('utils.llm_factory'), 'ChatOpenAI', _ORIG_OPENAI)
-                    if getattr(sys.modules.get('utils.llm_factory'), 'ChatOpenAI', _ORIG_OPENAI) is not _ORIG_OPENAI
-                    else sys.modules['langchain_openai'].ChatOpenAI),
+    cls_fn=lambda: ChatOpenAI,
     api_key_fn=lambda: EnvConfig.OPENAI_API_KEY,
     api_key_field="openai_api_key",
     valid_kwargs=_OPENAI_VALID,
@@ -51,34 +43,30 @@ _openai_config = ProviderConfig(
     base_url_field="openai_api_base",
 )
 
-_google_config = ProviderConfig(
-    cls_fn=lambda: (getattr(sys.modules.get('utils.llm_factory'), 'ChatGoogleGenerativeAI', _ORIG_GOOGLE)
-                    if getattr(sys.modules.get('utils.llm_factory'), 'ChatGoogleGenerativeAI', _ORIG_GOOGLE) is not _ORIG_GOOGLE
-                    else sys.modules['langchain_google_genai'].ChatGoogleGenerativeAI),
-    api_key_fn=lambda: EnvConfig.GOOGLE_API_KEY,
-    api_key_field="google_api_key",
-    valid_kwargs=_GOOGLE_VALID,
-)
-
-_anthropic_config = ProviderConfig(
-    cls_fn=lambda: (getattr(sys.modules.get('utils.llm_factory'), 'ChatAnthropic', _ORIG_ANTHROPIC)
-                    if getattr(sys.modules.get('utils.llm_factory'), 'ChatAnthropic', _ORIG_ANTHROPIC) is not _ORIG_ANTHROPIC
-                    else sys.modules['langchain_anthropic'].ChatAnthropic),
-    api_key_fn=lambda: EnvConfig.ANTHROPIC_API_KEY,
-    api_key_field="anthropic_api_key",
-    valid_kwargs=_ANTHROPIC_VALID,
-    kwarg_map={"timeout": "default_request_timeout"},
-)
-
 PROVIDERS: list[tuple[str, ProviderConfig]] = [
-    ("gemini-", _google_config),
-    ("google/", _google_config),
+    (
+        "gemini-",
+        ProviderConfig(
+            cls_fn=lambda: ChatGoogleGenerativeAI,
+            api_key_fn=lambda: EnvConfig.GOOGLE_API_KEY,
+            api_key_field="google_api_key",
+            valid_kwargs=_GOOGLE_VALID,
+        ),
+    ),
     ("gpt-", _openai_config),
-    ("openai/", _openai_config),
     ("o1", _openai_config),
     ("o3", _openai_config),
     ("o4", _openai_config),
-    ("claude-", _anthropic_config),
+    (
+        "claude-",
+        ProviderConfig(
+            cls_fn=lambda: ChatAnthropic,
+            api_key_fn=lambda: EnvConfig.ANTHROPIC_API_KEY,
+            api_key_field="anthropic_api_key",
+            valid_kwargs=_ANTHROPIC_VALID,
+            kwarg_map={"timeout": "default_request_timeout"},
+        ),
+    ),
 ]
 
 
