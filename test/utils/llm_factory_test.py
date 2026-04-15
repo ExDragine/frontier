@@ -48,6 +48,18 @@ def test_o3_routes_to_openai(monkeypatch):
     assert "openai_api_key" in kw
 
 
+def test_o1_routes_to_openai(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
+
+    factory.create_llm(model="o1-mini")
+
+    mock_cls.assert_called_once()
+    kw = mock_cls.call_args.kwargs
+    assert kw["model"] == "o1-mini"
+    assert "openai_api_key" in kw
+
+
 def test_o4_mini_routes_to_openai(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
