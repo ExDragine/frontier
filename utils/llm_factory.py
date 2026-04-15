@@ -27,8 +27,13 @@ class ProviderConfig:
 
 
 _OPENAI_VALID = {
-    "streaming", "max_retries", "timeout",
-    "use_responses_api", "reasoning_effort", "verbosity", "temperature",
+    "streaming",
+    "max_retries",
+    "timeout",
+    "use_responses_api",
+    "reasoning_effort",
+    "verbosity",
+    "temperature",
 }
 _GOOGLE_VALID = {"streaming", "max_retries", "timeout", "temperature"}
 _ANTHROPIC_VALID = {"streaming", "max_retries", "timeout", "temperature"}
@@ -67,18 +72,38 @@ PROVIDERS: list[tuple[str, ProviderConfig]] = [
             kwarg_map={"timeout": "default_request_timeout"},
         ),
     ),
+    ("openai", _openai_config),
+    (
+        "google",
+        ProviderConfig(
+            cls_fn=lambda: ChatGoogleGenerativeAI,
+            api_key_fn=lambda: EnvConfig.GOOGLE_API_KEY,
+            api_key_field="google_api_key",
+            valid_kwargs=_GOOGLE_VALID,
+        ),
+    ),
+    (
+        "anthropic",
+        ProviderConfig(
+            cls_fn=lambda: ChatAnthropic,
+            api_key_fn=lambda: EnvConfig.ANTHROPIC_API_KEY,
+            api_key_field="anthropic_api_key",
+            valid_kwargs=_ANTHROPIC_VALID,
+            kwarg_map={"timeout": "default_request_timeout"},
+        ),
+    ),
 ]
 
 
 def create_llm(model: str, **kwargs) -> BaseChatModel:
     """根据模型名称前缀路由到对应 Provider，自动过滤不支持的 kwargs。
 
-    模型名支持 vendor/model 格式（如 "openai/gpt-4o"），vendor 前缀会被自动剥离。
+    模型名支持 vendor/model 格式（如 "openai/gpt-4o"），vendor 前缀仅用于路由判断，
+    传入框架的模型名保持原始值。
     """
-    if "/" in model:
-        model = model.split("/", 1)[1]
+    route_key = model.split("/", 1)[1] if "/" in model else model
     for prefix, config in PROVIDERS:
-        if model.startswith(prefix):
+        if route_key.startswith(prefix):
             cls = config.cls_fn()
             api_key = config.api_key_fn()
             filtered: dict = {}
@@ -89,7 +114,4 @@ def create_llm(model: str, **kwargs) -> BaseChatModel:
             if config.base_url_fn and config.base_url_field:
                 filtered[config.base_url_field] = config.base_url_fn()
             return cls(**{config.api_key_field: api_key, "model": model, **filtered})
-    raise ValueError(
-        f"未知模型前缀，无法路由: {model!r}。"
-        f"支持的前缀: {[p for p, _ in PROVIDERS]}"
-    )
+    raise ValueError(f"未知模型前缀，无法路由: {model!r}。支持的前缀: {[p for p, _ in PROVIDERS]}")

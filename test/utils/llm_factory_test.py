@@ -156,7 +156,7 @@ def test_vendor_prefix_stripped_openai(monkeypatch):
     factory.create_llm(model="openai/gpt-5.4-nano")
 
     kw = mock_cls.call_args.kwargs
-    assert kw["model"] == "gpt-5.4-nano"
+    assert kw["model"] == "openai/gpt-5.4-nano"
 
 
 def test_vendor_prefix_stripped_google(monkeypatch):
@@ -166,7 +166,7 @@ def test_vendor_prefix_stripped_google(monkeypatch):
     factory.create_llm(model="google/gemini-2.5-flash")
 
     kw = mock_cls.call_args.kwargs
-    assert kw["model"] == "gemini-2.5-flash"
+    assert kw["model"] == "google/gemini-2.5-flash"
 
 
 def test_vendor_prefix_stripped_anthropic(monkeypatch):
@@ -176,4 +176,4 @@ def test_vendor_prefix_stripped_anthropic(monkeypatch):
     factory.create_llm(model="anthropic/claude-3-5-sonnet-20241022")
 
     kw = mock_cls.call_args.kwargs
-    assert kw["model"] == "claude-3-5-sonnet-20241022"
+    assert kw["model"] == "anthropic/claude-3-5-sonnet-20241022"
