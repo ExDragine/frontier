@@ -18,7 +18,7 @@ BACKUP_DIR = Path("configs/backups")
 
 # 需要脱敏的段和字段
 SENSITIVE_FIELDS = {
-    "key": {"openai_api_key", "nasa_api_key", "github_pat"},
+    "key": {"openai_api_key", "paint_api_key", "nasa_api_key", "github_pat"},
     "dashboard": {"jwt_secret", "password"},
 }
 
@@ -101,10 +101,12 @@ def _reload_env_config():
     EnvConfig.BASIC_MODEL = ep.get("basic_model", EnvConfig.BASIC_MODEL)
     EnvConfig.ADVAN_MODEL = ep.get("advan_model", EnvConfig.ADVAN_MODEL)
     EnvConfig.PAINT_MODEL = ep.get("paint_model", EnvConfig.PAINT_MODEL)
+    EnvConfig.PAINT_BASE_URL = ep.get("paint_base_url") or EnvConfig.OPENAI_BASE_URL
 
     from pydantic import SecretStr
 
     EnvConfig.OPENAI_API_KEY = SecretStr(key.get("openai_api_key", ""))
+    EnvConfig.PAINT_API_KEY = SecretStr(key.get("paint_api_key") or key.get("openai_api_key", ""))
     EnvConfig.NASA_API_KEY = SecretStr(key.get("nasa_api_key", ""))
     EnvConfig.GITHUB_PAT = SecretStr(key.get("github_pat", ""))
 

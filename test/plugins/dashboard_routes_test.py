@@ -4,6 +4,7 @@ import types
 
 import pytest
 from fastapi import HTTPException
+from pydantic import SecretStr
 
 from plugins.dashboard.api import auth_routes, messages_routes, settings_routes, status_routes, tasks_routes
 
@@ -130,3 +131,88 @@ async def test_tasks_routes_missing_plugin(monkeypatch):
 
 def test_settings_mask_value():
     assert settings_routes._mask_value("123456") == "****3456"
+
+
+def test_settings_sanitize_masks_paint_api_key():
+    result = settings_routes._sanitize_config(
+        {
+            "key": {
+                "openai_api_key": "sk-openai",
+                "paint_api_key": "sk-paint-secret",
+            }
+        }
+    )
+
+    assert result["key"]["paint_api_key"] == "****cret"
+
+
+def test_reload_env_config_recomputes_paint_specific_values(tmp_path, monkeypatch):
+    env_path = tmp_path / "env.toml"
+    env_path.write_text(
+        """
+[information]
+name = "Bot"
+
+[endpoint]
+openai_base_url = "https://global.example.com/v1"
+basic_model = "basic"
+advan_model = "advan"
+paint_model = "paint"
+paint_base_url = ""
+
+[key]
+openai_api_key = "sk-global"
+paint_api_key = ""
+nasa_api_key = "nasa"
+github_pat = "gh"
+
+[function]
+agent_module_enabled = true
+paint_module_enabled = true
+agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
+paint_whitelist_mode = false
+paint_whitelist_person_list = []
+paint_whitelist_group_list = []
+paint_blacklist_person_list = []
+paint_blacklist_group_list = []
+
+[message]
+raw_message_group_id = []
+test_group_id = []
+
+[database]
+query_message_numbers = 3
+
+[debug]
+agent_debug_mode = false
+
+[memory]
+enabled = true
+
+[dashboard]
+password = "admin"
+jwt_secret = "secret"
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(settings_routes, "TOML_PATH", env_path)
+
+    import utils.configs as configs
+
+    configs.EnvConfig.OPENAI_BASE_URL = "https://old.example.com/v1"
+    configs.EnvConfig.PAINT_BASE_URL = "https://old-paint.example.com/v1"
+    configs.EnvConfig.OPENAI_API_KEY = SecretStr("sk-old-global")
+    configs.EnvConfig.PAINT_API_KEY = SecretStr("sk-old-paint")
+
+    settings_routes._reload_env_config()
+
+    assert configs.EnvConfig.OPENAI_BASE_URL == "https://global.example.com/v1"
+    assert configs.EnvConfig.PAINT_BASE_URL == "https://global.example.com/v1"
+    assert configs.EnvConfig.OPENAI_API_KEY.get_secret_value() == "sk-global"
+    assert configs.EnvConfig.PAINT_API_KEY.get_secret_value() == "sk-global"
