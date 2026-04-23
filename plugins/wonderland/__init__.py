@@ -74,10 +74,10 @@ def _use_vertex_image_gateway() -> bool:
 
 
 def _openai_client_kwargs() -> dict[str, str]:
-    kwargs = {"api_key": _paint_api_key()}
-    if _paint_base_url():
-        kwargs["base_url"] = _paint_base_url()
-    return kwargs
+    return {
+        "api_key": _paint_api_key(),
+        "base_url": _paint_base_url(),
+    }
 
 
 async def _paint_with_openai_images(prompt: str, reference_images: list[bytes]) -> bytes | None:

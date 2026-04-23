@@ -105,6 +105,34 @@ async def test_paint_uses_images_generate_without_reference_images(load_wonderla
     assert calls["generate"]["response_format"] == "b64_json"
 
 
+@pytest.mark.asyncio
+async def test_paint_passes_empty_paint_base_url_to_openai_client(load_wonderland_module, monkeypatch):
+    wonderland = load_wonderland_module()
+    calls = {}
+
+    class DummyImages:
+        async def generate(self, **kwargs):
+            calls["generate"] = kwargs
+            return _image_response(b"generated-image")
+
+    class DummyClient:
+        def __init__(self, **kwargs):
+            calls["client"] = kwargs
+            self.images = DummyImages()
+
+    monkeypatch.setattr(wonderland.EnvConfig, "OPENAI_BASE_URL", "https://global.example.com/v1")
+    monkeypatch.setattr(wonderland.EnvConfig, "PAINT_BASE_URL", "")
+    monkeypatch.setattr(wonderland.EnvConfig, "OPENAI_API_KEY", SecretStr("sk-global"))
+    monkeypatch.setattr(wonderland.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint"))
+    monkeypatch.setattr(wonderland, "AsyncClient", DummyClient)
+
+    result = await wonderland.paint("a blank endpoint fox")
+
+    assert result == b"generated-image"
+    assert calls["client"]["api_key"] == "sk-paint"
+    assert calls["client"]["base_url"] == ""
+
+
 def test_strip_paint_prompt_handles_prefixed_text_without_whitespace(load_wonderland_module):
     wonderland = load_wonderland_module()
 
