@@ -32,10 +32,12 @@ class EnvConfig:
     BASIC_MODEL: str = endpoint["basic_model"]
     ADVAN_MODEL: str = endpoint["advan_model"]
     PAINT_MODEL: str = endpoint["paint_model"]
+    PAINT_BASE_URL: str = endpoint.get("paint_base_url") or OPENAI_BASE_URL
     BASIC_MODEL_USE_RESPONSES_API: bool = endpoint.get("basic_model_use_responses_api", True)
     ADVAN_MODEL_USE_RESPONSES_API: bool = endpoint.get("advan_model_use_responses_api", True)
 
     OPENAI_API_KEY: SecretStr = SecretStr(key["openai_api_key"])
+    PAINT_API_KEY: SecretStr = SecretStr(key.get("paint_api_key") or key["openai_api_key"])
     NASA_API_KEY: SecretStr = SecretStr(key["nasa_api_key"])
     GITHUB_PAT: SecretStr = SecretStr(key["github_pat"])
     GOOGLE_API_KEY: SecretStr = SecretStr(key.get("google_api_key", ""))
