@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pydantic import SecretStr
 
 
 def _image_response(raw: bytes):
@@ -88,13 +89,17 @@ async def test_paint_uses_images_generate_without_reference_images(load_wonderla
             calls["client"] = kwargs
             self.images = DummyImages()
 
+    monkeypatch.setattr(wonderland.EnvConfig, "OPENAI_BASE_URL", "https://global.example.com/v1")
+    monkeypatch.setattr(wonderland.EnvConfig, "PAINT_BASE_URL", "https://paint.example.com/v1")
+    monkeypatch.setattr(wonderland.EnvConfig, "OPENAI_API_KEY", SecretStr("sk-global"))
+    monkeypatch.setattr(wonderland.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint"))
     monkeypatch.setattr(wonderland, "AsyncClient", DummyClient)
 
     result = await wonderland.paint("a crystal fox")
 
     assert result == b"generated-image"
-    assert calls["client"]["base_url"] == wonderland.EnvConfig.OPENAI_BASE_URL
-    assert calls["client"]["api_key"] == wonderland.EnvConfig.OPENAI_API_KEY.get_secret_value()
+    assert calls["client"]["base_url"] == "https://paint.example.com/v1"
+    assert calls["client"]["api_key"] == "sk-paint"
     assert calls["generate"]["model"] == wonderland.EnvConfig.PAINT_MODEL
     assert calls["generate"]["prompt"] == "a crystal fox"
     assert calls["generate"]["response_format"] == "b64_json"
@@ -105,6 +110,108 @@ def test_strip_paint_prompt_handles_prefixed_text_without_whitespace(load_wonder
 
     assert wonderland.strip_paint_prompt("/画图一只猫") == "一只猫"
     assert wonderland.strip_paint_prompt("paint a crystal fox") == "a crystal fox"
+
+
+@pytest.mark.asyncio
+async def test_paint_uses_google_genai_for_vertex_style_gateway(load_wonderland_module, monkeypatch):
+    wonderland = load_wonderland_module()
+    calls = {}
+
+    class DummyHttpOptions:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class DummyAioModels:
+        async def generate_images(self, **kwargs):
+            calls["generate_images"] = kwargs
+            image = SimpleNamespace(image_bytes=b"vertex-generated-image", mime_type="image/png")
+            return SimpleNamespace(generated_images=[SimpleNamespace(image=image)])
+
+    class DummyClient:
+        def __init__(self, **kwargs):
+            calls["client"] = kwargs
+            self.aio = SimpleNamespace(models=DummyAioModels())
+
+    monkeypatch.setattr(wonderland.EnvConfig, "OPENAI_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setattr(wonderland.EnvConfig, "PAINT_BASE_URL", "https://zenmux.ai/api/vertex-ai")
+    monkeypatch.setattr(wonderland.EnvConfig, "OPENAI_API_KEY", SecretStr("sk-global"))
+    monkeypatch.setattr(wonderland.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint"))
+    monkeypatch.setattr(wonderland, "genai", SimpleNamespace(Client=DummyClient))
+    monkeypatch.setattr(wonderland, "genai_types", SimpleNamespace(HttpOptions=DummyHttpOptions))
+
+    result = await wonderland.paint("a relay cat")
+
+    assert result == b"vertex-generated-image"
+    assert calls["client"]["api_key"] == "sk-paint"
+    assert calls["client"]["vertexai"] is True
+    assert calls["client"]["http_options"].kwargs == {
+        "api_version": "v1",
+        "base_url": "https://zenmux.ai/api/vertex-ai",
+    }
+    assert calls["generate_images"] == {
+        "model": wonderland.EnvConfig.PAINT_MODEL,
+        "prompt": "a relay cat",
+    }
+
+
+@pytest.mark.asyncio
+async def test_paint_edits_images_with_google_genai_for_vertex_style_gateway(load_wonderland_module, monkeypatch):
+    wonderland = load_wonderland_module()
+    calls = {}
+
+    class DummyHttpOptions:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class DummyImage:
+        def __init__(self, *, image_bytes, mime_type):
+            self.image_bytes = image_bytes
+            self.mime_type = mime_type
+
+    class DummyRawReferenceImage:
+        def __init__(self, *, reference_id, reference_image):
+            self.reference_id = reference_id
+            self.reference_image = reference_image
+
+    class DummyAioModels:
+        async def edit_image(self, **kwargs):
+            calls["edit_image"] = kwargs
+            image = SimpleNamespace(image_bytes=b"vertex-edited-image", mime_type="image/png")
+            return SimpleNamespace(generated_images=[SimpleNamespace(image=image)])
+
+    class DummyClient:
+        def __init__(self, **kwargs):
+            calls["client"] = kwargs
+            self.aio = SimpleNamespace(models=DummyAioModels())
+
+    monkeypatch.setattr(wonderland.EnvConfig, "OPENAI_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setattr(wonderland.EnvConfig, "PAINT_BASE_URL", "https://zenmux.ai/api/vertex-ai")
+    monkeypatch.setattr(wonderland.EnvConfig, "OPENAI_API_KEY", SecretStr("sk-global"))
+    monkeypatch.setattr(wonderland.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint"))
+    monkeypatch.setattr(wonderland, "genai", SimpleNamespace(Client=DummyClient))
+    monkeypatch.setattr(
+        wonderland,
+        "genai_types",
+        SimpleNamespace(
+            HttpOptions=DummyHttpOptions,
+            Image=DummyImage,
+            RawReferenceImage=DummyRawReferenceImage,
+        ),
+    )
+
+    result = await wonderland.paint("add a robot", [_tiny_png_bytes()])
+
+    assert result == b"vertex-edited-image"
+    assert calls["client"]["api_key"] == "sk-paint"
+    assert calls["client"]["vertexai"] is True
+    assert calls["client"]["http_options"].kwargs["base_url"] == "https://zenmux.ai/api/vertex-ai"
+    assert calls["edit_image"]["model"] == wonderland.EnvConfig.PAINT_MODEL
+    assert calls["edit_image"]["prompt"] == "add a robot"
+    assert len(calls["edit_image"]["reference_images"]) == 1
+    reference = calls["edit_image"]["reference_images"][0]
+    assert reference.reference_id == 1
+    assert reference.reference_image.mime_type == "image/png"
+    assert reference.reference_image.image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 @pytest.mark.asyncio

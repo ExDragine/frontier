@@ -1,7 +1,10 @@
 import base64
+import inspect
 import io
 import re
 
+from google import genai
+from google.genai import types as genai_types
 from nonebot import logger, on_command, require
 from nonebot.adapters.milky.event import MessageEvent
 from openai import AsyncClient
@@ -45,43 +48,131 @@ def strip_paint_prompt(text: str) -> str:
 
 
 def _prepare_reference_image(image: bytes, index: int) -> tuple[str, bytes, str]:
+    png_bytes = _normalize_reference_image(image)
+    return (f"reference-{index}.png", png_bytes, "image/png")
+
+
+def _normalize_reference_image(image: bytes) -> bytes:
     with Image.open(io.BytesIO(image)) as raw_image:
         mode = "RGBA" if "A" in raw_image.getbands() else "RGB"
         normalized = raw_image.convert(mode)
         with io.BytesIO() as png_bytes:
             normalized.save(png_bytes, format="PNG")
-            return (f"reference-{index}.png", png_bytes.getvalue(), "image/png")
+            return png_bytes.getvalue()
 
 
-async def paint(prompt: str, reference_images: list[bytes] | None = None) -> bytes | None:
-    client = AsyncClient(base_url=EnvConfig.OPENAI_BASE_URL, api_key=EnvConfig.OPENAI_API_KEY.get_secret_value())
+def _paint_base_url() -> str:
+    return EnvConfig.PAINT_BASE_URL
+
+
+def _paint_api_key() -> str:
+    return EnvConfig.PAINT_API_KEY.get_secret_value()
+
+
+def _use_vertex_image_gateway() -> bool:
+    return "vertex-ai" in _paint_base_url().lower()
+
+
+def _openai_client_kwargs() -> dict[str, str]:
+    kwargs = {"api_key": _paint_api_key()}
+    if _paint_base_url():
+        kwargs["base_url"] = _paint_base_url()
+    return kwargs
+
+
+async def _paint_with_openai_images(prompt: str, reference_images: list[bytes]) -> bytes | None:
+    client = AsyncClient(**_openai_client_kwargs())
     request = {
         "model": EnvConfig.PAINT_MODEL,
         "prompt": prompt,
         "response_format": "b64_json",
     }
+
+    if reference_images:
+        payload = [_prepare_reference_image(image, idx) for idx, image in enumerate(reference_images, start=1)]
+        response = await client.images.edit(image=payload, **request)
+    else:
+        response = await client.images.generate(**request)
+
+    if not response.data:
+        logger.warning("绘图API返回空 data")
+        return None
+
+    image_b64 = getattr(response.data[0], "b64_json", None)
+    if not image_b64:
+        logger.warning("绘图API响应缺少 b64_json 字段")
+        return None
+
+    return base64.b64decode(image_b64)
+
+
+async def _paint_with_vertex_gateway(prompt: str, reference_images: list[bytes]) -> bytes | None:
+    client = genai.Client(
+        api_key=_paint_api_key(),
+        vertexai=True,
+        http_options=genai_types.HttpOptions(api_version="v1", base_url=_paint_base_url()),
+    )
+    try:
+        if reference_images:
+            payload = [
+                genai_types.RawReferenceImage(
+                    reference_id=idx,
+                    reference_image=genai_types.Image(
+                        image_bytes=_normalize_reference_image(image),
+                        mime_type="image/png",
+                    ),
+                )
+                for idx, image in enumerate(reference_images, start=1)
+            ]
+            response = await client.aio.models.edit_image(
+                model=EnvConfig.PAINT_MODEL,
+                prompt=prompt,
+                reference_images=payload,
+            )
+        else:
+            response = await client.aio.models.generate_images(
+                model=EnvConfig.PAINT_MODEL,
+                prompt=prompt,
+            )
+    finally:
+        aio_client = getattr(client, "aio", None)
+        aclose = getattr(aio_client, "aclose", None)
+        if callable(aclose):
+            maybe_awaitable = aclose()
+            if inspect.isawaitable(maybe_awaitable):
+                await maybe_awaitable
+
+        close = getattr(client, "close", None)
+        if callable(close):
+            maybe_awaitable = close()
+            if inspect.isawaitable(maybe_awaitable):
+                await maybe_awaitable
+
+    generated_images = getattr(response, "generated_images", None) or []
+    if not generated_images:
+        logger.warning("Vertex 图片API返回空 generated_images")
+        return None
+
+    image = getattr(generated_images[0], "image", None)
+    image_bytes = getattr(image, "image_bytes", None)
+    if not image_bytes:
+        logger.warning("Vertex 图片API响应缺少 image_bytes 字段")
+        return None
+
+    return image_bytes
+
+
+async def paint(prompt: str, reference_images: list[bytes] | None = None) -> bytes | None:
     reference_images = reference_images or []
     logger.info(
         f"🎨 调用 GPT Image API, model={EnvConfig.PAINT_MODEL}, prompt_length={len(prompt)}, references={len(reference_images)}"
     )
 
     try:
-        if reference_images:
-            payload = [_prepare_reference_image(image, idx) for idx, image in enumerate(reference_images, start=1)]
-            response = await client.images.edit(image=payload, **request)
+        if _use_vertex_image_gateway():
+            return await _paint_with_vertex_gateway(prompt, reference_images)
         else:
-            response = await client.images.generate(**request)
-
-        if not response.data:
-            logger.warning("绘图API返回空 data")
-            return None
-
-        image_b64 = getattr(response.data[0], "b64_json", None)
-        if not image_b64:
-            logger.warning("绘图API响应缺少 b64_json 字段")
-            return None
-
-        return base64.b64decode(image_b64)
+            return await _paint_with_openai_images(prompt, reference_images)
     except Exception as e:
         logger.exception(f"💥 调用 GPT Image API 失败: {e}")
         return None
