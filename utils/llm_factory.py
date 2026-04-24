@@ -68,7 +68,7 @@ _anthropic_config = ProviderConfig(
 _deepseek_config = ProviderConfig(
     cls_fn=lambda: ChatDeepSeek,
     api_key_fn=lambda: EnvConfig.DEEPSEEK_API_KEY,
-    api_key_field="openai_api_key",
+    api_key_field="api_key",
     valid_kwargs=_DEEPSEEK_VALID,
     kwarg_map={"timeout": "request_timeout"},
 )
