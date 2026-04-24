@@ -25,6 +25,7 @@ class ProviderConfig:
     kwarg_map: dict[str, str] = field(default_factory=dict)
     base_url_fn: Callable[[], str] | None = None
     base_url_field: str | None = None
+    static_kwargs: dict = field(default_factory=dict)
 
 
 _OPENAI_VALID = {
@@ -73,6 +74,7 @@ _deepseek_config = ProviderConfig(
     kwarg_map={"timeout": "request_timeout"},
     base_url_fn=lambda: EnvConfig.DEEPSEEK_BASE_URL,
     base_url_field="api_base",
+    static_kwargs={"extra_body": {"thinking": {"type": "disabled"}}},
 )
 
 
@@ -104,4 +106,4 @@ def create_llm(model: str, **kwargs) -> BaseChatModel:
     if config.base_url_fn and config.base_url_field:
         if base_url := config.base_url_fn():
             filtered[config.base_url_field] = base_url
-    return cls(**{config.api_key_field: api_key, "model": model, **filtered})
+    return cls(**{config.api_key_field: api_key, "model": model, **filtered, **config.static_kwargs})
