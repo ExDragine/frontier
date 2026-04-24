@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from langchain_anthropic import ChatAnthropic
+from langchain_deepseek import ChatDeepSeek
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
@@ -37,6 +38,7 @@ _OPENAI_VALID = {
 }
 _GOOGLE_VALID = {"streaming", "max_retries", "timeout", "temperature"}
 _ANTHROPIC_VALID = {"streaming", "max_retries", "timeout", "temperature"}
+_DEEPSEEK_VALID = {"streaming", "max_retries", "timeout", "reasoning_effort", "temperature"}
 
 _openai_config = ProviderConfig(
     cls_fn=lambda: ChatOpenAI,
@@ -63,6 +65,14 @@ _anthropic_config = ProviderConfig(
     kwarg_map={"timeout": "default_request_timeout"},
 )
 
+_deepseek_config = ProviderConfig(
+    cls_fn=lambda: ChatDeepSeek,
+    api_key_fn=lambda: EnvConfig.DEEPSEEK_API_KEY,
+    api_key_field="openai_api_key",
+    valid_kwargs=_DEEPSEEK_VALID,
+    kwarg_map={"timeout": "request_timeout"},
+)
+
 
 def create_llm(model: str, **kwargs) -> BaseChatModel:
     """根据模型名称前缀路由到对应 Provider，自动过滤不支持的 kwargs。
@@ -77,6 +87,8 @@ def create_llm(model: str, **kwargs) -> BaseChatModel:
             config = _google_config
         case k if k.startswith(("claude-", "anthropic")):
             config = _anthropic_config
+        case k if k.startswith("deepseek-"):
+            config = _deepseek_config
         case _:
             config = _openai_config
 
