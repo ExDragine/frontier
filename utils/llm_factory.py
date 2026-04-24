@@ -48,70 +48,45 @@ _openai_config = ProviderConfig(
     base_url_field="openai_api_base",
 )
 
-PROVIDERS: list[tuple[str, ProviderConfig]] = [
-    (
-        "gemini-",
-        ProviderConfig(
-            cls_fn=lambda: ChatGoogleGenerativeAI,
-            api_key_fn=lambda: EnvConfig.GOOGLE_API_KEY,
-            api_key_field="google_api_key",
-            valid_kwargs=_GOOGLE_VALID,
-        ),
-    ),
-    ("gpt-", _openai_config),
-    ("o1", _openai_config),
-    ("o3", _openai_config),
-    ("o4", _openai_config),
-    (
-        "claude-",
-        ProviderConfig(
-            cls_fn=lambda: ChatAnthropic,
-            api_key_fn=lambda: EnvConfig.ANTHROPIC_API_KEY,
-            api_key_field="anthropic_api_key",
-            valid_kwargs=_ANTHROPIC_VALID,
-            kwarg_map={"timeout": "default_request_timeout"},
-        ),
-    ),
-    ("openai", _openai_config),
-    (
-        "google",
-        ProviderConfig(
-            cls_fn=lambda: ChatGoogleGenerativeAI,
-            api_key_fn=lambda: EnvConfig.GOOGLE_API_KEY,
-            api_key_field="google_api_key",
-            valid_kwargs=_GOOGLE_VALID,
-        ),
-    ),
-    (
-        "anthropic",
-        ProviderConfig(
-            cls_fn=lambda: ChatAnthropic,
-            api_key_fn=lambda: EnvConfig.ANTHROPIC_API_KEY,
-            api_key_field="anthropic_api_key",
-            valid_kwargs=_ANTHROPIC_VALID,
-            kwarg_map={"timeout": "default_request_timeout"},
-        ),
-    ),
-]
+_google_config = ProviderConfig(
+    cls_fn=lambda: ChatGoogleGenerativeAI,
+    api_key_fn=lambda: EnvConfig.GOOGLE_API_KEY,
+    api_key_field="google_api_key",
+    valid_kwargs=_GOOGLE_VALID,
+)
+
+_anthropic_config = ProviderConfig(
+    cls_fn=lambda: ChatAnthropic,
+    api_key_fn=lambda: EnvConfig.ANTHROPIC_API_KEY,
+    api_key_field="anthropic_api_key",
+    valid_kwargs=_ANTHROPIC_VALID,
+    kwarg_map={"timeout": "default_request_timeout"},
+)
 
 
 def create_llm(model: str, **kwargs) -> BaseChatModel:
     """根据模型名称前缀路由到对应 Provider，自动过滤不支持的 kwargs。
 
     模型名支持 vendor/model 格式（如 "openai/gpt-4o"），vendor 前缀仅用于路由判断，
-    传入框架的模型名保持原始值。
+    传入框架的模型名保持原始值。未匹配 Google/Anthropic 前缀的模型均视为 OpenAI-compatible。
     """
     route_key = model.split("/", 1)[1] if "/" in model else model
-    for prefix, config in PROVIDERS:
-        if route_key.startswith(prefix):
-            cls = config.cls_fn()
-            api_key = config.api_key_fn()
-            filtered: dict = {}
-            for k, v in kwargs.items():
-                if k in config.valid_kwargs:
-                    actual_key = config.kwarg_map.get(k, k)
-                    filtered[actual_key] = v
-            if config.base_url_fn and config.base_url_field:
-                filtered[config.base_url_field] = config.base_url_fn()
-            return cls(**{config.api_key_field: api_key, "model": model, **filtered})
-    raise ValueError(f"未知模型前缀，无法路由: {model!r}。支持的前缀: {[p for p, _ in PROVIDERS]}")
+
+    match route_key:
+        case k if k.startswith(("gemini-", "google")):
+            config = _google_config
+        case k if k.startswith(("claude-", "anthropic")):
+            config = _anthropic_config
+        case _:
+            config = _openai_config
+
+    cls = config.cls_fn()
+    api_key = config.api_key_fn()
+    filtered: dict = {}
+    for k, v in kwargs.items():
+        if k in config.valid_kwargs:
+            actual_key = config.kwarg_map.get(k, k)
+            filtered[actual_key] = v
+    if config.base_url_fn and config.base_url_field:
+        filtered[config.base_url_field] = config.base_url_fn()
+    return cls(**{config.api_key_field: api_key, "model": model, **filtered})
