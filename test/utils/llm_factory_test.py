@@ -32,8 +32,8 @@ def test_gpt_routes_to_openai(monkeypatch):
     assert kw["model"] == "gpt-4o"
     assert "openai_api_key" in kw
     assert "openai_api_base" in kw
-    assert kw.get("request_timeout") == 300   # timeout → request_timeout
-    assert "timeout" not in kw                # raw "timeout" filtered out
+    assert kw.get("request_timeout") == 300  # timeout → request_timeout
+    assert "timeout" not in kw  # raw "timeout" filtered out
 
 
 def test_o3_routes_to_openai(monkeypatch):
@@ -102,7 +102,7 @@ def test_openai_kwargs_filtered_for_google(monkeypatch):
     assert "use_responses_api" not in kw
     assert "reasoning_effort" not in kw
     assert "verbosity" not in kw
-    assert kw.get("max_retries") == 2   # 通用参数正常传入
+    assert kw.get("max_retries") == 2  # 通用参数正常传入
 
 
 def test_openai_kwargs_filtered_for_anthropic(monkeypatch):

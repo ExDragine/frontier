@@ -93,7 +93,6 @@ def _reload_env_config():
     msg = config.get("message", {})
     db = config.get("database", {})
     dbg = config.get("debug", {})
-    mem = config.get("memory", {})
     dash = config.get("dashboard", {})
 
     EnvConfig.BOT_NAME = info.get("name", EnvConfig.BOT_NAME)
@@ -142,9 +141,6 @@ def _reload_env_config():
     EnvConfig.EARTHQUAKE_GROUP_ID = msg.get("earthquake_group_id", EnvConfig.TEST_GROUP_ID)
 
     EnvConfig.QUERY_MESSAGE_NUMBERS = db.get("query_message_numbers", EnvConfig.QUERY_MESSAGE_NUMBERS)
-
-    EnvConfig.MEMORY_ENABLED = mem.get("enabled", True)
-    EnvConfig.MEMORY_SCHEMA_VERSION = str(mem.get("schema_version", "v2"))
 
     EnvConfig.DASHBOARD_PASSWORD = dash.get("password", "admin")
     EnvConfig.DASHBOARD_JWT_SECRET = dash.get("jwt_secret", "frontier-dashboard-default-secret")

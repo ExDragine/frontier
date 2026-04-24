@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import time
 import uuid
@@ -23,7 +22,6 @@ from nonebot import logger
 from tools import agent_tools
 from utils.configs import EnvConfig
 from utils.llm_factory import create_llm
-from utils.memory import get_memory_service
 from utils.subagents import get_fact_check_subagent
 
 
@@ -88,7 +86,6 @@ class FrontierCognitive:
         self.subagents: list = [get_fact_check_subagent()]
         self.checkpoint = InMemorySaver()
         self.backend = FilesystemBackend(root_dir="./cache/sandbox")
-        self.memory = get_memory_service()
 
     @staticmethod
     def load_system_prompt():
@@ -132,39 +129,6 @@ class FrontierCognitive:
 
         logger.info(f"📨 总共提取到 {len(uni_messages)} 个 UniMessage")
         return uni_messages
-
-    async def inject_memory_context(self, messages, query_text: str, user_id: str, group_id: int | None):
-        if not EnvConfig.MEMORY_ENABLED or not query_text.strip():
-            return messages
-        try:
-            memory_items = await asyncio.wait_for(
-                self.memory.retrieve_for_injection(
-                    query=query_text,
-                    user_id=user_id,
-                    group_id=group_id,
-                    max_items=EnvConfig.MEMORY_MAX_INJECTED_MEMORIES,
-                ),
-                timeout=max(0.1, EnvConfig.MEMORY_INJECT_TIMEOUT_MS / 1000),
-            )
-        except TimeoutError:
-            logger.warning(f"⚠️ memory retrieval timeout for user {user_id}")
-            return messages
-        except Exception as e:
-            logger.warning(f"⚠️ memory retrieval failed for user {user_id}: {type(e).__name__}: {e}")
-            return messages
-
-        if not memory_items:
-            return messages
-        memory_context = self.memory.format_for_injection(memory_items)
-        if not memory_context:
-            return messages
-
-        prepared_messages = list(messages)
-        insert_at = len(prepared_messages)
-        if prepared_messages and prepared_messages[-1].get("role") == "user":
-            insert_at = max(0, len(prepared_messages) - 1)
-        prepared_messages.insert(insert_at, {"role": "system", "content": memory_context})
-        return prepared_messages
 
     async def chat_agent(
         self,
@@ -215,9 +179,6 @@ class FrontierCognitive:
         )
         start_time = time.time()
         logger.info(f"Agent烧烤中~🍖 思考等级: {capability} 用户: {user_name} (ID: {user_id})")
-        prepared_messages = await self.inject_memory_context(
-            messages, query_text=query_text, user_id=user_id, group_id=group_id
-        )
         config: RunnableConfig = {
             "configurable": {
                 "thread_id": uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=user_id),
@@ -227,7 +188,7 @@ class FrontierCognitive:
         }
         try:
             response = await agent.ainvoke(
-                {"messages": prepared_messages, "user_id": user_id, "group_id": group_id},
+                {"messages": messages, "user_id": user_id, "group_id": group_id},
                 config=config,
             )
         except Exception as e:

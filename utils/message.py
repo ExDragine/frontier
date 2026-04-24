@@ -181,7 +181,11 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
         should_send_text = len(content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID
         if should_send_text:
             text_content = (await markdown_to_text(content)).rstrip("\r\n").strip()
-            messages = UniMessage.reply(str(message_id)) + UniMessage.text(text_content)
+            messages = (
+                UniMessage.reply(str(message_id)) + UniMessage.text(text_content)
+                if group_id
+                else UniMessage.text(text_content)
+            )
             try:
                 await messages.send()
                 return
@@ -198,20 +202,15 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
             except ActionFailed as e:
                 logger.error(f"错误消息发送失败: {e}")
             return
-
-        messages = UniMessage.reply(str(message_id)) + UniMessage.image(raw=result)
+        messages = (
+            UniMessage.reply(str(message_id)) + UniMessage.image(raw=result)
+            if group_id
+            else UniMessage.image(raw=result)
+        )
         try:
             await messages.send()
         except ActionFailed as e:
             logger.error(f"图片消息发送失败: {e}")
-            # 最后尝试发送截断的文本
-            try:
-                text_content = (await markdown_to_text(content)).rstrip("\r\n").strip()
-                truncated = text_content[:500] + "..." if len(text_content) > 500 else text_content
-                fallback = UniMessage.reply(str(message_id)) + UniMessage.text(truncated)
-                await fallback.send()
-            except Exception as final_e:
-                logger.error(f"所有消息发送尝试都失败: {final_e}")
 
 
 async def message_gateway(event: MessageEvent, messages: list):

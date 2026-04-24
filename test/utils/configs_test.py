@@ -49,9 +49,6 @@ query_message_numbers = 3
 [debug]
 agent_debug_mode = false
 
-[memory]
-enabled = true
-
 [dashboard]
 password = "admin"
 jwt_secret = "secret"
@@ -62,7 +59,6 @@ jwt_secret = "secret"
     configs = importlib.import_module("utils.configs")
     importlib.reload(configs)
 
-    assert configs.EnvConfig.MEMORY_ENABLED is True
     assert configs.EnvConfig.DASHBOARD_PASSWORD == "admin"
     assert isinstance(configs.EnvConfig.OPENAI_API_KEY, SecretStr)
     assert configs.EnvConfig.ANNOUNCE_GROUP_ID == configs.EnvConfig.TEST_GROUP_ID
@@ -116,9 +112,6 @@ query_message_numbers = 3
 
 [debug]
 agent_debug_mode = false
-
-[memory]
-enabled = true
 
 [dashboard]
 password = "admin"
@@ -177,9 +170,6 @@ query_message_numbers = 3
 
 [debug]
 agent_debug_mode = false
-
-[memory]
-enabled = true
 
 [dashboard]
 password = "admin"
@@ -240,9 +230,6 @@ query_message_numbers = 3
 
 [debug]
 agent_debug_mode = false
-
-[memory]
-enabled = true
 
 [dashboard]
 password = "admin"

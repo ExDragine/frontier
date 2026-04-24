@@ -7,6 +7,7 @@ import pytest
 
 # ── 图片 ──────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_send_image_url(load_tool_module):
     adapter = load_tool_module("adapter")
@@ -33,6 +34,7 @@ async def test_send_image_local(load_tool_module):
 
 # ── 音频 ──────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_send_audio_url(load_tool_module):
     adapter = load_tool_module("adapter")
@@ -56,6 +58,7 @@ async def test_send_audio_local(load_tool_module):
 
 
 # ── 语音 ──────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_send_voice_url(load_tool_module):
@@ -81,6 +84,7 @@ async def test_send_voice_local(load_tool_module):
 
 # ── 视频 ──────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_send_video_url(load_tool_module):
     adapter = load_tool_module("adapter")
@@ -105,6 +109,7 @@ async def test_send_video_local(load_tool_module):
 
 # ── 表情 ──────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_send_emoji(load_tool_module):
     adapter = load_tool_module("adapter")
@@ -115,6 +120,7 @@ async def test_send_emoji(load_tool_module):
 
 
 # ── 文件 ──────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_send_file_url(load_tool_module):
@@ -144,17 +150,22 @@ async def test_send_file_local(load_tool_module):
 
 # ── URL 格式校验 ──────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("bad_source", [
-    "not_a_url",
-    "ftp://example.com/a.png",
-    "//example.com/no-scheme",
-    "",
-])
+@pytest.mark.parametrize(
+    "bad_source",
+    [
+        "not_a_url",
+        "ftp://example.com/a.png",
+        "//example.com/no-scheme",
+        "",
+    ],
+)
 async def test_invalid_url_rejected(load_tool_module, bad_source):
     adapter = load_tool_module("adapter")
     with pytest.raises(ValueError, match="无效的 URL"):
         await adapter.send_image(bad_source)
+
 
 @pytest.mark.asyncio
 async def test_send_at(load_tool_module):

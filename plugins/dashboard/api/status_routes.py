@@ -79,7 +79,6 @@ async def get_status_overview(user: dict = Depends(require_auth)):
         "features": {
             "agent_module_enabled": EnvConfig.AGENT_MODULE_ENABLED,
             "paint_module_enabled": EnvConfig.PAINT_MODULE_ENABLED,
-            "memory_enabled": EnvConfig.MEMORY_ENABLED,
             "agent_capability": EnvConfig.AGENT_CAPABILITY,
             "agent_debug_mode": EnvConfig.AGENT_DEBUG_MODE,
         },

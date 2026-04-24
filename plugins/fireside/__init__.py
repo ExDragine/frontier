@@ -12,8 +12,6 @@ from pydantic import BaseModel, Field
 from utils.agents import FrontierCognitive, assistant_agent
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, MessageImage
-from utils.memory import get_memory_service
-from utils.memory_types import MemoryAnalyzeResult
 from utils.message import (
     message_check,
     message_extract,
@@ -28,7 +26,6 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
-memory = get_memory_service()
 driver = get_driver()
 
 common = on_message(priority=10)
@@ -40,62 +37,6 @@ class AgentChoice(BaseModel):
     agent_capability: Literal["low", "medium", "high", "xhigh"] = Field(
         description="Choose 'low' for casual chat or simple questions; 'medium' for typical tasks with moderate reasoning; 'high' for complex multi-step tasks; 'xhigh' for deep research or architectural decisions."
     )
-
-
-async def store_memory_async(user_text: str, user_id: str, group_id: int | None, source_msg_id: int | None):
-    if not EnvConfig.MEMORY_ENABLED:
-        return
-    allow, sanitized_user_text, reason = memory.apply_privacy_filter(user_text)
-    if not allow:
-        logger.info(f"🔒 记忆写入被隐私策略拒绝 user={user_id} reason={reason}")
-        return
-    try:
-        with open("./prompts/memory_analyze_v2.md", encoding="utf-8") as f:
-            memory_prompt = f.read()
-    except FileNotFoundError:
-        logger.error("❌ 未找到 memory_analyze_v2.md 文件")
-        return
-    except (PermissionError, OSError, UnicodeDecodeError) as e:
-        logger.error(f"❌ 读取 memory_analyze_v2.md 失败: {e}")
-        return
-
-    try:
-        memory_analyze: MemoryAnalyzeResult = await assistant_agent(
-            memory_prompt,
-            sanitized_user_text,
-            response_format=MemoryAnalyzeResult,
-        )
-    except Exception as e:
-        logger.error(f"❌ 记忆分析失败 user={user_id}: {type(e).__name__}: {e}")
-        return
-
-    if not memory_analyze.should_memory:
-        return
-
-    try:
-        saved_ids = await memory.persist_from_analysis(
-            analysis=memory_analyze,
-            raw_user_text=sanitized_user_text,
-            user_id=user_id,
-            group_id=group_id,
-            source_msg_id=source_msg_id,
-        )
-        if saved_ids:
-            logger.info(f"🧠 记忆写入成功 user={user_id} ids={saved_ids}")
-    except Exception as e:
-        logger.error(f"❌ 记忆写入失败 user={user_id}: {type(e).__name__}: {e}")
-
-
-def schedule_memory_write(user_text: str, user_id: str, group_id: int | None, source_msg_id: int | None):
-    task = asyncio.create_task(store_memory_async(user_text, user_id, group_id, source_msg_id))
-
-    def done_callback(done_task: asyncio.Task):
-        if done_task.cancelled():
-            return
-        if exception := done_task.exception():
-            logger.error(f"❌ 异步记忆任务异常: {type(exception).__name__}: {exception}")
-
-    task.add_done_callback(done_callback)
 
 
 async def store_image_summary_async(msg_time: int, user_id: int, group_id: int | None):
@@ -214,46 +155,45 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     match risk_check:
         case "Safe":
             if group_id:
-                try:
-                    await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="333", is_add=True
-                    )
-                except Exception as e:
-                    logger.warning(f"表情回复发送失败，使用文本消息: {e}")
-                    await common.send("🔮")
-            else:
-                await common.send("🔮")
+                await bot.send_group_message_reaction(
+                    group_id=group_id, message_seq=event_id, reaction="351", is_add=True
+                )
         case "Controversial":
             # 使用表情回复功能
             if group_id:
-                try:
-                    await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="32", is_add=True
-                    )
-                except Exception as e:
-                    logger.warning(f"表情回复发送失败，使用文本消息: {e}")
-                    await common.send("👀")
-            else:
-                # 私聊场景，直接发送文本
-                await common.send("👀")
+                await bot.send_group_message_reaction(
+                    group_id=group_id, message_seq=event_id, reaction="32", is_add=True
+                )
         case "Unsafe":
             if group_id:
-                try:
-                    await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="267", is_add=True
-                    )
-                except Exception as e:
-                    logger.warning(f"表情回复发送失败，使用文本消息: {e}")
-                    await common.send("😅")
-            else:
-                # 私聊场景，直接发送文本
-                await common.send("😅")
+                await bot.send_group_message_reaction(
+                    group_id=group_id, message_seq=event_id, reaction="267", is_add=True
+                )
+
     messages.append(
         {
             "role": "user",
-            "content": [{"type": "text", "text": str({"metadata": {"time": datetime.datetime.fromtimestamp(msg_time / 1000).astimezone(datetime.timezone(datetime.timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S"), "user_name": user_name}, "content": text})}]
+            "content": [
+                {
+                    "type": "text",
+                    "text": str(
+                        {
+                            "metadata": {
+                                "time": datetime.datetime.fromtimestamp(msg_time / 1000)
+                                .astimezone(datetime.timezone(datetime.timedelta(hours=8)))
+                                .strftime("%Y-%m-%d %H:%M:%S"),
+                                "user_name": user_name,
+                            },
+                            "content": text,
+                        }
+                    ),
+                }
+            ]
             + [
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"}}
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"},
+                }
                 for image in images
             ],
         }
@@ -304,15 +244,11 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                 group_id=group_id,
                 user_name="Assistant",
                 role="assistant",
-                content=str(response["messages"][-1].text) if hasattr(response["messages"][-1], "text") else response["messages"][-1].content,
+                content=str(response["messages"][-1].text)
+                if hasattr(response["messages"][-1], "text")
+                else response["messages"][-1].content,
             )
             await send_messages(group_id, event_id, response)
-            schedule_memory_write(
-                user_text=text,
-                user_id=user_id,
-                group_id=group_id,
-                source_msg_id=event_id,
-            )
 
         else:
             await UniMessage.text(response["messages"]).send()

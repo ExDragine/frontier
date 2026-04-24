@@ -42,7 +42,6 @@ async def test_status_overview_handles_missing_task_plugin(monkeypatch):
             BOT_NAME="bot",
             AGENT_MODULE_ENABLED=True,
             PAINT_MODULE_ENABLED=True,
-            MEMORY_ENABLED=True,
             AGENT_CAPABILITY="none",
             AGENT_DEBUG_MODE=False,
             BASIC_MODEL="b",
@@ -190,9 +189,6 @@ query_message_numbers = 3
 
 [debug]
 agent_debug_mode = false
-
-[memory]
-enabled = true
 
 [dashboard]
 password = "admin"

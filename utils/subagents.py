@@ -16,6 +16,8 @@ model = create_llm(
     timeout=30,
     use_responses_api=EnvConfig.BASIC_MODEL_USE_RESPONSES_API,
 )
+
+
 def get_fact_check_subagent() -> dict:
     current_time = datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
     return {
@@ -44,4 +46,3 @@ def get_fact_check_subagent() -> dict:
         # "middleware": [],
         # "interrupt_on": {},
     }
-
