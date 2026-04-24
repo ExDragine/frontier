@@ -43,6 +43,7 @@ class EnvConfig:
     GOOGLE_API_KEY: SecretStr = SecretStr(key.get("google_api_key", ""))
     ANTHROPIC_API_KEY: SecretStr = SecretStr(key.get("anthropic_api_key", ""))
     DEEPSEEK_API_KEY: SecretStr = SecretStr(key.get("deepseek_api_key", ""))
+    DEEPSEEK_BASE_URL: str = key.get("deepseek_base_url", "")
 
     AGENT_CAPABILITY = function_list["agent_capability"]
     AGENT_WHITELIST_MODE: bool = function_list["agent_whitelist_mode"]

@@ -71,6 +71,8 @@ _deepseek_config = ProviderConfig(
     api_key_field="api_key",
     valid_kwargs=_DEEPSEEK_VALID,
     kwarg_map={"timeout": "request_timeout"},
+    base_url_fn=lambda: EnvConfig.DEEPSEEK_BASE_URL,
+    base_url_field="api_base",
 )
 
 
@@ -100,5 +102,6 @@ def create_llm(model: str, **kwargs) -> BaseChatModel:
             actual_key = config.kwarg_map.get(k, k)
             filtered[actual_key] = v
     if config.base_url_fn and config.base_url_field:
-        filtered[config.base_url_field] = config.base_url_fn()
+        if base_url := config.base_url_fn():
+            filtered[config.base_url_field] = base_url
     return cls(**{config.api_key_field: api_key, "model": model, **filtered})
