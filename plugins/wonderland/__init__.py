@@ -43,7 +43,7 @@ async def handle_painter(event: MessageEvent):
         return
     image = await paint(prompt, reference_images)
     if image:
-        await UniMessage.image(raw=image).send()
+        await (UniMessage.reply(str(MessageEvent.data.message_seq)) + UniMessage.image(raw=image)).send()
     else:
         await UniMessage.text("这里空空如也，什么都没有画出来。").send()
 
