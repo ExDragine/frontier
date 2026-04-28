@@ -1,5 +1,6 @@
 import ast
 import asyncio
+import re
 from io import BytesIO
 from typing import Literal
 
@@ -172,14 +173,13 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
         try:
             content = ast.literal_eval(content)["content"]
         except (ValueError, SyntaxError, KeyError) as e:
-            # Content不是字典字面量，使用原始内容
             logger.debug(f"消息内容不是字典字面量，使用原始内容: {type(e).__name__}")
         except Exception as e:
             # 意外错误
             logger.warning(f"解析消息内容时出现意外错误: {type(e).__name__}: {e}")
-
-        should_send_text = len(content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID
-        if should_send_text:
+        pattern = re.compile(r"\$(.*?)\$")
+        matches = pattern.findall(content)
+        if len(content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID and not matches:
             text_content = (await markdown_to_text(content)).rstrip("\r\n").strip()
             messages = (
                 UniMessage.reply(str(message_id)) + UniMessage.text(text_content)
