@@ -46,7 +46,7 @@ async def handle_painter(event: MessageEvent):
     if image:
         await (UniMessage.reply(str(event.data.message_seq)) + UniMessage.image(raw=image)).send()
     else:
-        await UniMessage.text("这里空空如也，什么都没有画出来。").send()
+        await (UniMessage.reply(str(event.data.message_seq)) + UniMessage.text("图被肥猫吃了，画不了嘞")).send()
 
 
 def strip_paint_prompt(text: str) -> str:
@@ -142,18 +142,16 @@ async def _paint_with_vertex_gateway(prompt: str, reference_images: list[bytes])
                     prompt=prompt,
                     reference_images=payload,
                 )
-            except ClientError as e:
-                if e.message and "Your request was rejected by the safety system." in e.message:
-                    await UniMessage.text("图被肥猫吃了，画不了嘞").send()
+            except ClientError:
+                return
         else:
             try:
                 response = await client.aio.models.generate_images(
                     model=EnvConfig.PAINT_MODEL,
                     prompt=prompt,
                 )
-            except ClientError as e:
-                if e.message and "Your request was rejected by the safety system." in e.message:
-                    await UniMessage.text("图被肥猫吃了，画不了嘞").send()
+            except ClientError:
+                return
     finally:
         aio_client = getattr(client, "aio", None)
         aclose = getattr(aio_client, "aclose", None)
