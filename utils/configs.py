@@ -11,6 +11,7 @@ with open("env.toml", "rb") as f:
 
 information: dict = config.get("information", {})
 endpoint: dict = config.get("endpoint", {})
+llm_endpoints: dict = config.get("llm_endpoints", {})
 key: dict = config.get("key", {})
 function_list = config.get("function", {})
 message: dict = config.get("message", {})
@@ -29,7 +30,13 @@ class EnvConfig:
 
     OPENAI_BASE_URL: str = endpoint["openai_base_url"]
     BASIC_MODEL: str = endpoint["basic_model"]
+    BASIC_MODEL_PROVIDER: str = endpoint.get("basic_model_provider", "")
+    BASIC_MODEL_ENDPOINT: str = endpoint.get("basic_model_endpoint", "")
+    BASIC_MODEL_CAPABILITIES: list[str] = endpoint.get("basic_model_capabilities", [])
     ADVAN_MODEL: str = endpoint["advan_model"]
+    ADVAN_MODEL_PROVIDER: str = endpoint.get("advan_model_provider", "")
+    ADVAN_MODEL_ENDPOINT: str = endpoint.get("advan_model_endpoint", "")
+    ADVAN_MODEL_CAPABILITIES: list[str] = endpoint.get("advan_model_capabilities", [])
     PAINT_MODEL: str = endpoint["paint_model"]
     PAINT_BASE_URL: str = endpoint.get("paint_base_url") or OPENAI_BASE_URL
     BASIC_MODEL_USE_RESPONSES_API: bool = endpoint.get("basic_model_use_responses_api", True)
@@ -41,8 +48,8 @@ class EnvConfig:
     GITHUB_PAT: SecretStr = SecretStr(key["github_pat"])
     GOOGLE_API_KEY: SecretStr = SecretStr(key.get("google_api_key", ""))
     ANTHROPIC_API_KEY: SecretStr = SecretStr(key.get("anthropic_api_key", ""))
-    DEEPSEEK_API_KEY: SecretStr = SecretStr(key.get("deepseek_api_key", ""))
-    DEEPSEEK_BASE_URL: str = key.get("deepseek_base_url", "")
+    ANTHROPIC_BASE_URL: str = key.get("anthropic_base_url", "")
+    LLM_ENDPOINTS: dict = llm_endpoints
 
     AGENT_CAPABILITY = function_list["agent_capability"]
     AGENT_WHITELIST_MODE: bool = function_list["agent_whitelist_mode"]

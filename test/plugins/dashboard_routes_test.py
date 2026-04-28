@@ -145,6 +145,42 @@ def test_settings_sanitize_masks_paint_api_key():
     assert result["key"]["paint_api_key"] == "****cret"
 
 
+def test_settings_sanitize_masks_llm_endpoint_api_key():
+    result = settings_routes._sanitize_config(
+        {
+            "llm_endpoints": {
+                "openrouter": {
+                    "provider": "openai",
+                    "base_url": "https://openrouter.example.com/api/v1",
+                    "api_key": "sk-openrouter-secret",
+                }
+            }
+        }
+    )
+
+    assert result["llm_endpoints"]["openrouter"]["api_key"] == "****cret"
+
+
+def test_settings_update_preserves_masked_nested_llm_endpoint_api_key():
+    result = settings_routes._resolve_update_value(
+        "llm_endpoints",
+        "openrouter",
+        {
+            "provider": "openai",
+            "base_url": "https://old.example.com/api/v1",
+            "api_key": "sk-openrouter-secret",
+        },
+        {
+            "provider": "openai",
+            "base_url": "https://new.example.com/api/v1",
+            "api_key": "****cret",
+        },
+    )
+
+    assert result["base_url"] == "https://new.example.com/api/v1"
+    assert result["api_key"] == "sk-openrouter-secret"
+
+
 def test_reload_env_config_recomputes_paint_specific_values(tmp_path, monkeypatch):
     env_path = tmp_path / "env.toml"
     env_path.write_text(
@@ -155,13 +191,34 @@ name = "Bot"
 [endpoint]
 openai_base_url = "https://global.example.com/v1"
 basic_model = "basic"
+basic_model_provider = "anthropic"
+basic_model_endpoint = "anthropic_proxy"
+basic_model_capabilities = ["text"]
 advan_model = "advan"
+advan_model_provider = "openai"
+advan_model_endpoint = "openrouter"
+advan_model_capabilities = ["text", "vision"]
 paint_model = "paint"
 paint_base_url = ""
+
+[llm_endpoints.openrouter]
+provider = "openai"
+base_url = "https://openrouter.example.com/api/v1"
+api_key = "sk-openrouter"
+capabilities = ["text", "vision"]
+
+[llm_endpoints.anthropic_proxy]
+provider = "anthropic"
+base_url = "https://anthropic.example.com"
+api_key = "ant-proxy"
+capabilities = ["text"]
 
 [key]
 openai_api_key = "sk-global"
 paint_api_key = ""
+google_api_key = "ggl-global"
+anthropic_api_key = "ant-global"
+anthropic_base_url = "https://anthropic.example.com"
 nasa_api_key = "nasa"
 github_pat = "gh"
 
@@ -202,13 +259,34 @@ jwt_secret = "secret"
     import utils.configs as configs
 
     configs.EnvConfig.OPENAI_BASE_URL = "https://old.example.com/v1"
+    configs.EnvConfig.BASIC_MODEL_PROVIDER = ""
+    configs.EnvConfig.BASIC_MODEL_ENDPOINT = ""
+    configs.EnvConfig.BASIC_MODEL_CAPABILITIES = []
+    configs.EnvConfig.ADVAN_MODEL_PROVIDER = ""
+    configs.EnvConfig.ADVAN_MODEL_ENDPOINT = ""
+    configs.EnvConfig.ADVAN_MODEL_CAPABILITIES = []
     configs.EnvConfig.PAINT_BASE_URL = "https://old-paint.example.com/v1"
+    configs.EnvConfig.LLM_ENDPOINTS = {}
     configs.EnvConfig.OPENAI_API_KEY = SecretStr("sk-old-global")
     configs.EnvConfig.PAINT_API_KEY = SecretStr("sk-old-paint")
+    configs.EnvConfig.GOOGLE_API_KEY = SecretStr("ggl-old")
+    configs.EnvConfig.ANTHROPIC_API_KEY = SecretStr("ant-old")
+    configs.EnvConfig.ANTHROPIC_BASE_URL = ""
 
     settings_routes._reload_env_config()
 
     assert configs.EnvConfig.OPENAI_BASE_URL == "https://global.example.com/v1"
+    assert configs.EnvConfig.BASIC_MODEL_PROVIDER == "anthropic"
+    assert configs.EnvConfig.BASIC_MODEL_ENDPOINT == "anthropic_proxy"
+    assert configs.EnvConfig.BASIC_MODEL_CAPABILITIES == ["text"]
+    assert configs.EnvConfig.ADVAN_MODEL_PROVIDER == "openai"
+    assert configs.EnvConfig.ADVAN_MODEL_ENDPOINT == "openrouter"
+    assert configs.EnvConfig.ADVAN_MODEL_CAPABILITIES == ["text", "vision"]
     assert configs.EnvConfig.PAINT_BASE_URL == "https://global.example.com/v1"
+    assert configs.EnvConfig.LLM_ENDPOINTS["openrouter"]["capabilities"] == ["text", "vision"]
+    assert configs.EnvConfig.LLM_ENDPOINTS["openrouter"]["api_key"] == "sk-openrouter"
     assert configs.EnvConfig.OPENAI_API_KEY.get_secret_value() == "sk-global"
     assert configs.EnvConfig.PAINT_API_KEY.get_secret_value() == "sk-global"
+    assert configs.EnvConfig.GOOGLE_API_KEY.get_secret_value() == "ggl-global"
+    assert configs.EnvConfig.ANTHROPIC_API_KEY.get_secret_value() == "ant-global"
+    assert configs.EnvConfig.ANTHROPIC_BASE_URL == "https://anthropic.example.com"

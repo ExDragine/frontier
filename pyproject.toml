@@ -37,8 +37,7 @@ dependencies = [
   # "pypika @ git+https://github.com/pyctrl/pypika.git@v0.48.9-patched",
   "nonebot-adapter-milky>=1.0.0",
   "langchain-google-genai",
-  "langchain-anthropic",
-  "langchain-deepseek"
+  "langchain-anthropic"
 ]
 
 [[tool.uv.index]]

@@ -108,7 +108,6 @@ def _install_third_party_stubs():
         "langchain_google_genai",
         ChatGoogleGenerativeAI=type("ChatGoogleGenerativeAI", (), {"__init__": lambda self, **_kw: None}),
     )
-    _install_stub("langchain_deepseek", ChatDeepSeek=type("ChatDeepSeek", (), {"__init__": lambda self, **_kw: None}))
     _install_stub("langgraph.checkpoint.memory", InMemorySaver=object)
 
     _install_stub("langchain_community.document_loaders", BiliBiliLoader=object)
@@ -243,6 +242,7 @@ nasa_api_key = "nasa-test"
 github_pat = "ghp-test"
 google_api_key = "ggl-test"
 anthropic_api_key = "ant-test"
+anthropic_base_url = ""
 
 [function]
 agent_module_enabled = true

@@ -1,10 +1,9 @@
 import zoneinfo
 from datetime import datetime
 
-from utils.llm_factory import create_llm
-
 from tools import agent_tools
 from utils.configs import EnvConfig
+from utils.llm_factory import create_llm
 
 ADVAN_MODEL = EnvConfig.ADVAN_MODEL
 BASIC_MODEL = EnvConfig.BASIC_MODEL
@@ -15,6 +14,8 @@ model = create_llm(
     max_retries=2,
     timeout=30,
     use_responses_api=EnvConfig.BASIC_MODEL_USE_RESPONSES_API,
+    provider=EnvConfig.BASIC_MODEL_PROVIDER,
+    endpoint=EnvConfig.BASIC_MODEL_ENDPOINT,
 )
 
 

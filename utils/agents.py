@@ -21,17 +21,67 @@ from nonebot import logger
 
 from tools import agent_tools
 from utils.configs import EnvConfig
-from utils.llm_factory import create_llm
+from utils.llm_factory import create_llm, model_supports
 from utils.subagents import get_fact_check_subagent
 
+VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 
-def _build_user_content(text: str, images: list[bytes] | None) -> str | list:
+
+def _configured_model_route(model: str) -> dict[str, str]:
+    if model == EnvConfig.BASIC_MODEL:
+        return {
+            "provider": EnvConfig.BASIC_MODEL_PROVIDER,
+            "endpoint": EnvConfig.BASIC_MODEL_ENDPOINT,
+        }
+    if model == EnvConfig.ADVAN_MODEL:
+        return {
+            "provider": EnvConfig.ADVAN_MODEL_PROVIDER,
+            "endpoint": EnvConfig.ADVAN_MODEL_ENDPOINT,
+        }
+    return {}
+
+
+def _append_vision_notice(text: str) -> str:
+    return f"{text}\n\n{VISION_OMITTED_NOTICE}" if text else VISION_OMITTED_NOTICE
+
+
+def _build_user_content(text: str, images: list[bytes] | None, supports_vision: bool = True) -> str | list:
     if not images:
         return text
+    if not supports_vision:
+        return _append_vision_notice(text)
     return [{"type": "text", "text": text}] + [
         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(b).decode()}"}}
         for b in images
     ]
+
+
+def _filter_content_parts_for_text_model(content: list) -> list:
+    filtered = [part for part in content if not (isinstance(part, dict) and part.get("type") == "image_url")]
+    if len(filtered) == len(content):
+        return content
+    for index, part in enumerate(filtered):
+        if isinstance(part, dict) and part.get("type") == "text":
+            updated_part = dict(part)
+            updated_part["text"] = _append_vision_notice(str(part.get("text", "")))
+            return [*filtered[:index], updated_part, *filtered[index + 1 :]]
+    return [{"type": "text", "text": VISION_OMITTED_NOTICE}, *filtered]
+
+
+def _filter_messages_for_model_capabilities(messages: list[dict], model: str, endpoint: str | None) -> list[dict]:
+    if model_supports(model, "vision", endpoint=endpoint):
+        return messages
+    filtered_messages = []
+    for message in messages:
+        if not isinstance(message, dict):
+            filtered_messages.append(message)
+            continue
+        content = message.get("content")
+        if isinstance(content, list):
+            filtered_messages.append({**message, "content": _filter_content_parts_for_text_model(content)})
+        else:
+            filtered_messages.append(message)
+    return filtered_messages
 
 
 async def assistant_agent(
@@ -50,12 +100,14 @@ async def assistant_agent(
         except FileNotFoundError:
             logger.warning("❌ 未找到 system prompt 文件: prompts/system_prompt.md")
             system_prompt = "You are a helpful assistant."
+    route = _configured_model_route(use_model)
     model = create_llm(
         model=use_model,
         streaming=False,
         max_retries=2,
         timeout=300,
         use_responses_api=EnvConfig.BASIC_MODEL_USE_RESPONSES_API,
+        **route,
     )
     agent = create_agent(
         model=model,
@@ -65,7 +117,20 @@ async def assistant_agent(
         response_format=response_format,
         debug=EnvConfig.AGENT_DEBUG_MODE,
     )
-    result = await agent.ainvoke({"messages": [{"role": "user", "content": _build_user_content(user_prompt, images)}]})
+    result = await agent.ainvoke(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": _build_user_content(
+                        user_prompt,
+                        images,
+                        supports_vision=model_supports(use_model, "vision", endpoint=route.get("endpoint")),
+                    ),
+                }
+            ]
+        }
+    )
     if response_format:
         return result["structured_response"]
     content = ""
@@ -145,11 +210,18 @@ class FrontierCognitive:
             "max_retries": 2,
             "timeout": 300,
             "use_responses_api": EnvConfig.ADVAN_MODEL_USE_RESPONSES_API,
+            "provider": EnvConfig.ADVAN_MODEL_PROVIDER,
+            "endpoint": EnvConfig.ADVAN_MODEL_ENDPOINT,
         }
         if EnvConfig.ADVAN_MODEL_USE_RESPONSES_API:
             model_kwargs["reasoning_effort"] = capability
             model_kwargs["verbosity"] = "low"
         model = create_llm(**model_kwargs)
+        messages = _filter_messages_for_model_capabilities(
+            messages,
+            EnvConfig.ADVAN_MODEL,
+            endpoint=EnvConfig.ADVAN_MODEL_ENDPOINT,
+        )
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
