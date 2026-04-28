@@ -2,8 +2,8 @@
 
 import importlib
 import sys
-from pathlib import Path
 import types
+from pathlib import Path
 
 import pytest
 
@@ -87,7 +87,12 @@ def _install_third_party_stubs():
     _install_stub("langchain.tools", tool=lambda func=None, **_kwargs: func if func else (lambda f: f))
     _install_stub(
         "langchain.agents.middleware",
+        FilesystemFileSearchMiddleware=type(
+            "FilesystemFileSearchMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}
+        ),
+        ModelRetryMiddleware=type("ModelRetryMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
         PIIMiddleware=type("PIIMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
+        ToolRetryMiddleware=type("ToolRetryMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
     )
     _install_stub(
         "langchain.messages",
@@ -103,6 +108,7 @@ def _install_third_party_stubs():
         "langchain_google_genai",
         ChatGoogleGenerativeAI=type("ChatGoogleGenerativeAI", (), {"__init__": lambda self, **_kw: None}),
     )
+    _install_stub("langchain_deepseek", ChatDeepSeek=type("ChatDeepSeek", (), {"__init__": lambda self, **_kw: None}))
     _install_stub("langgraph.checkpoint.memory", InMemorySaver=object)
 
     _install_stub("langchain_community.document_loaders", BiliBiliLoader=object)
@@ -186,8 +192,8 @@ def pytest_configure(config):
     config.stash[NONEBOT_INIT_KWARGS]["driver"] = "nonebot.drivers.fastapi:Driver"
     try:
         from nonebug import NONEBOT_START_LIFESPAN
-    except Exception:
-        pass
+    except Exception as exc:
+        config.stash["nonebug_start_lifespan_import_error"] = exc
     else:
         config.stash[NONEBOT_START_LIFESPAN] = False
 
@@ -198,8 +204,8 @@ def pytest_configure(config):
     nonebot.require = plugin_load.require
     try:
         nonebot.init(**config.stash[NONEBOT_INIT_KWARGS])
-    except Exception:
-        pass
+    except Exception as exc:
+        config.stash["nonebot_init_error"] = exc
 
 
 def pytest_sessionstart(session):

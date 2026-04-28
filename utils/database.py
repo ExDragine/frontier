@@ -40,7 +40,6 @@ class MessageImage(SQLModel, table=True):
     file_size: int | None = None
     created_at: int
     expires_at: int
-    ai_summary: str | None = None
 
 
 class UserDatabase:
@@ -122,12 +121,42 @@ class MessageDatabase:
             results = session.exec(statement)
             return results.all()
 
+    async def select_by_msg_id(self, *, msg_id: int, group_id: int | None) -> Message | None:
+        with Session(self.engine) as session:
+            statement = select(Message).where(Message.msg_id == msg_id)
+            if group_id is None:
+                statement = statement.where(Message.group_id.is_(None))  # type: ignore
+            else:
+                statement = statement.where(Message.group_id == group_id)
+            statement = statement.order_by(desc(Message.time)).limit(1)
+            return session.exec(statement).first()
+
+    async def select_images_by_msg_time(self, msg_time: int) -> list[MessageImage]:
+        with Session(self.engine) as session:
+            statement = select(MessageImage).where(MessageImage.msg_time == msg_time).order_by(MessageImage.index)
+            return session.exec(statement).all()
+
+    @staticmethod
+    def _load_image_files(image_records: list[MessageImage]) -> tuple[list[bytes], int]:
+        file_images: list[bytes] = []
+        missing_images = 0
+        for img in sorted(image_records, key=lambda x: x.index):
+            full_path = os.path.join(os.getcwd(), img.file_path)
+            if os.path.exists(full_path):
+                with open(full_path, "rb") as f:
+                    file_images.append(f.read())
+            else:
+                missing_images += 1
+        return file_images, missing_images
+
+    def load_image_files(self, image_records: list[MessageImage]) -> tuple[list[bytes], int]:
+        return self._load_image_files(image_records)
+
     async def prepare_message(
         self,
         user_id: int | None = None,
         group_id: int | None = None,
         query_numbers: int = 20,
-        image_window_size: int = 10,
     ):
         messages = await self.select(user_id=user_id, group_id=group_id, query_numbers=query_numbers)
         if not messages:
@@ -138,7 +167,6 @@ class MessageDatabase:
             return []
 
         all_msg_times = [m.time for m in messages]
-        window_times = set(all_msg_times[-image_window_size:])
 
         images_by_time: dict[int, list[MessageImage]] = {}
         with Session(self.engine) as session:
@@ -148,24 +176,13 @@ class MessageDatabase:
 
         for message in messages:
             msg_images = images_by_time.get(message.time, [])
-            in_window = message.time in window_times
             content_text = message.content
             file_images: list[bytes] = []
 
             if msg_images:
-                sorted_imgs = sorted(msg_images, key=lambda x: x.index)
-                if in_window:
-                    for img in sorted_imgs:
-                        full_path = os.path.join(os.getcwd(), img.file_path)
-                        if os.path.exists(full_path):
-                            with open(full_path, "rb") as f:
-                                file_images.append(f.read())
-                if not file_images:
-                    summaries = [img.ai_summary for img in sorted_imgs if img.ai_summary]
-                    if summaries:
-                        content_text += "\n" + " ".join(f"[图片摘要: {s}]" for s in summaries)
-                    else:
-                        content_text += "\n" + " ".join("[图片]" for _ in sorted_imgs)
+                file_images, missing_images = self._load_image_files(msg_images)
+                if missing_images:
+                    content_text += "\n" + " ".join("[图片]" for _ in range(missing_images))
 
             text_str = str(
                 {
@@ -215,8 +232,15 @@ class MessageDatabase:
                 file_path = os.path.join("cache", "images", str(user_id), f"{msg_time}_{i}.jpg")
                 with open(os.path.join(os.getcwd(), file_path), "wb") as f:
                     f.write(image_bytes)
-                session.add(
-                    MessageImage(
+                record = session.exec(
+                    select(MessageImage).where(MessageImage.msg_time == msg_time).where(MessageImage.index == i)
+                ).first()
+                if record:
+                    record.file_path = file_path
+                    record.file_size = len(image_bytes)
+                    record.expires_at = expires_ms
+                else:
+                    record = MessageImage(
                         msg_time=msg_time,
                         user_id=user_id,
                         group_id=group_id,
@@ -226,7 +250,7 @@ class MessageDatabase:
                         created_at=now_ms,
                         expires_at=expires_ms,
                     )
-                )
+                session.add(record)
                 paths.append(file_path)
             session.commit()
         return paths

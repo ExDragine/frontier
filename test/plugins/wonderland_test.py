@@ -23,6 +23,22 @@ def _tiny_png_bytes() -> bytes:
     )
 
 
+class DummyUniMessage:
+    def __init__(self, content=None):
+        self.content = content
+
+    @classmethod
+    def text(cls, text):
+        return cls(text)
+
+    @classmethod
+    def image(cls, raw=None):
+        return cls(raw)
+
+    async def send(self):
+        return None
+
+
 @pytest.fixture
 def load_wonderland_module():
     repo_root = Path(__file__).resolve().parents[2]
@@ -105,6 +121,44 @@ async def test_paint_uses_images_generate_without_reference_images(load_wonderla
     assert calls["generate"]["model"] == wonderland.EnvConfig.PAINT_MODEL
     assert calls["generate"]["prompt"] == "a crystal fox"
     assert calls["generate"]["response_format"] == "b64_json"
+
+
+@pytest.mark.asyncio
+async def test_handle_painter_uses_reply_context_as_prompt_and_reference_images(load_wonderland_module, monkeypatch):
+    wonderland = load_wonderland_module()
+    captured = {}
+
+    async def fake_message_extract(_segments):
+        return "[回复消息:900]/画图 改成水彩", [b"current-image"], [], []
+
+    async def fake_build_reply_context(_bot, _event, reply_seq, group_id, _messages_db):
+        assert reply_seq == 900
+        assert group_id == 123
+        return "\n\n[引用消息]\n用户(Alice): [图片]", [b"quoted-image"]
+
+    async def fake_paint(prompt, reference_images):
+        captured["prompt"] = prompt
+        captured["reference_images"] = reference_images
+        return b"painted-image"
+
+    event = SimpleNamespace(
+        data=SimpleNamespace(
+            segments=[{"type": "reply", "data": {"message_seq": 900}}, {"type": "text", "data": {"text": "/画图 改成水彩"}}],
+            group=SimpleNamespace(group_id=123),
+        )
+    )
+
+    monkeypatch.setattr(wonderland, "message_extract", fake_message_extract)
+    monkeypatch.setattr(wonderland, "reply_seq_from_segments", lambda _segments: 900, raising=False)
+    monkeypatch.setattr(wonderland, "build_reply_context", fake_build_reply_context, raising=False)
+    monkeypatch.setattr(wonderland, "get_bot", lambda: SimpleNamespace(), raising=False)
+    monkeypatch.setattr(wonderland, "paint", fake_paint)
+    monkeypatch.setattr(wonderland, "UniMessage", DummyUniMessage)
+
+    await wonderland.handle_painter(event)
+
+    assert captured["prompt"] == "改成水彩\n\n[引用消息]\n用户(Alice): [图片]"
+    assert captured["reference_images"] == [b"quoted-image", b"current-image"]
 
 
 @pytest.mark.asyncio

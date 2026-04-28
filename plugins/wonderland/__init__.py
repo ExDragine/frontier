@@ -5,19 +5,22 @@ import re
 
 from google import genai
 from google.genai import types as genai_types
-from nonebot import logger, on_command, require
+from nonebot import get_bot, logger, on_command, require
 from nonebot.adapters.milky.event import MessageEvent
 from openai import AsyncClient
 from PIL import Image
 
 from utils.configs import EnvConfig
+from utils.database import MessageDatabase
 from utils.message import message_extract
+from utils.reply_context import build_reply_context, reply_seq_from_segments, strip_reply_marker
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 painter = on_command("画图", priority=3, block=True, aliases={"paint", "绘图", "画一张图", "帮我画一张图"})
 PAINT_COMMAND_PREFIXES = ("帮我画一张图", "画一张图", "画图", "绘图", "paint")
+messages_db = MessageDatabase()
 
 
 @painter.handle()
@@ -25,12 +28,20 @@ async def handle_painter(event: MessageEvent):
     if EnvConfig.PAINT_MODULE_ENABLED is False:
         await painter.finish("么得画了，等升级哇!")
     text, images, *_ = await message_extract(event.data.segments)
+    quoted_images: list[bytes] = []
+    if reply_seq := reply_seq_from_segments(event.data.segments):
+        group_id = event.data.group.group_id if event.data.group else None
+        quote_text, quoted_images = await build_reply_context(get_bot(), event, reply_seq, group_id, messages_db)
+        text = strip_reply_marker(text, reply_seq)
+        if quote_text:
+            text += quote_text
     prompt = strip_paint_prompt(text)
+    reference_images = quoted_images + images
     if not prompt:
-        tip = "你想怎么修改这张图？" if images else "你想画点什么？"
+        tip = "你想怎么修改这张图？" if reference_images else "你想画点什么？"
         await UniMessage.text(tip).send()
         return
-    image = await paint(prompt, images)
+    image = await paint(prompt, reference_images)
     if image:
         await UniMessage.image(raw=image).send()
     else:

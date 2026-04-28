@@ -1,0 +1,352 @@
+# ruff: noqa: S101
+
+import types
+
+import pytest
+from nonebot.adapters.milky.event import MessageEvent
+from nonebot.adapters.milky.model.common import Group, Member
+from nonebot.adapters.milky.model.message import IncomingMessage
+from nonebug import App
+
+
+async def _noop(*_args, **_kwargs):
+    return None
+
+
+@pytest.mark.asyncio
+async def test_fireside_saves_images_without_scheduling_summary(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import fireside
+
+    calls = {"insert_images": 0, "schedule_summary": 0}
+
+    class DummyMessagesDb:
+        async def insert(self, **_kwargs):
+            return None
+
+        async def insert_images(self, **_kwargs):
+            calls["insert_images"] += 1
+            return ["cache/images/456/1_0.jpg"]
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+    class DummyCognitive:
+        async def chat_agent(self, *_args, **_kwargs):
+            return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+    async def fake_message_extract(_segments):
+        return "hi", [b"image-bytes"], [], []
+
+    async def fake_message_gateway(_event, _messages):
+        return True
+
+    async def fake_send_messages(*_args, **_kwargs):
+        return None
+
+    async def fake_send_artifacts(*_args, **_kwargs):
+        return None
+
+    def fake_schedule_summary(*_args, **_kwargs):
+        calls["schedule_summary"] += 1
+
+    monkeypatch.setattr(fireside, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(fireside, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(fireside, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(fireside, "message_extract", fake_message_extract)
+    monkeypatch.setattr(fireside, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(fireside, "send_messages", fake_send_messages)
+    monkeypatch.setattr(fireside, "send_artifacts", fake_send_artifacts)
+    monkeypatch.setattr(fireside, "schedule_image_summary_write", fake_schedule_summary, raising=False)
+    monkeypatch.setattr(fireside.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(fireside.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(fireside.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(fireside.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=1,
+        sender_id=456,
+        time=0,
+        segments=[{"type": "text", "data": {"text": "hi"}}],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert calls["insert_images"] == 1
+    assert calls["schedule_summary"] == 0
+
+
+@pytest.mark.asyncio
+async def test_fireside_appends_local_quoted_text_to_current_message(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import fireside
+
+    captured = {}
+
+    class DummyMessagesDb:
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "user":
+                captured["stored_content"] = kwargs["content"]
+
+        async def insert_images(self, **_kwargs):
+            return []
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+        async def select_by_msg_id(self, *, msg_id, group_id):
+            assert msg_id == 900
+            assert group_id == 123
+            return types.SimpleNamespace(
+                time=500,
+                msg_id=900,
+                user_id=111,
+                group_id=123,
+                user_name="Alice",
+                role="user",
+                content="原始消息内容",
+            )
+
+        async def select_images_by_msg_time(self, _msg_time):
+            return []
+
+        def load_image_files(self, _records):
+            return [], 0
+
+    class DummyCognitive:
+        async def chat_agent(self, messages, *_args, **_kwargs):
+            captured["messages"] = messages
+            return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+    monkeypatch.setattr(fireside, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(fireside, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(fireside, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(fireside, "send_messages", _noop)
+    monkeypatch.setattr(fireside, "send_artifacts", _noop)
+    monkeypatch.setattr(fireside.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(fireside.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(fireside.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(fireside.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=901,
+        sender_id=456,
+        time=0,
+        segments=[
+            {"type": "reply", "data": {"message_seq": 900}},
+            {"type": "text", "data": {"text": "这是什么意思？"}},
+        ],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="Bob",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert "[引用消息]" in captured["stored_content"]
+    assert "用户(Alice): 原始消息内容" in captured["stored_content"]
+    current = captured["messages"][-1]["content"][0]["text"]
+    assert "[引用消息]" in current
+    assert "用户(Alice): 原始消息内容" in current
+
+
+@pytest.mark.asyncio
+async def test_fireside_fetches_missing_quoted_image_from_milky(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import fireside
+
+    captured = {"restored_images": []}
+
+    class DummyMessagesDb:
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "user":
+                captured["stored_content"] = kwargs["content"]
+
+        async def insert_images(self, **kwargs):
+            captured["restored_images"].append(kwargs)
+            return ["cache/images/111/500_0.jpg"]
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+        async def select_by_msg_id(self, *, msg_id, group_id):
+            assert msg_id == 900
+            assert group_id == 123
+            return types.SimpleNamespace(
+                time=500,
+                msg_id=900,
+                user_id=111,
+                group_id=123,
+                user_name="Alice",
+                role="user",
+                content="",
+            )
+
+        async def select_images_by_msg_time(self, _msg_time):
+            return [types.SimpleNamespace(id=1, index=0, file_path="cache/images/111/500_0.jpg")]
+
+        def load_image_files(self, _records):
+            return [], 1
+
+    class DummyCognitive:
+        async def chat_agent(self, messages, *_args, **_kwargs):
+            captured["messages"] = messages
+            return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+        async def get_message(self, **kwargs):
+            assert kwargs == {"message_scene": "group", "peer_id": 123, "message_seq": 900}
+            return IncomingMessage(
+                message_scene="group",
+                peer_id=123,
+                message_seq=900,
+                sender_id=111,
+                time=500,
+                segments=[
+                    {
+                        "type": "image",
+                        "data": {
+                            "resource_id": "resource-1",
+                            "temp_url": "https://expired.example/image.jpg",
+                            "width": 10,
+                            "height": 10,
+                            "summary": "image",
+                            "sub_type": "normal",
+                        },
+                    }
+                ],
+                friend=None,
+                group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+                group_member=Member(
+                    user_id=111,
+                    nickname="Alice",
+                    sex="unknown",
+                    group_id=123,
+                    card="",
+                    title="",
+                    level="0",
+                    role="member",
+                    join_time=0,
+                    last_sent_time=0,
+                    shut_up_end_time=0,
+                ),
+            )
+
+        async def get_resource_temp_url(self, resource_id):
+            assert resource_id == "resource-1"
+            return "https://fresh.example/image.jpg"
+
+    async def fake_get(url):
+        if "expired" in url:
+            raise RuntimeError("expired")
+        return types.SimpleNamespace(content=b"quoted-image")
+
+    monkeypatch.setattr(fireside, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(fireside, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(fireside, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(fireside, "send_messages", _noop)
+    monkeypatch.setattr(fireside, "send_artifacts", _noop)
+    monkeypatch.setattr(fireside.build_reply_context.__globals__["_message_utils"](), "httpx_client", types.SimpleNamespace(get=fake_get))
+    monkeypatch.setattr(fireside.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(fireside.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(fireside.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(fireside.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=901,
+        sender_id=456,
+        time=0,
+        segments=[
+            {"type": "reply", "data": {"message_seq": 900}},
+            {"type": "text", "data": {"text": "这张图呢？"}},
+        ],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="Bob",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert captured["restored_images"][0]["msg_time"] == 500
+    assert captured["restored_images"][0]["images"] == [b"quoted-image"]
+    current_content = captured["messages"][-1]["content"]
+    assert current_content[0]["type"] == "text"
+    assert "用户(Alice): [图片]" in current_content[0]["text"]
+    assert current_content[1]["type"] == "image_url"

@@ -1,16 +1,14 @@
 # ruff: noqa: S101
 
-import types
 
 import pytest
-
-from nonebug import App
-from nonebot_plugin_alconna import UniMessage
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.adapters.milky.model.common import Group, Member
 from nonebot.adapters.milky.model.message import IncomingMessage
+from nonebot_plugin_alconna import UniMessage
+from nonebug import App
 
-from plugins.watchtower import on_startup, handle_setting
+from plugins.watchtower import on_startup
 
 
 @pytest.mark.asyncio
@@ -21,11 +19,6 @@ async def test_on_startup_creates_files(monkeypatch, tmp_path):
     (tmp_path / ".env.example").write_text("", encoding="utf-8")
     (tmp_path / "cache").mkdir()
 
-    class DummyMemory:
-        def ensure_schema_ready(self):
-            return None
-
-    monkeypatch.setattr("plugins.watchtower.memory", DummyMemory())
     await on_startup()
     assert (tmp_path / "env.toml").exists()
     assert (tmp_path / "mcp.json").exists()
