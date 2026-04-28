@@ -5,6 +5,7 @@ import re
 
 from google import genai
 from google.genai import types as genai_types
+from google.genai.errors import ClientError
 from nonebot import get_bot, logger, on_command, require
 from nonebot.adapters.milky.event import MessageEvent
 from openai import AsyncClient
@@ -135,16 +136,24 @@ async def _paint_with_vertex_gateway(prompt: str, reference_images: list[bytes])
                 )
                 for idx, image in enumerate(reference_images, start=1)
             ]
-            response = await client.aio.models.edit_image(
-                model=EnvConfig.PAINT_MODEL,
-                prompt=prompt,
-                reference_images=payload,
-            )
+            try:
+                response = await client.aio.models.edit_image(
+                    model=EnvConfig.PAINT_MODEL,
+                    prompt=prompt,
+                    reference_images=payload,
+                )
+            except ClientError as e:
+                if e.message and "Your request was rejected by the safety system." in e.message:
+                    await UniMessage.text("图被肥猫吃了，画不了嘞").send()
         else:
-            response = await client.aio.models.generate_images(
-                model=EnvConfig.PAINT_MODEL,
-                prompt=prompt,
-            )
+            try:
+                response = await client.aio.models.generate_images(
+                    model=EnvConfig.PAINT_MODEL,
+                    prompt=prompt,
+                )
+            except ClientError as e:
+                if e.message and "Your request was rejected by the safety system." in e.message:
+                    await UniMessage.text("图被肥猫吃了，画不了嘞").send()
     finally:
         aio_client = getattr(client, "aio", None)
         aclose = getattr(aio_client, "aclose", None)
