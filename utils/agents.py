@@ -145,6 +145,11 @@ class CustomAgentState(AgentState):
     group_id: int
 
 
+def _agent_thread_id(user_id: str, group_id: int | None) -> uuid.UUID:
+    scope = f"group:{group_id}:user:{user_id}" if group_id is not None else f"dm:{user_id}"
+    return uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=scope)
+
+
 class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.all_tools
@@ -253,7 +258,7 @@ class FrontierCognitive:
         logger.info(f"Agent烧烤中~🍖 思考等级: {capability} 用户: {user_name} (ID: {user_id})")
         config: RunnableConfig = {
             "configurable": {
-                "thread_id": uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=user_id),
+                "thread_id": _agent_thread_id(user_id, group_id),
                 "user_id": user_id,
                 "group_id": group_id,
             }

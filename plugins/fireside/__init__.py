@@ -84,6 +84,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         int(user_id),
         group_id,
         query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
+        before_time=msg_time,
     )
 
     # Bot 自己的消息不参与复读检查

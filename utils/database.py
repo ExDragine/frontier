@@ -103,21 +103,23 @@ class MessageDatabase:
             session.add(message)
             session.commit()
 
-    async def select(self, user_id: int | None = None, group_id: int | None = None, query_numbers: int = 20):
+    async def select(
+        self,
+        user_id: int | None = None,
+        group_id: int | None = None,
+        query_numbers: int = 20,
+        before_time: int | None = None,
+    ):
         with Session(self.engine) as session:
             if group_id:
-                statement = (
-                    select(Message)
-                    .where(Message.group_id == group_id)
-                    .order_by(desc(Message.time))
-                    .limit(query_numbers)
-                )
+                statement = select(Message).where(Message.group_id == group_id)
             elif user_id:
-                statement = (
-                    select(Message).where(Message.user_id == user_id).order_by(desc(Message.time)).limit(query_numbers)
-                )
+                statement = select(Message).where(Message.user_id == user_id)
             else:
                 return None
+            if before_time is not None:
+                statement = statement.where(Message.time < before_time)
+            statement = statement.order_by(desc(Message.time)).limit(query_numbers)
             results = session.exec(statement)
             return results.all()
 
@@ -157,12 +159,20 @@ class MessageDatabase:
         user_id: int | None = None,
         group_id: int | None = None,
         query_numbers: int = 20,
+        before_time: int | None = None,
     ):
-        messages = await self.select(user_id=user_id, group_id=group_id, query_numbers=query_numbers)
+        messages = await self.select(
+            user_id=user_id,
+            group_id=group_id,
+            query_numbers=query_numbers,
+            before_time=before_time,
+        )
         if not messages:
             return []
         messages_seq = []
-        messages = list(reversed(messages))[:-1]
+        messages = list(reversed(messages))
+        if before_time is None:
+            messages = messages[:-1]
         if not messages:
             return []
 

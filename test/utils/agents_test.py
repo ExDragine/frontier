@@ -103,6 +103,7 @@ def test_filter_messages_for_text_only_model_removes_image_parts(monkeypatch):
 
 def test_subagents_model_respects_config(monkeypatch):
     import sys
+
     import utils.llm_factory as factory
     import utils.subagents as subagents_module
     from utils.configs import EnvConfig
@@ -127,6 +128,7 @@ def test_subagents_model_respects_config(monkeypatch):
 
 def test_subagents_model_uses_basic_provider_endpoint(monkeypatch):
     import sys
+
     import utils.llm_factory as factory
     import utils.subagents as subagents_module
     from utils.configs import EnvConfig
@@ -153,8 +155,8 @@ def test_subagents_model_uses_basic_provider_endpoint(monkeypatch):
 async def test_assistant_agent_uses_basic_model_config(monkeypatch):
     import builtins
     import types
+
     from utils import agents
-    from utils.configs import EnvConfig
 
     original_open = builtins.open
 
@@ -205,12 +207,13 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
 @pytest.mark.asyncio
 async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypatch):
     import types
+
     from utils import agents
-    from utils.configs import EnvConfig
 
     class DummyAgent:
         async def ainvoke(self, payload, config=None):
             captured["payload"] = payload
+            captured["config"] = config
             return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]}
 
     def fake_create_deep_agent(**_kwargs):
@@ -252,6 +255,7 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
         ],
         user_id="u1",
         user_name="test",
+        group_id=123,
     )
 
     assert captured.get("use_responses_api") is False
@@ -262,13 +266,25 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     assert captured["payload"]["messages"][0]["content"] == [
         {"type": "text", "text": "hi\n\n[图片已省略：当前模型不支持视觉输入]"}
     ]
+    assert str(captured["config"]["configurable"]["thread_id"]) == str(agents._agent_thread_id("u1", 123))
+
+
+def test_agent_thread_id_isolated_by_group_and_user():
+    group_user = agents._agent_thread_id("u1", 123)
+    same_user_other_group = agents._agent_thread_id("u1", 456)
+    other_user_same_group = agents._agent_thread_id("u2", 123)
+    dm_user = agents._agent_thread_id("u1", None)
+
+    assert group_user != same_user_other_group
+    assert group_user != other_user_same_group
+    assert group_user != dm_user
 
 
 @pytest.mark.asyncio
 async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypatch):
     import types
+
     from utils import agents
-    from utils.configs import EnvConfig
 
     class DummyAgent:
         async def ainvoke(self, payload, config=None):

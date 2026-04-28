@@ -234,8 +234,11 @@ async def message_gateway(event: MessageEvent, messages: list):
     if event.get_plaintext().startswith(EnvConfig.BOT_NAME):
         return True
     if group_id in EnvConfig.TEST_GROUP_ID:
-        messages.append({"role": "user", "content": str({"metadata": {}, "content": event.get_plaintext().strip()})})
-        temp_conv: list[dict] = messages[-5:]
+        reply_check_messages = [
+            *messages,
+            {"role": "user", "content": str({"metadata": {}, "content": event.get_plaintext().strip()})},
+        ]
+        temp_conv: list[dict] = reply_check_messages[-5:]
         plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
         with open("prompts/reply_check.md", encoding="utf-8") as f:
             system_prompt = f.read().format(name={EnvConfig.BOT_NAME})

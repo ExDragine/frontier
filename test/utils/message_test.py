@@ -1,6 +1,5 @@
 # ruff: noqa: S101
 
-import ast
 import types
 
 import pytest
@@ -153,6 +152,63 @@ async def test_message_gateway_whitelist_dm_allowed(monkeypatch):
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     result = await message_module.message_gateway(DummyEvent(), [])
     assert result is True
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_test_group_reply_check_does_not_mutate_messages(monkeypatch):
+    import builtins
+
+    class DummyEvent:
+        def __init__(self):
+            self.data = types.SimpleNamespace(group=types.SimpleNamespace(group_id=5))
+
+        def get_user_id(self):
+            return "12345"
+
+        def is_tome(self):
+            return False
+
+        def get_plaintext(self):
+            return "hello"
+
+        to_me = False
+
+    class DummyReplyCheck:
+        should_reply = "false"
+        confidence = 0.0
+
+    async def fake_assistant_agent(*_args, **_kwargs):
+        return DummyReplyCheck()
+
+    original_open = builtins.open
+
+    class DummyPromptFile:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return "{name}"
+
+    def fake_open(path, *args, **kwargs):
+        if str(path).endswith("reply_check.md"):
+            return DummyPromptFile()
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "TEST_GROUP_ID", [5])
+    monkeypatch.setattr(message_module, "assistant_agent", fake_assistant_agent)
+    monkeypatch.setattr(builtins, "open", fake_open)
+    messages = [{"role": "user", "content": "history"}]
+
+    result = await message_module.message_gateway(DummyEvent(), messages)
+
+    assert result is False
+    assert messages == [{"role": "user", "content": "history"}]
 
 
 @pytest.mark.asyncio

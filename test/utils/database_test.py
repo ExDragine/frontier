@@ -63,6 +63,25 @@ async def test_prepare_message_injects_all_available_images_without_window_limit
 
 
 @pytest.mark.asyncio
+async def test_prepare_message_before_time_excludes_current_and_later_group_messages(monkeypatch, memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+    MessageImage.metadata.create_all(memory_engine)
+
+    await database.insert(1000, 201, 10, 123, "Old", "user", "old message")
+    await database.insert(2000, 202, 10, 123, "Alice", "user", "alice current")
+    await database.insert(2001, 203, 20, 123, "Bob", "user", "bob concurrent")
+
+    prepared = await database.prepare_message(user_id=10, group_id=123, query_numbers=10, before_time=2000)
+
+    content = prepared[0]["content"]
+    assert "old message" in content
+    assert "alice current" not in content
+    assert "bob concurrent" not in content
+
+
+@pytest.mark.asyncio
 async def test_select_by_msg_id_returns_message_from_same_group(monkeypatch, memory_engine):
     database = MessageDatabase()
     database.engine = memory_engine
