@@ -175,6 +175,12 @@ def _reload_env_config():
         "paint_blacklist_person_list", EnvConfig.PAINT_BLACKLIST_PERSON_LIST
     )
     EnvConfig.PAINT_BLACKLIST_GROUP_LIST = fn.get("paint_blacklist_group_list", EnvConfig.PAINT_BLACKLIST_GROUP_LIST)
+    EnvConfig.PAINT_RATE_LIMIT_MAX_REQUESTS = int(
+        fn.get("paint_rate_limit_max_requests", EnvConfig.PAINT_RATE_LIMIT_MAX_REQUESTS)
+    )
+    EnvConfig.PAINT_RATE_LIMIT_WINDOW_SECONDS = int(
+        fn.get("paint_rate_limit_window_seconds", EnvConfig.PAINT_RATE_LIMIT_WINDOW_SECONDS)
+    )
     EnvConfig.AGENT_DEBUG_MODE = dbg.get("agent_debug_mode", EnvConfig.AGENT_DEBUG_MODE)
 
     EnvConfig.TEST_GROUP_ID = msg.get("test_group_id", EnvConfig.TEST_GROUP_ID)

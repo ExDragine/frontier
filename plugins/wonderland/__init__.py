@@ -1,7 +1,11 @@
 import base64
 import inspect
 import io
+import math
 import re
+import time
+from collections import defaultdict, deque
+from dataclasses import dataclass
 
 from google import genai
 from google.genai import types as genai_types
@@ -24,6 +28,43 @@ PAINT_COMMAND_PREFIXES = ("帮我画一张图", "画一张图", "画图", "绘�
 messages_db = MessageDatabase()
 
 
+@dataclass(frozen=True)
+class PaintRateLimitResult:
+    allowed: bool
+    retry_after_seconds: int = 0
+
+
+class PaintRateLimiter:
+    def __init__(self):
+        self._requests: dict[str, deque[float]] = defaultdict(deque)
+
+    def check(
+        self,
+        user_id: str,
+        *,
+        now: float,
+        max_requests: int,
+        window_seconds: int,
+    ) -> PaintRateLimitResult:
+        if max_requests <= 0 or window_seconds <= 0:
+            return PaintRateLimitResult(True, 0)
+
+        requests = self._requests[user_id]
+        cutoff = now - window_seconds
+        while requests and requests[0] <= cutoff:
+            requests.popleft()
+
+        if len(requests) >= max_requests:
+            retry_after = max(1, math.ceil(window_seconds - (now - requests[0])))
+            return PaintRateLimitResult(False, retry_after)
+
+        requests.append(now)
+        return PaintRateLimitResult(True, 0)
+
+
+paint_rate_limiter = PaintRateLimiter()
+
+
 @painter.handle()
 async def handle_painter(event: MessageEvent):
     if EnvConfig.PAINT_MODULE_ENABLED is False:
@@ -41,6 +82,15 @@ async def handle_painter(event: MessageEvent):
     if not prompt:
         tip = "你想怎么修改这张图？" if reference_images else "你想画点什么？"
         await UniMessage.text(tip).send()
+        return
+    rate_limit = paint_rate_limiter.check(
+        event.get_user_id(),
+        now=time.time(),
+        max_requests=EnvConfig.PAINT_RATE_LIMIT_MAX_REQUESTS,
+        window_seconds=EnvConfig.PAINT_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    if not rate_limit.allowed:
+        await UniMessage.text(f"画得太快了，{rate_limit.retry_after_seconds} 秒后再试吧").send()
         return
     image = await paint(prompt, reference_images)
     if image:

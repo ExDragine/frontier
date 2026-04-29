@@ -27,6 +27,13 @@ class DummyUniMessage:
     def __init__(self, content=None):
         self.content = content
 
+    def __add__(self, other):
+        return DummyUniMessage([self.content, other.content])
+
+    @classmethod
+    def reply(cls, message_id):
+        return cls({"reply": message_id})
+
     @classmethod
     def text(cls, text):
         return cls(text)
@@ -145,7 +152,9 @@ async def test_handle_painter_uses_reply_context_as_prompt_and_reference_images(
         data=SimpleNamespace(
             segments=[{"type": "reply", "data": {"message_seq": 900}}, {"type": "text", "data": {"text": "/画图 改成水彩"}}],
             group=SimpleNamespace(group_id=123),
-        )
+            message_seq=456,
+        ),
+        get_user_id=lambda: "10001",
     )
 
     monkeypatch.setattr(wonderland, "message_extract", fake_message_extract)
@@ -194,6 +203,79 @@ def test_strip_paint_prompt_handles_prefixed_text_without_whitespace(load_wonder
 
     assert wonderland.strip_paint_prompt("/画图一只猫") == "一只猫"
     assert wonderland.strip_paint_prompt("paint a crystal fox") == "a crystal fox"
+
+
+def test_paint_rate_limiter_rejects_requests_over_limit(load_wonderland_module):
+    wonderland = load_wonderland_module()
+    limiter = wonderland.PaintRateLimiter()
+
+    first = limiter.check("10001", now=1000.0, max_requests=3, window_seconds=600)
+    second = limiter.check("10001", now=1100.0, max_requests=3, window_seconds=600)
+    third = limiter.check("10001", now=1200.0, max_requests=3, window_seconds=600)
+    fourth = limiter.check("10001", now=1300.0, max_requests=3, window_seconds=600)
+
+    assert first.allowed is True
+    assert second.allowed is True
+    assert third.allowed is True
+    assert fourth.allowed is False
+    assert fourth.retry_after_seconds == 300
+
+
+def test_paint_rate_limiter_allows_after_window_slides(load_wonderland_module):
+    wonderland = load_wonderland_module()
+    limiter = wonderland.PaintRateLimiter()
+
+    limiter.check("10001", now=1000.0, max_requests=3, window_seconds=600)
+    limiter.check("10001", now=1100.0, max_requests=3, window_seconds=600)
+    limiter.check("10001", now=1200.0, max_requests=3, window_seconds=600)
+    result = limiter.check("10001", now=1601.0, max_requests=3, window_seconds=600)
+
+    assert result.allowed is True
+    assert result.retry_after_seconds == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_painter_rate_limits_by_user_before_painting(load_wonderland_module, monkeypatch):
+    wonderland = load_wonderland_module()
+    sent_messages = []
+
+    class CapturingUniMessage(DummyUniMessage):
+        async def send(self):
+            sent_messages.append(self.content)
+            return None
+
+    async def fake_message_extract(_segments):
+        return "/画图 一只猫", [], [], []
+
+    async def fake_paint(_prompt, _reference_images):
+        raise AssertionError("paint should not be called while rate limited")
+
+    class DenyLimiter:
+        def check(self, user_id, *, now, max_requests, window_seconds):
+            assert user_id == "10001"
+            assert max_requests == 3
+            assert window_seconds == 600
+            return wonderland.PaintRateLimitResult(False, 42)
+
+    event = SimpleNamespace(
+        data=SimpleNamespace(
+            segments=[{"type": "text", "data": {"text": "/画图 一只猫"}}],
+            group=SimpleNamespace(group_id=123),
+            message_seq=456,
+        ),
+        get_user_id=lambda: "10001",
+    )
+
+    monkeypatch.setattr(wonderland, "message_extract", fake_message_extract)
+    monkeypatch.setattr(wonderland, "paint", fake_paint)
+    monkeypatch.setattr(wonderland, "UniMessage", CapturingUniMessage)
+    monkeypatch.setattr(wonderland, "paint_rate_limiter", DenyLimiter())
+    monkeypatch.setattr(wonderland.EnvConfig, "PAINT_RATE_LIMIT_MAX_REQUESTS", 3, raising=False)
+    monkeypatch.setattr(wonderland.EnvConfig, "PAINT_RATE_LIMIT_WINDOW_SECONDS", 600, raising=False)
+
+    await wonderland.handle_painter(event)
+
+    assert sent_messages == ["画得太快了，42 秒后再试吧"]
 
 
 @pytest.mark.asyncio
