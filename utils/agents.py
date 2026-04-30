@@ -157,7 +157,7 @@ class FrontierCognitive:
         self.subagents: list = [get_fact_check_subagent()]
         self.checkpoint = InMemorySaver()
         self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
-        self.backend = FilesystemBackend(self.working_dir)
+        self.backend = FilesystemBackend(self.working_dir, virtual_mode=True)
 
     @staticmethod
     def load_system_prompt():
