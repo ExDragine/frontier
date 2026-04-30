@@ -1,4 +1,5 @@
 import base64
+import os
 import time
 import uuid
 import zoneinfo
@@ -155,7 +156,8 @@ class FrontierCognitive:
         self.tools = agent_tools.all_tools
         self.subagents: list = [get_fact_check_subagent()]
         self.checkpoint = InMemorySaver()
-        self.backend = FilesystemBackend(root_dir="./cache/sandbox")
+        self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
+        self.backend = FilesystemBackend(self.working_dir)
 
     @staticmethod
     def load_system_prompt():
@@ -240,9 +242,9 @@ class FrontierCognitive:
                 ),
                 ToolRetryMiddleware(),
                 ModelRetryMiddleware(),
-                FilesystemFileSearchMiddleware(root_path="./sandbox/"),
+                FilesystemFileSearchMiddleware(root_path=self.working_dir),
             ],
-            skills=["./sandbox/skills/"],
+            skills=[os.path.join(self.working_dir, "skills")],
             interrupt_on={
                 "write_file": False,
                 "read_file": False,
