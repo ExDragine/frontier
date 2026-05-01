@@ -387,12 +387,12 @@ def test_generate_video_uses_happyhorse_vertex_gateway(load_wonderland_module, m
             return SimpleNamespace(done=False)
 
     class DummyOperations:
-        def get_videos_operation(self, *, operation):
+        def get(self, *, operation):
             calls["operation"] = operation
             video = SimpleNamespace(video_bytes=b"happyhorse-video")
             return SimpleNamespace(
                 done=True,
-                response=SimpleNamespace(generated_videos=[SimpleNamespace(video=video)]),
+                result=SimpleNamespace(generated_videos=[SimpleNamespace(video=video)]),
             )
 
     class DummyClient:
@@ -439,6 +439,21 @@ def test_video_result_from_generated_video_uses_http_url(load_wonderland_module)
     )
 
     assert result == wonderland.VideoGenerationResult(url="https://example.com/video.mp4")
+
+
+def test_get_video_operation_supports_older_sdk_method(load_wonderland_module):
+    wonderland = load_wonderland_module()
+    operation = SimpleNamespace(name="operations/123")
+    updated_operation = SimpleNamespace(done=True)
+
+    class DummyOperations:
+        def get_videos_operation(self, *, operation):
+            assert operation.name == "operations/123"
+            return updated_operation
+
+    result = wonderland._get_video_operation(SimpleNamespace(operations=DummyOperations()), operation)
+
+    assert result is updated_operation
 
 
 @pytest.mark.asyncio

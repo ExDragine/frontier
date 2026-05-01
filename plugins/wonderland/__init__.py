@@ -390,6 +390,32 @@ def _video_result_from_generated_video(client, generated_video) -> VideoGenerati
     return None
 
 
+def _get_video_operation(client, operation):
+    operations = getattr(client, "operations", None)
+    if operations is None:
+        raise AttributeError("google genai client has no operations API")
+
+    get_videos_operation = getattr(operations, "get_videos_operation", None)
+    if callable(get_videos_operation):
+        try:
+            return get_videos_operation(operation=operation)
+        except TypeError:
+            return get_videos_operation(operation)
+
+    get_operation = getattr(operations, "get", None)
+    if callable(get_operation):
+        try:
+            return get_operation(operation=operation)
+        except TypeError:
+            return get_operation(operation)
+
+    raise AttributeError("google genai operations API has no supported polling method")
+
+
+def _video_operation_response(operation):
+    return getattr(operation, "response", None) or getattr(operation, "result", None)
+
+
 def _close_genai_client(client) -> None:
     close = getattr(client, "close", None)
     if callable(close):
@@ -417,13 +443,13 @@ def _generate_video_sync(prompt: str) -> VideoGenerationResult | None:
                 logger.warning(f"HappyHorse 视频生成超时: timeout={timeout_seconds}s")
                 return None
             time.sleep(max(0, EnvConfig.VIDEO_POLL_INTERVAL_SECONDS))
-            operation = client.operations.get_videos_operation(operation=operation)
+            operation = _get_video_operation(client, operation)
 
         if error := getattr(operation, "error", None):
             logger.warning(f"HappyHorse 视频生成失败: {error}")
             return None
 
-        response = getattr(operation, "response", None)
+        response = _video_operation_response(operation)
         generated_videos = getattr(response, "generated_videos", None) or []
         if not generated_videos:
             logger.warning("HappyHorse 视频API返回空 generated_videos")
