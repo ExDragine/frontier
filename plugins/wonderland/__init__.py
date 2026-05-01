@@ -134,7 +134,8 @@ async def handle_video(event: MessageEvent):
     video = await generate_video(prompt)
     video_message = _video_result_message(video)
     if video_message:
-        await (UniMessage.reply(str(event.data.message_seq)) + video_message).send()
+        await (UniMessage.reply(str(event.data.message_seq)) + UniMessage.text("视频生成OK了")).send()
+        await video_message.send()
     else:
         await (UniMessage.reply(str(event.data.message_seq)) + UniMessage.text("视频生成失败了")).send()
 
