@@ -1,4 +1,4 @@
-# ruff: noqa: S101
+# ruff: noqa: S101, S105
 
 import importlib
 
@@ -7,6 +7,7 @@ from pydantic import SecretStr
 
 def test_env_config_defaults(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ZENMUX_API_KEY", raising=False)
     env_path = tmp_path / "env.toml"
     env_path.write_text(
         """
@@ -73,6 +74,14 @@ jwt_secret = "secret"
     assert configs.EnvConfig.ADVAN_MODEL_ENDPOINT == ""
     assert configs.EnvConfig.ADVAN_MODEL_CAPABILITIES == []
     assert configs.EnvConfig.LLM_ENDPOINTS == {}
+    assert configs.EnvConfig.VIDEO_MODULE_ENABLED is True
+    assert configs.EnvConfig.VIDEO_MODEL == "alibaba/happyhorse-1.0"
+    assert configs.EnvConfig.VIDEO_BASE_URL == "https://zenmux.ai/api/vertex-ai"
+    assert configs.EnvConfig.VIDEO_API_KEY.get_secret_value() == ""
+    assert configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 1
+    assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 900
+    assert configs.EnvConfig.VIDEO_POLL_INTERVAL_SECONDS == 15
+    assert configs.EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS == 900
 
 
 def test_env_config_anthropic_base_url(tmp_path, monkeypatch):
@@ -393,3 +402,75 @@ jwt_secret = "secret"
 
     assert configs.EnvConfig.PAINT_BASE_URL == "https://paint.example.com"
     assert configs.EnvConfig.PAINT_API_KEY.get_secret_value() == "sk-paint"
+
+
+def test_env_config_video_fields_allow_explicit_overrides(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    env_path = tmp_path / "env.toml"
+    env_path.write_text(
+        """
+[information]
+name = "Bot"
+
+[endpoint]
+openai_base_url = "https://example.com"
+basic_model = "basic"
+advan_model = "advan"
+paint_model = "paint"
+video_model = "custom-video"
+video_base_url = "https://video.example.com"
+
+[key]
+openai_api_key = "sk-openai"
+video_api_key = "sk-video"
+nasa_api_key = "nasa"
+github_pat = "gh"
+
+[function]
+agent_module_enabled = true
+paint_module_enabled = true
+video_module_enabled = false
+agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
+paint_whitelist_mode = false
+paint_whitelist_person_list = []
+paint_whitelist_group_list = []
+paint_blacklist_person_list = []
+paint_blacklist_group_list = []
+video_rate_limit_max_requests = 2
+video_rate_limit_window_seconds = 1200
+video_poll_interval_seconds = 5
+video_poll_timeout_seconds = 600
+
+[message]
+raw_message_group_id = []
+test_group_id = []
+
+[database]
+query_message_numbers = 3
+
+[debug]
+agent_debug_mode = false
+
+[dashboard]
+password = "admin"
+jwt_secret = "secret"
+""",
+        encoding="utf-8",
+    )
+
+    configs = importlib.import_module("utils.configs")
+    importlib.reload(configs)
+
+    assert configs.EnvConfig.VIDEO_MODULE_ENABLED is False
+    assert configs.EnvConfig.VIDEO_MODEL == "custom-video"
+    assert configs.EnvConfig.VIDEO_BASE_URL == "https://video.example.com"
+    assert configs.EnvConfig.VIDEO_API_KEY.get_secret_value() == "sk-video"
+    assert configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 2
+    assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 1200
+    assert configs.EnvConfig.VIDEO_POLL_INTERVAL_SECONDS == 5
+    assert configs.EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS == 600

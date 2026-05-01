@@ -1,3 +1,4 @@
+import os
 import tomllib
 
 import dotenv
@@ -27,6 +28,7 @@ class EnvConfig:
 
     AGENT_MODULE_ENABLED: bool = function_list["agent_module_enabled"]
     PAINT_MODULE_ENABLED: bool = function_list["paint_module_enabled"]
+    VIDEO_MODULE_ENABLED: bool = function_list.get("video_module_enabled", PAINT_MODULE_ENABLED)
 
     OPENAI_BASE_URL: str = endpoint["openai_base_url"]
     BASIC_MODEL: str = endpoint["basic_model"]
@@ -39,11 +41,14 @@ class EnvConfig:
     ADVAN_MODEL_CAPABILITIES: list[str] = endpoint.get("advan_model_capabilities", [])
     PAINT_MODEL: str = endpoint["paint_model"]
     PAINT_BASE_URL: str = endpoint.get("paint_base_url") or OPENAI_BASE_URL
+    VIDEO_MODEL: str = endpoint.get("video_model") or "alibaba/happyhorse-1.0"
+    VIDEO_BASE_URL: str = endpoint.get("video_base_url") or "https://zenmux.ai/api/vertex-ai"
     BASIC_MODEL_USE_RESPONSES_API: bool = endpoint.get("basic_model_use_responses_api", True)
     ADVAN_MODEL_USE_RESPONSES_API: bool = endpoint.get("advan_model_use_responses_api", True)
 
     OPENAI_API_KEY: SecretStr = SecretStr(key["openai_api_key"])
     PAINT_API_KEY: SecretStr = SecretStr(key.get("paint_api_key") or key["openai_api_key"])
+    VIDEO_API_KEY: SecretStr = SecretStr(key.get("video_api_key") or os.getenv("ZENMUX_API_KEY", ""))
     NASA_API_KEY: SecretStr = SecretStr(key["nasa_api_key"])
     GITHUB_PAT: SecretStr = SecretStr(key["github_pat"])
     GOOGLE_API_KEY: SecretStr = SecretStr(key.get("google_api_key", ""))
@@ -64,6 +69,10 @@ class EnvConfig:
     PAINT_BLACKLIST_GROUP_LIST: list = function_list["paint_blacklist_group_list"]
     PAINT_RATE_LIMIT_MAX_REQUESTS: int = int(function_list.get("paint_rate_limit_max_requests", 3))
     PAINT_RATE_LIMIT_WINDOW_SECONDS: int = int(function_list.get("paint_rate_limit_window_seconds", 600))
+    VIDEO_RATE_LIMIT_MAX_REQUESTS: int = int(function_list.get("video_rate_limit_max_requests", 1))
+    VIDEO_RATE_LIMIT_WINDOW_SECONDS: int = int(function_list.get("video_rate_limit_window_seconds", 900))
+    VIDEO_POLL_INTERVAL_SECONDS: int = int(function_list.get("video_poll_interval_seconds", 15))
+    VIDEO_POLL_TIMEOUT_SECONDS: int = int(function_list.get("video_poll_timeout_seconds", 900))
 
     RAW_MESSAGE_GROUP_ID: list = message["raw_message_group_id"]
     TEST_GROUP_ID: list = message["test_group_id"]

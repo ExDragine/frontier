@@ -1,7 +1,9 @@
+import asyncio
 import base64
 import inspect
 import io
 import math
+import os
 import re
 import time
 from collections import defaultdict, deque
@@ -24,7 +26,9 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 painter = on_command("画图", priority=3, block=True, aliases={"paint", "绘图", "画一张图", "帮我画一张图"})
+videographer = on_command("video", priority=3, block=True, aliases={"视频"})
 PAINT_COMMAND_PREFIXES = ("帮我画一张图", "画一张图", "画图", "绘图", "paint")
+VIDEO_COMMAND_PREFIXES = ("video", "视频")
 messages_db = MessageDatabase()
 
 
@@ -32,6 +36,12 @@ messages_db = MessageDatabase()
 class PaintRateLimitResult:
     allowed: bool
     retry_after_seconds: int = 0
+
+
+@dataclass(frozen=True)
+class VideoGenerationResult:
+    raw: bytes | None = None
+    url: str | None = None
 
 
 class PaintRateLimiter:
@@ -63,6 +73,7 @@ class PaintRateLimiter:
 
 
 paint_rate_limiter = PaintRateLimiter()
+video_rate_limiter = PaintRateLimiter()
 
 
 @painter.handle()
@@ -99,9 +110,48 @@ async def handle_painter(event: MessageEvent):
         await (UniMessage.reply(str(event.data.message_seq)) + UniMessage.text("图被肥猫吃了，画不了嘞")).send()
 
 
+@videographer.handle()
+async def handle_video(event: MessageEvent):
+    if EnvConfig.VIDEO_MODULE_ENABLED is False:
+        await videographer.finish("视频功能没开")
+
+    text, *_ = await message_extract(event.data.segments)
+    prompt = strip_video_prompt(text)
+    if not prompt:
+        await UniMessage.text("你想生成什么视频？").send()
+        return
+
+    rate_limit = video_rate_limiter.check(
+        event.get_user_id(),
+        now=time.time(),
+        max_requests=EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS,
+        window_seconds=EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    if not rate_limit.allowed:
+        await UniMessage.text(f"视频生成得太快了，{rate_limit.retry_after_seconds} 秒后再试吧").send()
+        return
+
+    video = await generate_video(prompt)
+    video_message = _video_result_message(video)
+    if video_message:
+        await (UniMessage.reply(str(event.data.message_seq)) + video_message).send()
+    else:
+        await (UniMessage.reply(str(event.data.message_seq)) + UniMessage.text("视频生成失败了")).send()
+
+
 def strip_paint_prompt(text: str) -> str:
     stripped = text.strip()
     for prefix in PAINT_COMMAND_PREFIXES:
+        boundary = r"(?:\b|\s+|$)" if prefix.isascii() else ""
+        pattern = rf"^/?{re.escape(prefix)}{boundary}"
+        if re.match(pattern, stripped, flags=re.IGNORECASE):
+            return re.sub(pattern, "", stripped, count=1, flags=re.IGNORECASE).strip()
+    return stripped
+
+
+def strip_video_prompt(text: str) -> str:
+    stripped = text.strip()
+    for prefix in VIDEO_COMMAND_PREFIXES:
         boundary = r"(?:\b|\s+|$)" if prefix.isascii() else ""
         pattern = rf"^/?{re.escape(prefix)}{boundary}"
         if re.match(pattern, stripped, flags=re.IGNORECASE):
@@ -129,6 +179,15 @@ def _paint_base_url() -> str:
 
 def _paint_api_key() -> str:
     return EnvConfig.PAINT_API_KEY.get_secret_value()
+
+
+def _video_base_url() -> str:
+    return EnvConfig.VIDEO_BASE_URL
+
+
+def _video_api_key() -> str:
+    configured_key = EnvConfig.VIDEO_API_KEY.get_secret_value()
+    return configured_key or os.getenv("ZENMUX_API_KEY", "")
 
 
 def _use_vertex_image_gateway() -> bool:
@@ -243,4 +302,143 @@ async def paint(prompt: str, reference_images: list[bytes] | None = None) -> byt
             return await _paint_with_openai_images(prompt, reference_images)
     except Exception as e:
         logger.exception(f"💥 调用 GPT Image API 失败: {e}")
+        return None
+
+
+def _video_result_message(video: VideoGenerationResult | None):
+    if video is None:
+        return None
+    if video.raw:
+        return UniMessage.video(raw=video.raw)
+    if video.url:
+        return UniMessage.video(url=video.url)
+    return None
+
+
+def _coerce_video_bytes(value) -> bytes | None:
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, str) and not _is_http_url(value):
+        try:
+            return base64.b64decode(value, validate=True)
+        except Exception:
+            return None
+    return None
+
+
+def _extract_video_bytes(*objects) -> bytes | None:
+    for obj in objects:
+        if obj is None:
+            continue
+        if raw := _coerce_video_bytes(obj):
+            return raw
+        for field in ("video_bytes", "bytes", "data", "content", "b64_json", "base64"):
+            if raw := _coerce_video_bytes(getattr(obj, field, None)):
+                return raw
+    return None
+
+
+def _is_http_url(value: str | None) -> bool:
+    return bool(value and value.startswith(("http://", "https://")))
+
+
+def _extract_video_url(*objects) -> str | None:
+    for obj in objects:
+        if isinstance(obj, str) and _is_http_url(obj):
+            return obj
+        if obj is None:
+            continue
+        for field in ("url", "uri", "download_url", "download_uri"):
+            value = getattr(obj, field, None)
+            if isinstance(value, str) and _is_http_url(value):
+                return value
+    return None
+
+
+def _download_video_bytes(client, *objects) -> bytes | None:
+    files = getattr(client, "files", None)
+    download = getattr(files, "download", None)
+    if not callable(download):
+        return None
+
+    for obj in objects:
+        if obj is None:
+            continue
+        try:
+            downloaded = download(file=obj)
+        except TypeError:
+            downloaded = download(obj)
+        except Exception as e:
+            logger.warning(f"下载视频结果失败: {e}")
+            continue
+        if raw := _extract_video_bytes(downloaded):
+            return raw
+    return None
+
+
+def _video_result_from_generated_video(client, generated_video) -> VideoGenerationResult | None:
+    video = getattr(generated_video, "video", None)
+    if raw := _extract_video_bytes(generated_video, video):
+        return VideoGenerationResult(raw=raw)
+    if raw := _download_video_bytes(client, video, generated_video):
+        return VideoGenerationResult(raw=raw)
+    if url := _extract_video_url(generated_video, video):
+        return VideoGenerationResult(url=url)
+    logger.warning("HappyHorse 视频API响应缺少可发送的视频内容")
+    return None
+
+
+def _close_genai_client(client) -> None:
+    close = getattr(client, "close", None)
+    if callable(close):
+        maybe_awaitable = close()
+        if inspect.isawaitable(maybe_awaitable):
+            logger.debug("google genai sync client close returned awaitable; ignored in worker thread")
+
+
+def _generate_video_sync(prompt: str) -> VideoGenerationResult | None:
+    client = genai.Client(
+        api_key=_video_api_key(),
+        vertexai=True,
+        http_options=genai_types.HttpOptions(api_version="v1", base_url=_video_base_url()),
+    )
+    try:
+        operation = client.models.generate_videos(
+            model=EnvConfig.VIDEO_MODEL,
+            prompt=prompt,
+        )
+        timeout_seconds = EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS
+        deadline = None if timeout_seconds <= 0 else time.monotonic() + timeout_seconds
+
+        while not operation.done:
+            if deadline is not None and time.monotonic() >= deadline:
+                logger.warning(f"HappyHorse 视频生成超时: timeout={timeout_seconds}s")
+                return None
+            time.sleep(max(0, EnvConfig.VIDEO_POLL_INTERVAL_SECONDS))
+            operation = client.operations.get_videos_operation(operation=operation)
+
+        if error := getattr(operation, "error", None):
+            logger.warning(f"HappyHorse 视频生成失败: {error}")
+            return None
+
+        response = getattr(operation, "response", None)
+        generated_videos = getattr(response, "generated_videos", None) or []
+        if not generated_videos:
+            logger.warning("HappyHorse 视频API返回空 generated_videos")
+            return None
+
+        return _video_result_from_generated_video(client, generated_videos[0])
+    finally:
+        _close_genai_client(client)
+
+
+async def generate_video(prompt: str) -> VideoGenerationResult | None:
+    logger.info(f"🎬 调用 HappyHorse 视频API, model={EnvConfig.VIDEO_MODEL}, prompt_length={len(prompt)}")
+
+    try:
+        return await asyncio.to_thread(_generate_video_sync, prompt)
+    except Exception as e:
+        logger.exception(f"💥 调用 HappyHorse 视频API失败: {e}")
         return None

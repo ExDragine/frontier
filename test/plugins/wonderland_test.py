@@ -28,7 +28,7 @@ class DummyUniMessage:
         self.content = content
 
     def __add__(self, other):
-        return DummyUniMessage([self.content, other.content])
+        return type(self)([self.content, other.content])
 
     @classmethod
     def reply(cls, message_id):
@@ -41,6 +41,10 @@ class DummyUniMessage:
     @classmethod
     def image(cls, raw=None):
         return cls(raw)
+
+    @classmethod
+    def video(cls, url=None, raw=None):
+        return cls({"video_url": url, "video_raw": raw})
 
     async def send(self):
         return None
@@ -205,6 +209,13 @@ def test_strip_paint_prompt_handles_prefixed_text_without_whitespace(load_wonder
     assert wonderland.strip_paint_prompt("paint a crystal fox") == "a crystal fox"
 
 
+def test_strip_video_prompt_handles_prefixed_text(load_wonderland_module):
+    wonderland = load_wonderland_module()
+
+    assert wonderland.strip_video_prompt("/video a happy horse") == "a happy horse"
+    assert wonderland.strip_video_prompt("视频 一匹马") == "一匹马"
+
+
 def test_paint_rate_limiter_rejects_requests_over_limit(load_wonderland_module):
     wonderland = load_wonderland_module()
     limiter = wonderland.PaintRateLimiter()
@@ -276,6 +287,158 @@ async def test_handle_painter_rate_limits_by_user_before_painting(load_wonderlan
     await wonderland.handle_painter(event)
 
     assert sent_messages == ["画得太快了，42 秒后再试吧"]
+
+
+@pytest.mark.asyncio
+async def test_handle_video_sends_generated_video(load_wonderland_module, monkeypatch):
+    wonderland = load_wonderland_module()
+    sent_messages = []
+
+    class CapturingUniMessage(DummyUniMessage):
+        async def send(self):
+            sent_messages.append(self.content)
+            return None
+
+    async def fake_message_extract(_segments):
+        return "/video a happy horse", [], [], []
+
+    async def fake_generate_video(prompt):
+        assert prompt == "a happy horse"
+        return wonderland.VideoGenerationResult(raw=b"generated-video")
+
+    event = SimpleNamespace(
+        data=SimpleNamespace(
+            segments=[{"type": "text", "data": {"text": "/video a happy horse"}}],
+            group=SimpleNamespace(group_id=123),
+            message_seq=456,
+        ),
+        get_user_id=lambda: "10001",
+    )
+
+    monkeypatch.setattr(wonderland, "message_extract", fake_message_extract)
+    monkeypatch.setattr(wonderland, "generate_video", fake_generate_video)
+    monkeypatch.setattr(wonderland, "UniMessage", CapturingUniMessage)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_MODULE_ENABLED", True, raising=False)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_RATE_LIMIT_MAX_REQUESTS", 1, raising=False)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_RATE_LIMIT_WINDOW_SECONDS", 900, raising=False)
+    monkeypatch.setattr(wonderland, "video_rate_limiter", wonderland.PaintRateLimiter())
+
+    await wonderland.handle_video(event)
+
+    assert sent_messages == [[{"reply": "456"}, {"video_url": None, "video_raw": b"generated-video"}]]
+
+
+@pytest.mark.asyncio
+async def test_handle_video_rate_limits_by_user_before_generation(load_wonderland_module, monkeypatch):
+    wonderland = load_wonderland_module()
+    sent_messages = []
+
+    class CapturingUniMessage(DummyUniMessage):
+        async def send(self):
+            sent_messages.append(self.content)
+            return None
+
+    async def fake_message_extract(_segments):
+        return "/video a happy horse", [], [], []
+
+    async def fake_generate_video(_prompt):
+        raise AssertionError("generate_video should not be called while rate limited")
+
+    class DenyLimiter:
+        def check(self, user_id, *, now, max_requests, window_seconds):
+            assert user_id == "10001"
+            assert max_requests == 1
+            assert window_seconds == 900
+            return wonderland.PaintRateLimitResult(False, 120)
+
+    event = SimpleNamespace(
+        data=SimpleNamespace(
+            segments=[{"type": "text", "data": {"text": "/video a happy horse"}}],
+            group=SimpleNamespace(group_id=123),
+            message_seq=456,
+        ),
+        get_user_id=lambda: "10001",
+    )
+
+    monkeypatch.setattr(wonderland, "message_extract", fake_message_extract)
+    monkeypatch.setattr(wonderland, "generate_video", fake_generate_video)
+    monkeypatch.setattr(wonderland, "UniMessage", CapturingUniMessage)
+    monkeypatch.setattr(wonderland, "video_rate_limiter", DenyLimiter())
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_MODULE_ENABLED", True, raising=False)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_RATE_LIMIT_MAX_REQUESTS", 1, raising=False)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_RATE_LIMIT_WINDOW_SECONDS", 900, raising=False)
+
+    await wonderland.handle_video(event)
+
+    assert sent_messages == ["视频生成得太快了，120 秒后再试吧"]
+
+
+def test_generate_video_uses_happyhorse_vertex_gateway(load_wonderland_module, monkeypatch):
+    wonderland = load_wonderland_module()
+    calls = {}
+
+    class DummyHttpOptions:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class DummyModels:
+        def generate_videos(self, **kwargs):
+            calls["generate_videos"] = kwargs
+            return SimpleNamespace(done=False)
+
+    class DummyOperations:
+        def get_videos_operation(self, *, operation):
+            calls["operation"] = operation
+            video = SimpleNamespace(video_bytes=b"happyhorse-video")
+            return SimpleNamespace(
+                done=True,
+                response=SimpleNamespace(generated_videos=[SimpleNamespace(video=video)]),
+            )
+
+    class DummyClient:
+        def __init__(self, **kwargs):
+            calls["client"] = kwargs
+            self.models = DummyModels()
+            self.operations = DummyOperations()
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+            calls["closed"] = True
+
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_MODEL", "alibaba/happyhorse-1.0", raising=False)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_BASE_URL", "https://zenmux.ai/api/vertex-ai", raising=False)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_API_KEY", SecretStr("sk-video"), raising=False)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_POLL_INTERVAL_SECONDS", 0, raising=False)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_POLL_TIMEOUT_SECONDS", 30, raising=False)
+    monkeypatch.setattr(wonderland, "genai", SimpleNamespace(Client=DummyClient))
+    monkeypatch.setattr(wonderland, "genai_types", SimpleNamespace(HttpOptions=DummyHttpOptions))
+
+    result = wonderland._generate_video_sync("a happy horse")
+
+    assert result == wonderland.VideoGenerationResult(raw=b"happyhorse-video")
+    assert calls["client"]["api_key"] == "sk-video"
+    assert calls["client"]["vertexai"] is True
+    assert calls["client"]["http_options"].kwargs == {
+        "api_version": "v1",
+        "base_url": "https://zenmux.ai/api/vertex-ai",
+    }
+    assert calls["generate_videos"] == {
+        "model": "alibaba/happyhorse-1.0",
+        "prompt": "a happy horse",
+    }
+    assert calls["closed"] is True
+
+
+def test_video_result_from_generated_video_uses_http_url(load_wonderland_module):
+    wonderland = load_wonderland_module()
+
+    result = wonderland._video_result_from_generated_video(
+        SimpleNamespace(),
+        SimpleNamespace(video=SimpleNamespace(uri="https://example.com/video.mp4")),
+    )
+
+    assert result == wonderland.VideoGenerationResult(url="https://example.com/video.mp4")
 
 
 @pytest.mark.asyncio

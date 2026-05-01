@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from ..auth import require_auth
 
 router = APIRouter()
+AUTH_DEPENDENCY = Depends(require_auth)
 
 TOML_PATH = Path("env.toml")
 BACKUP_DIR = Path("configs/backups")
@@ -21,6 +22,7 @@ SENSITIVE_FIELDS = {
     "key": {
         "openai_api_key",
         "paint_api_key",
+        "video_api_key",
         "google_api_key",
         "anthropic_api_key",
         "nasa_api_key",
@@ -45,7 +47,7 @@ def _read_toml() -> dict:
 
 def _read_tomlkit() -> tomlkit.TOMLDocument:
     """使用 tomlkit 读取以保留注释和格式"""
-    with open(TOML_PATH, "r", encoding="utf-8") as f:
+    with open(TOML_PATH, encoding="utf-8") as f:
         return tomlkit.load(f)
 
 
@@ -142,12 +144,15 @@ def _reload_env_config():
     EnvConfig.ADVAN_MODEL_CAPABILITIES = ep.get("advan_model_capabilities", EnvConfig.ADVAN_MODEL_CAPABILITIES)
     EnvConfig.PAINT_MODEL = ep.get("paint_model", EnvConfig.PAINT_MODEL)
     EnvConfig.PAINT_BASE_URL = ep.get("paint_base_url") or EnvConfig.OPENAI_BASE_URL
+    EnvConfig.VIDEO_MODEL = ep.get("video_model") or "alibaba/happyhorse-1.0"
+    EnvConfig.VIDEO_BASE_URL = ep.get("video_base_url") or "https://zenmux.ai/api/vertex-ai"
     EnvConfig.LLM_ENDPOINTS = llm_ep
 
     from pydantic import SecretStr
 
     EnvConfig.OPENAI_API_KEY = SecretStr(key.get("openai_api_key", ""))
     EnvConfig.PAINT_API_KEY = SecretStr(key.get("paint_api_key") or key.get("openai_api_key", ""))
+    EnvConfig.VIDEO_API_KEY = SecretStr(key.get("video_api_key") or os.getenv("ZENMUX_API_KEY", ""))
     EnvConfig.NASA_API_KEY = SecretStr(key.get("nasa_api_key", ""))
     EnvConfig.GITHUB_PAT = SecretStr(key.get("github_pat", ""))
     EnvConfig.GOOGLE_API_KEY = SecretStr(key.get("google_api_key", ""))
@@ -156,6 +161,7 @@ def _reload_env_config():
 
     EnvConfig.AGENT_MODULE_ENABLED = fn.get("agent_module_enabled", EnvConfig.AGENT_MODULE_ENABLED)
     EnvConfig.PAINT_MODULE_ENABLED = fn.get("paint_module_enabled", EnvConfig.PAINT_MODULE_ENABLED)
+    EnvConfig.VIDEO_MODULE_ENABLED = fn.get("video_module_enabled", EnvConfig.PAINT_MODULE_ENABLED)
     EnvConfig.AGENT_CAPABILITY = fn.get("agent_capability", EnvConfig.AGENT_CAPABILITY)
     EnvConfig.AGENT_WHITELIST_MODE = fn.get("agent_whitelist_mode", EnvConfig.AGENT_WHITELIST_MODE)
     EnvConfig.AGENT_WHITELIST_PERSON_LIST = fn.get(
@@ -181,6 +187,18 @@ def _reload_env_config():
     EnvConfig.PAINT_RATE_LIMIT_WINDOW_SECONDS = int(
         fn.get("paint_rate_limit_window_seconds", EnvConfig.PAINT_RATE_LIMIT_WINDOW_SECONDS)
     )
+    EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS = int(
+        fn.get("video_rate_limit_max_requests", EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS)
+    )
+    EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS = int(
+        fn.get("video_rate_limit_window_seconds", EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS)
+    )
+    EnvConfig.VIDEO_POLL_INTERVAL_SECONDS = int(
+        fn.get("video_poll_interval_seconds", EnvConfig.VIDEO_POLL_INTERVAL_SECONDS)
+    )
+    EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS = int(
+        fn.get("video_poll_timeout_seconds", EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS)
+    )
     EnvConfig.AGENT_DEBUG_MODE = dbg.get("agent_debug_mode", EnvConfig.AGENT_DEBUG_MODE)
 
     EnvConfig.TEST_GROUP_ID = msg.get("test_group_id", EnvConfig.TEST_GROUP_ID)
@@ -199,14 +217,14 @@ def _reload_env_config():
 
 
 @router.get("/")
-async def get_settings(user: dict = Depends(require_auth)):
+async def get_settings(user: dict = AUTH_DEPENDENCY):
     """获取完整配置（敏感字段脱敏）"""
     config = _read_toml()
     return {"config": _sanitize_config(config)}
 
 
 @router.get("/{section}")
-async def get_section(section: str, user: dict = Depends(require_auth)):
+async def get_section(section: str, user: dict = AUTH_DEPENDENCY):
     """获取单个配置段"""
     config = _read_toml()
     if section not in config:
@@ -225,7 +243,7 @@ class SectionUpdate(BaseModel):
 
 
 @router.put("/{section}")
-async def update_section(section: str, body: SectionUpdate, user: dict = Depends(require_auth)):
+async def update_section(section: str, body: SectionUpdate, user: dict = AUTH_DEPENDENCY):
     """更新单个配置段"""
     doc = _read_tomlkit()
 
@@ -256,13 +274,13 @@ async def update_section(section: str, body: SectionUpdate, user: dict = Depends
         # 写入失败，恢复备份
         if tmp_path.exists():
             tmp_path.unlink()
-        raise HTTPException(status_code=500, detail=f"写入配置失败: {e}")
+        raise HTTPException(status_code=500, detail=f"写入配置失败: {e}") from e
 
     # 热重载 EnvConfig
     try:
         _reload_env_config()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"配置已保存但重载失败: {e}")
+        raise HTTPException(status_code=500, detail=f"配置已保存但重载失败: {e}") from e
 
     return {
         "message": f"配置段 '{section}' 已更新",
