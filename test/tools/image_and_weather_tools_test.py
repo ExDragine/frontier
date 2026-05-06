@@ -1,27 +1,148 @@
 # ruff: noqa: S101
 
+import base64
+
 import pytest
 
 
+def _tiny_png_data_url(raw: bytes = b"current-image") -> str:
+    return f"data:image/png;base64,{base64.b64encode(raw).decode()}"
+
+
 @pytest.mark.asyncio
-async def test_get_paint_success_and_failure(load_tool_module, monkeypatch):
+async def test_get_paint_generate_uses_shared_paint_service(load_tool_module, monkeypatch):
     mod = load_tool_module("paint")
+    captured = {}
 
-    class DummyResp:
-        content = b"img"
+    async def fake_paint(prompt, reference_images):
+        captured["prompt"] = prompt
+        captured["reference_images"] = reference_images
+        return b"img"
 
-    monkeypatch.setattr(mod.httpx, "get", lambda *args, **kwargs: DummyResp())
+    monkeypatch.setattr(mod, "paint", fake_paint)
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_MODULE_ENABLED", True, raising=False)
     text, artifact = await mod.get_paint("a cat")
+
+    assert captured == {"prompt": "a cat", "reference_images": []}
     assert "成功生成图片" in text
     assert artifact.content["raw"] == b"img"
 
-    def broken_get(*_args, **_kwargs):
-        raise RuntimeError("down")
 
-    monkeypatch.setattr(mod.httpx, "get", broken_get)
-    text2, artifact2 = await mod.get_paint("a cat")
-    assert "图片生成失败" in text2
-    assert artifact2 is None
+@pytest.mark.asyncio
+async def test_get_paint_edit_uses_images_from_latest_user_message(load_tool_module, monkeypatch):
+    mod = load_tool_module("paint")
+    captured = {}
+    history_image = _tiny_png_data_url(b"history-image")
+    current_image = _tiny_png_data_url(b"current-image")
+    quoted_image = _tiny_png_data_url(b"quoted-image")
+    state = {
+        "user_id": "10001",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "old"},
+                    {"type": "image_url", "image_url": {"url": history_image}},
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": "ok",
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "把当前和引用图片融合"},
+                    {"type": "image_url", "image_url": {"url": quoted_image}},
+                    {"type": "image_url", "image_url": {"url": current_image}},
+                ],
+            },
+        ],
+    }
+
+    async def fake_paint(prompt, reference_images):
+        captured["prompt"] = prompt
+        captured["reference_images"] = reference_images
+        return b"edited"
+
+    monkeypatch.setattr(mod, "paint", fake_paint)
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_MODULE_ENABLED", True, raising=False)
+
+    text, artifact = await mod.get_paint("watercolor style", mode="edit", state=state)
+
+    assert captured["prompt"] == "watercolor style"
+    assert captured["reference_images"] == [b"quoted-image", b"current-image"]
+    assert b"history-image" not in captured["reference_images"]
+    assert "成功编辑图片" in text
+    assert artifact.content["raw"] == b"edited"
+
+
+@pytest.mark.asyncio
+async def test_get_paint_edit_without_images_fails_before_service_call(load_tool_module, monkeypatch):
+    mod = load_tool_module("paint")
+
+    async def fake_paint(_prompt, _reference_images):
+        raise AssertionError("paint should not be called without reference images")
+
+    monkeypatch.setattr(mod, "paint", fake_paint)
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_MODULE_ENABLED", True, raising=False)
+
+    text, artifact = await mod.get_paint("watercolor style", mode="edit", state={"user_id": "10001", "messages": []})
+
+    assert "没有可编辑的图片" in text
+    assert artifact is None
+
+
+@pytest.mark.asyncio
+async def test_get_paint_respects_disabled_paint_module(load_tool_module, monkeypatch):
+    mod = load_tool_module("paint")
+
+    async def fake_paint(_prompt, _reference_images):
+        raise AssertionError("paint should not be called while disabled")
+
+    monkeypatch.setattr(mod, "paint", fake_paint)
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_MODULE_ENABLED", False, raising=False)
+
+    text, artifact = await mod.get_paint("a cat")
+
+    assert "绘画功能未启用" in text
+    assert artifact is None
+
+
+@pytest.mark.asyncio
+async def test_get_paint_rate_limits_by_injected_user_id(load_tool_module, monkeypatch):
+    mod = load_tool_module("paint")
+
+    async def fake_paint(_prompt, _reference_images):
+        raise AssertionError("paint should not be called while rate limited")
+
+    class DenyLimiter:
+        def check(self, user_id, *, now, max_requests, window_seconds):
+            assert user_id == "10001"
+            assert max_requests == 3
+            assert window_seconds == 600
+            return mod.PaintRateLimitResult(False, 42)
+
+    monkeypatch.setattr(mod, "paint", fake_paint)
+    monkeypatch.setattr(mod, "paint_rate_limiter", DenyLimiter())
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_MODULE_ENABLED", True, raising=False)
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_RATE_LIMIT_MAX_REQUESTS", 3, raising=False)
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_RATE_LIMIT_WINDOW_SECONDS", 600, raising=False)
+
+    text, artifact = await mod.get_paint("a cat", state={"user_id": "10001", "messages": []})
+
+    assert "画得太快了" in text
+    assert "42 秒后再试" in text
+    assert artifact is None
+
+
+def test_get_paint_tool_schema_hides_injected_state(load_tool_module):
+    mod = load_tool_module("paint")
+    args = getattr(mod.get_paint, "args", {})
+
+    assert "prompt" in args
+    assert "mode" in args
+    assert "state" not in args
 
 
 @pytest.mark.asyncio
@@ -119,8 +240,8 @@ async def test_weather_tools(load_tool_module, monkeypatch):
     monkeypatch.setattr(mod, "geocode", fake_geocode)
     monkeypatch.setattr(mod, "fetch_json", fake_fetch_json)
 
-    current = await mod.get_current_weather("北京")
-    future = await mod.get_future_weather("北京", 2)
+    current = await mod.weather_tool.current("北京")
+    future = await mod.weather_tool.forecast("北京", 2)
     assert "北京 25℃" in current
     assert "第1天: 高30℃ 低20℃" in future
 

@@ -1,5 +1,6 @@
 # ruff: noqa: S101
 
+import contextlib
 import importlib
 import importlib.util
 import sys
@@ -29,7 +30,7 @@ def _install_module(name: str, module: types.ModuleType) -> None:
         setattr(parent_module, child, module)
 
 
-def _make_alconna_module() -> types.ModuleType:
+def _make_alconna_module() -> types.ModuleType:  # noqa: C901
     alconna = types.ModuleType("nonebot_plugin_alconna")
 
     class Image:
@@ -103,7 +104,7 @@ def _make_alconna_module() -> types.ModuleType:
     return alconna
 
 
-def _install_fallback_stubs() -> None:
+def _install_fallback_stubs() -> None:  # noqa: C901
     if not _module_exists("nonebot_plugin_alconna"):
         _install_module("nonebot_plugin_alconna", _make_alconna_module())
 
@@ -145,7 +146,12 @@ def _install_fallback_stubs() -> None:
 
     if not _module_exists("langgraph.prebuilt"):
         prebuilt = types.ModuleType("langgraph.prebuilt")
-        prebuilt.InjectedState = lambda key: key
+
+        class InjectedState:
+            def __init__(self, field=None):
+                self.field = field
+
+        prebuilt.InjectedState = InjectedState
         _install_module("langgraph.prebuilt", prebuilt)
 
     if not _module_exists("langchain_community.document_loaders"):
@@ -244,10 +250,8 @@ def load_tool_module():
                 sys.modules["nonebot_plugin_alconna"] = old_alconna
 
             if old_nonebot_require is not None and old_plugin_require is not None:
-                try:
+                with contextlib.suppress(Exception):
                     plugin_load.require = old_plugin_require
                     nonebot.require = old_nonebot_require
-                except Exception:
-                    pass
 
     return _load

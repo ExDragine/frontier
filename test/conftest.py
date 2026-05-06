@@ -1,9 +1,11 @@
 # ruff: noqa: S101
 
 import importlib
+import inspect
 import sys
 import types
 from pathlib import Path
+from typing import get_args, get_origin
 
 import pytest
 
@@ -71,6 +73,28 @@ class _DummyTokenizer:
         return "Safety: Safe"
 
 
+def _is_injected_tool_arg(annotation) -> bool:
+    if get_origin(annotation) is not None:
+        return any(_is_injected_tool_arg(item) for item in get_args(annotation))
+    return getattr(annotation, "__name__", "") == "InjectedState" or annotation.__class__.__name__ == "InjectedState"
+
+
+def _fake_tool(name_or_callable=None, *_args, **_kwargs):
+    def decorate(func):
+        signature = inspect.signature(func)
+        func.name = name_or_callable if isinstance(name_or_callable, str) else func.__name__
+        func.args = {
+            name: {"title": name.replace("_", " ").title().replace(" ", ""), "type": "string"}
+            for name, parameter in signature.parameters.items()
+            if not _is_injected_tool_arg(parameter.annotation)
+        }
+        return func
+
+    if callable(name_or_callable):
+        return decorate(name_or_callable)
+    return decorate
+
+
 def _install_third_party_stubs():
     _install_stub("chromadb", PersistentClient=_DummyPersistentClient)
     _install_stub("uuid_utils", uuid7=lambda: "uuid")
@@ -84,7 +108,7 @@ def _install_third_party_stubs():
         AgentState=type("AgentState", (), {}),
         create_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}),
     )
-    _install_stub("langchain.tools", tool=lambda func=None, **_kwargs: func if func else (lambda f: f))
+    _install_stub("langchain.tools", tool=_fake_tool)
     _install_stub(
         "langchain.agents.middleware",
         FilesystemFileSearchMiddleware=type(
