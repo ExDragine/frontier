@@ -1,13 +1,15 @@
 import base64
 import datetime
 import time
-from typing import Literal
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from nonebot import get_bot, get_driver, logger, on_message, require
 from nonebot.adapters.milky.event import MessageEvent
 from pydantic import BaseModel, Field
 
-from utils.agents import FrontierCognitive, assistant_agent
+from utils.agent_queue import AgentQueueFullError, AgentQueueManager
+from utils.agents import FrontierCognitive, _agent_thread_id, assistant_agent
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
 from utils.message import (
@@ -30,12 +32,122 @@ driver = get_driver()
 common = on_message(priority=10)
 
 message_heap = RepeatMessageHeap(capacity=10, threshold=2)
+agent_queue = AgentQueueManager(maxsize=5, idle_ttl_seconds=1800.0, job_timeout_seconds=900.0)
 
 
 class AgentChoice(BaseModel):
     agent_capability: Literal["low", "medium", "high", "xhigh"] = Field(
         description="Choose 'low' for casual chat or simple questions; 'medium' for typical tasks with moderate reasoning; 'high' for complex multi-step tasks; 'xhigh' for deep research or architectural decisions."
     )
+
+
+@dataclass(slots=True)
+class AgentRequestContext:
+    bot: Any
+    event: MessageEvent
+    user_id: str
+    user_name: str
+    event_id: int
+    group_id: int | None
+    msg_time: int
+    text: str
+    quoted_images: list[bytes]
+    images: list[bytes]
+    videos: list[bytes]
+
+
+async def _process_agent_request(context: AgentRequestContext) -> None:
+    messages = await messages_db.prepare_message(
+        int(context.user_id),
+        context.group_id,
+        query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
+        before_time=context.msg_time,
+    )
+    messages.append(
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": str(
+                        {
+                            "metadata": {
+                                "time": datetime.datetime.fromtimestamp(context.msg_time / 1000)
+                                .astimezone(datetime.timezone(datetime.timedelta(hours=8)))
+                                .strftime("%Y-%m-%d %H:%M:%S"),
+                                "user_name": context.user_name,
+                            },
+                            "content": context.text,
+                        }
+                    ),
+                }
+            ]
+            + [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"},
+                }
+                for image in context.quoted_images + context.images
+            ],
+        }
+    )
+
+    if EnvConfig.AGENT_CAPABILITY == "auto":
+        try:
+            with open("prompts/agent_choice.md", encoding="utf-8") as f:
+                system_prompt = f.read()
+        except FileNotFoundError:
+            logger.error("❌ 未找到 agent_choice.md 文件")
+            await UniMessage.text("⚙️ 系统配置文件缺失，请联系管理员").send()
+            return
+        except (PermissionError, OSError, UnicodeDecodeError) as e:
+            logger.error(f"❌ 读取 agent_choice.md 失败: {e}")
+            await UniMessage.text("⚙️ 系统配置错误，请联系管理员").send()
+            return
+        agent_choice: AgentChoice = await assistant_agent(system_prompt, context.text, response_format=AgentChoice)
+        capability = agent_choice.agent_capability
+    else:
+        capability = EnvConfig.AGENT_CAPABILITY
+    result = await f_cognitive.chat_agent(
+        messages,
+        context.user_id,
+        context.user_name,
+        capability,
+        group_id=context.group_id,
+        query_text=context.text,
+        image_inputs=context.quoted_images + context.images,
+        video_inputs=context.videos,
+    )
+
+    if not isinstance(result, dict) or "response" not in result:
+        await UniMessage.text(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用").send()
+        return
+
+    response = result["response"]
+    if not response:
+        await UniMessage.text(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用").send()
+        return
+
+    artifacts: list[UniMessage] | None = result.get("uni_messages", [])
+    if artifacts:
+        logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
+        await send_artifacts(artifacts)
+
+    if response["messages"] and isinstance(response["messages"], list):
+        await messages_db.insert(
+            time=int(time.time() * 1000),
+            msg_id=None,
+            user_id=int(context.event.self_id),
+            group_id=context.group_id,
+            user_name="Assistant",
+            role="assistant",
+            content=str(response["messages"][-1].text)
+            if hasattr(response["messages"][-1], "text")
+            else response["messages"][-1].content,
+        )
+        await send_messages(context.group_id, context.event_id, response)
+    else:
+        await UniMessage.text(response["messages"]).send()
 
 
 @driver.on_startup
@@ -123,87 +235,22 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                     group_id=group_id, message_seq=event_id, reaction="267", is_add=True
                 )
 
-    messages.append(
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": str(
-                        {
-                            "metadata": {
-                                "time": datetime.datetime.fromtimestamp(msg_time / 1000)
-                                .astimezone(datetime.timezone(datetime.timedelta(hours=8)))
-                                .strftime("%Y-%m-%d %H:%M:%S"),
-                                "user_name": user_name,
-                            },
-                            "content": text,
-                        }
-                    ),
-                }
-            ]
-            + [
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"},
-                }
-                for image in quoted_images + images
-            ],
-        }
-    )
-
-    if EnvConfig.AGENT_CAPABILITY == "auto":
-        try:
-            with open("prompts/agent_choice.md", encoding="utf-8") as f:
-                system_prompt = f.read()
-        except FileNotFoundError:
-            logger.error("❌ 未找到 agent_choice.md 文件")
-            await common.finish("⚙️ 系统配置文件缺失，请联系管理员")
-            return
-        except (PermissionError, OSError, UnicodeDecodeError) as e:
-            logger.error(f"❌ 读取 agent_choice.md 失败: {e}")
-            await common.finish("⚙️ 系统配置错误，请联系管理员")
-            return
-        # ref_history = await memory.mmr_search(str(group_id) if group_id else str(event.user_id), text, 3, filter={"": ""})
-        agent_choice: AgentChoice = await assistant_agent(system_prompt, text, response_format=AgentChoice)
-        capability = agent_choice.agent_capability
-    else:
-        capability = EnvConfig.AGENT_CAPABILITY
-    result = await f_cognitive.chat_agent(
-        messages,
-        user_id,
-        user_name,
-        capability,
+    context = AgentRequestContext(
+        bot=bot,
+        event=event,
+        user_id=user_id,
+        user_name=user_name,
+        event_id=event_id,
         group_id=group_id,
-        query_text=text,
-        image_inputs=quoted_images + images,
-        video_inputs=videos,
+        msg_time=msg_time,
+        text=text,
+        quoted_images=quoted_images,
+        images=images,
+        videos=videos,
     )
-
-    if isinstance(result, dict) and "response" in result:
-        response = result["response"]
-        if not response:
-            await common.finish(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用")
-
-        artifacts: list[UniMessage] | None = result.get("uni_messages", [])
-
-        if artifacts:
-            logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
-            await send_artifacts(artifacts)
-
-        if response["messages"] and isinstance(response["messages"], list):
-            await messages_db.insert(
-                time=int(time.time() * 1000),
-                msg_id=None,
-                user_id=int(event.self_id),
-                group_id=group_id,
-                user_name="Assistant",
-                role="assistant",
-                content=str(response["messages"][-1].text)
-                if hasattr(response["messages"][-1], "text")
-                else response["messages"][-1].content,
-            )
-            await send_messages(group_id, event_id, response)
-
-        else:
-            await UniMessage.text(response["messages"]).send()
+    thread_id = _agent_thread_id(user_id, group_id)
+    try:
+        await agent_queue.submit(thread_id, lambda: _process_agent_request(context))
+    except AgentQueueFullError:
+        logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
+        await common.finish("前面还有请求在处理，稍等一下")

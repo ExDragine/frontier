@@ -1,5 +1,6 @@
 # ruff: noqa: S101
 
+import asyncio
 import types
 
 import pytest
@@ -359,3 +360,162 @@ async def test_agent_fetches_missing_quoted_image_from_milky(monkeypatch):  # no
     assert current_content[0]["type"] == "text"
     assert "用户(Alice): [图片]" in current_content[0]["text"]
     assert current_content[1]["type"] == "image_url"
+
+
+@pytest.mark.asyncio
+async def test_agent_queue_serializes_same_thread_chat_jobs(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+    from utils.agent_queue import AgentQueueManager
+
+    calls = []
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+
+    class DummyMessagesDb:
+        async def insert(self, **_kwargs):
+            return None
+
+        async def insert_images(self, **_kwargs):
+            return []
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+    class DummyCognitive:
+        async def chat_agent(self, *_args, **_kwargs):
+            index = sum(call.startswith("start-") for call in calls)
+            calls.append(f"start-{index}")
+            if index == 0:
+                first_started.set()
+                await release_first.wait()
+            calls.append(f"end-{index}")
+            return {"response": {"messages": [types.SimpleNamespace(text=f"ok-{index}")]}, "uni_messages": []}
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "send_messages", _noop)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(
+        agent, "agent_queue", AgentQueueManager(maxsize=2, idle_ttl_seconds=1.0, job_timeout_seconds=1.0)
+    )
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+
+    context_a = agent.AgentRequestContext(
+        bot=None,
+        event=types.SimpleNamespace(self_id="1"),
+        user_id="456",
+        user_name="Bob",
+        event_id=1,
+        group_id=123,
+        msg_time=1000,
+        text="first",
+        quoted_images=[],
+        images=[],
+        videos=[],
+    )
+    context_b = agent.AgentRequestContext(
+        bot=None,
+        event=types.SimpleNamespace(self_id="1"),
+        user_id="456",
+        user_name="Bob",
+        event_id=2,
+        group_id=123,
+        msg_time=1001,
+        text="second",
+        quoted_images=[],
+        images=[],
+        videos=[],
+    )
+    thread_id = agent._agent_thread_id("456", 123)
+
+    task_a = asyncio.create_task(agent.agent_queue.submit(thread_id, lambda: agent._process_agent_request(context_a)))
+    await first_started.wait()
+    task_b = asyncio.create_task(agent.agent_queue.submit(thread_id, lambda: agent._process_agent_request(context_b)))
+    await asyncio.sleep(0)
+
+    assert calls == ["start-0"]
+
+    release_first.set()
+    await task_a
+    await task_b
+
+    assert calls == ["start-0", "end-0", "start-1", "end-1"]
+
+    await agent.agent_queue.aclose()
+
+
+@pytest.mark.asyncio
+async def test_agent_finishes_when_thread_queue_is_full(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+    from utils.agent_queue import AgentQueueFullError
+
+    class FullQueue:
+        async def submit(self, *_args, **_kwargs):
+            raise AgentQueueFullError("thread", 2)
+
+    class DummyMessagesDb:
+        async def insert(self, **_kwargs):
+            return None
+
+        async def insert_images(self, **_kwargs):
+            return []
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+    async def fake_message_extract(_segments):
+        return "hi", [], [], []
+
+    async def fake_message_gateway(_event, _messages):
+        return True
+
+    monkeypatch.setattr(agent, "agent_queue", FullQueue())
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "message_extract", fake_message_extract)
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=1,
+        sender_id=456,
+        time=0,
+        segments=[{"type": "text", "data": {"text": "hi"}}],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_call_send(event, "前面还有请求在处理，稍等一下")
+        ctx.should_finished()
