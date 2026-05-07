@@ -1,3 +1,5 @@
+# ruff: noqa: S101
+
 import builtins
 import types
 
@@ -267,6 +269,57 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
         {"type": "text", "text": "hi\n\n[图片已省略：当前模型不支持视觉输入]"}
     ]
     assert str(captured["config"]["configurable"]["thread_id"]) == str(agents._agent_thread_id("u1", 123))
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_uses_thread_scoped_composite_backend(monkeypatch, tmp_path):
+    import types
+
+    from utils import agents
+
+    captured = {}
+
+    class DummyAgent:
+        async def ainvoke(self, payload, config=None):
+            captured["payload"] = payload
+            captured["config"] = config
+            return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]}
+
+    def fake_create_deep_agent(**kwargs):
+        captured.update(kwargs)
+        return DummyAgent()
+
+    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
+
+    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier.tools = []
+    frontier.subagents = []
+    frontier.checkpoint = None
+    frontier.working_dir = str(tmp_path / "sandbox")
+
+    await frontier.chat_agent(
+        messages=[{"role": "user", "content": "hi"}],
+        user_id="u1",
+        user_name="test",
+        group_id=123,
+    )
+
+    thread_id = agents._agent_thread_id("u1", 123)
+    backend = captured["backend"]
+
+    assert isinstance(backend, agents.CompositeBackend)
+    assert backend.default.virtual_mode is True
+    assert backend.default.root_dir == str(tmp_path / "sandbox" / "workspaces" / str(thread_id))
+    assert set(backend.routes) == {"/skills/", "/memory/"}
+    assert backend.routes["/skills/"].root_dir == str(tmp_path / "sandbox" / "skills")
+    assert backend.routes["/memory/"].root_dir == str(tmp_path / "sandbox" / "memory")
+    assert captured["skills"] == ["/skills"]
+    assert captured["memory"] == ["/memory/AGENTS.md"]
+    assert (tmp_path / "sandbox" / "workspaces" / str(thread_id)).is_dir()
+    assert (tmp_path / "sandbox" / "skills").is_dir()
+    assert (tmp_path / "sandbox" / "memory").is_dir()
 
 
 def test_agent_thread_id_isolated_by_group_and_user():

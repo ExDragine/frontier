@@ -39,6 +39,21 @@ class _DummyPersistentClient:
         pass
 
 
+class _DummyFilesystemBackend:
+    def __init__(self, **kw):
+        self.kwargs = kw
+        self.root_dir = kw.get("root_dir")
+        self.virtual_mode = kw.get("virtual_mode")
+
+
+class _DummyCompositeBackend:
+    def __init__(self, default, routes, **kw):
+        self.default = default
+        self.routes = routes
+        self.kwargs = kw
+        self.artifacts_root = kw.get("artifacts_root", "/")
+
+
 class _DummyModel:
     device = "cpu"
 
@@ -101,7 +116,9 @@ def _install_third_party_stubs():
     _install_stub("langchain_huggingface", HuggingFaceEmbeddings=_DummyEmbeddings)
     _install_stub("deepagents", create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}))
     _install_stub(
-        "deepagents.backends", FilesystemBackend=type("FilesystemBackend", (), {"__init__": lambda self, **_kw: None})
+        "deepagents.backends",
+        CompositeBackend=_DummyCompositeBackend,
+        FilesystemBackend=_DummyFilesystemBackend,
     )
     _install_stub(
         "langchain.agents",

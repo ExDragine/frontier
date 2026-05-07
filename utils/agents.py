@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from deepagents import create_deep_agent
-from deepagents.backends import FilesystemBackend
+from deepagents.backends import CompositeBackend, FilesystemBackend
 from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import (
     FilesystemFileSearchMiddleware,
@@ -26,6 +26,9 @@ from utils.llm_factory import create_llm, model_supports
 from utils.subagents import get_fact_check_subagent
 
 VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
+SKILLS_BACKEND_PATH = "/skills"
+MEMORY_BACKEND_PATH = "/memory"
+MEMORY_FILE_PATH = "/memory/AGENTS.md"
 
 
 def _configured_model_route(model: str) -> dict[str, str]:
@@ -153,13 +156,32 @@ def _agent_thread_id(user_id: str, group_id: int | None) -> uuid.UUID:
     return uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=scope)
 
 
+def _ensure_dir(path: str) -> str:
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _build_agent_backend(working_dir: str, thread_id: uuid.UUID) -> CompositeBackend:
+    workspace_dir = _ensure_dir(os.path.join(working_dir, "workspaces", str(thread_id)))
+    skills_dir = _ensure_dir(os.path.join(working_dir, "skills"))
+    memory_dir = _ensure_dir(os.path.join(working_dir, "memory"))
+
+    return CompositeBackend(
+        default=FilesystemBackend(root_dir=workspace_dir, virtual_mode=True),
+        routes={
+            f"{SKILLS_BACKEND_PATH}/": FilesystemBackend(root_dir=skills_dir, virtual_mode=True),
+            f"{MEMORY_BACKEND_PATH}/": FilesystemBackend(root_dir=memory_dir, virtual_mode=True),
+        },
+    )
+
+
 class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.all_tools
         self.subagents: list = [get_fact_check_subagent()]
         self.checkpoint = InMemorySaver()
         self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
-        self.backend = FilesystemBackend(root_dir=self.working_dir, virtual_mode=True)
+        _ensure_dir(self.working_dir)
 
     @staticmethod
     def load_system_prompt():
@@ -234,6 +256,9 @@ class FrontierCognitive:
             endpoint=EnvConfig.ADVAN_MODEL_ENDPOINT,
         )
         working_dir = getattr(self, "working_dir", os.path.join(os.getcwd(), "cache", "sandbox"))
+        thread_id = _agent_thread_id(user_id, group_id)
+        backend = _build_agent_backend(working_dir, thread_id)
+        workspace_dir = os.path.join(working_dir, "workspaces", str(thread_id))
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
@@ -247,15 +272,16 @@ class FrontierCognitive:
                 ),
                 ToolRetryMiddleware(),
                 ModelRetryMiddleware(),
-                FilesystemFileSearchMiddleware(root_path=working_dir),
+                FilesystemFileSearchMiddleware(root_path=workspace_dir),
             ],
-            skills=[os.path.join(working_dir, "skills")],
+            skills=[SKILLS_BACKEND_PATH],
+            memory=[MEMORY_FILE_PATH],
             interrupt_on={
                 "write_file": False,
                 "read_file": False,
                 "edit_file": False,
             },
-            backend=self.backend,
+            backend=backend,
             subagents=self.subagents,
             checkpointer=self.checkpoint,
             context_schema=CustomAgentState,
@@ -265,7 +291,7 @@ class FrontierCognitive:
         logger.info(f"Agent烧烤中~🍖 思考等级: {capability} 用户: {user_name} (ID: {user_id})")
         config: RunnableConfig = {
             "configurable": {
-                "thread_id": _agent_thread_id(user_id, group_id),
+                "thread_id": thread_id,
                 "user_id": user_id,
                 "group_id": group_id,
             }
