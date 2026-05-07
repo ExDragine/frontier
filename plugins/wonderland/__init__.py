@@ -30,6 +30,7 @@ video_rate_limiter = PaintRateLimiter()
 async def handle_painter(event: MessageEvent):
     if EnvConfig.PAINT_MODULE_ENABLED is False:
         await painter.finish("么得画了，等升级哇!")
+    await UniMessage.text("该方法将在近期弃用，请直接于小李子沟通进行画图").send()
     text, images, *_ = await message_extract(event.data.segments)
     quoted_images: list[bytes] = []
     if reply_seq := reply_seq_from_segments(event.data.segments):
@@ -64,7 +65,7 @@ async def handle_painter(event: MessageEvent):
 async def handle_video(event: MessageEvent):
     if EnvConfig.VIDEO_MODULE_ENABLED is False:
         await videographer.finish("视频功能没开")
-
+    await UniMessage.text("该方法将在近期弃用，请直接于小李子沟通进行视频生成").send()
     text, images, _audio, videos = await message_extract(event.data.segments)
     prompt = strip_video_prompt(text)
     if not prompt:
