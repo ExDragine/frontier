@@ -97,6 +97,31 @@ async def test_select_by_msg_id_returns_message_from_same_group(monkeypatch, mem
 
 
 @pytest.mark.asyncio
+async def test_search_messages_filters_history_by_scope_name_id_and_content(monkeypatch, memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+
+    await database.insert(1000, 10, 1, 123, "Alice", "user", "今天讨论 Python 搜索")
+    await database.insert(2000, 11, 2, 123, "Bob", "user", "无关内容")
+    await database.insert(3000, 12, 1, 123, "Alice", "user", "另一个 keyword")
+    await database.insert(4000, 13, 3, 999, "Mallory", "user", "Python 但在其他群")
+    await database.insert(5000, 14, 1, None, "Alice", "user", "private Python")
+
+    group_content = await database.search_messages(group_id=123, user_id=1, content_query="Python", limit=10)
+    assert [message.msg_id for message in group_content] == [10]
+
+    alice_messages = await database.search_messages(group_id=123, user_id=1, target_user_name="Ali", limit=10)
+    assert [message.msg_id for message in alice_messages] == [12, 10]
+
+    exact_message = await database.search_messages(group_id=123, user_id=1, msg_id=11, limit=10)
+    assert [message.user_name for message in exact_message] == ["Bob"]
+
+    private_messages = await database.search_messages(group_id=None, user_id=1, content_query="Python", limit=10)
+    assert [message.msg_id for message in private_messages] == [14]
+
+
+@pytest.mark.asyncio
 async def test_event_database_ops(monkeypatch, memory_engine):
     database = db_module.EventDatabase()
     database.engine = memory_engine

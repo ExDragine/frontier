@@ -154,7 +154,7 @@ class MessageDatabase:
     def load_image_files(self, image_records: list[MessageImage]) -> tuple[list[bytes], int]:
         return self._load_image_files(image_records)
 
-    async def prepare_message(
+    async def prepare_message(  # noqa: C901
         self,
         user_id: int | None = None,
         group_id: int | None = None,
@@ -296,6 +296,51 @@ class MessageDatabase:
             elif user_id is not None:
                 statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
             statement = statement.order_by(Message.time).limit(limit)
+            return session.exec(statement).all()
+
+    @staticmethod
+    def _like_pattern(value: str) -> str:
+        escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return f"%{escaped}%"
+
+    async def search_messages(
+        self,
+        *,
+        group_id: int | None,
+        user_id: int | None,
+        content_query: str | None = None,
+        target_user_id: int | None = None,
+        target_user_name: str | None = None,
+        msg_id: int | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
+        limit: int = 50,
+    ) -> list[Message]:
+        with Session(self.engine) as session:
+            statement = select(Message)
+            if group_id is None:
+                if user_id is None:
+                    return []
+                statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
+                if target_user_id is not None and target_user_id != user_id:
+                    return []
+            else:
+                statement = statement.where(Message.group_id == group_id)
+                if target_user_id is not None:
+                    statement = statement.where(Message.user_id == target_user_id)
+
+            if content_query:
+                statement = statement.where(col(Message.content).like(self._like_pattern(content_query), escape="\\"))
+            if target_user_name:
+                statement = statement.where(col(Message.user_name).like(self._like_pattern(target_user_name), escape="\\"))
+            if msg_id is not None:
+                statement = statement.where(Message.msg_id == msg_id)
+            if start_time is not None:
+                statement = statement.where(Message.time >= start_time)
+            if end_time is not None:
+                statement = statement.where(Message.time <= end_time)
+
+            statement = statement.order_by(desc(Message.time)).limit(max(1, min(limit, 500)))
             return session.exec(statement).all()
 
     @staticmethod
