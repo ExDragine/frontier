@@ -14,11 +14,11 @@ async def _noop(*_args, **_kwargs):
 
 
 @pytest.mark.asyncio
-async def test_fireside_saves_images_without_scheduling_summary(monkeypatch):  # noqa: C901
+async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import fireside
+    from plugins import agent
 
     calls = {"insert_images": 0, "schedule_summary": 0}
     captured = {}
@@ -60,18 +60,18 @@ async def test_fireside_saves_images_without_scheduling_summary(monkeypatch):  #
     def fake_schedule_summary(*_args, **_kwargs):
         calls["schedule_summary"] += 1
 
-    monkeypatch.setattr(fireside, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(fireside, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(fireside, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(fireside, "message_extract", fake_message_extract)
-    monkeypatch.setattr(fireside, "message_gateway", fake_message_gateway)
-    monkeypatch.setattr(fireside, "send_messages", fake_send_messages)
-    monkeypatch.setattr(fireside, "send_artifacts", fake_send_artifacts)
-    monkeypatch.setattr(fireside, "schedule_image_summary_write", fake_schedule_summary, raising=False)
-    monkeypatch.setattr(fireside.EnvConfig, "IMAGE_ENABLED", True)
-    monkeypatch.setattr(fireside.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(fireside.EnvConfig, "AGENT_CAPABILITY", "none")
-    monkeypatch.setattr(fireside.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "message_extract", fake_message_extract)
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "send_messages", fake_send_messages)
+    monkeypatch.setattr(agent, "send_artifacts", fake_send_artifacts)
+    monkeypatch.setattr(agent, "schedule_image_summary_write", fake_schedule_summary, raising=False)
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -112,11 +112,11 @@ async def test_fireside_saves_images_without_scheduling_summary(monkeypatch):  #
 
 
 @pytest.mark.asyncio
-async def test_fireside_appends_local_quoted_text_to_current_message(monkeypatch):  # noqa: C901
+async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch):  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import fireside
+    from plugins import agent
 
     captured = {}
 
@@ -159,15 +159,15 @@ async def test_fireside_appends_local_quoted_text_to_current_message(monkeypatch
         async def send_group_message_reaction(self, **_kwargs):
             return None
 
-    monkeypatch.setattr(fireside, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(fireside, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(fireside, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(fireside, "send_messages", _noop)
-    monkeypatch.setattr(fireside, "send_artifacts", _noop)
-    monkeypatch.setattr(fireside.EnvConfig, "IMAGE_ENABLED", True)
-    monkeypatch.setattr(fireside.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(fireside.EnvConfig, "AGENT_CAPABILITY", "none")
-    monkeypatch.setattr(fireside.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "send_messages", _noop)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -211,11 +211,11 @@ async def test_fireside_appends_local_quoted_text_to_current_message(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_fireside_fetches_missing_quoted_image_from_milky(monkeypatch):  # noqa: C901
+async def test_agent_fetches_missing_quoted_image_from_milky(monkeypatch):  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import fireside
+    from plugins import agent
 
     captured = {"restored_images": []}
 
@@ -306,16 +306,18 @@ async def test_fireside_fetches_missing_quoted_image_from_milky(monkeypatch):  #
             raise RuntimeError("expired")
         return types.SimpleNamespace(content=b"quoted-image")
 
-    monkeypatch.setattr(fireside, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(fireside, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(fireside, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(fireside, "send_messages", _noop)
-    monkeypatch.setattr(fireside, "send_artifacts", _noop)
-    monkeypatch.setattr(fireside.build_reply_context.__globals__["_message_utils"](), "httpx_client", types.SimpleNamespace(get=fake_get))
-    monkeypatch.setattr(fireside.EnvConfig, "IMAGE_ENABLED", True)
-    monkeypatch.setattr(fireside.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(fireside.EnvConfig, "AGENT_CAPABILITY", "none")
-    monkeypatch.setattr(fireside.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "send_messages", _noop)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(
+        agent.build_reply_context.__globals__["_message_utils"](), "httpx_client", types.SimpleNamespace(get=fake_get)
+    )
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",

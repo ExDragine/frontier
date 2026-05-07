@@ -8,7 +8,7 @@ from nonebot.adapters.milky.model.message import IncomingMessage
 from nonebot_plugin_alconna import UniMessage
 from nonebug import App
 
-from plugins.watchtower import on_startup
+from plugins.toolbox import on_startup
 
 
 @pytest.mark.asyncio
@@ -30,7 +30,7 @@ async def test_handle_setting_default(monkeypatch):
     async def fake_message_extract(*_args, **_kwargs):
         return "", [], [], []
 
-    monkeypatch.setattr("plugins.watchtower.message_extract", fake_message_extract)
+    monkeypatch.setattr("plugins.toolbox.message_extract", fake_message_extract)
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()

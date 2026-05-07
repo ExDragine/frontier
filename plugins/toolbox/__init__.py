@@ -8,7 +8,7 @@ from nonebot import get_driver, logger, on_command, require
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.permission import SUPERUSER
 
-from plugins.watchtower.environment_check import system_check
+from plugins.toolbox.environment_check import system_check
 from utils.configs import EnvConfig
 from utils.message import (
     message_extract,

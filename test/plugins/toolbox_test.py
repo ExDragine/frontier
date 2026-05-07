@@ -2,9 +2,7 @@
 
 import types
 
-import pytest
-
-from plugins.watchtower import environment_check
+from plugins.toolbox import environment_check
 
 
 def test_cpu_check_fallback(monkeypatch):
