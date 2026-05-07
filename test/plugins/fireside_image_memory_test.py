@@ -21,6 +21,7 @@ async def test_fireside_saves_images_without_scheduling_summary(monkeypatch):  #
     from plugins import fireside
 
     calls = {"insert_images": 0, "schedule_summary": 0}
+    captured = {}
 
     class DummyMessagesDb:
         async def insert(self, **_kwargs):
@@ -34,7 +35,10 @@ async def test_fireside_saves_images_without_scheduling_summary(monkeypatch):  #
             return []
 
     class DummyCognitive:
-        async def chat_agent(self, *_args, **_kwargs):
+        async def chat_agent(self, *_args, **kwargs):
+            captured["image_inputs"] = kwargs.get("image_inputs")
+            captured["video_inputs"] = kwargs.get("video_inputs")
+            captured["query_text"] = kwargs.get("query_text")
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
 
     class DummyBot:
@@ -42,7 +46,7 @@ async def test_fireside_saves_images_without_scheduling_summary(monkeypatch):  #
             return None
 
     async def fake_message_extract(_segments):
-        return "hi", [b"image-bytes"], [], []
+        return "hi", [b"image-bytes"], [], [b"video-bytes"]
 
     async def fake_message_gateway(_event, _messages):
         return True
@@ -102,6 +106,9 @@ async def test_fireside_saves_images_without_scheduling_summary(monkeypatch):  #
 
     assert calls["insert_images"] == 1
     assert calls["schedule_summary"] == 0
+    assert captured["image_inputs"] == [b"image-bytes"]
+    assert captured["video_inputs"] == [b"video-bytes"]
+    assert captured["query_text"] == "hi\n[视频]"
 
 
 @pytest.mark.asyncio

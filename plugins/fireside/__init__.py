@@ -53,13 +53,15 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     user_id = event.get_user_id()
     user_name = event.data.sender.nickname
     event_id = event.data.message_seq
-    text, images, *_ = await message_extract(event.data.segments)
+    text, images, _audio, videos = await message_extract(event.data.segments)
     group_id = event.data.group.group_id if event.data.group else None
     quoted_images: list[bytes] = []
     if reply_seq := reply_seq_from_segments(event.data.segments):
         quote_text, quoted_images = await build_reply_context(bot, event, reply_seq, group_id, messages_db)
         if quote_text:
             text += quote_text
+    if videos:
+        text = f"{text}\n{' '.join('[视频]' for _ in videos)}".strip()
     if not text:
         if not event.is_tome():
             await common.finish()
@@ -174,6 +176,8 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         capability,
         group_id=group_id,
         query_text=text,
+        image_inputs=quoted_images + images,
+        video_inputs=videos,
     )
 
     if isinstance(result, dict) and "response" in result:

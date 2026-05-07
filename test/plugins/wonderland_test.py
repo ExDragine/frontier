@@ -9,7 +9,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from pydantic import SecretStr
 
 
 class DummyUniMessage:
@@ -154,6 +153,14 @@ def test_strip_video_prompt_handles_prefixed_text(load_wonderland_module):
     assert wonderland.strip_video_prompt("视频 一匹马") == "一匹马"
 
 
+def test_wonderland_video_uses_shared_service_backend(load_wonderland_module):
+    wonderland = load_wonderland_module()
+
+    assert not hasattr(wonderland, "_generate_video_sync")
+    assert not hasattr(wonderland, "_video_result_from_generated_video")
+    assert wonderland.generate_video.__module__ == "utils.video_service"
+
+
 @pytest.mark.asyncio
 async def test_handle_video_sends_generated_video(load_wonderland_module, monkeypatch):
     wonderland = load_wonderland_module()
@@ -167,8 +174,10 @@ async def test_handle_video_sends_generated_video(load_wonderland_module, monkey
     async def fake_message_extract(_segments):
         return "/video a happy horse", [], [], []
 
-    async def fake_generate_video(prompt):
+    async def fake_generate_video(prompt, *, image=None, video=None):
         assert prompt == "a happy horse"
+        assert image is None
+        assert video is None
         return wonderland.VideoGenerationResult(raw=b"generated-video")
 
     event = SimpleNamespace(
@@ -194,6 +203,92 @@ async def test_handle_video_sends_generated_video(load_wonderland_module, monkey
         [{"reply": "456"}, "视频生成OK了"],
         {"video_url": None, "video_raw": b"generated-video"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_handle_video_passes_current_image_to_shared_service(load_wonderland_module, monkeypatch):
+    wonderland = load_wonderland_module()
+    captured = {}
+
+    class CapturingUniMessage(DummyUniMessage):
+        async def send(self):
+            return None
+
+    async def fake_message_extract(_segments):
+        return "/video make this move", [b"current-image"], [], []
+
+    async def fake_generate_video(prompt, *, image=None, video=None):
+        captured["prompt"] = prompt
+        captured["image"] = image
+        captured["video"] = video
+        return wonderland.VideoGenerationResult(raw=b"generated-video")
+
+    event = SimpleNamespace(
+        data=SimpleNamespace(
+            segments=[
+                {"type": "text", "data": {"text": "/video make this move"}},
+                {"type": "image", "data": {"temp_url": "https://example.com/image.jpg"}},
+            ],
+            group=SimpleNamespace(group_id=123),
+            message_seq=456,
+        ),
+        get_user_id=lambda: "10001",
+    )
+
+    monkeypatch.setattr(wonderland, "message_extract", fake_message_extract)
+    monkeypatch.setattr(wonderland, "generate_video", fake_generate_video)
+    monkeypatch.setattr(wonderland, "UniMessage", CapturingUniMessage)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_MODULE_ENABLED", True, raising=False)
+    monkeypatch.setattr(wonderland, "video_rate_limiter", wonderland.PaintRateLimiter())
+
+    await wonderland.handle_video(event)
+
+    assert captured["prompt"] == "make this move"
+    assert captured["image"] == wonderland.MediaReference(data=b"current-image", mime_type="image/jpeg")
+    assert captured["video"] is None
+
+
+@pytest.mark.asyncio
+async def test_handle_video_passes_current_video_to_shared_service(load_wonderland_module, monkeypatch):
+    wonderland = load_wonderland_module()
+    captured = {}
+
+    class CapturingUniMessage(DummyUniMessage):
+        async def send(self):
+            return None
+
+    async def fake_message_extract(_segments):
+        return "/video extend it", [], [], [b"current-video"]
+
+    async def fake_generate_video(prompt, *, image=None, video=None):
+        captured["prompt"] = prompt
+        captured["image"] = image
+        captured["video"] = video
+        return wonderland.VideoGenerationResult(raw=b"generated-video")
+
+    event = SimpleNamespace(
+        data=SimpleNamespace(
+            segments=[
+                {"type": "text", "data": {"text": "/video extend it"}},
+                {"type": "video", "data": {"temp_url": "https://example.com/video.mp4"}},
+            ],
+            group=SimpleNamespace(group_id=123),
+            message_seq=456,
+        ),
+        get_user_id=lambda: "10001",
+    )
+
+    monkeypatch.setattr(wonderland, "message_extract", fake_message_extract)
+    monkeypatch.setattr(wonderland, "generate_video", fake_generate_video)
+    monkeypatch.setattr(wonderland, "UniMessage", CapturingUniMessage)
+    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_MODULE_ENABLED", True, raising=False)
+    monkeypatch.setattr(wonderland, "video_rate_limiter", wonderland.PaintRateLimiter())
+
+    await wonderland.handle_video(event)
+
+    assert captured["prompt"] == "extend it"
+    assert captured["image"] is None
+    assert captured["video"] == wonderland.MediaReference(data=b"current-video", mime_type="video/mp4")
 
 
 @pytest.mark.asyncio
@@ -239,86 +334,3 @@ async def test_handle_video_rate_limits_by_user_before_generation(load_wonderlan
     await wonderland.handle_video(event)
 
     assert sent_messages == ["视频生成得太快了，120 秒后再试吧"]
-
-
-def test_generate_video_uses_happyhorse_vertex_gateway(load_wonderland_module, monkeypatch):
-    wonderland = load_wonderland_module()
-    calls = {}
-
-    class DummyHttpOptions:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-    class DummyModels:
-        def generate_videos(self, **kwargs):
-            calls["generate_videos"] = kwargs
-            return SimpleNamespace(done=False)
-
-    class DummyOperations:
-        def get(self, *, operation):
-            calls["operation"] = operation
-            video = SimpleNamespace(video_bytes=b"happyhorse-video")
-            return SimpleNamespace(
-                done=True,
-                result=SimpleNamespace(generated_videos=[SimpleNamespace(video=video)]),
-            )
-
-    class DummyClient:
-        def __init__(self, **kwargs):
-            calls["client"] = kwargs
-            self.models = DummyModels()
-            self.operations = DummyOperations()
-            self.closed = False
-
-        def close(self):
-            self.closed = True
-            calls["closed"] = True
-
-    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_MODEL", "alibaba/happyhorse-1.0", raising=False)
-    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_BASE_URL", "https://zenmux.ai/api/vertex-ai", raising=False)
-    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_API_KEY", SecretStr("sk-video"), raising=False)
-    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_POLL_INTERVAL_SECONDS", 0, raising=False)
-    monkeypatch.setattr(wonderland.EnvConfig, "VIDEO_POLL_TIMEOUT_SECONDS", 30, raising=False)
-    monkeypatch.setattr(wonderland, "genai", SimpleNamespace(Client=DummyClient))
-    monkeypatch.setattr(wonderland, "genai_types", SimpleNamespace(HttpOptions=DummyHttpOptions))
-
-    result = wonderland._generate_video_sync("a happy horse")
-
-    assert result == wonderland.VideoGenerationResult(raw=b"happyhorse-video")
-    assert calls["client"]["api_key"] == "sk-video"
-    assert calls["client"]["vertexai"] is True
-    assert calls["client"]["http_options"].kwargs == {
-        "api_version": "v1",
-        "base_url": "https://zenmux.ai/api/vertex-ai",
-    }
-    assert calls["generate_videos"] == {
-        "model": "alibaba/happyhorse-1.0",
-        "prompt": "a happy horse",
-    }
-    assert calls["closed"] is True
-
-
-def test_video_result_from_generated_video_uses_http_url(load_wonderland_module):
-    wonderland = load_wonderland_module()
-
-    result = wonderland._video_result_from_generated_video(
-        SimpleNamespace(),
-        SimpleNamespace(video=SimpleNamespace(uri="https://example.com/video.mp4")),
-    )
-
-    assert result == wonderland.VideoGenerationResult(url="https://example.com/video.mp4")
-
-
-def test_get_video_operation_supports_older_sdk_method(load_wonderland_module):
-    wonderland = load_wonderland_module()
-    operation = SimpleNamespace(name="operations/123")
-    updated_operation = SimpleNamespace(done=True)
-
-    class DummyOperations:
-        def get_videos_operation(self, *, operation):
-            assert operation.name == "operations/123"
-            return updated_operation
-
-    result = wonderland._get_video_operation(SimpleNamespace(operations=DummyOperations()), operation)
-
-    assert result is updated_operation

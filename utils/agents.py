@@ -144,6 +144,8 @@ async def assistant_agent(
 class CustomAgentState(AgentState):
     user_id: str
     group_id: int
+    image_inputs: list[bytes]
+    video_inputs: list[bytes]
 
 
 def _agent_thread_id(user_id: str, group_id: int | None) -> uuid.UUID:
@@ -157,7 +159,7 @@ class FrontierCognitive:
         self.subagents: list = [get_fact_check_subagent()]
         self.checkpoint = InMemorySaver()
         self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
-        self.backend = FilesystemBackend(self.working_dir, virtual_mode=True)
+        self.backend = FilesystemBackend(root_dir=self.working_dir, virtual_mode=True)
 
     @staticmethod
     def load_system_prompt():
@@ -210,6 +212,8 @@ class FrontierCognitive:
         capability: str = "none",
         group_id: int | None = None,
         query_text: str = "",
+        image_inputs: list[bytes] | None = None,
+        video_inputs: list[bytes] | None = None,
     ):
         model_kwargs: dict = {
             "model": EnvConfig.ADVAN_MODEL,
@@ -229,6 +233,7 @@ class FrontierCognitive:
             EnvConfig.ADVAN_MODEL,
             endpoint=EnvConfig.ADVAN_MODEL_ENDPOINT,
         )
+        working_dir = getattr(self, "working_dir", os.path.join(os.getcwd(), "cache", "sandbox"))
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
@@ -242,9 +247,9 @@ class FrontierCognitive:
                 ),
                 ToolRetryMiddleware(),
                 ModelRetryMiddleware(),
-                FilesystemFileSearchMiddleware(root_path=self.working_dir),
+                FilesystemFileSearchMiddleware(root_path=working_dir),
             ],
-            skills=[os.path.join(self.working_dir, "skills")],
+            skills=[os.path.join(working_dir, "skills")],
             interrupt_on={
                 "write_file": False,
                 "read_file": False,
@@ -267,7 +272,13 @@ class FrontierCognitive:
         }
         try:
             response = await agent.ainvoke(
-                {"messages": messages, "user_id": user_id, "group_id": group_id},
+                {
+                    "messages": messages,
+                    "user_id": user_id,
+                    "group_id": group_id,
+                    "image_inputs": image_inputs or [],
+                    "video_inputs": video_inputs or [],
+                },
                 config=config,
             )
         except Exception as e:
