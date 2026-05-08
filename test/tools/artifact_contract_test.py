@@ -3,7 +3,7 @@
 import ast
 from pathlib import Path
 
-MAIN_ARTIFACT_MODULES = {"adapter", "artifact_bridge"}
+MAIN_ARTIFACT_MODULES = {"adapter", "artifact_bridge", "paint", "video"}
 
 
 def _is_content_and_artifact_tool(function: ast.AsyncFunctionDef) -> bool:

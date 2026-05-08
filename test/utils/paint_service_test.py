@@ -190,6 +190,7 @@ async def test_paint_uses_images_edit_with_reference_images(monkeypatch):
             calls["client"] = kwargs
             self.images = DummyImages()
 
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "https://paint.example.com/v1")
     monkeypatch.setattr(paint_service, "AsyncClient", DummyClient)
 
     result = await paint_service.paint("turn it into watercolor", [_tiny_png_bytes()])
@@ -216,6 +217,7 @@ async def test_paint_returns_none_when_images_api_fails(monkeypatch):
         def __init__(self, **_kwargs):
             self.images = DummyImages()
 
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "https://paint.example.com/v1")
     monkeypatch.setattr(paint_service, "AsyncClient", DummyClient)
 
     result = await paint_service.paint("a crystal fox")

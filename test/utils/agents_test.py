@@ -235,7 +235,7 @@ def test_domain_subagents_use_grouped_tools(monkeypatch):
         "research": ["research-tool"],
         "astro": ["astro-tool"],
         "earth": ["earth-tool"],
-        "media": ["media-tool"],
+        "media": [],
         "memory": ["memory-tool"],
         "divination": ["divination-tool"],
         "external": ["external-tool"],
@@ -251,7 +251,7 @@ def test_domain_subagents_use_grouped_tools(monkeypatch):
     assert by_name["research_agent"]["tools"] == ["research-tool"]
     assert by_name["astro_agent"]["tools"] == ["astro-tool"]
     assert by_name["earth_agent"]["tools"] == ["earth-tool"]
-    assert by_name["media_agent"]["tools"] == ["media-tool"]
+    assert "media_agent" not in by_name
     assert by_name["memory_agent"]["tools"] == ["memory-tool"]
     assert by_name["divination_agent"]["tools"] == ["divination-tool"]
     assert by_name["external_agent"]["tools"] == ["external-tool"]

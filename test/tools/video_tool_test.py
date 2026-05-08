@@ -27,6 +27,8 @@ async def test_get_video_uses_shared_video_service(load_tool_module, monkeypatch
 
     assert captured == {"prompt": "a happy horse", "image": None, "video": None}
     assert "视频生成OK了" in text
+    assert "send_staged_artifact" not in text
+    assert "staged_artifact" not in text
     assert artifact.content["raw"] == b"generated-video"
 
 

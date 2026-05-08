@@ -15,13 +15,12 @@ The first split is module based and intentionally conservative:
 - `research`: `arxiv`, `bilibili`, `wikipedia`, `tavily`
 - `astro`: `aurora`, `comet`, `heavens_above`, `rocket`, `satellite`, `space_weather`
 - `earth`: `earthquake`, `radar`, `weather`
-- `media`: `paint`, `video`
+- `main`: `adapter`, `calculator`, `reminder`, `paint`, `video`
 - `memory`: `message_summary`
 - `divination`: `iching`, `tarot`
 - `external`: MCP tools whose runtime names are not known during local module discovery
-- `main`: `adapter`, `calculator`, `reminder`
 
-The `adapter` tools stay on the main agent because they construct outgoing `UniMessage` artifacts. This avoids depending on subagent artifact propagation in the first pass.
+The `adapter` tools stay on the main agent because they construct outgoing `UniMessage` artifacts. `paint` and `video` also stay on the main agent because they need direct access to the current multimodal message state (`image_inputs`, `video_inputs`, and image message parts), which subagent handoffs do not preserve reliably.
 
 ## Architecture
 

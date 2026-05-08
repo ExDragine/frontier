@@ -143,6 +143,7 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "aurora": types.SimpleNamespace(aurora_live=FakeBaseTool("aurora_live")),
         "earthquake": types.SimpleNamespace(get_china_earthquake=FakeBaseTool("get_china_earthquake")),
         "paint": types.SimpleNamespace(get_paint=FakeBaseTool("get_paint")),
+        "video": types.SimpleNamespace(get_video=FakeBaseTool("get_video")),
         "message_summary": types.SimpleNamespace(search_messages=FakeBaseTool("search_messages")),
         "iching": types.SimpleNamespace(iching_divination=FakeBaseTool("iching_divination")),
         "unknown_local": types.SimpleNamespace(mystery_tool=FakeBaseTool("mystery_tool")),
@@ -181,12 +182,14 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "send_image",
         "send_staged_artifact",
         "simple_calculator",
+        "get_paint",
+        "get_video",
         "mystery_tool",
     }
     assert {tool.name for tool in groups["research"]} == {"get_arxiv_paper_info", "tavily_search"}
     assert {tool.name for tool in groups["astro"]} == {"aurora_live"}
     assert {tool.name for tool in groups["earth"]} == {"get_china_earthquake"}
-    assert {tool.name for tool in groups["media"]} == {"get_paint"}
+    assert {tool.name for tool in groups["media"]} == set()
     assert {tool.name for tool in groups["memory"]} == {"search_messages"}
     assert {tool.name for tool in groups["divination"]} == {"iching_divination"}
     assert {tool.name for tool in groups["external"]} == {"mcp_tool"}

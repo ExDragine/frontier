@@ -123,19 +123,6 @@ def get_earth_subagent() -> dict:
     )
 
 
-def get_media_subagent() -> dict:
-    return _domain_subagent(
-        name="media_agent",
-        description="Create images or videos from user prompts and available reference media.",
-        system_prompt="""
-        You are a media generation subagent.
-        Use image and video generation tools when the user asks to create or transform media.
-        Return the tool result clearly and do not use adapter/send tools directly.
-    """,
-        tools=_tools_for("media"),
-    )
-
-
 def get_memory_subagent() -> dict:
     return _domain_subagent(
         name="memory_agent",
@@ -182,7 +169,6 @@ def get_domain_subagents() -> list[dict]:
         get_research_subagent(),
         get_astro_subagent(),
         get_earth_subagent(),
-        get_media_subagent(),
         get_memory_subagent(),
         get_divination_subagent(),
         get_external_subagent(),

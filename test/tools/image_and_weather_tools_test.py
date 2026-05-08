@@ -29,10 +29,7 @@ async def test_get_paint_generate_uses_shared_paint_service(load_tool_module, mo
 
 
 @pytest.mark.asyncio
-async def test_get_paint_stages_generated_artifact_for_main_agent(load_tool_module, monkeypatch, tmp_path):
-    from utils import staged_artifacts
-
-    monkeypatch.setattr(staged_artifacts, "STAGED_ARTIFACTS_DIR", tmp_path)
+async def test_get_paint_returns_direct_artifact_without_staged_handoff(load_tool_module, monkeypatch):
     mod = load_tool_module("paint")
 
     async def fake_paint(_prompt, _reference_images):
@@ -44,9 +41,8 @@ async def test_get_paint_stages_generated_artifact_for_main_agent(load_tool_modu
     text, artifact = await mod.get_paint("a cat")
 
     assert artifact.content["raw"] == b"img"
-    assert "send_staged_artifact" in text
-    artifact_id = text.split('artifact_id="', 1)[1].split('"', 1)[0]
-    assert (tmp_path / artifact_id / "manifest.json").is_file()
+    assert "send_staged_artifact" not in text
+    assert "staged_artifact" not in text
 
 
 @pytest.mark.asyncio
