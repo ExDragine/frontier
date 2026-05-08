@@ -23,7 +23,7 @@ from nonebot import logger
 from tools import agent_tools
 from utils.configs import EnvConfig
 from utils.llm_factory import create_llm, model_supports
-from utils.subagents import get_fact_check_subagent
+from utils.subagents import get_domain_subagents
 
 VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 SKILLS_BACKEND_PATH = "/skills"
@@ -177,8 +177,8 @@ def _build_agent_backend(working_dir: str, thread_id: uuid.UUID) -> CompositeBac
 
 class FrontierCognitive:
     def __init__(self):
-        self.tools = agent_tools.all_tools
-        self.subagents: list = [get_fact_check_subagent()]
+        self.tools = agent_tools.main_tools
+        self.subagents: list = get_domain_subagents()
         self.checkpoint = InMemorySaver()
         self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
         _ensure_dir(self.working_dir)

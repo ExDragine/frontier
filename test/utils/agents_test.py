@@ -153,6 +153,47 @@ def test_subagents_model_uses_basic_provider_endpoint(monkeypatch):
     assert created_kwargs.get("endpoint") == "anthropic_proxy"
 
 
+def test_domain_subagents_use_grouped_tools(monkeypatch):
+    import utils.subagents as subagents_module
+
+    grouped_tools = {
+        "research": ["research-tool"],
+        "astro": ["astro-tool"],
+        "earth": ["earth-tool"],
+        "media": ["media-tool"],
+        "memory": ["memory-tool"],
+        "divination": ["divination-tool"],
+        "external": ["external-tool"],
+    }
+    monkeypatch.setattr(subagents_module.agent_tools, "subagent_tools", grouped_tools, raising=False)
+    monkeypatch.setattr(subagents_module.agent_tools, "web_tools", ["web-tool"], raising=False)
+
+    subagents = subagents_module.get_domain_subagents()
+    by_name = {item["name"]: item for item in subagents}
+
+    assert by_name["general-purpose"]["tools"] == []
+    assert by_name["fact_check_agent"]["tools"] == ["web-tool"]
+    assert by_name["research_agent"]["tools"] == ["research-tool"]
+    assert by_name["astro_agent"]["tools"] == ["astro-tool"]
+    assert by_name["earth_agent"]["tools"] == ["earth-tool"]
+    assert by_name["media_agent"]["tools"] == ["media-tool"]
+    assert by_name["memory_agent"]["tools"] == ["memory-tool"]
+    assert by_name["divination_agent"]["tools"] == ["divination-tool"]
+    assert by_name["external_agent"]["tools"] == ["external-tool"]
+
+
+def test_frontier_cognitive_uses_main_tools_and_domain_subagents(monkeypatch):
+    domain_subagents = [{"name": "research_agent", "tools": ["research-tool"]}]
+    monkeypatch.setattr(agents.agent_tools, "all_tools", ["all-tool"], raising=False)
+    monkeypatch.setattr(agents.agent_tools, "main_tools", ["main-tool"], raising=False)
+    monkeypatch.setattr(agents, "get_domain_subagents", lambda: domain_subagents, raising=False)
+
+    frontier = agents.FrontierCognitive()
+
+    assert frontier.tools == ["main-tool"]
+    assert frontier.subagents == domain_subagents
+
+
 @pytest.mark.asyncio
 async def test_assistant_agent_uses_basic_model_config(monkeypatch):
     import builtins

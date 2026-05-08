@@ -19,6 +19,34 @@ model = create_llm(
 )
 
 
+def _tools_for(group: str) -> list:
+    return list(agent_tools.subagent_tools.get(group, []))
+
+
+def _domain_subagent(name: str, description: str, system_prompt: str, tools: list) -> dict:
+    return {
+        "name": name,
+        "description": description,
+        "system_prompt": system_prompt,
+        "tools": tools,
+        "model": model,
+    }
+
+
+def get_general_purpose_subagent() -> dict:
+    return _domain_subagent(
+        name="general-purpose",
+        description="Handle general reasoning tasks that do not require specialized tools.",
+        system_prompt="""
+        You are a general-purpose reasoning subagent.
+        Help with analysis, decomposition, and drafting when no specialized tool is required.
+        Do not claim to have used tools; you have no tools available.
+        Keep responses concise and hand results back to the main agent.
+    """,
+        tools=[],
+    )
+
+
 def get_fact_check_subagent() -> dict:
     current_time = datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
     return {
@@ -47,3 +75,109 @@ def get_fact_check_subagent() -> dict:
         # "middleware": [],
         # "interrupt_on": {},
     }
+
+
+def get_research_subagent() -> dict:
+    return _domain_subagent(
+        name="research_agent",
+        description="Search and summarize papers, web pages, encyclopedia entries, and online video metadata.",
+        system_prompt="""
+        You are a research subagent.
+        Use research and web retrieval tools to find relevant external information.
+        Prefer concise summaries with source context when available.
+        Do not perform media generation, reminders, or chat history search.
+    """,
+        tools=_tools_for("research"),
+    )
+
+
+def get_astro_subagent() -> dict:
+    return _domain_subagent(
+        name="astro_agent",
+        description="Handle astronomy, space weather, satellite imagery, rocket launch, and comet queries.",
+        system_prompt="""
+        You are an astronomy and space environment subagent.
+        Use the astronomy, satellite, space weather, and launch tools for domain-specific data.
+        Explain observations in plain language and include timestamps or data source context when returned by tools.
+    """,
+        tools=_tools_for("astro"),
+    )
+
+
+def get_earth_subagent() -> dict:
+    return _domain_subagent(
+        name="earth_agent",
+        description="Handle weather, radar, and earthquake information requests.",
+        system_prompt="""
+        You are an earth information subagent.
+        Use weather, radar, and earthquake tools to answer location and event questions.
+        Be explicit about locations, times, and uncertainty when tool outputs include them.
+    """,
+        tools=_tools_for("earth"),
+    )
+
+
+def get_media_subagent() -> dict:
+    return _domain_subagent(
+        name="media_agent",
+        description="Create images or videos from user prompts and available reference media.",
+        system_prompt="""
+        You are a media generation subagent.
+        Use image and video generation tools when the user asks to create or transform media.
+        Return the tool result clearly and do not use adapter/send tools directly.
+    """,
+        tools=_tools_for("media"),
+    )
+
+
+def get_memory_subagent() -> dict:
+    return _domain_subagent(
+        name="memory_agent",
+        description="Search and summarize stored chat history for the current conversation scope.",
+        system_prompt="""
+        You are a chat history memory subagent.
+        Use message summary and search tools to answer questions about stored chat records.
+        Respect the current group or private-message scope enforced by the tools.
+    """,
+        tools=_tools_for("memory"),
+    )
+
+
+def get_divination_subagent() -> dict:
+    return _domain_subagent(
+        name="divination_agent",
+        description="Handle tarot and I Ching divination requests.",
+        system_prompt="""
+        You are a divination subagent.
+        Use tarot and I Ching tools only when the user explicitly asks for divination, spreads, hexagrams, or readings.
+        Keep results framed as entertainment or cultural interpretation rather than factual prediction.
+    """,
+        tools=_tools_for("divination"),
+    )
+
+
+def get_external_subagent() -> dict:
+    return _domain_subagent(
+        name="external_agent",
+        description="Use externally configured MCP tools when no local domain subagent fits the request.",
+        system_prompt="""
+        You are an external tools subagent.
+        Use MCP-provided tools for external services that are not covered by local domain agents.
+        Summarize tool results and hand them back to the main agent.
+    """,
+        tools=_tools_for("external"),
+    )
+
+
+def get_domain_subagents() -> list[dict]:
+    return [
+        get_general_purpose_subagent(),
+        get_fact_check_subagent(),
+        get_research_subagent(),
+        get_astro_subagent(),
+        get_earth_subagent(),
+        get_media_subagent(),
+        get_memory_subagent(),
+        get_divination_subagent(),
+        get_external_subagent(),
+    ]

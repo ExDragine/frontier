@@ -157,8 +157,18 @@ def _install_third_party_stubs():
     _install_stub(
         "tools.agent_tools",
         all_tools=[],
+        main_tools=[],
         web_tools=[],
         mcp_tools=[],
+        subagent_tools={
+            "research": [],
+            "astro": [],
+            "earth": [],
+            "media": [],
+            "memory": [],
+            "divination": [],
+            "external": [],
+        },
     )
 
     class _DummyScheduler:

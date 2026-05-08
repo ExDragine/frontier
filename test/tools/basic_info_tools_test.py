@@ -1,6 +1,10 @@
 # ruff: noqa: S101
 
+import importlib
+import importlib.util
 import json
+import sys
+import types
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -115,3 +119,74 @@ def test_mcp_get_tools(load_tool_module, monkeypatch):
     monkeypatch.setattr(mod, "client", DummyClient())
     tools = mod.mcp_get_tools()
     assert tools == ["a", "b"]
+
+
+def test_module_tools_groups_tools_by_domain(monkeypatch):
+    class FakeBaseTool:
+        def __init__(self, name: str):
+            self.name = name
+
+    langchain_tools = sys.modules.get("langchain.tools")
+    if langchain_tools is None:
+        langchain_tools = types.ModuleType("langchain.tools")
+        sys.modules["langchain.tools"] = langchain_tools
+    monkeypatch.setattr(langchain_tools, "BaseTool", FakeBaseTool, raising=False)
+
+    package_name = "test_tools_grouping_pkg"
+    tools_dir = Path(__file__).resolve().parents[2] / "tools"
+    fake_modules = {
+        "adapter": types.SimpleNamespace(send_image=FakeBaseTool("send_image")),
+        "calculator": types.SimpleNamespace(simple_calculator=FakeBaseTool("simple_calculator")),
+        "arxiv": types.SimpleNamespace(get_arxiv_paper_info=FakeBaseTool("get_arxiv_paper_info")),
+        "tavily": types.SimpleNamespace(tavily_search=FakeBaseTool("tavily_search")),
+        "aurora": types.SimpleNamespace(aurora_live=FakeBaseTool("aurora_live")),
+        "earthquake": types.SimpleNamespace(get_china_earthquake=FakeBaseTool("get_china_earthquake")),
+        "paint": types.SimpleNamespace(get_paint=FakeBaseTool("get_paint")),
+        "message_summary": types.SimpleNamespace(search_messages=FakeBaseTool("search_messages")),
+        "iching": types.SimpleNamespace(iching_divination=FakeBaseTool("iching_divination")),
+        "unknown_local": types.SimpleNamespace(mystery_tool=FakeBaseTool("mystery_tool")),
+    }
+
+    def fake_iter_modules(_paths):
+        return [types.SimpleNamespace(name=name) for name in fake_modules]
+
+    original_import_module = importlib.import_module
+
+    def fake_import_module(name, package=None):
+        if package == package_name and name.startswith("."):
+            return fake_modules[name[1:]]
+        return original_import_module(name, package)
+
+    monkeypatch.setattr("pkgutil.iter_modules", fake_iter_modules)
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    mcp_module = types.ModuleType(f"{package_name}.mcp_client")
+    mcp_module.mcp_get_tools = lambda: [FakeBaseTool("mcp_tool")]
+    monkeypatch.setitem(sys.modules, f"{package_name}.mcp_client", mcp_module)
+
+    spec = importlib.util.spec_from_file_location(
+        package_name,
+        tools_dir / "__init__.py",
+        submodule_search_locations=[str(tools_dir)],
+    )
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, package_name, module)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    groups = module.agent_tools.subagent_tools
+
+    assert {tool.name for tool in module.agent_tools.main_tools} == {
+        "send_image",
+        "simple_calculator",
+        "mystery_tool",
+    }
+    assert {tool.name for tool in groups["research"]} == {"get_arxiv_paper_info", "tavily_search"}
+    assert {tool.name for tool in groups["astro"]} == {"aurora_live"}
+    assert {tool.name for tool in groups["earth"]} == {"get_china_earthquake"}
+    assert {tool.name for tool in groups["media"]} == {"get_paint"}
+    assert {tool.name for tool in groups["memory"]} == {"search_messages"}
+    assert {tool.name for tool in groups["divination"]} == {"iching_divination"}
+    assert {tool.name for tool in groups["external"]} == {"mcp_tool"}
+    assert {tool.name for tool in module.agent_tools.web_tools} == {"tavily_search"}
+    assert "mcp_tool" in {tool.name for tool in module.agent_tools.all_tools}
