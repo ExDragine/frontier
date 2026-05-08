@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import os
 import time
@@ -17,7 +18,6 @@ from langchain.agents.middleware import (
 )
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint.memory import InMemorySaver
 from nonebot import logger
 
 from tools import agent_tools
@@ -182,9 +182,55 @@ class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.main_tools
         self.subagents: list = get_domain_subagents()
-        self.checkpoint = InMemorySaver()
+        self.checkpoint: Any | None = None
+        self._checkpoint_conn: Any | None = None
+        self._checkpoint_setup_lock: asyncio.Lock | None = None
+        self._checkpoint_db_path = EnvConfig.AGENT_CHECKPOINT_DB_PATH
+        self._checkpoint_busy_timeout_ms = EnvConfig.AGENT_CHECKPOINT_BUSY_TIMEOUT_MS
         self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
         _ensure_dir(self.working_dir)
+
+    async def setup_checkpoint(self):
+        if self.checkpoint is not None:
+            return self.checkpoint
+        if self._checkpoint_setup_lock is None:
+            self._checkpoint_setup_lock = asyncio.Lock()
+        async with self._checkpoint_setup_lock:
+            if self.checkpoint is not None:
+                return self.checkpoint
+
+            import aiosqlite
+            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+            db_path = os.path.abspath(self._checkpoint_db_path)
+            parent_dir = os.path.dirname(db_path)
+            if parent_dir:
+                _ensure_dir(parent_dir)
+            conn = await aiosqlite.connect(db_path)
+            try:
+                busy_timeout_ms = max(0, int(self._checkpoint_busy_timeout_ms))
+                await conn.execute(f"PRAGMA busy_timeout = {busy_timeout_ms}")
+                await conn.execute("PRAGMA synchronous=NORMAL")
+                await conn.execute("PRAGMA foreign_keys=ON")
+                await conn.commit()
+                checkpoint = AsyncSqliteSaver(conn)
+                await checkpoint.setup()
+            except Exception:
+                await conn.close()
+                raise
+
+            self._checkpoint_conn = conn
+            self.checkpoint = checkpoint
+            logger.info(f"✅ LangGraph checkpoint 已连接: {db_path}")
+            return checkpoint
+
+    async def aclose_checkpoint(self):
+        conn = self._checkpoint_conn
+        self._checkpoint_conn = None
+        self.checkpoint = None
+        if conn is not None:
+            await conn.close()
+            logger.info("✅ LangGraph checkpoint 连接已关闭")
 
     @staticmethod
     def load_system_prompt():
@@ -340,6 +386,9 @@ class FrontierCognitive:
         thread_id = _agent_thread_id(user_id, group_id)
         backend = _build_agent_backend(working_dir, thread_id)
         workspace_dir = os.path.join(working_dir, "workspaces", str(thread_id))
+        checkpointer = self.checkpoint
+        if checkpointer is None and hasattr(self, "_checkpoint_db_path"):
+            checkpointer = await self.setup_checkpoint()
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
@@ -364,7 +413,7 @@ class FrontierCognitive:
             },
             backend=backend,
             subagents=self.subagents,
-            checkpointer=self.checkpoint,
+            checkpointer=checkpointer,
             context_schema=CustomAgentState,
             debug=EnvConfig.AGENT_DEBUG_MODE,
         )

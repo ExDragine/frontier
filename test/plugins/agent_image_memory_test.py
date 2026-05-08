@@ -448,6 +448,34 @@ async def test_agent_queue_serializes_same_thread_chat_jobs(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_agent_startup_initializes_cognitive_checkpoint(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    calls = []
+
+    class DummyMessagesDb:
+        async def cleanup_expired_images(self):
+            calls.append("images")
+            return 0
+
+    class DummyCognitive:
+        async def setup_checkpoint(self):
+            calls.append("checkpoint")
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_AUTO_CLEANUP", True)
+    monkeypatch.setattr(agent, "cleanup_expired_staged_artifacts", lambda: 0)
+
+    await agent.on_startup()
+
+    assert calls == ["images", "checkpoint"]
+
+
+@pytest.mark.asyncio
 async def test_agent_finishes_when_thread_queue_is_full(monkeypatch):  # noqa: C901
     import nonebot
 
