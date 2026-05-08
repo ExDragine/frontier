@@ -21,6 +21,10 @@ httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 tools = agent_tools.mcp_tools + agent_tools.web_tools
 
 
+async def aclose_http_client() -> None:
+    await httpx_client.aclose()
+
+
 async def github_post_news(**kwargs):
     """GitHub 新闻推送（未启用）"""
     GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"

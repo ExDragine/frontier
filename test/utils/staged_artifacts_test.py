@@ -40,6 +40,48 @@ def test_stage_artifact_response_persists_binary_artifact(monkeypatch, tmp_path)
     assert (tmp_path / artifact_id / "blob-1.bin").read_bytes() == b"img"
 
 
+def test_stage_artifact_rejects_oversized_binary_and_cleans_partial_dir(monkeypatch, tmp_path):
+    from utils import staged_artifacts
+
+    artifacts_dir = tmp_path / "artifacts"
+    monkeypatch.setattr(staged_artifacts, "STAGED_ARTIFACTS_DIR", artifacts_dir)
+
+    with pytest.raises(ValueError, match="暂存内容过大"):
+        staged_artifacts.stage_artifact(DummyUniMessage.image(raw=b"too-large"), max_bytes=3)
+
+    assert not artifacts_dir.exists()
+
+
+def test_cleanup_expired_staged_artifacts_removes_only_old_entries(monkeypatch, tmp_path):
+    from utils import staged_artifacts
+
+    monkeypatch.setattr(staged_artifacts, "STAGED_ARTIFACTS_DIR", tmp_path)
+    monkeypatch.setattr(staged_artifacts.time, "time", lambda: 1000.0)
+
+    old_id = staged_artifacts.stage_artifact(DummyUniMessage.image(raw=b"old"), created_at=800.0)
+    fresh_id = staged_artifacts.stage_artifact(DummyUniMessage.image(raw=b"fresh"), created_at=990.0)
+
+    cleaned = staged_artifacts.cleanup_expired_staged_artifacts(ttl_seconds=100)
+
+    assert cleaned == 1
+    assert not (tmp_path / old_id).exists()
+    assert (tmp_path / fresh_id / "manifest.json").is_file()
+
+
+def test_extract_and_strip_staged_artifact_handoff_text():
+    from utils import staged_artifacts
+
+    text = (
+        'ok\n<staged_artifact artifact_id="00000000-0000-4000-8000-000000000000" '
+        'send_tool="send_staged_artifact" />\n'
+        '主 Agent：请调用 send_staged_artifact(artifact_id="00000000-0000-4000-8000-000000000000") '
+        "发送这份内容，不要把 staged_artifact 标签原样发给用户。"
+    )
+
+    assert staged_artifacts.extract_staged_artifact_ids(text) == ["00000000-0000-4000-8000-000000000000"]
+    assert staged_artifacts.strip_staged_artifact_handoffs(text) == "ok"
+
+
 def test_load_staged_artifact_rejects_invalid_id(monkeypatch, tmp_path):
     from utils import staged_artifacts
 

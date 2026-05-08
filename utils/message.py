@@ -32,6 +32,10 @@ class ReplyCheck(BaseModel):
     confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
 
 
+async def aclose_http_client() -> None:
+    await httpx_client.aclose()
+
+
 async def message_extract(messages: list[dict]) -> tuple[str, list[bytes], list[bytes], list[bytes]]:
     """提取消息中的文本和媒体内容
 

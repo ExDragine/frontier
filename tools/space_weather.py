@@ -16,6 +16,10 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import Image, UniMessage  # noqa: E402
 
 
+async def aclose_http_client() -> None:
+    await httpx_client.aclose()
+
+
 @tool(response_format="content")
 async def solar_flare():
     """

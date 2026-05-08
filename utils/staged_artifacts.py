@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -9,10 +10,13 @@ from typing import Any
 from nonebot import logger
 
 STAGED_ARTIFACTS_DIR = Path("cache") / "staged_artifacts"
+DEFAULT_STAGED_ARTIFACT_TTL_SECONDS = 24 * 60 * 60
+MAX_STAGED_ARTIFACT_BYTES = 256 * 1024 * 1024
 
 _ARTIFACT_ID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
+_STAGED_ARTIFACT_TAG_RE = re.compile(r'<staged_artifact\b[^>]*\bartifact_id="([^"]+)"[^>]*/>')
 
 
 def _root_dir() -> Path:
@@ -31,6 +35,18 @@ def _write_bytes(value: bytes, artifact_dir: Path, blob_counter: list[int]) -> d
     filename = f"blob-{blob_counter[0]}.bin"
     (artifact_dir / filename).write_bytes(value)
     return {"__bytes_file__": filename}
+
+
+def _value_byte_size(value: Any) -> int:
+    if isinstance(value, bytes):
+        return len(value)
+    if isinstance(value, dict):
+        return sum(_value_byte_size(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return sum(_value_byte_size(item) for item in value)
+    if _looks_like_segment(value):
+        return _value_byte_size(_segment_data(value))
+    return 0
 
 
 def _serialize_value(value: Any, artifact_dir: Path, blob_counter: list[int]) -> Any:
@@ -99,7 +115,16 @@ def _artifact_segments(artifact: Any) -> list[Any]:
     return [content]
 
 
-def stage_artifact(artifact: Any) -> str:
+def stage_artifact(
+    artifact: Any,
+    *,
+    max_bytes: int = MAX_STAGED_ARTIFACT_BYTES,
+    created_at: float | None = None,
+) -> str:
+    total_bytes = _value_byte_size(_artifact_segments(artifact))
+    if max_bytes > 0 and total_bytes > max_bytes:
+        raise ValueError(f"暂存内容过大: {total_bytes} bytes > {max_bytes} bytes")
+
     artifact_id = str(uuid.uuid4())
     artifact_dir = _root_dir() / artifact_id
     artifact_dir.mkdir(parents=True, exist_ok=False)
@@ -107,6 +132,7 @@ def stage_artifact(artifact: Any) -> str:
         blob_counter = [0]
         manifest = {
             "version": 1,
+            "created_at": time.time() if created_at is None else created_at,
             "segments": [
                 _serialize_segment(segment, artifact_dir, blob_counter) for segment in _artifact_segments(artifact)
             ],
@@ -119,6 +145,30 @@ def stage_artifact(artifact: Any) -> str:
         shutil.rmtree(artifact_dir, ignore_errors=True)
         raise
     return artifact_id
+
+
+def extract_staged_artifact_ids(text: str | None) -> list[str]:
+    if not text:
+        return []
+    artifact_ids: list[str] = []
+    for match in _STAGED_ARTIFACT_TAG_RE.finditer(str(text)):
+        try:
+            artifact_ids.append(_validate_artifact_id(match.group(1)))
+        except ValueError:
+            logger.warning(f"忽略无效 staged_artifact ID: {match.group(1)!r}")
+    return artifact_ids
+
+
+def strip_staged_artifact_handoffs(text: str | None) -> str:
+    if not text:
+        return ""
+    stripped = _STAGED_ARTIFACT_TAG_RE.sub("", str(text))
+    lines = []
+    for line in stripped.splitlines():
+        if "send_staged_artifact" in line and ("主 Agent" in line or "staged_artifact" in line):
+            continue
+        lines.append(line.rstrip())
+    return "\n".join(lines).strip()
 
 
 def stage_artifact_response(text: str, artifact: Any | None) -> tuple[str, Any | None]:
@@ -235,3 +285,32 @@ def load_staged_artifact(artifact_id: str, *, uni_message_cls):
         if isinstance(segment, dict)
     ]
     return _combine_segments(messages, uni_message_cls)
+
+
+def cleanup_expired_staged_artifacts(
+    *,
+    ttl_seconds: int = DEFAULT_STAGED_ARTIFACT_TTL_SECONDS,
+    now: float | None = None,
+) -> int:
+    root = _root_dir()
+    if not root.exists():
+        return 0
+    cutoff = (time.time() if now is None else now) - ttl_seconds
+    cleaned = 0
+    for artifact_dir in root.iterdir():
+        if not artifact_dir.is_dir():
+            continue
+        manifest_path = artifact_dir / "manifest.json"
+        try:
+            if manifest_path.is_file():
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                created_at = float(manifest.get("created_at", artifact_dir.stat().st_mtime))
+            else:
+                created_at = artifact_dir.stat().st_mtime
+        except Exception as exc:
+            logger.warning(f"读取暂存内容 manifest 失败，按过期清理: {artifact_dir.name} ({type(exc).__name__})")
+            created_at = 0
+        if created_at < cutoff:
+            shutil.rmtree(artifact_dir, ignore_errors=True)
+            cleaned += 1
+    return cleaned

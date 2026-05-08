@@ -19,7 +19,7 @@ task_manager.set_job_func(task_executor.execute)
 driver = get_driver()
 
 # 导入命令和处理器（必须在 task_manager 创建之后）
-from . import task_commands, task_handlers  # noqa: E402, F401
+from . import task_commands, task_handlers  # noqa: E402, F401, I001
 
 
 # ==================== 任务管理系统初始化 ====================
@@ -53,3 +53,8 @@ async def init_task_system():
     await task_manager.initialize()
 
     logger.info("定时任务管理系统初始化完成！")
+
+
+@driver.on_shutdown
+async def shutdown_task_system():
+    await task_handlers.aclose_http_client()

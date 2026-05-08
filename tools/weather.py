@@ -18,6 +18,10 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?format=json"
 OPEN_METEO_WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 
 
+async def aclose_http_client() -> None:
+    await httpx_client.aclose()
+
+
 async def geocode(city_name: str) -> tuple[float, float]:
     """返回 (latitude, longitude)，未找到抛出 ValueError"""
     if city_name in _geocode_cache:

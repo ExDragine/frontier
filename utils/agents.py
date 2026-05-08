@@ -23,7 +23,10 @@ from nonebot import logger
 from tools import agent_tools
 from utils.configs import EnvConfig
 from utils.llm_factory import create_llm, model_supports
+from utils.staged_artifacts import extract_staged_artifact_ids, load_staged_artifact, strip_staged_artifact_handoffs
 from utils.subagents import get_domain_subagents
+
+UniMessage = None
 
 VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 SKILLS_BACKEND_PATH = "/skills"
@@ -210,6 +213,64 @@ class FrontierCognitive:
             return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: 模板变量缺失]"
 
     @staticmethod
+    def _uni_message_cls():
+        global UniMessage
+        if UniMessage is not None:
+            return UniMessage
+        from nonebot import require
+
+        require("nonebot_plugin_alconna")
+        from nonebot_plugin_alconna import UniMessage as LoadedUniMessage
+
+        UniMessage = LoadedUniMessage
+        return LoadedUniMessage
+
+    @staticmethod
+    def _message_text(message) -> str:
+        content = getattr(message, "content", "")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text_parts.append(str(part.get("text", "")))
+            return "\n".join(text_parts)
+        return str(content or "")
+
+    @staticmethod
+    def clean_staged_artifact_handoffs(message):
+        content = getattr(message, "content", None)
+        if isinstance(content, str):
+            cleaned = strip_staged_artifact_handoffs(content)
+            if cleaned != content:
+                try:
+                    message.content = cleaned
+                    if hasattr(message, "text") and not callable(getattr(message, "text", None)):
+                        message.text = cleaned
+                    return message
+                except Exception:
+                    return AIMessage(cleaned)
+            return message
+        if isinstance(content, list):
+            changed = False
+            cleaned_parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text = str(part.get("text", ""))
+                    cleaned_text = strip_staged_artifact_handoffs(text)
+                    changed = changed or cleaned_text != text
+                    cleaned_parts.append({**part, "text": cleaned_text})
+                else:
+                    cleaned_parts.append(part)
+            if changed:
+                try:
+                    message.content = cleaned_parts
+                except Exception:
+                    return AIMessage(cleaned_parts)
+        return message
+
+    @staticmethod
     async def extract_uni_messages(response):
         """直接从响应中提取 UniMessage 对象"""
         if not response or not isinstance(response, dict):
@@ -217,11 +278,31 @@ class FrontierCognitive:
             return []
 
         uni_messages = []
+        seen_staged_artifacts: set[str] = set()
+        staged_send_tool_ran = any(
+            getattr(message, "type", None) == "tool"
+            and getattr(message, "name", None) == "send_staged_artifact"
+            and getattr(message, "artifact", None) is not None
+            for message in response.get("messages", [])
+        )
         for message in response.get("messages", []):
             if getattr(message, "type", None) == "tool" and getattr(message, "artifact", None) is not None:
                 tool_name = getattr(message, "name", "unknown")
                 uni_messages.append(message.artifact)
                 logger.info(f"📤 提取 UniMessage: {tool_name} - 类型: {type(message.artifact)}")
+            if staged_send_tool_ran:
+                continue
+            for artifact_id in extract_staged_artifact_ids(FrontierCognitive._message_text(message)):
+                if artifact_id in seen_staged_artifacts:
+                    continue
+                try:
+                    uni_messages.append(
+                        load_staged_artifact(artifact_id, uni_message_cls=FrontierCognitive._uni_message_cls())
+                    )
+                    seen_staged_artifacts.add(artifact_id)
+                    logger.info(f"📤 从 staged_artifact 兜底提取 UniMessage: {artifact_id}")
+                except Exception as exc:
+                    logger.warning(f"⚠️ staged_artifact 提取失败: {artifact_id} ({type(exc).__name__}: {exc})")
 
         logger.info(f"📨 总共提取到 {len(uni_messages)} 个 UniMessage")
         return uni_messages
@@ -320,6 +401,7 @@ class FrontierCognitive:
         uni_messages = await FrontierCognitive.extract_uni_messages(response)
         ai_messages = [msg for msg in response.get("messages", []) if getattr(msg, "type", None) == "ai"]
         final_response = ai_messages[-1] if ai_messages else AIMessage("智能代理处理完成，但没有生成响应。")
+        final_response = FrontierCognitive.clean_staged_artifact_handoffs(final_response)
 
         processing_time = time.time() - start_time
         logger.info(f"Agent烤熟了~🥓 (耗时: {processing_time:.2f}s)")

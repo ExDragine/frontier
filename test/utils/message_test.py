@@ -77,6 +77,22 @@ async def test_send_messages_fallback_to_text(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_message_http_client_can_be_closed(monkeypatch):
+    closed = False
+
+    class DummyClient:
+        async def aclose(self):
+            nonlocal closed
+            closed = True
+
+    monkeypatch.setattr(message_module, "httpx_client", DummyClient())
+
+    await message_module.aclose_http_client()
+
+    assert closed is True
+
+
+@pytest.mark.asyncio
 async def test_message_gateway_blacklist(monkeypatch):
     class DummyEvent:
         def __init__(self):

@@ -62,6 +62,80 @@ async def test_extract_uni_messages():
     assert result == ["payload"]
 
 
+@pytest.mark.asyncio
+async def test_extract_uni_messages_loads_staged_artifact_from_final_text(monkeypatch, tmp_path):
+    from utils import staged_artifacts
+
+    class DummyUniMessage:
+        def __init__(self, content=None):
+            self.content = content
+
+        @classmethod
+        def image(cls, url=None, path=None, raw=None, **_kwargs):
+            return cls({"type": "image", "url": url, "path": str(path) if path else None, "raw": raw})
+
+    monkeypatch.setattr(staged_artifacts, "STAGED_ARTIFACTS_DIR", tmp_path)
+    monkeypatch.setattr(agents, "UniMessage", DummyUniMessage, raising=False)
+    artifact_id = staged_artifacts.stage_artifact(DummyUniMessage.image(raw=b"img"))
+    response = {
+        "messages": [
+            types.SimpleNamespace(
+                type="ai",
+                content=f'<staged_artifact artifact_id="{artifact_id}" send_tool="send_staged_artifact" />',
+            )
+        ]
+    }
+
+    result = await agents.FrontierCognitive.extract_uni_messages(response)
+
+    assert [artifact.content for artifact in result] == [
+        {"type": "image", "url": None, "path": None, "raw": b"img"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_extract_uni_messages_does_not_duplicate_when_send_tool_already_ran(monkeypatch, tmp_path):
+    from utils import staged_artifacts
+
+    class DummyUniMessage:
+        def __init__(self, content=None):
+            self.content = content
+
+        @classmethod
+        def image(cls, url=None, path=None, raw=None, **_kwargs):
+            return cls({"type": "image", "url": url, "path": str(path) if path else None, "raw": raw})
+
+    monkeypatch.setattr(staged_artifacts, "STAGED_ARTIFACTS_DIR", tmp_path)
+    monkeypatch.setattr(agents, "UniMessage", DummyUniMessage, raising=False)
+    artifact_id = staged_artifacts.stage_artifact(DummyUniMessage.image(raw=b"img"))
+    response = {
+        "messages": [
+            types.SimpleNamespace(type="tool", name="send_staged_artifact", artifact="already-sent"),
+            types.SimpleNamespace(
+                type="ai",
+                content=f'<staged_artifact artifact_id="{artifact_id}" send_tool="send_staged_artifact" />',
+            ),
+        ]
+    }
+
+    result = await agents.FrontierCognitive.extract_uni_messages(response)
+
+    assert result == ["already-sent"]
+
+
+def test_clean_staged_artifact_handoffs_from_ai_message():
+    message = types.SimpleNamespace(
+        content=(
+            '完成\n<staged_artifact artifact_id="00000000-0000-4000-8000-000000000000" '
+            'send_tool="send_staged_artifact" />'
+        )
+    )
+
+    cleaned = agents.FrontierCognitive.clean_staged_artifact_handoffs(message)
+
+    assert cleaned.content == "完成"
+
+
 def test_env_config_responses_api_defaults():
     from utils.configs import EnvConfig
 

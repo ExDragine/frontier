@@ -219,7 +219,15 @@ async def test_satellite_tools(load_tool_module, monkeypatch):
         def raise_for_status(self):
             return None
 
-    monkeypatch.setattr(mod.httpx, "get", lambda *args, **kwargs: DummyResp())
+    class DummyClient:
+        async def get(self, *_args, **_kwargs):
+            return DummyResp()
+
+    def sync_get_should_not_run(*_args, **_kwargs):
+        raise AssertionError("async satellite tool should not call synchronous httpx.get")
+
+    monkeypatch.setattr(mod, "httpx_client", DummyClient())
+    monkeypatch.setattr(mod.httpx, "get", sync_get_should_not_run)
     text, artifact = await mod.get_fy4b_cloud_map("china", "3h")
     assert "成功获取" in text
     assert artifact.content["type"] == "video"

@@ -62,7 +62,15 @@ async def test_station_location(load_tool_module, monkeypatch):
     class DummyResp:
         content = b"img"
 
-    monkeypatch.setattr(mod.httpx, "get", lambda *args, **kwargs: DummyResp())
+    class DummyClient:
+        async def get(self, *_args, **_kwargs):
+            return DummyResp()
+
+    def sync_get_should_not_run(*_args, **_kwargs):
+        raise AssertionError("async heavens_above tool should not call synchronous httpx.get")
+
+    monkeypatch.setattr(mod, "httpx_client", DummyClient())
+    monkeypatch.setattr(mod.httpx, "get", sync_get_should_not_run)
     text, artifact = await mod.station_location("国际空间站")
     assert text.startswith("空间站位置获取成功")
     assert "send_staged_artifact" in text
@@ -76,7 +84,11 @@ async def test_station_location_empty_content(load_tool_module, monkeypatch):
     class DummyResp:
         content = b""
 
-    monkeypatch.setattr(mod.httpx, "get", lambda *args, **kwargs: DummyResp())
+    class DummyClient:
+        async def get(self, *_args, **_kwargs):
+            return DummyResp()
+
+    monkeypatch.setattr(mod, "httpx_client", DummyClient())
     text, artifact = await mod.station_location("天宫")
     assert text == "空间站位置获取失败"
     assert artifact is None
