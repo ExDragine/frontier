@@ -3,6 +3,8 @@ import time
 from langchain.tools import tool
 from nonebot import logger, require
 
+from utils.staged_artifacts import stage_artifact_response
+
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
@@ -22,7 +24,7 @@ async def aurora_live() -> tuple[str, UniMessage | None]:
         result = UniMessage.image(url=url)
         end_time = time.time()
         logger.info(f"✅ 工具执行成功: aurora_live (耗时: {end_time - start_time:.2f}s)")
-        return "成功获取北极光实时图像", result
+        return stage_artifact_response("成功获取北极光实时图像", result)
     except Exception as e:
         end_time = time.time()
         logger.error(f"💥 工具执行异常: aurora_live - {str(e)} (耗时: {end_time - start_time:.2f}s)")

@@ -5,6 +5,8 @@ import httpx
 from langchain.tools import tool
 from nonebot import logger, require
 
+from utils.staged_artifacts import stage_artifact_response
+
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
@@ -58,7 +60,7 @@ async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, UniMessage | None]
         result = UniMessage.video(raw=file)
         end_time = time.time()
         logger.info(f"✅ 工具执行成功: get_fy4b_cloud_map (耗时: {end_time - start_time:.2f}s)")
-        return f"成功获取{area}地区的卫星云图动画（最近3小时）", result
+        return stage_artifact_response(f"成功获取{area}地区的卫星云图动画（最近3小时）", result)
     except Exception as e:
         end_time = time.time()
         logger.error(f"💥 工具执行异常: get_fy4b_cloud_map - {str(e)} (耗时: {end_time - start_time:.2f}s)")
@@ -94,7 +96,7 @@ async def get_fy4b_geos_cloud_map(
             response.raise_for_status()
             video_bytes: bytes = response.content
             if video_bytes:
-                return "成功获取FY4B卫星全地球视角云图视频", UniMessage.video(raw=video_bytes)
+                return stage_artifact_response("成功获取FY4B卫星全地球视角云图视频", UniMessage.video(raw=video_bytes))
     except httpx.HTTPError:
         return "获取FY4B卫星全地球视角云图视频失败", None
 
@@ -114,7 +116,7 @@ async def get_himawari_satellite_image() -> tuple[str, UniMessage | None]:
         )
         end_time = time.time()
         logger.info(f"✅ 工具执行成功: get_himawari_satellite_image (耗时: {end_time - start_time:.2f}s)")
-        return "成功获取Himawari静止气象卫星最新可见光合成图像", result
+        return stage_artifact_response("成功获取Himawari静止气象卫星最新可见光合成图像", result)
     except Exception as e:
         end_time = time.time()
         logger.error(f"💥 工具执行异常: get_himawari_satellite_image - {str(e)} (耗时: {end_time - start_time:.2f}s)")

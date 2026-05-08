@@ -17,6 +17,7 @@ _ALL_TOOL_GROUPS = ("main", *_SUBAGENT_GROUPS)
 
 _TOOL_MODULE_GROUPS = {
     "adapter": "main",
+    "artifact_bridge": "main",
     "calculator": "main",
     "reminder": "main",
     "arxiv": "research",

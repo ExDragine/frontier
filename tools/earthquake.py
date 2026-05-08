@@ -2,6 +2,8 @@ from langchain.tools import tool
 from nonebot import require
 from playwright.async_api import async_playwright
 
+from utils.staged_artifacts import stage_artifact_response
+
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
@@ -15,7 +17,7 @@ async def get_china_earthquake() -> tuple[str, UniMessage | None]:
     """
     pic_bytes = await cenc_eq_list_img()
     result = UniMessage.image(raw=pic_bytes)
-    return "成功获取中国地震信息", result
+    return stage_artifact_response("成功获取中国地震信息", result)
 
 
 @tool(response_format="content_and_artifact")
@@ -27,7 +29,7 @@ async def get_japan_earthquake() -> tuple[str, UniMessage | None]:
     """
     pic_bytes = await jma_eq_list_img()
     result = UniMessage.image(raw=pic_bytes)
-    return "成功获取日本地震信息", result
+    return stage_artifact_response("成功获取日本地震信息", result)
 
 
 async def cenc_eq_list_img():

@@ -2,6 +2,8 @@ import httpx
 from langchain.tools import tool
 from nonebot import require
 
+from utils.staged_artifacts import stage_artifact_response
+
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
@@ -23,6 +25,6 @@ async def station_location(name) -> tuple[str, UniMessage | None]:
     )
     content = httpx.get(ENDPOINT, timeout=30).content
     if content:
-        return "空间站位置获取成功", UniMessage.image(raw=content)
+        return stage_artifact_response("空间站位置获取成功", UniMessage.image(raw=content))
     else:
         return "空间站位置获取失败", None

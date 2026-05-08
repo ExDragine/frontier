@@ -9,6 +9,7 @@ from nonebot import logger, require
 from utils.configs import EnvConfig
 from utils.paint_service import PaintRateLimiter
 from utils.paint_service import PaintRateLimitResult as PaintRateLimitResult
+from utils.staged_artifacts import stage_artifact_response
 from utils.video_service import MediaReference, VideoGenerationResult, generate_video
 
 require("nonebot_plugin_alconna")
@@ -177,4 +178,4 @@ async def get_video(
         return "视频生成失败了", None
 
     logger.info(f"✅ 工具执行成功: video (耗时: {end_time - start_time:.2f}s)")
-    return f"视频生成OK了，提示词：{prompt}", result
+    return stage_artifact_response(f"视频生成OK了，提示词：{prompt}", result)

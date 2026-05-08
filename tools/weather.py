@@ -3,6 +3,8 @@ from langchain.tools import tool
 from nonebot import logger, require
 from pypinyin import lazy_pinyin
 
+from utils.staged_artifacts import stage_artifact_response
+
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
@@ -133,4 +135,4 @@ async def get_wind_map(name: str) -> tuple[str, UniMessage | None]:
         "wind_shear": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmssht.GIF",
         "vorticity": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmsvor.GIF",
     }
-    return "获取成功", UniMessage.image(url=url[name])
+    return stage_artifact_response("获取成功", UniMessage.image(url=url[name]))

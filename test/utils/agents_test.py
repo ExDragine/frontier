@@ -182,6 +182,30 @@ def test_domain_subagents_use_grouped_tools(monkeypatch):
     assert by_name["external_agent"]["tools"] == ["external-tool"]
 
 
+def test_domain_subagents_tell_main_agent_about_staged_artifacts(monkeypatch):
+    import utils.subagents as subagents_module
+
+    monkeypatch.setattr(
+        subagents_module.agent_tools,
+        "subagent_tools",
+        {
+            "research": [],
+            "astro": ["astro-tool"],
+            "earth": [],
+            "media": [],
+            "memory": [],
+            "divination": [],
+            "external": [],
+        },
+        raising=False,
+    )
+
+    astro = subagents_module.get_astro_subagent()
+
+    assert "send_staged_artifact" in astro["system_prompt"]
+    assert "staged_artifact" in astro["system_prompt"]
+
+
 def test_frontier_cognitive_uses_main_tools_and_domain_subagents(monkeypatch):
     domain_subagents = [{"name": "research_agent", "tools": ["research-tool"]}]
     monkeypatch.setattr(agents.agent_tools, "all_tools", ["all-tool"], raising=False)

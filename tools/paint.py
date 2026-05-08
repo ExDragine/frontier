@@ -9,6 +9,7 @@ from nonebot import logger, require
 from utils.configs import EnvConfig
 from utils.paint_service import PaintRateLimiter, paint
 from utils.paint_service import PaintRateLimitResult as PaintRateLimitResult
+from utils.staged_artifacts import stage_artifact_response
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
@@ -134,4 +135,4 @@ async def get_paint(
     result = UniMessage.image(raw=image)
     action = "编辑" if mode == "edit" else "生成"
     logger.info(f"✅ 工具执行成功: paint (耗时: {end_time - start_time:.2f}s)")
-    return f"成功{action}图片，提示词：{prompt}", result
+    return stage_artifact_response(f"成功{action}图片，提示词：{prompt}", result)

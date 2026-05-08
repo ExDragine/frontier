@@ -110,7 +110,8 @@ async def test_solar_image_and_goes_suvi(load_tool_module):
     mod = load_tool_module("space_weather")
 
     text, artifact = await mod.solar_image("SN")
-    assert text == "获取成功"
+    assert text.startswith("获取成功")
+    assert "send_staged_artifact" in text
     assert artifact.content["type"] == "image"
 
     text2, artifact2 = await mod.solar_image("BAD")
@@ -118,7 +119,8 @@ async def test_solar_image_and_goes_suvi(load_tool_module):
     assert artifact2 is None
 
     text3, artifact3 = await mod.goes_suvi("304")
-    assert text3 == "获取成功"
+    assert text3.startswith("获取成功")
+    assert "send_staged_artifact" in text3
     assert artifact3.content["type"] == "image"
 
     text4, artifact4 = await mod.goes_suvi("094")
@@ -150,11 +152,13 @@ async def test_sunspot(load_tool_module, monkeypatch):
     monkeypatch.setattr(mod, "httpx_client", DummyClient())
 
     text, artifact = await mod.sunspot("SOHO")
-    assert text == "获取成功"
+    assert text.startswith("获取成功")
+    assert "send_staged_artifact" in text
     assert artifact.content["raw"] == b"soho"
 
     text2, artifact2 = await mod.sunspot("ASO-S")
-    assert text2 == "获取成功"
+    assert text2.startswith("获取成功")
+    assert "send_staged_artifact" in text2
     assert artifact2.content["raw"] == b"aso"
 
 
@@ -200,7 +204,8 @@ async def test_swpc_page(load_tool_module, monkeypatch):
     monkeypatch.setattr(mod, "async_playwright", lambda: DummyCtx())
 
     text, artifact = await mod.swpc_page()
-    assert text == "获取成功"
+    assert text.startswith("获取成功")
+    assert "send_staged_artifact" in text
     assert artifact.content["raw"] == b"swpc"
 
 

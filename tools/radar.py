@@ -5,6 +5,8 @@ from langchain.tools import tool
 from nonebot import logger, require
 from playwright.async_api import async_playwright
 
+from utils.staged_artifacts import stage_artifact_response
+
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
@@ -28,7 +30,7 @@ async def get_static_china_radar(area: str) -> tuple[Any, UniMessage | None]:
 
         if result:
             logger.info(f"✅ 工具执行成功: get_static_china_radar (耗时: {end_time - start_time:.2f}s)")
-            return f"成功获取{area}地区的雷达图", UniMessage.image(url=result)
+            return stage_artifact_response(f"成功获取{area}地区的雷达图", UniMessage.image(url=result))
         else:
             logger.info(f"❌ 工具执行失败: get_static_china_radar - 地区不存在 (耗时: {end_time - start_time:.2f}s)")
             return f"抱歉，找不到{area}地区的雷达图数据", None

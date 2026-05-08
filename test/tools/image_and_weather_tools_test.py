@@ -29,6 +29,27 @@ async def test_get_paint_generate_uses_shared_paint_service(load_tool_module, mo
 
 
 @pytest.mark.asyncio
+async def test_get_paint_stages_generated_artifact_for_main_agent(load_tool_module, monkeypatch, tmp_path):
+    from utils import staged_artifacts
+
+    monkeypatch.setattr(staged_artifacts, "STAGED_ARTIFACTS_DIR", tmp_path)
+    mod = load_tool_module("paint")
+
+    async def fake_paint(_prompt, _reference_images):
+        return b"img"
+
+    monkeypatch.setattr(mod, "paint", fake_paint)
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_MODULE_ENABLED", True, raising=False)
+
+    text, artifact = await mod.get_paint("a cat")
+
+    assert artifact.content["raw"] == b"img"
+    assert "send_staged_artifact" in text
+    artifact_id = text.split('artifact_id="', 1)[1].split('"', 1)[0]
+    assert (tmp_path / artifact_id / "manifest.json").is_file()
+
+
+@pytest.mark.asyncio
 async def test_get_paint_edit_uses_images_from_latest_user_message(load_tool_module, monkeypatch):
     mod = load_tool_module("paint")
     captured = {}
@@ -215,7 +236,8 @@ async def test_satellite_tools(load_tool_module, monkeypatch):
 
     monkeypatch.setattr(mod.httpx, "AsyncClient", lambda **kwargs: DummyAsyncClient())
     text2, artifact2 = await mod.get_fy4b_geos_cloud_map("MOS", "24h")
-    assert "成功获取FY4B卫星全地球视角云图视频" == text2
+    assert text2.startswith("成功获取FY4B卫星全地球视角云图视频")
+    assert "send_staged_artifact" in text2
     assert artifact2.content["type"] == "video"
 
     assert await mod.get_fy4b_geos_cloud_map("BAD", "24h") is None
@@ -261,5 +283,6 @@ async def test_weather_tools(load_tool_module, monkeypatch):
     assert "火星天气" in mars
 
     text, artifact = await mod.get_wind_map("wind_shear")
-    assert text == "获取成功"
+    assert text.startswith("获取成功")
+    assert "send_staged_artifact" in text
     assert artifact.content["type"] == "image"

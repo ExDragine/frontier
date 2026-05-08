@@ -18,6 +18,12 @@ model = create_llm(
     endpoint=EnvConfig.BASIC_MODEL_ENDPOINT,
 )
 
+_STAGED_ARTIFACT_HANDOFF_PROMPT = """
+If a tool result contains a <staged_artifact ... send_tool="send_staged_artifact" /> tag,
+copy that tag verbatim in your final handoff to the main agent.
+The main agent must call send_staged_artifact to send it; do not say you sent the media yourself.
+"""
+
 
 def _tools_for(group: str) -> list:
     return list(agent_tools.subagent_tools.get(group, []))
@@ -27,7 +33,7 @@ def _domain_subagent(name: str, description: str, system_prompt: str, tools: lis
     return {
         "name": name,
         "description": description,
-        "system_prompt": system_prompt,
+        "system_prompt": f"{system_prompt.rstrip()}\n\n{_STAGED_ARTIFACT_HANDOFF_PROMPT.strip()}",
         "tools": tools,
         "model": model,
     }
