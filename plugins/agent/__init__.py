@@ -2,7 +2,8 @@ import base64
 import datetime
 import time
 from dataclasses import dataclass
-from typing import Any, Literal
+from pathlib import Path
+from typing import Any
 
 from nonebot import get_bot, get_driver, logger, on_message, require
 from nonebot.adapters.milky.event import MessageEvent
@@ -37,11 +38,16 @@ common = on_message(priority=10)
 
 message_heap = RepeatMessageHeap(capacity=10, threshold=2)
 agent_queue = AgentQueueManager(maxsize=5, idle_ttl_seconds=1800.0, job_timeout_seconds=900.0)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class AgentChoice(BaseModel):
-    agent_capability: Literal["low", "medium", "high", "xhigh"] = Field(
-        description="Choose 'low' for casual chat or simple questions; 'medium' for typical tasks with moderate reasoning; 'high' for complex multi-step tasks; 'xhigh' for deep research or architectural decisions."
+    should_reply: bool = Field(
+        description=(
+            "Whether the assistant should continue the conversation. "
+            "False when the latest input is only evaluation, acknowledgement, or a useless statement "
+            "after the previous issue has been resolved."
+        )
     )
 
 
@@ -58,6 +64,53 @@ class AgentRequestContext:
     quoted_images: list[bytes]
     images: list[bytes]
     videos: list[bytes]
+
+
+def _summarize_message_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return str(content or "")
+
+    parts = []
+    for item in content:
+        if not isinstance(item, dict):
+            parts.append(str(item))
+        elif item.get("type") == "text":
+            parts.append(str(item.get("text", "")))
+    return "\n".join(part for part in parts if part)
+
+
+def _build_agent_choice_input(context: AgentRequestContext, history_messages: list[dict]) -> str:
+    lines = []
+    for message in history_messages[-8:]:
+        content = _summarize_message_content(message.get("content", "")).strip()
+        if content:
+            lines.append(f"{message.get('role', '')}: {content}")
+    if context.text.strip():
+        lines.append(f"user: {context.text.strip()}")
+    return "\n".join(lines)
+
+
+async def _agent_choice_should_reply(context: AgentRequestContext, history_messages: list[dict]) -> bool:
+    try:
+        with open(PROJECT_ROOT / "prompts" / "agent_choice.md", encoding="utf-8") as f:
+            system_prompt = f.read()
+    except FileNotFoundError:
+        logger.error("❌ 未找到 agent_choice.md 文件")
+        await UniMessage.text("⚙️ 系统配置文件缺失，请联系管理员").send()
+        return False
+    except (PermissionError, OSError, UnicodeDecodeError) as e:
+        logger.error(f"❌ 读取 agent_choice.md 失败: {e}")
+        await UniMessage.text("⚙️ 系统配置错误，请联系管理员").send()
+        return False
+
+    agent_choice: AgentChoice = await assistant_agent(
+        system_prompt,
+        _build_agent_choice_input(context, history_messages),
+        response_format=AgentChoice,
+    )
+    return agent_choice.should_reply
 
 
 async def _process_agent_request(context: AgentRequestContext) -> None:
@@ -96,22 +149,7 @@ async def _process_agent_request(context: AgentRequestContext) -> None:
         }
     )
 
-    if EnvConfig.AGENT_CAPABILITY == "auto":
-        try:
-            with open("prompts/agent_choice.md", encoding="utf-8") as f:
-                system_prompt = f.read()
-        except FileNotFoundError:
-            logger.error("❌ 未找到 agent_choice.md 文件")
-            await UniMessage.text("⚙️ 系统配置文件缺失，请联系管理员").send()
-            return
-        except (PermissionError, OSError, UnicodeDecodeError) as e:
-            logger.error(f"❌ 读取 agent_choice.md 失败: {e}")
-            await UniMessage.text("⚙️ 系统配置错误，请联系管理员").send()
-            return
-        agent_choice: AgentChoice = await assistant_agent(system_prompt, context.text, response_format=AgentChoice)
-        capability = agent_choice.agent_capability
-    else:
-        capability = EnvConfig.AGENT_CAPABILITY
+    capability = EnvConfig.AGENT_CAPABILITY
     result = await f_cognitive.chat_agent(
         messages,
         context.user_id,
@@ -280,6 +318,8 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         images=images,
         videos=videos,
     )
+    if not await _agent_choice_should_reply(context, messages):
+        await common.finish()
     thread_id = _agent_thread_id(user_id, group_id)
     try:
         await agent_queue.submit(thread_id, lambda: _process_agent_request(context))
