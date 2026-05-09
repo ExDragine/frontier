@@ -83,8 +83,6 @@ class EnvConfig:
     EARTHQUAKE_GROUP_ID: list = message.get("earthquake_group_id", TEST_GROUP_ID)
 
     QUERY_MESSAGE_NUMBERS: int = database["query_message_numbers"]
-    AGENT_CHECKPOINT_DB_PATH: str = database.get("agent_checkpoint_db_path", "cache/agent_checkpoints.db")
-    AGENT_CHECKPOINT_BUSY_TIMEOUT_MS: int = int(database.get("agent_checkpoint_busy_timeout_ms", 5000))
 
     AGENT_DEBUG_MODE: bool = debug["agent_debug_mode"]
 

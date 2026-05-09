@@ -628,7 +628,7 @@ async def test_agent_choice_false_finishes_before_queue(monkeypatch):  # noqa: C
 
 
 @pytest.mark.asyncio
-async def test_agent_startup_initializes_cognitive_checkpoint(monkeypatch):
+async def test_agent_startup_only_cleans_cached_files(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -641,18 +641,13 @@ async def test_agent_startup_initializes_cognitive_checkpoint(monkeypatch):
             calls.append("images")
             return 0
 
-    class DummyCognitive:
-        async def setup_checkpoint(self):
-            calls.append("checkpoint")
-
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_AUTO_CLEANUP", True)
     monkeypatch.setattr(agent, "cleanup_expired_staged_artifacts", lambda: 0)
 
     await agent.on_startup()
 
-    assert calls == ["images", "checkpoint"]
+    assert calls == ["images"]
 
 
 @pytest.mark.asyncio

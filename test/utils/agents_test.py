@@ -1,7 +1,6 @@
 # ruff: noqa: S101
 
 import builtins
-import sys
 import types
 
 import pytest
@@ -293,74 +292,16 @@ def test_frontier_cognitive_uses_main_tools_and_domain_subagents(monkeypatch):
     assert frontier.subagents == domain_subagents
 
 
-@pytest.mark.asyncio
-async def test_frontier_cognitive_configures_async_sqlite_checkpoint(monkeypatch, tmp_path):
-    calls = []
+def test_frontier_cognitive_uses_in_memory_checkpoint(monkeypatch):
+    class DummyInMemorySaver:
+        pass
 
-    class DummyConnection:
-        def __init__(self, path):
-            self.path = path
-            self.closed = False
-
-        async def execute(self, sql):
-            calls.append(("execute", sql))
-
-        async def commit(self):
-            calls.append(("commit", None))
-
-        async def close(self):
-            self.closed = True
-            calls.append(("close", None))
-
-    class DummyAsyncSqliteSaver:
-        def __init__(self, conn):
-            self.conn = conn
-            self.setup_called = False
-
-        async def setup(self):
-            self.setup_called = True
-            calls.append(("setup", None))
-
-    connection = None
-
-    async def fake_connect(path):
-        nonlocal connection
-        connection = DummyConnection(path)
-        calls.append(("connect", path))
-        return connection
-
-    sqlite_pkg = types.ModuleType("langgraph.checkpoint.sqlite")
-    sqlite_pkg.__path__ = []
-    sqlite_aio = types.ModuleType("langgraph.checkpoint.sqlite.aio")
-    sqlite_aio.AsyncSqliteSaver = DummyAsyncSqliteSaver
-    monkeypatch.setitem(sys.modules, "aiosqlite", types.SimpleNamespace(connect=fake_connect))
-    monkeypatch.setitem(sys.modules, "langgraph.checkpoint.sqlite", sqlite_pkg)
-    monkeypatch.setitem(sys.modules, "langgraph.checkpoint.sqlite.aio", sqlite_aio)
-    sqlite_pkg.aio = sqlite_aio
+    monkeypatch.setattr(agents, "InMemorySaver", DummyInMemorySaver)
 
     frontier = agents.FrontierCognitive()
-    frontier._checkpoint_db_path = str(tmp_path / "checkpoints" / "agent.sqlite")
-    frontier._checkpoint_busy_timeout_ms = 1234
 
-    saver = await frontier.setup_checkpoint()
-
-    assert isinstance(saver, DummyAsyncSqliteSaver)
-    assert frontier.checkpoint is saver
-    assert saver.conn is connection
-    assert saver.setup_called is True
-    assert connection.path == str(tmp_path / "checkpoints" / "agent.sqlite")
-    assert (tmp_path / "checkpoints").is_dir()
-    assert ("execute", "PRAGMA busy_timeout = 1234") in calls
-    assert ("execute", "PRAGMA synchronous=NORMAL") in calls
-    assert ("execute", "PRAGMA foreign_keys=ON") in calls
-
-    assert await frontier.setup_checkpoint() is saver
-    assert [call for call in calls if call[0] == "connect"] == [("connect", connection.path)]
-
-    await frontier.aclose_checkpoint()
-
-    assert connection.closed is True
-    assert frontier.checkpoint is None
+    assert isinstance(frontier.checkpoint, DummyInMemorySaver)
+    assert not hasattr(frontier, "_checkpoint_db_path")
 
 
 @pytest.mark.asyncio

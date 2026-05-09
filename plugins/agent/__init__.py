@@ -200,7 +200,6 @@ async def on_startup():
     cleaned_artifacts = cleanup_expired_staged_artifacts()
     if cleaned_artifacts:
         logger.info(f"🗑️ 清理过期暂存内容 {cleaned_artifacts} 份")
-    await f_cognitive.setup_checkpoint()
 
 
 @driver.on_shutdown
@@ -208,10 +207,6 @@ async def on_shutdown():
     from tools import heavens_above, rocket, satellite, space_weather, weather
 
     await agent_queue.aclose()
-    try:
-        await f_cognitive.aclose_checkpoint()
-    except Exception as exc:
-        logger.warning(f"关闭 LangGraph checkpoint 失败: {type(exc).__name__}: {exc}")
     closers = [
         message_aclose_http_client,
         heavens_above.aclose_http_client,
