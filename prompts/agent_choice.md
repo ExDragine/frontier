@@ -18,9 +18,20 @@ True for everything else: questions, jokes, teasing, emotional expressions, opin
 
 ## needs_agent
 
-**false** — Simple banter, jokes, greetings, quick reactions, one-line comebacks. A witty 1-2 sentence reply in the assistant's voice is all that's needed.
+**false** — ONLY for messages that can be answered with zero memory, zero reasoning, and zero context from history. Strictly limited to:
+- Pure greetings ("早", "晚上好")
+- Direct insults/teasing needing a simple comeback ("你傻逼吧" → "？你才傻逼")
+- Emotional blurts where a one-line reaction suffices ("好烦啊", "困死了")
+- Pure laughter with nothing else ("哈哈哈哈")
 
-**true** — Questions requiring knowledge/reasoning, image/video analysis, multi-step tasks, code help, fact-checking, complex context. When in doubt, lean true.
+**true** — Everything else, especially:
+- ANY question (even simple ones — let the agent think)
+- Jokes/banter that reference earlier messages or need context
+- Requests, opinions, sharing experiences, discussions
+- Images, videos, links
+- Any message where a good reply requires remembering what was said before
+
+**When in doubt, needs_agent=true.** Silence via a bad pre_response is worse than a 2-second wait.
 
 ## pre_response
 
@@ -34,6 +45,8 @@ Short 5-15 char Chinese preview: "思考中...", "正在看图...", "让我想�
 
 ## Examples
 
-"哈哈笑死我了" → {"should_reply": true, "needs_agent": false, "pre_response": "啥事这么好笑 说出来我也乐乐"}
+"早" → {"should_reply": true, "needs_agent": false, "pre_response": "早 今天起这么早"}
+"小李子你傻逼吧" → {"should_reply": true, "needs_agent": false, "pre_response": "？你才傻逼"}
+"好烦啊今天" → {"should_reply": true, "needs_agent": true, "pre_response": "咋了..."}
 "这个算法怎么优化" → {"should_reply": true, "needs_agent": true, "pre_response": "让我想想..."}
 "谢谢" → {"should_reply": false, "needs_agent": false, "pre_response": null}

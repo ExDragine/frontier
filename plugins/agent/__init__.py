@@ -131,9 +131,8 @@ async def _agent_choice_should_reply(context: AgentRequestContext, history_messa
         system_prompt,
         _build_agent_choice_input(context, history_messages),
         response_format=AgentChoice,
-        temperature=0.3,
-        reasoning_effort="low",
-        model_kwargs={"extra_body": {"thinking": {"type": "enabled"}}},
+        temperature=0.7,
+        model_kwargs={"extra_body": {"thinking": {"type": "disabled"}}},
     )
     return agent_choice
 
