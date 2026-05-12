@@ -142,10 +142,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
     messages += [
         {
             "role": "user",
-            "content": (
-                "--- 以上是对话历史，仅用于理解上下文。"
-                "下面是**需要你回复的最新消息**。请只针对这条消息回复，不要重复回答历史中的问题。"
-            ),
+            "content": ("以上是对话历史，仅用于理解上下文。"),
         },
         {
             "role": "user",

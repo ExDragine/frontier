@@ -2,8 +2,6 @@ import base64
 import os
 import time
 import uuid
-import zoneinfo
-from datetime import datetime
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -202,9 +200,6 @@ class FrontierCognitive:
                 system_prompt = f.read()
                 system_prompt = system_prompt.format(
                     name=EnvConfig.BOT_NAME,
-                    current_time=datetime.now()
-                    .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
-                    .strftime("%Y-%m-%d %H:%M:%S"),
                 )
                 return system_prompt
         except FileNotFoundError:
