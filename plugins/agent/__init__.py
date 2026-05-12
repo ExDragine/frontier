@@ -316,6 +316,23 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         videos=videos,
     )
     if not await _agent_choice_should_reply(context, messages):
+        match risk_check:
+            case "Safe":
+                if group_id:
+                    await bot.send_group_message_reaction(
+                        group_id=group_id, message_seq=event_id, reaction="351", is_add=False
+                    )
+            case "Controversial":
+                # 使用表情回复功能
+                if group_id:
+                    await bot.send_group_message_reaction(
+                        group_id=group_id, message_seq=event_id, reaction="32", is_add=False
+                    )
+            case "Unsafe":
+                if group_id:
+                    await bot.send_group_message_reaction(
+                        group_id=group_id, message_seq=event_id, reaction="267", is_add=False
+                    )
         await common.finish()
     thread_id = _agent_thread_id(user_id, group_id)
     try:
