@@ -45,9 +45,31 @@ class AgentChoice(BaseModel):
     should_reply: bool = Field(
         description=(
             "Whether the assistant should continue the conversation. "
-            "False when the latest input is only evaluation, acknowledgement, or a useless statement "
-            "after the previous issue has been resolved."
+            "False only when the latest input is clearly a conversation-ending acknowledgment "
+            "(e.g. 'ok thanks', 'got it', 'bye') after a resolved issue. "
+            "True for questions, requests, jokes, banter, opinions, sharing, "
+            "emotional expression, or any message that invites engagement."
         )
+    )
+    needs_agent: bool = Field(
+        description=(
+            "Whether the heavy cognitive agent is needed to handle this message. "
+            "False when a short, witty, personality-driven reply (1-2 sentences) is sufficient — "
+            "simple banter, one-line reactions, casual greetings, quick comebacks. "
+            "True when the message requires reasoning, knowledge lookup, image/video analysis, "
+            "multi-step operations, or deep contextual understanding."
+        )
+    )
+    pre_response: str | None = Field(
+        default=None,
+        description=(
+            "When needs_agent is False: a complete, personality-driven reply (1-2 sentences) "
+            "that fully addresses the message. This will be sent as the final response. "
+            "Match the assistant's casual, direct gamer tone — use slang, be witty, keep it short. "
+            "When needs_agent is True: a short (5-15 char) Chinese preview phrase like "
+            "'思考中...', '正在看图...', '让我想想...' to reduce perceived waiting time. "
+            "When should_reply is False, set to null."
+        ),
     )
 
 
@@ -92,25 +114,25 @@ def _build_agent_choice_input(context: AgentRequestContext, history_messages: li
     return "\n".join(lines)
 
 
-async def _agent_choice_should_reply(context: AgentRequestContext, history_messages: list[dict]) -> bool:
+async def _agent_choice_should_reply(context: AgentRequestContext, history_messages: list[dict]) -> AgentChoice | None:
     try:
         with open(PROJECT_ROOT / "prompts" / "agent_choice.md", encoding="utf-8") as f:
             system_prompt = f.read()
     except FileNotFoundError:
         logger.error("❌ 未找到 agent_choice.md 文件")
         await UniMessage.text("⚙️ 系统配置文件缺失，请联系管理员").send()
-        return False
+        return None
     except (PermissionError, OSError, UnicodeDecodeError) as e:
         logger.error(f"❌ 读取 agent_choice.md 失败: {e}")
         await UniMessage.text("⚙️ 系统配置错误，请联系管理员").send()
-        return False
+        return None
 
     agent_choice: AgentChoice = await assistant_agent(
         system_prompt,
         _build_agent_choice_input(context, history_messages),
         response_format=AgentChoice,
     )
-    return agent_choice.should_reply
+    return agent_choice
 
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict]) -> None:
@@ -315,7 +337,8 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         images=images,
         videos=videos,
     )
-    if not await _agent_choice_should_reply(context, messages):
+    choice = await _agent_choice_should_reply(context, messages)
+    if choice is None or not choice.should_reply:
         match risk_check:
             case "Safe":
                 if group_id:
@@ -334,9 +357,25 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                         group_id=group_id, message_seq=event_id, reaction="267", is_add=False
                     )
         await common.finish()
-    thread_id = _agent_thread_id(user_id, group_id)
-    try:
-        await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
-    except AgentQueueFullError:
-        logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
-        await common.finish("前面还有请求在处理，稍等一下")
+    if choice.needs_agent:
+        if choice.pre_response:
+            await UniMessage.text(choice.pre_response).send()
+        thread_id = _agent_thread_id(user_id, group_id)
+        try:
+            await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
+        except AgentQueueFullError:
+            logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
+            await common.finish("前面还有请求在处理，稍等一下")
+    else:
+        if choice.pre_response:
+            await UniMessage.text(choice.pre_response).send()
+            await messages_db.insert(
+                time=int(time.time() * 1000),
+                msg_id=None,
+                user_id=int(context.event.self_id),
+                group_id=context.group_id,
+                user_name="Assistant",
+                role="assistant",
+                content=choice.pre_response,
+            )
+
