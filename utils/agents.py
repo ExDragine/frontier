@@ -98,6 +98,9 @@ async def assistant_agent(
     response_format=None,
     middleware=None,
     images: list[bytes] | None = None,
+    reasoning_effort: str | None = None,
+    temperature: float | None = None,
+    model_kwargs: dict | None = None,
 ) -> Any:
     if not system_prompt:
         try:
@@ -107,14 +110,21 @@ async def assistant_agent(
             logger.warning("❌ 未找到 system prompt 文件: prompts/system_prompt.md")
             system_prompt = "You are a helpful assistant."
     route = _configured_model_route(use_model)
-    model = create_llm(
-        model=use_model,
-        streaming=False,
-        max_retries=2,
-        timeout=300,
-        use_responses_api=EnvConfig.BASIC_MODEL_USE_RESPONSES_API,
+    llm_kwargs: dict[str, Any] = {
+        "model": use_model,
+        "streaming": False,
+        "max_retries": 2,
+        "timeout": 300,
+        "use_responses_api": EnvConfig.BASIC_MODEL_USE_RESPONSES_API,
         **route,
-    )
+    }
+    if reasoning_effort is not None:
+        llm_kwargs["reasoning_effort"] = reasoning_effort
+    if temperature is not None:
+        llm_kwargs["temperature"] = temperature
+    if model_kwargs is not None:
+        llm_kwargs["model_kwargs"] = model_kwargs
+    model = create_llm(**llm_kwargs)
     agent = create_agent(
         model=model,
         tools=tools,

@@ -35,6 +35,7 @@ _OPENAI_VALID = {
     "reasoning_effort",
     "verbosity",
     "temperature",
+    "model_kwargs",
 }
 _GOOGLE_VALID = {"streaming", "max_retries", "timeout", "temperature"}
 _ANTHROPIC_VALID = {"streaming", "max_retries", "timeout", "temperature"}
