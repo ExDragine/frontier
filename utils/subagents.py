@@ -123,19 +123,6 @@ def get_earth_subagent() -> dict:
     )
 
 
-def get_memory_subagent() -> dict:
-    return _domain_subagent(
-        name="memory_agent",
-        description="Search and summarize stored chat history for the current conversation scope.",
-        system_prompt="""
-        You are a chat history memory subagent.
-        Use message summary and search tools to answer questions about stored chat records.
-        Respect the current group or private-message scope enforced by the tools.
-    """,
-        tools=_tools_for("memory"),
-    )
-
-
 def get_divination_subagent() -> dict:
     return _domain_subagent(
         name="divination_agent",
@@ -149,19 +136,6 @@ def get_divination_subagent() -> dict:
     )
 
 
-def get_external_subagent() -> dict:
-    return _domain_subagent(
-        name="external_agent",
-        description="Use externally configured MCP tools when no local domain subagent fits the request.",
-        system_prompt="""
-        You are an external tools subagent.
-        Use MCP-provided tools for external services that are not covered by local domain agents.
-        Summarize tool results and hand them back to the main agent.
-    """,
-        tools=_tools_for("external"),
-    )
-
-
 def get_domain_subagents() -> list[dict]:
     return [
         get_general_purpose_subagent(),
@@ -169,7 +143,5 @@ def get_domain_subagents() -> list[dict]:
         get_research_subagent(),
         get_astro_subagent(),
         get_earth_subagent(),
-        get_memory_subagent(),
         get_divination_subagent(),
-        get_external_subagent(),
     ]

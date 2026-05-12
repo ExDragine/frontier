@@ -35,7 +35,7 @@ _TOOL_MODULE_GROUPS = {
     "weather": "earth",
     "paint": "main",
     "video": "main",
-    "message_summary": "memory",
+    "memory": "memory",
     "iching": "divination",
     "tarot": "divination",
 }
@@ -70,6 +70,12 @@ class ModuleTools:
         self.mcp_tools = mcp_get_tools()
         self.local_tools, self.web_tools, self.subagent_tools = _discover_tools()
         self.subagent_tools["external"].extend(self.mcp_tools)
+
+        # 将 MCP 工具、联网搜索、记忆查询全部暴露给主 Agent
+        self.subagent_tools["main"].extend(self.mcp_tools)
+        self.subagent_tools["main"].extend(self.web_tools)
+        self.subagent_tools["main"].extend(self.subagent_tools["memory"])
+
         self.main_tools = self.subagent_tools["main"]
         self.all_tools = self.mcp_tools + self.local_tools
 
