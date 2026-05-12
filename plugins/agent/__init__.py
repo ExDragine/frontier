@@ -132,7 +132,8 @@ async def _agent_choice_should_reply(context: AgentRequestContext, history_messa
         _build_agent_choice_input(context, history_messages),
         response_format=AgentChoice,
         temperature=0.3,
-        model_kwargs={"extra_body": {"thinking": {"type": "disabled"}}},
+        reasoning_effort="low",
+        model_kwargs={"extra_body": {"thinking": {"type": "enabled"}}},
     )
     return agent_choice
 
@@ -340,7 +341,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         videos=videos,
     )
     choice = await _agent_choice_should_reply(context, messages)
-    if choice is None or not choice.should_reply:
+    if choice is None or not choice.should_reply or not choice.needs_agent:
         match risk_check:
             case "Safe":
                 if group_id:
@@ -380,4 +381,3 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                 role="assistant",
                 content=choice.pre_response,
             )
-
