@@ -113,14 +113,16 @@ async def _agent_choice_should_reply(context: AgentRequestContext, history_messa
     return agent_choice.should_reply
 
 
-async def _process_agent_request(context: AgentRequestContext) -> None:
-    messages = await messages_db.prepare_message(
-        int(context.user_id),
-        context.group_id,
-        query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
-        before_time=context.msg_time,
-    )
-    messages.append(
+async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict]) -> None:
+    messages = list(history_messages)
+    messages += [
+        {
+            "role": "system",
+            "content": (
+                "--- 以上是对话历史，仅用于理解上下文。"
+                "下面是**需要你回复的最新消息**。请只针对这条消息回复，不要重复回答历史中的问题。"
+            ),
+        },
         {
             "role": "user",
             "content": [
@@ -134,6 +136,7 @@ async def _process_agent_request(context: AgentRequestContext) -> None:
                                 .strftime("%Y-%m-%d %H:%M:%S"),
                                 "user_name": context.user_name,
                             },
+                            "is_current": True,
                             "content": context.text,
                         }
                     ),
@@ -146,9 +149,8 @@ async def _process_agent_request(context: AgentRequestContext) -> None:
                 }
                 for image in context.quoted_images + context.images
             ],
-        }
-    )
-
+        },
+    ]
     capability = EnvConfig.AGENT_CAPABILITY
     result = await f_cognitive.chat_agent(
         messages,
@@ -317,7 +319,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         await common.finish()
     thread_id = _agent_thread_id(user_id, group_id)
     try:
-        await agent_queue.submit(thread_id, lambda: _process_agent_request(context))
+        await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
     except AgentQueueFullError:
         logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
         await common.finish("前面还有请求在处理，稍等一下")

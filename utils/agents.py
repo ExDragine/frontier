@@ -17,7 +17,6 @@ from langchain.agents.middleware import (
 )
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint.memory import InMemorySaver
 from nonebot import logger
 
 from tools import agent_tools
@@ -182,7 +181,6 @@ class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.main_tools
         self.subagents: list = get_domain_subagents()
-        self.checkpoint = InMemorySaver()
         self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
         _ensure_dir(self.working_dir)
 
@@ -364,7 +362,6 @@ class FrontierCognitive:
             },
             backend=backend,
             subagents=self.subagents,
-            checkpointer=self.checkpoint,
             context_schema=CustomAgentState,
             debug=EnvConfig.AGENT_DEBUG_MODE,
         )
