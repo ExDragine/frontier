@@ -141,6 +141,7 @@ def _install_third_party_stubs():
     )
     _install_stub("langchain_core.runnables", RunnableConfig=dict)
     _install_stub("langchain_openai", ChatOpenAI=type("ChatOpenAI", (), {"__init__": lambda self, **_kw: None}))
+    _install_stub("langchain_deepseek", ChatDeepSeek=type("ChatDeepSeek", (), {"__init__": lambda self, **_kw: None}))
     _install_stub(
         "langchain_anthropic",
         ChatAnthropic=type("ChatAnthropic", (), {"__init__": lambda self, **_kw: None}),

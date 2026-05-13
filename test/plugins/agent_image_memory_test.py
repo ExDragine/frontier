@@ -589,6 +589,62 @@ async def test_process_agent_request_passes_configured_capability_directly(monke
 
 
 @pytest.mark.asyncio
+async def test_process_agent_request_sanitizes_final_response(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {"sent": None, "stored": None, "checked": None}
+
+    class DummyMessagesDb:
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "assistant":
+                captured["stored"] = kwargs["content"]
+
+    class DummyCognitive:
+        async def chat_agent(self, *_args, **_kwargs):
+            return {"response": {"messages": [types.SimpleNamespace(text="unsafe final")]}, "uni_messages": []}
+
+    async def fake_sanitize(text):
+        captured["checked"] = text
+        return "这段回复被拦住了"
+
+    async def fake_send_messages(_group_id, _message_id, response):
+        captured["sent"] = response["messages"][-1].text
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
+    monkeypatch.setattr(agent, "send_messages", fake_send_messages)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
+
+    context = agent.AgentRequestContext(
+        bot=None,
+        event=types.SimpleNamespace(self_id="1"),
+        user_id="456",
+        user_name="Bob",
+        event_id=1,
+        group_id=123,
+        msg_time=1000,
+        text="继续解释一下",
+        quoted_images=[],
+        images=[],
+        videos=[],
+    )
+
+    await agent._process_agent_request(context)
+
+    assert captured["checked"] == "unsafe final"
+    assert captured["sent"] == "这段回复被拦住了"
+    assert captured["stored"] == "这段回复被拦住了"
+
+
+@pytest.mark.asyncio
 async def test_agent_choice_short_reply_sends_without_queue(monkeypatch):  # noqa: C901
     import nonebot
 
@@ -597,6 +653,7 @@ async def test_agent_choice_short_reply_sends_without_queue(monkeypatch):  # noq
 
     calls = {"queue": 0}
     assistant_messages = []
+    sent_messages = []
 
     class DummyQueue:
         async def submit(self, *_args, **_kwargs):
@@ -626,9 +683,21 @@ async def test_agent_choice_short_reply_sends_without_queue(monkeypatch):  # noq
     async def fake_signal_structured(*_args, **_kwargs):
         return agent.AgentChoice(should_reply=True, needs_agent=False, pre_response="早 今天起这么早")
 
+    class DummyUniMessage:
+        def __init__(self, content):
+            self.content = content
+
+        @classmethod
+        def text(cls, text):
+            return cls(text)
+
+        async def send(self):
+            sent_messages.append(self.content)
+
     monkeypatch.setattr(agent, "agent_queue", DummyQueue())
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "signal_structured", fake_signal_structured, raising=False)
@@ -665,11 +734,114 @@ async def test_agent_choice_short_reply_sends_without_queue(monkeypatch):  # noq
         adapter = ctx.create_adapter()
         bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
         ctx.receive_event(bot, event)
-        ctx.should_call_send(event, "早 今天起这么早")
         ctx.should_finished()
 
     assert calls["queue"] == 0
+    assert sent_messages == ["早 今天起这么早"]
     assert assistant_messages == ["早 今天起这么早"]
+
+
+@pytest.mark.asyncio
+async def test_agent_choice_short_reply_sanitizes_unsafe_output(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    calls = {"queue": 0}
+    assistant_messages = []
+
+    class DummyQueue:
+        async def submit(self, *_args, **_kwargs):
+            calls["queue"] += 1
+
+    class DummyMessagesDb:
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "assistant":
+                assistant_messages.append(kwargs["content"])
+
+        async def insert_images(self, **_kwargs):
+            return []
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+    async def fake_message_extract(_segments):
+        return "早", [], [], []
+
+    async def fake_message_gateway(_event, _messages):
+        return True
+
+    async def fake_signal_structured(*_args, **_kwargs):
+        return agent.AgentChoice(should_reply=True, needs_agent=False, pre_response="unsafe short")
+
+    async def fake_sanitize(text):
+        assert text == "unsafe short"
+        return "这段回复被拦住了"
+
+    sent_messages = []
+
+    class DummyUniMessage:
+        def __init__(self, content):
+            self.content = content
+
+        @classmethod
+        def text(cls, text):
+            return cls(text)
+
+        async def send(self):
+            sent_messages.append(self.content)
+
+    monkeypatch.setattr(agent, "agent_queue", DummyQueue())
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(agent, "message_extract", fake_message_extract)
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "signal_structured", fake_signal_structured, raising=False)
+    monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=1,
+        sender_id=456,
+        time=0,
+        segments=[{"type": "text", "data": {"text": "早"}}],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert calls["queue"] == 0
+    assert sent_messages == ["这段回复被拦住了"]
+    assert assistant_messages == ["这段回复被拦住了"]
 
 
 @pytest.mark.asyncio

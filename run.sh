@@ -3,6 +3,7 @@
 set -e  # 任何命令失败时立即退出
 # export PYTHON_JIT=1
 # export PYTHON_GIL=0
+export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

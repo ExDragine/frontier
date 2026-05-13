@@ -260,3 +260,41 @@ async def test_message_check_disabled_with_images_returns_safe(monkeypatch):
     monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", False)
     result = await message_module.message_check(None, [b"fake_image_bytes"])
     assert result == "Safe"
+
+
+@pytest.mark.asyncio
+async def test_sanitize_outgoing_text_blocks_unsafe_output(monkeypatch):
+    """模型输出为 Unsafe 时，替换成固定拦截提示"""
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", True)
+
+    fake_det = types.SimpleNamespace()
+
+    async def fake_predict(text):
+        assert text == "dangerous model output"
+        return "Unsafe", ["Violent"]
+
+    fake_det.predict = fake_predict
+    monkeypatch.setattr(message_module, "text_det", fake_det)
+
+    result = await message_module.sanitize_outgoing_text("dangerous model output")
+
+    assert result == message_module.OUTPUT_RISK_BLOCKED_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_sanitize_outgoing_text_allows_controversial_output(monkeypatch):
+    """只有确定 Unsafe 才拦截，Controversial 输出照常发送"""
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", True)
+
+    fake_det = types.SimpleNamespace()
+
+    async def fake_predict(text):
+        assert text == "borderline model output"
+        return "Controversial", ["Politically Sensitive Topics"]
+
+    fake_det.predict = fake_predict
+    monkeypatch.setattr(message_module, "text_det", fake_det)
+
+    result = await message_module.sanitize_outgoing_text("borderline model output")
+
+    assert result == "borderline model output"

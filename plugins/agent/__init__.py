@@ -3,6 +3,7 @@ import datetime
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from nonebot import get_bot, get_driver, logger, on_message, require
@@ -20,6 +21,8 @@ from utils.message import (
     message_check,
     message_extract,
     message_gateway,
+    outgoing_message_content,
+    sanitize_outgoing_text,
     send_artifacts,
     send_messages,
 )
@@ -200,6 +203,10 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         await send_artifacts(artifacts)
 
     if response["messages"] and isinstance(response["messages"], list):
+        response_content = outgoing_message_content(response["messages"][-1])
+        sanitized_response = await sanitize_outgoing_text(response_content)
+        if sanitized_response != response_content:
+            response["messages"][-1] = SimpleNamespace(text=sanitized_response)
         await messages_db.insert(
             time=int(time.time() * 1000),
             msg_id=None,
@@ -207,9 +214,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
             group_id=context.group_id,
             user_name="Assistant",
             role="assistant",
-            content=str(response["messages"][-1].text)
-            if hasattr(response["messages"][-1], "text")
-            else response["messages"][-1].content,
+            content=outgoing_message_content(response["messages"][-1]),
         )
         await send_messages(context.group_id, context.event_id, response)
     else:
@@ -377,7 +382,8 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                         group_id=group_id, message_seq=event_id, reaction="267", is_add=False
                     )
         if choice.pre_response:
-            await UniMessage.text(choice.pre_response).send()
+            pre_response = await sanitize_outgoing_text(choice.pre_response)
+            await UniMessage.text(pre_response).send()
             await messages_db.insert(
                 time=int(time.time() * 1000),
                 msg_id=None,
@@ -385,12 +391,13 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                 group_id=context.group_id,
                 user_name="Assistant",
                 role="assistant",
-                content=choice.pre_response,
+                content=pre_response,
             )
         await common.finish()
 
     if choice.pre_response:
-        await UniMessage.text(choice.pre_response).send()
+        pre_response = await sanitize_outgoing_text(choice.pre_response)
+        await UniMessage.text(pre_response).send()
     thread_id = _agent_thread_id(user_id, group_id)
     try:
         await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))

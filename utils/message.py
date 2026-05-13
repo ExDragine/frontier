@@ -2,7 +2,8 @@ import ast
 import asyncio
 import re
 from io import BytesIO
-from typing import Literal
+from types import SimpleNamespace
+from typing import Any, Literal
 
 import httpx
 from nonebot import logger, require
@@ -23,6 +24,7 @@ transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
 httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
+OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
 
 
 class ReplyCheck(BaseModel):
@@ -170,9 +172,9 @@ async def send_artifacts(artifacts):
             logger.exception("发送工件时发生错误: %s", res)
 
 
-async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
-    raw = response["messages"][-1]
-    content = str(raw.text) if hasattr(raw, "text") else raw.content
+def outgoing_message_content(raw: Any) -> str:
+    text_attr = getattr(raw, "text", None)
+    content = str(text_attr) if text_attr is not None else getattr(raw, "content", "")
     if content:
         try:
             content = ast.literal_eval(content)["content"]
@@ -181,6 +183,35 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
         except Exception as e:
             # 意外错误
             logger.warning(f"解析消息内容时出现意外错误: {type(e).__name__}: {e}")
+    return str(content or "")
+
+
+async def sanitize_outgoing_text(content: str | None) -> str | None:
+    if not content or not EnvConfig.CONTENT_CHECK_ENABLED:
+        return content
+    if text_det is None:
+        logger.warning("CONTENT_CHECK_ENABLED is True but text detector is None; allowing outgoing text")
+        return content
+
+    safe_label, categories = await text_det.predict(content)
+    if safe_label == "Unsafe":
+        logger.warning(f"⚠️ 模型输出命中文本风险审核，已拦截: {categories}")
+        return OUTPUT_RISK_BLOCKED_MESSAGE
+    return content
+
+
+async def sanitize_outgoing_message(raw: Any) -> Any:
+    content = outgoing_message_content(raw)
+    sanitized = await sanitize_outgoing_text(content)
+    if sanitized == content:
+        return raw
+    return SimpleNamespace(text=sanitized)
+
+
+async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
+    raw = response["messages"][-1]
+    content = outgoing_message_content(raw)
+    if content:
         pattern = re.compile(r"\$(.*?)\$")
         matches = pattern.findall(content)
         if len(content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID and not matches:
