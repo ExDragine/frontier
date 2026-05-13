@@ -38,6 +38,7 @@ dependencies = [
   "nonebot-adapter-milky",
   "langchain-google-genai",
   "langchain-anthropic",
+  "langchain-deepseek",
 ]
 
 [[tool.uv.index]]

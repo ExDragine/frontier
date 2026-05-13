@@ -117,7 +117,16 @@ const SettingsPage = {
         ];
 
         const sensitiveFields = {
-            key: new Set(['openai_api_key', 'paint_api_key', 'video_api_key', 'nasa_api_key', 'github_pat']),
+            key: new Set([
+                'openai_api_key',
+                'paint_api_key',
+                'video_api_key',
+                'google_api_key',
+                'anthropic_api_key',
+                'deepseek_api_key',
+                'nasa_api_key',
+                'github_pat'
+            ]),
             dashboard: new Set(['jwt_secret', 'password']),
         };
 

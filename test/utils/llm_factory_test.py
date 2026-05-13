@@ -88,6 +88,44 @@ def test_claude_routes_to_anthropic(monkeypatch):
     assert "timeout" not in kw
 
 
+def test_deepseek_routes_to_deepseek(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatDeepSeek", mock_cls)
+    monkeypatch.setattr(factory.EnvConfig, "DEEPSEEK_API_BASE", "")
+
+    factory.create_llm(model="deepseek-v4-flash", timeout=30, max_retries=2)
+
+    mock_cls.assert_called_once()
+    kw = mock_cls.call_args.kwargs
+    assert kw["model"] == "deepseek-v4-flash"
+    assert "api_key" in kw
+    assert "api_base" not in kw
+    assert kw["timeout"] == 30
+    assert kw["max_retries"] == 2
+
+
+def test_deepseek_endpoint_profile_overrides_api_key_and_base_url(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatDeepSeek", mock_cls)
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_ENDPOINTS",
+        {
+            "deepseek_signal": {
+                "provider": "deepseek",
+                "base_url": "https://deepseek.example.com/v1",
+                "api_key": "sk-deepseek-profile",
+            }
+        },
+    )
+
+    factory.create_llm(model="custom-signal", endpoint="deepseek_signal")
+
+    kw = mock_cls.call_args.kwargs
+    assert kw["api_key"].get_secret_value() == "sk-deepseek-profile"
+    assert kw["api_base"] == "https://deepseek.example.com/v1"
+
+
 def test_openai_kwargs_filtered_for_google(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatGoogleGenerativeAI", mock_cls)
@@ -213,6 +251,16 @@ def test_model_capabilities_use_model_specific_config(monkeypatch):
     assert factory.model_supports("basic-model", "vision") is True
 
 
+def test_model_capabilities_use_signal_model_config(monkeypatch):
+    monkeypatch.setattr(factory.EnvConfig, "SIGNAL_MODEL", "signal-model")
+    monkeypatch.setattr(factory.EnvConfig, "SIGNAL_MODEL_CAPABILITIES", ["text"])
+    monkeypatch.setattr(factory.EnvConfig, "LLM_ENDPOINTS", {})
+
+    assert factory.get_model_capabilities("signal-model") == {"text"}
+    assert factory.model_supports("signal-model", "text") is True
+    assert factory.model_supports("signal-model", "vision") is False
+
+
 def test_model_capabilities_fall_back_to_endpoint_profile(monkeypatch):
     monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL", "basic-model")
     monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL_CAPABILITIES", [])
@@ -281,3 +329,13 @@ def test_vendor_prefix_stripped_anthropic(monkeypatch):
 
     kw = mock_cls.call_args.kwargs
     assert kw["model"] == "anthropic/claude-3-5-sonnet-20241022"
+
+
+def test_vendor_prefix_stripped_deepseek(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatDeepSeek", mock_cls)
+
+    factory.create_llm(model="deepseek/deepseek-v4-flash")
+
+    kw = mock_cls.call_args.kwargs
+    assert kw["model"] == "deepseek/deepseek-v4-flash"

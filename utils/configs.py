@@ -35,6 +35,10 @@ class EnvConfig:
     BASIC_MODEL_PROVIDER: str = endpoint.get("basic_model_provider", "")
     BASIC_MODEL_ENDPOINT: str = endpoint.get("basic_model_endpoint", "")
     BASIC_MODEL_CAPABILITIES: list[str] = endpoint.get("basic_model_capabilities", [])
+    SIGNAL_MODEL: str = endpoint.get("signal_model", "deepseek-v4-flash")
+    SIGNAL_MODEL_PROVIDER: str = endpoint.get("signal_model_provider", "deepseek")
+    SIGNAL_MODEL_ENDPOINT: str = endpoint.get("signal_model_endpoint", "")
+    SIGNAL_MODEL_CAPABILITIES: list[str] = endpoint.get("signal_model_capabilities", ["text"])
     ADVAN_MODEL: str = endpoint["advan_model"]
     ADVAN_MODEL_PROVIDER: str = endpoint.get("advan_model_provider", "")
     ADVAN_MODEL_ENDPOINT: str = endpoint.get("advan_model_endpoint", "")
@@ -54,6 +58,8 @@ class EnvConfig:
     GOOGLE_API_KEY: SecretStr = SecretStr(key.get("google_api_key", ""))
     ANTHROPIC_API_KEY: SecretStr = SecretStr(key.get("anthropic_api_key", ""))
     ANTHROPIC_BASE_URL: str = key.get("anthropic_base_url", "")
+    DEEPSEEK_API_KEY: SecretStr = SecretStr(key.get("deepseek_api_key", ""))
+    DEEPSEEK_API_BASE: str = key.get("deepseek_api_base", "")
     LLM_ENDPOINTS: dict = llm_endpoints
 
     AGENT_CAPABILITY = function_list["agent_capability"]

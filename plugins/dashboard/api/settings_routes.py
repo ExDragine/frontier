@@ -25,6 +25,7 @@ SENSITIVE_FIELDS = {
         "video_api_key",
         "google_api_key",
         "anthropic_api_key",
+        "deepseek_api_key",
         "nasa_api_key",
         "github_pat",
     },
@@ -138,6 +139,10 @@ def _reload_env_config():
     EnvConfig.BASIC_MODEL_PROVIDER = ep.get("basic_model_provider", EnvConfig.BASIC_MODEL_PROVIDER)
     EnvConfig.BASIC_MODEL_ENDPOINT = ep.get("basic_model_endpoint", EnvConfig.BASIC_MODEL_ENDPOINT)
     EnvConfig.BASIC_MODEL_CAPABILITIES = ep.get("basic_model_capabilities", EnvConfig.BASIC_MODEL_CAPABILITIES)
+    EnvConfig.SIGNAL_MODEL = ep.get("signal_model", EnvConfig.SIGNAL_MODEL)
+    EnvConfig.SIGNAL_MODEL_PROVIDER = ep.get("signal_model_provider", EnvConfig.SIGNAL_MODEL_PROVIDER)
+    EnvConfig.SIGNAL_MODEL_ENDPOINT = ep.get("signal_model_endpoint", EnvConfig.SIGNAL_MODEL_ENDPOINT)
+    EnvConfig.SIGNAL_MODEL_CAPABILITIES = ep.get("signal_model_capabilities", EnvConfig.SIGNAL_MODEL_CAPABILITIES)
     EnvConfig.ADVAN_MODEL = ep.get("advan_model", EnvConfig.ADVAN_MODEL)
     EnvConfig.ADVAN_MODEL_PROVIDER = ep.get("advan_model_provider", EnvConfig.ADVAN_MODEL_PROVIDER)
     EnvConfig.ADVAN_MODEL_ENDPOINT = ep.get("advan_model_endpoint", EnvConfig.ADVAN_MODEL_ENDPOINT)
@@ -158,6 +163,8 @@ def _reload_env_config():
     EnvConfig.GOOGLE_API_KEY = SecretStr(key.get("google_api_key", ""))
     EnvConfig.ANTHROPIC_API_KEY = SecretStr(key.get("anthropic_api_key", ""))
     EnvConfig.ANTHROPIC_BASE_URL = key.get("anthropic_base_url", "")
+    EnvConfig.DEEPSEEK_API_KEY = SecretStr(key.get("deepseek_api_key", ""))
+    EnvConfig.DEEPSEEK_API_BASE = key.get("deepseek_api_base", "")
 
     EnvConfig.AGENT_MODULE_ENABLED = fn.get("agent_module_enabled", EnvConfig.AGENT_MODULE_ENABLED)
     EnvConfig.PAINT_MODULE_ENABLED = fn.get("paint_module_enabled", EnvConfig.PAINT_MODULE_ENABLED)

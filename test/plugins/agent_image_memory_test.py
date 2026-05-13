@@ -15,7 +15,7 @@ async def _noop(*_args, **_kwargs):
 
 
 async def _reply_yes(*_args, **_kwargs):
-    return True
+    return types.SimpleNamespace(should_reply=True, needs_agent=True, pre_response=None)
 
 
 @pytest.mark.asyncio
@@ -497,6 +497,48 @@ def test_agent_choice_input_uses_plain_text_only(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_agent_choice_uses_signal_llm(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {}
+
+    async def fake_signal_structured(system_prompt, user_prompt, schema, **kwargs):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        captured["schema"] = schema
+        captured["kwargs"] = kwargs
+        return schema(should_reply=True, needs_agent=True, pre_response="让我想想...")
+
+    context = agent.AgentRequestContext(
+        bot=None,
+        event=types.SimpleNamespace(self_id="1"),
+        user_id="456",
+        user_name="Bob",
+        event_id=1,
+        group_id=123,
+        msg_time=1000,
+        text="这个问题怎么解决",
+        quoted_images=[],
+        images=[],
+        videos=[],
+    )
+
+    monkeypatch.setattr(agent, "signal_structured", fake_signal_structured)
+
+    result = await agent._agent_choice_should_reply(context, [{"role": "user", "content": "history"}])
+
+    assert result.needs_agent is True
+    assert captured["schema"] is agent.AgentChoice
+    assert "reply-gate classifier" in captured["system_prompt"]
+    assert captured["user_prompt"] == "user: history\nuser: 这个问题怎么解决"
+    assert captured["kwargs"]["temperature"] == 0.7
+    assert captured["kwargs"]["model_kwargs"] == {"extra_body": {"thinking": {"type": "disabled"}}}
+
+
+@pytest.mark.asyncio
 async def test_process_agent_request_passes_configured_capability_directly(monkeypatch):
     import nonebot
 
@@ -517,12 +559,12 @@ async def test_process_agent_request_passes_configured_capability_directly(monke
             captured["capability"] = _args[3]
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
 
-    async def fake_assistant_agent(*_args, **_kwargs):
+    async def fake_signal_structured(*_args, **_kwargs):
         raise AssertionError("AgentChoice should not select the reasoning capability")
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "assistant_agent", fake_assistant_agent)
+    monkeypatch.setattr(agent, "signal_structured", fake_signal_structured, raising=False)
     monkeypatch.setattr(agent, "send_messages", _noop)
     monkeypatch.setattr(agent, "send_artifacts", _noop)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
@@ -544,6 +586,90 @@ async def test_process_agent_request_passes_configured_capability_directly(monke
     await agent._process_agent_request(context)
 
     assert captured["capability"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_agent_choice_short_reply_sends_without_queue(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    calls = {"queue": 0}
+    assistant_messages = []
+
+    class DummyQueue:
+        async def submit(self, *_args, **_kwargs):
+            calls["queue"] += 1
+
+    class DummyMessagesDb:
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "assistant":
+                assistant_messages.append(kwargs["content"])
+
+        async def insert_images(self, **_kwargs):
+            return []
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+    async def fake_message_extract(_segments):
+        return "早", [], [], []
+
+    async def fake_message_gateway(_event, _messages):
+        return True
+
+    async def fake_signal_structured(*_args, **_kwargs):
+        return agent.AgentChoice(should_reply=True, needs_agent=False, pre_response="早 今天起这么早")
+
+    monkeypatch.setattr(agent, "agent_queue", DummyQueue())
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "message_extract", fake_message_extract)
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "signal_structured", fake_signal_structured, raising=False)
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=1,
+        sender_id=456,
+        time=0,
+        segments=[{"type": "text", "data": {"text": "早"}}],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_call_send(event, "早 今天起这么早")
+        ctx.should_finished()
+
+    assert calls["queue"] == 0
+    assert assistant_messages == ["早 今天起这么早"]
 
 
 @pytest.mark.asyncio
@@ -579,15 +705,15 @@ async def test_agent_choice_false_finishes_before_queue(monkeypatch):  # noqa: C
     async def fake_message_gateway(_event, _messages):
         return True
 
-    async def fake_assistant_agent(*_args, **_kwargs):
-        return agent.AgentChoice(should_reply=False)
+    async def fake_signal_structured(*_args, **_kwargs):
+        return agent.AgentChoice(should_reply=False, needs_agent=False, pre_response=None)
 
     monkeypatch.setattr(agent, "agent_queue", DummyQueue())
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
-    monkeypatch.setattr(agent, "assistant_agent", fake_assistant_agent)
+    monkeypatch.setattr(agent, "signal_structured", fake_signal_structured, raising=False)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")

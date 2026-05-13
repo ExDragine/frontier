@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from langchain_anthropic import ChatAnthropic
+from langchain_deepseek import ChatDeepSeek
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
@@ -39,6 +40,7 @@ _OPENAI_VALID = {
 }
 _GOOGLE_VALID = {"streaming", "max_retries", "timeout", "temperature"}
 _ANTHROPIC_VALID = {"streaming", "max_retries", "timeout", "temperature"}
+_DEEPSEEK_VALID = {"streaming", "max_retries", "timeout", "temperature", "model_kwargs"}
 
 _openai_config = ProviderConfig(
     cls_fn=lambda: ChatOpenAI,
@@ -67,10 +69,20 @@ _anthropic_config = ProviderConfig(
     base_url_field="anthropic_api_url",
 )
 
+_deepseek_config = ProviderConfig(
+    cls_fn=lambda: ChatDeepSeek,
+    api_key_fn=lambda: EnvConfig.DEEPSEEK_API_KEY,
+    api_key_field="api_key",
+    valid_kwargs=_DEEPSEEK_VALID,
+    base_url_fn=lambda: EnvConfig.DEEPSEEK_API_BASE,
+    base_url_field="api_base",
+)
+
 _PROVIDER_CONFIGS = {
     "openai": _openai_config,
     "google": _google_config,
     "anthropic": _anthropic_config,
+    "deepseek": _deepseek_config,
 }
 
 
@@ -81,8 +93,13 @@ def _clean_optional(value: object) -> str:
 
 
 def _infer_provider(model: str) -> str:
-    route_key = model.split("/", 1)[1] if "/" in model else model
+    vendor, sep, route_key = model.partition("/")
+    if sep and vendor.lower() in _PROVIDER_CONFIGS:
+        return vendor.lower()
+    route_key = route_key if sep else model
     match route_key:
+        case k if k.startswith("deepseek"):
+            return "deepseek"
         case k if k.startswith(("gemini-", "google")):
             return "google"
         case k if k.startswith(("claude-", "anthropic")):
@@ -114,6 +131,8 @@ def _model_specific_capabilities(model: str) -> set[str]:
         return _normalize_capabilities(EnvConfig.BASIC_MODEL_CAPABILITIES)
     if model == EnvConfig.ADVAN_MODEL:
         return _normalize_capabilities(EnvConfig.ADVAN_MODEL_CAPABILITIES)
+    if model == EnvConfig.SIGNAL_MODEL:
+        return _normalize_capabilities(EnvConfig.SIGNAL_MODEL_CAPABILITIES)
     return set()
 
 

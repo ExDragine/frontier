@@ -139,12 +139,14 @@ def test_settings_sanitize_masks_paint_api_key():
                 "openai_api_key": "sk-openai",
                 "paint_api_key": "sk-paint-secret",
                 "video_api_key": "sk-video-secret",
+                "deepseek_api_key": "sk-deepseek-secret",
             }
         }
     )
 
     assert result["key"]["paint_api_key"] == "****cret"
     assert result["key"]["video_api_key"] == "****cret"
+    assert result["key"]["deepseek_api_key"] == "****cret"
 
 
 def test_settings_sanitize_masks_llm_endpoint_api_key():
@@ -196,6 +198,10 @@ basic_model = "basic"
 basic_model_provider = "anthropic"
 basic_model_endpoint = "anthropic_proxy"
 basic_model_capabilities = ["text"]
+signal_model = "deepseek-v4-flash"
+signal_model_provider = "deepseek"
+signal_model_endpoint = "deepseek_signal"
+signal_model_capabilities = ["text"]
 advan_model = "advan"
 advan_model_provider = "openai"
 advan_model_endpoint = "openrouter"
@@ -217,6 +223,12 @@ base_url = "https://anthropic.example.com"
 api_key = "ant-proxy"
 capabilities = ["text"]
 
+[llm_endpoints.deepseek_signal]
+provider = "deepseek"
+base_url = "https://deepseek.example.com/v1"
+api_key = "sk-deepseek-profile"
+capabilities = ["text"]
+
 [key]
 openai_api_key = "sk-global"
 paint_api_key = ""
@@ -224,6 +236,8 @@ video_api_key = "sk-video"
 google_api_key = "ggl-global"
 anthropic_api_key = "ant-global"
 anthropic_base_url = "https://anthropic.example.com"
+deepseek_api_key = "sk-deepseek"
+deepseek_api_base = "https://api.deepseek.example/v1"
 nasa_api_key = "nasa"
 github_pat = "gh"
 
@@ -272,6 +286,10 @@ jwt_secret = "secret"
     configs.EnvConfig.BASIC_MODEL_PROVIDER = ""
     configs.EnvConfig.BASIC_MODEL_ENDPOINT = ""
     configs.EnvConfig.BASIC_MODEL_CAPABILITIES = []
+    configs.EnvConfig.SIGNAL_MODEL = "old-signal"
+    configs.EnvConfig.SIGNAL_MODEL_PROVIDER = ""
+    configs.EnvConfig.SIGNAL_MODEL_ENDPOINT = ""
+    configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES = []
     configs.EnvConfig.ADVAN_MODEL_PROVIDER = ""
     configs.EnvConfig.ADVAN_MODEL_ENDPOINT = ""
     configs.EnvConfig.ADVAN_MODEL_CAPABILITIES = []
@@ -285,6 +303,8 @@ jwt_secret = "secret"
     configs.EnvConfig.GOOGLE_API_KEY = SecretStr("ggl-old")
     configs.EnvConfig.ANTHROPIC_API_KEY = SecretStr("ant-old")
     configs.EnvConfig.ANTHROPIC_BASE_URL = ""
+    configs.EnvConfig.DEEPSEEK_API_KEY = SecretStr("deepseek-old")
+    configs.EnvConfig.DEEPSEEK_API_BASE = ""
     configs.EnvConfig.VIDEO_MODULE_ENABLED = False
     configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS = 1
     configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS = 900
@@ -300,17 +320,24 @@ jwt_secret = "secret"
     assert configs.EnvConfig.ADVAN_MODEL_PROVIDER == "openai"
     assert configs.EnvConfig.ADVAN_MODEL_ENDPOINT == "openrouter"
     assert configs.EnvConfig.ADVAN_MODEL_CAPABILITIES == ["text", "vision"]
+    assert configs.EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
+    assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
+    assert configs.EnvConfig.SIGNAL_MODEL_ENDPOINT == "deepseek_signal"
+    assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
     assert configs.EnvConfig.PAINT_BASE_URL == "https://global.example.com/v1"
     assert configs.EnvConfig.VIDEO_MODEL == "alibaba/happyhorse-1.0"
     assert configs.EnvConfig.VIDEO_BASE_URL == "https://zenmux.ai/api/vertex-ai"
     assert configs.EnvConfig.LLM_ENDPOINTS["openrouter"]["capabilities"] == ["text", "vision"]
     assert configs.EnvConfig.LLM_ENDPOINTS["openrouter"]["api_key"] == "sk-openrouter"
+    assert configs.EnvConfig.LLM_ENDPOINTS["deepseek_signal"]["provider"] == "deepseek"
     assert configs.EnvConfig.OPENAI_API_KEY.get_secret_value() == "sk-global"
     assert configs.EnvConfig.PAINT_API_KEY.get_secret_value() == "sk-global"
     assert configs.EnvConfig.VIDEO_API_KEY.get_secret_value() == "sk-video"
     assert configs.EnvConfig.GOOGLE_API_KEY.get_secret_value() == "ggl-global"
     assert configs.EnvConfig.ANTHROPIC_API_KEY.get_secret_value() == "ant-global"
     assert configs.EnvConfig.ANTHROPIC_BASE_URL == "https://anthropic.example.com"
+    assert configs.EnvConfig.DEEPSEEK_API_KEY.get_secret_value() == "sk-deepseek"
+    assert configs.EnvConfig.DEEPSEEK_API_BASE == "https://api.deepseek.example/v1"
     assert configs.EnvConfig.VIDEO_MODULE_ENABLED is True
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 2
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 1200

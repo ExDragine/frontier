@@ -73,7 +73,14 @@ jwt_secret = "secret"
     assert configs.EnvConfig.ADVAN_MODEL_PROVIDER == ""
     assert configs.EnvConfig.ADVAN_MODEL_ENDPOINT == ""
     assert configs.EnvConfig.ADVAN_MODEL_CAPABILITIES == []
+    assert configs.EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
+    assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
+    assert configs.EnvConfig.SIGNAL_MODEL_ENDPOINT == ""
+    assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
     assert configs.EnvConfig.LLM_ENDPOINTS == {}
+    assert isinstance(configs.EnvConfig.DEEPSEEK_API_KEY, SecretStr)
+    assert configs.EnvConfig.DEEPSEEK_API_KEY.get_secret_value() == ""
+    assert configs.EnvConfig.DEEPSEEK_API_BASE == ""
     assert configs.EnvConfig.VIDEO_MODULE_ENABLED is True
     assert configs.EnvConfig.VIDEO_MODEL == "alibaba/happyhorse-1.0"
     assert configs.EnvConfig.VIDEO_BASE_URL == "https://zenmux.ai/api/vertex-ai"
@@ -157,6 +164,10 @@ basic_model = "basic"
 basic_model_provider = "anthropic"
 basic_model_endpoint = "anthropic_proxy"
 basic_model_capabilities = ["text"]
+signal_model = "deepseek-v4-flash"
+signal_model_provider = "deepseek"
+signal_model_endpoint = "deepseek_signal"
+signal_model_capabilities = ["text"]
 advan_model = "advan"
 advan_model_provider = "openai"
 advan_model_endpoint = "openrouter"
@@ -175,8 +186,16 @@ base_url = "https://anthropic-proxy.example.com"
 api_key = "ant-proxy"
 capabilities = ["text"]
 
+[llm_endpoints.deepseek_signal]
+provider = "deepseek"
+base_url = "https://deepseek.example.com/v1"
+api_key = "sk-deepseek-profile"
+capabilities = ["text"]
+
 [key]
 openai_api_key = "sk"
+deepseek_api_key = "sk-deepseek"
+deepseek_api_base = "https://api.deepseek.example/v1"
 nasa_api_key = "nasa"
 github_pat = "gh"
 
@@ -221,9 +240,16 @@ jwt_secret = "secret"
     assert configs.EnvConfig.ADVAN_MODEL_PROVIDER == "openai"
     assert configs.EnvConfig.ADVAN_MODEL_ENDPOINT == "openrouter"
     assert configs.EnvConfig.ADVAN_MODEL_CAPABILITIES == ["text", "vision"]
+    assert configs.EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
+    assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
+    assert configs.EnvConfig.SIGNAL_MODEL_ENDPOINT == "deepseek_signal"
+    assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
     assert configs.EnvConfig.LLM_ENDPOINTS["openrouter"]["api_key"] == "sk-openrouter"
     assert configs.EnvConfig.LLM_ENDPOINTS["openrouter"]["capabilities"] == ["text", "vision"]
     assert configs.EnvConfig.LLM_ENDPOINTS["anthropic_proxy"]["base_url"] == "https://anthropic-proxy.example.com"
+    assert configs.EnvConfig.LLM_ENDPOINTS["deepseek_signal"]["provider"] == "deepseek"
+    assert configs.EnvConfig.DEEPSEEK_API_KEY.get_secret_value() == "sk-deepseek"
+    assert configs.EnvConfig.DEEPSEEK_API_BASE == "https://api.deepseek.example/v1"
 
 
 def test_env_config_paint_fields_fall_back_to_openai_values(tmp_path, monkeypatch):

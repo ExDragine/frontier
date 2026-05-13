@@ -10,7 +10,7 @@ from nonebot.adapters.milky.event import MessageEvent
 from pydantic import BaseModel, Field
 
 from utils.agent_queue import AgentQueueFullError, AgentQueueManager
-from utils.agents import FrontierCognitive, _agent_thread_id, assistant_agent
+from utils.agents import FrontierCognitive, _agent_thread_id
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
 from utils.message import (
@@ -25,6 +25,7 @@ from utils.message import (
 )
 from utils.min_heap import RepeatMessageHeap
 from utils.reply_context import build_reply_context, reply_seq_from_segments
+from utils.signal_llm import signal_structured
 from utils.staged_artifacts import cleanup_expired_staged_artifacts
 
 require("nonebot_plugin_alconna")
@@ -127,18 +128,18 @@ async def _agent_choice_should_reply(context: AgentRequestContext, history_messa
         await UniMessage.text("⚙️ 系统配置错误，请联系管理员").send()
         return None
 
-    agent_choice: AgentChoice = await assistant_agent(
-        system_prompt,
-        _build_agent_choice_input(context, history_messages),
-        response_format=AgentChoice,
+    agent_choice: AgentChoice = await signal_structured(
+        system_prompt=system_prompt,
+        user_prompt=_build_agent_choice_input(context, history_messages),
+        schema=AgentChoice,
         temperature=0.7,
         model_kwargs={"extra_body": {"thinking": {"type": "disabled"}}},
     )
     return agent_choice
 
 
-async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict]) -> None:
-    messages = list(history_messages)
+async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> None:
+    messages = list(history_messages or [])
     messages += [
         {
             "role": "user",
@@ -337,7 +338,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         videos=videos,
     )
     choice = await _agent_choice_should_reply(context, messages)
-    if choice is None or not choice.should_reply or not choice.needs_agent:
+    if choice is None or not choice.should_reply:
         match risk_check:
             case "Safe":
                 if group_id:
@@ -356,16 +357,25 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                         group_id=group_id, message_seq=event_id, reaction="267", is_add=False
                     )
         await common.finish()
-    if choice.needs_agent:
-        if choice.pre_response:
-            await UniMessage.text(choice.pre_response).send()
-        thread_id = _agent_thread_id(user_id, group_id)
-        try:
-            await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
-        except AgentQueueFullError:
-            logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
-            await common.finish("前面还有请求在处理，稍等一下")
-    else:
+
+    if not choice.needs_agent:
+        match risk_check:
+            case "Safe":
+                if group_id:
+                    await bot.send_group_message_reaction(
+                        group_id=group_id, message_seq=event_id, reaction="351", is_add=False
+                    )
+            case "Controversial":
+                # 使用表情回复功能
+                if group_id:
+                    await bot.send_group_message_reaction(
+                        group_id=group_id, message_seq=event_id, reaction="32", is_add=False
+                    )
+            case "Unsafe":
+                if group_id:
+                    await bot.send_group_message_reaction(
+                        group_id=group_id, message_seq=event_id, reaction="267", is_add=False
+                    )
         if choice.pre_response:
             await UniMessage.text(choice.pre_response).send()
             await messages_db.insert(
@@ -377,3 +387,13 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                 role="assistant",
                 content=choice.pre_response,
             )
+        await common.finish()
+
+    if choice.pre_response:
+        await UniMessage.text(choice.pre_response).send()
+    thread_id = _agent_thread_id(user_id, group_id)
+    try:
+        await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
+    except AgentQueueFullError:
+        logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
+        await common.finish("前面还有请求在处理，稍等一下")

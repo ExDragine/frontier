@@ -11,10 +11,10 @@ from nonebot.exception import ActionFailed
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
 from utils.markdown_render import markdown_to_image, markdown_to_text
+from utils.signal_llm import signal_structured
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
@@ -246,7 +246,7 @@ async def message_gateway(event: MessageEvent, messages: list):
         plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
         with open("prompts/reply_check.md", encoding="utf-8") as f:
             system_prompt = f.read().format(name={EnvConfig.BOT_NAME})
-        reply_check: ReplyCheck = await assistant_agent(system_prompt, plain_conv, response_format=ReplyCheck)
+        reply_check: ReplyCheck = await signal_structured(system_prompt, plain_conv, ReplyCheck)
         return reply_check.should_reply == "true" and reply_check.confidence > 0.5
     return False
 

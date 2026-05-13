@@ -193,7 +193,7 @@ async def test_message_gateway_test_group_reply_check_does_not_mutate_messages(m
         should_reply = "false"
         confidence = 0.0
 
-    async def fake_assistant_agent(*_args, **_kwargs):
+    async def fake_signal_structured(*_args, **_kwargs):
         return DummyReplyCheck()
 
     original_open = builtins.open
@@ -217,7 +217,7 @@ async def test_message_gateway_test_group_reply_check_does_not_mutate_messages(m
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     monkeypatch.setattr(message_module.EnvConfig, "TEST_GROUP_ID", [5])
-    monkeypatch.setattr(message_module, "assistant_agent", fake_assistant_agent)
+    monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
     monkeypatch.setattr(builtins, "open", fake_open)
     messages = [{"role": "user", "content": "history"}]
 
