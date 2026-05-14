@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 import time
 
 # from signal import SIGINT
@@ -21,6 +22,36 @@ driver = get_driver()
 updater = on_command("update", priority=1, block=True, aliases={"更新"}, permission=SUPERUSER)
 setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
 
+SKILL_CREATOR_URL = "https://github.com/anthropics/skills.git"
+SKILL_CREATOR_PATH = os.path.join(".", "cache", "sandbox", "skills", "skill-creator")
+
+
+def clone_skill_creator():
+    """将 anthropics/skills 仓库中的 skill-creator 克隆到 skills 目录。"""
+    target = os.path.abspath(SKILL_CREATOR_PATH)
+    if os.path.exists(target):
+        logger.info("skill-creator 已存在，跳过克隆")
+        return
+
+    logger.info("正在克隆 skill-creator...")
+    temp_dir = os.path.join(os.path.abspath("cache/sandbox"), ".skills-temp")
+    try:
+        subprocess.run(
+            ["git", "clone", "--depth", "1", SKILL_CREATOR_URL, temp_dir],
+            check=True, capture_output=True, text=True,
+        )
+        source = os.path.join(temp_dir, "skills", "skill-creator")
+        if os.path.exists(source):
+            shutil.copytree(source, target)
+            logger.info("skill-creator 克隆完成")
+        else:
+            logger.warning(f"skill-creator 子目录不存在于仓库中: {source}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"克隆 skill-creator 失败: {e.stderr}")
+    finally:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+
 
 @driver.on_startup
 async def on_startup():
@@ -33,6 +64,7 @@ async def on_startup():
         shutil.copy("env.toml.example", "env.toml")
     if not os.path.exists("mcp.json"):
         shutil.copy("mcp.json.example", "mcp.json")
+    clone_skill_creator()
 
 
 @driver.on_bot_connect
