@@ -1,5 +1,7 @@
 # ruff: noqa: S101
 
+import ast
+
 import pytest
 from sqlmodel import create_engine
 
@@ -79,6 +81,31 @@ async def test_prepare_message_before_time_excludes_current_and_later_group_mess
     assert "old message" in content
     assert "alice current" not in content
     assert "bob concurrent" not in content
+
+
+@pytest.mark.asyncio
+async def test_prepare_message_includes_chat_scope_metadata(monkeypatch, memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+    MessageImage.metadata.create_all(memory_engine)
+
+    await database.insert(1000, 201, 10, 123, "Alice", "user", "group old")
+    await database.insert(2000, 202, 10, 123, "Alice", "user", "group current")
+    await database.insert(3000, 301, 20, None, "Bob", "user", "private old")
+    await database.insert(4000, 302, 20, None, "Bob", "user", "private current")
+
+    group_prepared = await database.prepare_message(user_id=10, group_id=123, query_numbers=10, before_time=2000)
+    group_payload = ast.literal_eval(group_prepared[0]["content"])
+    assert group_payload["metadata"]["chat_type"] == "group"
+    assert group_payload["metadata"]["group_id"] == 123
+    assert group_payload["metadata"]["user_id"] == "10"
+
+    private_prepared = await database.prepare_message(user_id=20, query_numbers=10, before_time=4000)
+    private_payload = ast.literal_eval(private_prepared[0]["content"])
+    assert private_payload["metadata"]["chat_type"] == "private"
+    assert private_payload["metadata"]["group_id"] is None
+    assert private_payload["metadata"]["user_id"] == "20"
 
 
 @pytest.mark.asyncio

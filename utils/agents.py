@@ -156,7 +156,7 @@ async def assistant_agent(
 
 class CustomAgentState(AgentState):
     user_id: str
-    group_id: int
+    group_id: int | None
     image_inputs: list[bytes]
     video_inputs: list[bytes]
 

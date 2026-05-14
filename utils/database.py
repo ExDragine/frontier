@@ -9,6 +9,24 @@ from sqlmodel import Field, Session, SQLModel, col, create_engine, desc, select
 DATABASE_FILE = "sqlite:///frontier.db"
 
 
+def build_message_metadata(
+    *,
+    timestamp_ms: int,
+    user_id: int | str,
+    group_id: int | None,
+    user_name: str | None,
+) -> dict[str, object]:
+    return {
+        "time": datetime.datetime.fromtimestamp(int(timestamp_ms / 1000))
+        .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
+        .strftime("%Y-%m-%d %H:%M:%S"),
+        "user_name": user_name,
+        "chat_type": "group" if group_id is not None else "private",
+        "group_id": group_id,
+        "user_id": str(user_id),
+    }
+
+
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str
@@ -196,12 +214,12 @@ class MessageDatabase:
 
             text_str = str(
                 {
-                    "metadata": {
-                        "time": datetime.datetime.fromtimestamp(int(message.time / 1000))
-                        .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
-                        .strftime("%Y-%m-%d %H:%M:%S"),
-                        "user_name": message.user_name,
-                    },
+                    "metadata": build_message_metadata(
+                        timestamp_ms=message.time,
+                        user_id=message.user_id,
+                        group_id=message.group_id,
+                        user_name=message.user_name,
+                    ),
                     "content": content_text,
                 }
             )

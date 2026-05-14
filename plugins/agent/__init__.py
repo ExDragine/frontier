@@ -1,5 +1,4 @@
 import base64
-import datetime
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,7 +12,7 @@ from pydantic import BaseModel, Field
 from utils.agent_queue import AgentQueueFullError, AgentQueueManager
 from utils.agents import FrontierCognitive, _agent_thread_id
 from utils.configs import EnvConfig
-from utils.database import MessageDatabase
+from utils.database import MessageDatabase, build_message_metadata
 from utils.message import (
     aclose_http_client as message_aclose_http_client,
 )
@@ -71,9 +70,7 @@ class AgentChoice(BaseModel):
             "When needs_agent is False: a complete, personality-driven reply (1-2 sentences) "
             "that fully addresses the message. This will be sent as the final response. "
             "Match the assistant's casual, direct gamer tone — use slang, be witty, keep it short. "
-            "When needs_agent is True: a short (5-15 char) Chinese preview phrase like "
-            "'思考中...', '正在看图...', '让我想想...' to reduce perceived waiting time. "
-            "When should_reply is False, set to null."
+            "When needs_agent is True or should_reply is False, set to null."
         ),
     )
 
@@ -162,12 +159,12 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
                     "type": "text",
                     "text": str(
                         {
-                            "metadata": {
-                                "time": datetime.datetime.fromtimestamp(context.msg_time / 1000)
-                                .astimezone(datetime.timezone(datetime.timedelta(hours=8)))
-                                .strftime("%Y-%m-%d %H:%M:%S"),
-                                "user_name": context.user_name,
-                            },
+                            "metadata": build_message_metadata(
+                                timestamp_ms=context.msg_time,
+                                user_id=context.user_id,
+                                group_id=context.group_id,
+                                user_name=context.user_name,
+                            ),
                             "is_current": True,
                             "content": context.text,
                         }
@@ -368,6 +365,8 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                     await bot.send_group_message_reaction(
                         group_id=group_id, message_seq=event_id, reaction="267", is_add=False
                     )
+        if group_id:
+            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="324", is_add=False)
         await common.finish()
 
     if not choice.needs_agent:
@@ -402,9 +401,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             )
         await common.finish()
 
-    if choice.pre_response:
-        pre_response = await sanitize_outgoing_text(choice.pre_response)
-        await UniMessage.text(pre_response).send()
     thread_id = _agent_thread_id(user_id, group_id)
     try:
         await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
