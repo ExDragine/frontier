@@ -366,7 +366,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                         group_id=group_id, message_seq=event_id, reaction="267", is_add=False
                     )
         if group_id:
-            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="324", is_add=False)
+            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="324", is_add=True)
         await common.finish()
 
     if not choice.needs_agent:
