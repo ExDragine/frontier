@@ -49,19 +49,19 @@ class AgentChoice(BaseModel):
     should_reply: bool = Field(
         description=(
             "Whether the assistant should continue the conversation. "
-            "False only when the latest input is clearly a conversation-ending acknowledgment "
-            "(e.g. 'ok thanks', 'got it', 'bye') after a resolved issue. "
-            "True for questions, requests, jokes, banter, opinions, sharing, "
-            "emotional expression, or any message that invites engagement."
+            "False when the latest input is only ended-context noise, a pure acknowledgment after "
+            "a resolved issue, meaningless context, or something too risky or unsuitable to answer. "
+            "True for low-risk questions, requests, jokes, banter, opinions, sharing, "
+            "emotional expression, or anything that invites engagement."
         )
     )
     needs_agent: bool = Field(
         description=(
             "Whether the heavy cognitive agent is needed to handle this message. "
-            "False when a short, witty, personality-driven reply (1-2 sentences) is sufficient — "
-            "simple banter, one-line reactions, casual greetings, quick comebacks. "
-            "True when the message requires reasoning, knowledge lookup, image/video analysis, "
-            "multi-step operations, or deep contextual understanding."
+            "False when a short, personality-driven reply fully handles a low-risk, self-contained "
+            "plain-text message without memory, external tools, media analysis, or multi-step reasoning. "
+            "True when the message requires search, memory, real-time or external information, "
+            "image/video/link/file handling, complex reasoning, precise calculation, or sensitive handling."
         )
     )
     pre_response: str | None = Field(
@@ -113,8 +113,14 @@ def _build_agent_choice_input(context: AgentRequestContext, history_messages: li
         content = _summarize_message_content(message.get("content", "")).strip()
         if content:
             lines.append(f"{message.get('role', '')}: {content}")
+    latest_parts = []
     if context.text.strip():
-        lines.append(f"user: {context.text.strip()}")
+        latest_parts.append(context.text.strip())
+    latest_parts.extend("[图片]" for _ in context.quoted_images + context.images)
+    missing_video_markers = max(0, len(context.videos) - context.text.count("[视频]"))
+    latest_parts.extend("[视频]" for _ in range(missing_video_markers))
+    if latest_parts:
+        lines.append(f"user: {' '.join(latest_parts)}")
     return "\n".join(lines)
 
 

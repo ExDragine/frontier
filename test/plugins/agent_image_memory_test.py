@@ -488,12 +488,28 @@ def test_agent_choice_input_uses_plain_text_only(monkeypatch):
         ],
     )
 
-    assert result == "assistant: 前一个问题已经回答完毕\nuser: 我只是评价一下\nuser: 谢谢"
+    assert result == "assistant: 前一个问题已经回答完毕\nuser: 我只是评价一下\nuser: 谢谢 [图片] [图片] [视频]"
     assert "recent_context" not in result
     assert "latest_input" not in result
     assert "image_url" not in result
-    assert "[图片" not in result
-    assert "[视频" not in result
+    assert "base64" not in result
+
+
+def test_agent_choice_prompt_describes_direct_reply_boundaries(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    prompt = (agent.PROJECT_ROOT / "prompts" / "agent_choice.md").read_text(encoding="utf-8")
+
+    assert "低风险" in prompt
+    assert "简单自包含问答" in prompt
+    assert "搜索/记忆/外部工具" in prompt
+    assert "回复风险高" in prompt
+    assert '"Python list 怎么去重"' in prompt
+    assert '"今天北京天气"' in prompt
+    assert '"这图是什么"' in prompt
 
 
 @pytest.mark.asyncio
