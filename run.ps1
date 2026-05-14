@@ -4,4 +4,4 @@ if (-not $env:HF_ENDPOINT) {
 
 .venv/Scripts/Activate.ps1
 uv sync --upgrade
-nb run --reload
+nb run
