@@ -512,6 +512,24 @@ def test_agent_choice_prompt_describes_direct_reply_boundaries(monkeypatch):
     assert '"这图是什么"' in prompt
 
 
+def test_agent_choice_prompt_requires_clear_reply_invitation(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    prompt = (agent.PROJECT_ROOT / "prompts" / "agent_choice.md").read_text(encoding="utf-8")
+    should_reply_description = agent.AgentChoice.model_fields["should_reply"].description
+
+    assert "clear invitation" in should_reply_description
+    assert "anything that invites engagement" not in should_reply_description
+    assert "明确邀请" in prompt
+    assert "bare reactions" in prompt
+    assert "prefer `should_reply=false`" in prompt
+    assert '"哈哈哈哈"' in prompt
+    assert '"我到家了"' in prompt
+
+
 @pytest.mark.asyncio
 async def test_agent_choice_uses_signal_llm(monkeypatch):
     import nonebot

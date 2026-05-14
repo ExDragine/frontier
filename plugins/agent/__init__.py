@@ -50,9 +50,10 @@ class AgentChoice(BaseModel):
         description=(
             "Whether the assistant should continue the conversation. "
             "False when the latest input is only ended-context noise, a pure acknowledgment after "
-            "a resolved issue, meaningless context, or something too risky or unsuitable to answer. "
-            "True for low-risk questions, requests, jokes, banter, opinions, sharing, "
-            "emotional expression, or anything that invites engagement."
+            "a resolved issue, meaningless context, passive sharing, a bare reaction, or something "
+            "too risky or unsuitable to answer. True only when the latest input has a clear invitation "
+            "for the assistant: a direct question, request, addressed banter, meaningful emotional bid, "
+            "follow-up, or intentional media/link/file request."
         )
     )
     needs_agent: bool = Field(
