@@ -1,21 +1,12 @@
 from pathlib import Path
-from urllib.parse import urlparse
 
 from langchain.tools import tool
 from nonebot import require
 
+from utils.milky_tools import is_local, validate_url
+
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
-
-
-def _is_local(source: str) -> bool:
-    return Path(source).is_file()
-
-
-def _validate_url(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise ValueError(f"无效的 URL：{url!r}，仅支持 http/https")
 
 
 @tool(response_format="content_and_artifact")
@@ -24,9 +15,9 @@ async def send_image(source: str) -> tuple[str, UniMessage]:
     Args:
         source: 本地文件的绝对路径（如 /tmp/photo.png）或远程 URL
     """
-    if _is_local(source):
+    if is_local(source):
         return "构建了一个图片消息", UniMessage.image(path=Path(source))
-    _validate_url(source)
+    validate_url(source)
     return "构建了一个图片消息", UniMessage.image(url=source)
 
 
@@ -36,9 +27,9 @@ async def send_audio(source: str) -> tuple[str, UniMessage]:
     Args:
         source: 本地文件的绝对路径（如 /tmp/music.mp3）或远程 URL
     """
-    if _is_local(source):
+    if is_local(source):
         return "构建了一个音频消息", UniMessage.audio(path=Path(source))
-    _validate_url(source)
+    validate_url(source)
     return "构建了一个音频消息", UniMessage.audio(url=source)
 
 
@@ -48,9 +39,9 @@ async def send_voice(source: str) -> tuple[str, UniMessage]:
     Args:
         source: 本地文件的绝对路径（如 /tmp/voice.wav）或远程 URL
     """
-    if _is_local(source):
+    if is_local(source):
         return "构建了一个语音消息", UniMessage.voice(path=Path(source))
-    _validate_url(source)
+    validate_url(source)
     return "构建了一个语音消息", UniMessage.voice(url=source)
 
 
@@ -60,9 +51,9 @@ async def send_video(source: str) -> tuple[str, UniMessage]:
     Args:
         source: 本地文件的绝对路径（如 /tmp/clip.mp4）或远程 URL
     """
-    if _is_local(source):
+    if is_local(source):
         return "构建了一个视频消息", UniMessage.video(path=Path(source))
-    _validate_url(source)
+    validate_url(source)
     return "构建了一个视频消息", UniMessage.video(url=source)
 
 
@@ -82,9 +73,9 @@ async def send_file(path_or_url: str, name: str) -> tuple[str, UniMessage]:
         path_or_url: 本地文件的绝对路径（如 /tmp/report.pdf）或远程 URL
         name: 文件显示名称（含扩展名，如 report.pdf）
     """
-    if _is_local(path_or_url):
+    if is_local(path_or_url):
         return f"构建了一个文件消息：{name}", UniMessage.file(path=Path(path_or_url), name=name)
-    _validate_url(path_or_url)
+    validate_url(path_or_url)
     return f"构建了一个文件消息：{name}", UniMessage.file(url=path_or_url, name=name)
 
 

@@ -7,7 +7,7 @@ from utils.database import Message
 
 @pytest.mark.asyncio
 async def test_search_messages_tool_forwards_filters_and_formats_results(load_tool_module, monkeypatch):
-    mod = load_tool_module("message_summary")
+    mod = load_tool_module("memory")
     captured = {}
 
     class DummyMessageDb:
@@ -54,7 +54,7 @@ async def test_search_messages_tool_forwards_filters_and_formats_results(load_to
 
 @pytest.mark.asyncio
 async def test_search_messages_tool_requires_at_least_one_filter(load_tool_module):
-    mod = load_tool_module("message_summary")
+    mod = load_tool_module("memory")
 
     result = await mod.search_messages(config={"configurable": {"user_id": "456", "group_id": 123}})
 
