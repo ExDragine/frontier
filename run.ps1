@@ -3,5 +3,9 @@ if (-not $env:HF_ENDPOINT) {
 }
 
 .venv/Scripts/Activate.ps1
-uv sync --upgrade
-nb run
+
+do {
+    uv sync --upgrade
+    nb run
+    sleep 5
+}

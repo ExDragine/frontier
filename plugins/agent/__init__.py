@@ -29,7 +29,6 @@ from utils.message import (
 from utils.min_heap import RepeatMessageHeap
 from utils.reply_context import build_reply_context, reply_seq_from_segments
 from utils.signal_llm import signal_structured
-from utils.staged_artifacts import cleanup_expired_staged_artifacts
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
@@ -254,16 +253,6 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         await send_messages(context.group_id, context.event_id, response)
     else:
         await UniMessage.text(response["messages"]).send()
-
-
-@driver.on_startup
-async def on_startup():
-    if EnvConfig.IMAGE_AUTO_CLEANUP:
-        cleaned = await messages_db.cleanup_expired_images()
-        logger.info(f"🗑️ 清理过期图片 {cleaned} 张")
-    cleaned_artifacts = cleanup_expired_staged_artifacts()
-    if cleaned_artifacts:
-        logger.info(f"🗑️ 清理过期暂存内容 {cleaned_artifacts} 份")
 
 
 @driver.on_shutdown
