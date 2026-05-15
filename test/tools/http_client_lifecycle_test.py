@@ -11,6 +11,7 @@ import pytest
         ("satellite", "httpx_client"),
         ("space_weather", "httpx_client"),
         ("weather", "httpx_client"),
+        ("deepseek_balance", "httpx_client"),
         ("rocket", "http_client"),
     ],
 )

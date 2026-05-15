@@ -8,7 +8,9 @@ import types
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from pydantic import SecretStr
 
 
 @pytest.mark.asyncio
@@ -100,6 +102,101 @@ async def test_wikipedia_tool(load_tool_module, monkeypatch):
     assert "URL: https://wiki/Earth" in result
 
 
+@pytest.mark.asyncio
+async def test_deepseek_balance_tool_formats_balance(load_tool_module, monkeypatch):
+    mod = load_tool_module("deepseek_balance")
+    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_KEY", SecretStr("sk-test"), raising=False)
+    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_BASE", "", raising=False)
+
+    captured = {}
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "is_available": True,
+                "balance_infos": [
+                    {
+                        "currency": "CNY",
+                        "total_balance": "110.00",
+                        "granted_balance": "10.00",
+                        "topped_up_balance": "100.00",
+                    }
+                ],
+            }
+
+    class DummyClient:
+        async def get(self, url, headers):
+            captured["url"] = url
+            captured["headers"] = headers
+            return DummyResponse()
+
+    monkeypatch.setattr(mod, "httpx_client", DummyClient())
+
+    result = await mod.get_deepseek_api_balance()
+
+    assert captured["url"] == "https://api.deepseek.com/user/balance"
+    assert captured["headers"] == {"Authorization": "Bearer sk-test"}
+    assert "DeepSeek API 余额：可用" in result
+    assert "- CNY 总余额 110.00，赠金 10.00，充值 100.00" in result
+
+
+@pytest.mark.asyncio
+async def test_deepseek_balance_tool_reports_missing_key(load_tool_module, monkeypatch):
+    mod = load_tool_module("deepseek_balance")
+    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_KEY", SecretStr(""), raising=False)
+
+    result = await mod.get_deepseek_api_balance()
+
+    assert result == "未配置 DeepSeek API Key：请在 env.toml 的 [key].deepseek_api_key 中填写。"
+
+
+@pytest.mark.asyncio
+async def test_deepseek_balance_tool_normalizes_configured_base_url(load_tool_module, monkeypatch):
+    mod = load_tool_module("deepseek_balance")
+    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_KEY", SecretStr("sk-test"), raising=False)
+    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_BASE", "https://api.deepseek.com/v1", raising=False)
+
+    captured = {}
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"is_available": False, "balance_infos": []}
+
+    class DummyClient:
+        async def get(self, url, headers):
+            captured["url"] = url
+            return DummyResponse()
+
+    monkeypatch.setattr(mod, "httpx_client", DummyClient())
+
+    result = await mod.get_deepseek_api_balance()
+
+    assert captured["url"] == "https://api.deepseek.com/user/balance"
+    assert result == "DeepSeek API 余额：不可用\n余额明细：无"
+
+
+@pytest.mark.asyncio
+async def test_deepseek_balance_tool_reports_http_error(load_tool_module, monkeypatch):
+    mod = load_tool_module("deepseek_balance")
+    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_KEY", SecretStr("sk-test"), raising=False)
+
+    class DummyClient:
+        async def get(self, url, headers):
+            raise httpx.ConnectError("network down")
+
+    monkeypatch.setattr(mod, "httpx_client", DummyClient())
+
+    result = await mod.get_deepseek_api_balance()
+
+    assert result == "获取 DeepSeek API 余额失败: network down"
+
+
 def test_tavily_objects_created(load_tool_module):
     mod = load_tool_module("tavily")
     assert hasattr(mod, "tavily_search")
@@ -143,6 +240,9 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "milky_group": types.SimpleNamespace(set_group_name=FakeBaseTool("set_group_name")),
         "milky_message": types.SimpleNamespace(get_message=FakeBaseTool("get_message")),
         "milky_system": types.SimpleNamespace(get_login_info=FakeBaseTool("get_login_info")),
+        "deepseek_balance": types.SimpleNamespace(
+            get_deepseek_api_balance=FakeBaseTool("get_deepseek_api_balance")
+        ),
         "arxiv": types.SimpleNamespace(get_arxiv_paper_info=FakeBaseTool("get_arxiv_paper_info")),
         "tavily": types.SimpleNamespace(tavily_search=FakeBaseTool("tavily_search")),
         "aurora": types.SimpleNamespace(aurora_live=FakeBaseTool("aurora_live")),
@@ -192,6 +292,7 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "set_group_name",
         "get_message",
         "get_login_info",
+        "get_deepseek_api_balance",
         "get_paint",
         "get_video",
         "mcp_tool",

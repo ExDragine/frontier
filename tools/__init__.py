@@ -24,6 +24,7 @@ _TOOL_MODULE_GROUPS = {
     "milky_group": "main",
     "milky_message": "main",
     "milky_system": "main",
+    "deepseek_balance": "main",
     "reminder": "main",
     "arxiv": "research",
     "bilibili": "research",
