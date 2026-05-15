@@ -82,6 +82,10 @@ class ModuleTools:
         self.subagent_tools["main"].extend(self.web_tools)
         self.subagent_tools["main"].extend(self.subagent_tools["memory"])
 
+        # 将所有子代理组的工具也暴露给主 Agent，方便直接调用
+        for group in ("research", "astro", "earth", "divination", "media"):
+            self.subagent_tools["main"].extend(self.subagent_tools[group])
+
         self.main_tools = self.subagent_tools["main"]
         self.all_tools = self.mcp_tools + self.local_tools
 

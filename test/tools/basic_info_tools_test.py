@@ -299,6 +299,10 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "tavily_search",
         "search_messages",
         "mystery_tool",
+        "get_arxiv_paper_info",
+        "aurora_live",
+        "get_china_earthquake",
+        "iching_divination",
     }
     assert {tool.name for tool in groups["research"]} == {"get_arxiv_paper_info", "tavily_search"}
     assert {tool.name for tool in groups["astro"]} == {"aurora_live"}

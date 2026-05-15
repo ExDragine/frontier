@@ -21,7 +21,6 @@ from tools import agent_tools
 from utils.configs import EnvConfig
 from utils.llm_factory import create_llm, model_supports
 from utils.staged_artifacts import extract_staged_artifact_ids, load_staged_artifact, strip_staged_artifact_handoffs
-from utils.subagents import get_domain_subagents
 
 UniMessage = None
 
@@ -188,7 +187,6 @@ def _build_agent_backend(working_dir: str, thread_id: uuid.UUID) -> CompositeBac
 class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.main_tools
-        self.subagents: list = get_domain_subagents()
         self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
         _ensure_dir(self.working_dir)
 
@@ -366,7 +364,6 @@ class FrontierCognitive:
                 "edit_file": False,
             },
             backend=backend,
-            subagents=self.subagents,
             context_schema=CustomAgentState,
             debug=EnvConfig.AGENT_DEBUG_MODE,
         )

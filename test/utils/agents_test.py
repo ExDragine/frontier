@@ -177,119 +177,14 @@ def test_filter_messages_for_text_only_model_removes_image_parts(monkeypatch):
     assert messages[0]["content"][1]["type"] == "image_url"
 
 
-def test_subagents_model_respects_config(monkeypatch):
-    import sys
-
-    import utils.llm_factory as factory
-    import utils.subagents as subagents_module
-    from utils.configs import EnvConfig
-
-    created_kwargs = {}
-
-    class CapturingModel:
-        def __init__(self, **kwargs):
-            created_kwargs.update(kwargs)
-
-    # Register original module with monkeypatch so it's restored on teardown
-    monkeypatch.setitem(sys.modules, "utils.subagents", subagents_module)
-
-    monkeypatch.setattr(factory, "ChatOpenAI", CapturingModel)
-    monkeypatch.setattr(EnvConfig, "BASIC_MODEL_USE_RESPONSES_API", False)
-
-    del sys.modules["utils.subagents"]
-    import utils.subagents  # noqa: F401
-
-    assert created_kwargs.get("use_responses_api") is False
-
-
-def test_subagents_model_uses_basic_provider_endpoint(monkeypatch):
-    import sys
-
-    import utils.llm_factory as factory
-    import utils.subagents as subagents_module
-    from utils.configs import EnvConfig
-
-    created_kwargs = {}
-
-    def fake_create_llm(**kwargs):
-        created_kwargs.update(kwargs)
-        return object()
-
-    monkeypatch.setitem(sys.modules, "utils.subagents", subagents_module)
-    monkeypatch.setattr(factory, "create_llm", fake_create_llm)
-    monkeypatch.setattr(EnvConfig, "BASIC_MODEL_PROVIDER", "anthropic")
-    monkeypatch.setattr(EnvConfig, "BASIC_MODEL_ENDPOINT", "anthropic_proxy")
-
-    del sys.modules["utils.subagents"]
-    import utils.subagents  # noqa: F401
-
-    assert created_kwargs.get("provider") == "anthropic"
-    assert created_kwargs.get("endpoint") == "anthropic_proxy"
-
-
-def test_domain_subagents_use_grouped_tools(monkeypatch):
-    import utils.subagents as subagents_module
-
-    grouped_tools = {
-        "research": ["research-tool"],
-        "astro": ["astro-tool"],
-        "earth": ["earth-tool"],
-        "media": [],
-        "memory": ["memory-tool"],
-        "divination": ["divination-tool"],
-        "external": ["external-tool"],
-    }
-    monkeypatch.setattr(subagents_module.agent_tools, "subagent_tools", grouped_tools, raising=False)
-    monkeypatch.setattr(subagents_module.agent_tools, "web_tools", ["web-tool"], raising=False)
-
-    subagents = subagents_module.get_domain_subagents()
-    by_name = {item["name"]: item for item in subagents}
-
-    assert by_name["general-purpose"]["tools"] == []
-    assert by_name["fact_check_agent"]["tools"] == ["web-tool"]
-    assert by_name["research_agent"]["tools"] == ["research-tool"]
-    assert by_name["astro_agent"]["tools"] == ["astro-tool"]
-    assert by_name["earth_agent"]["tools"] == ["earth-tool"]
-    assert "media_agent" not in by_name
-    assert by_name["memory_agent"]["tools"] == ["memory-tool"]
-    assert by_name["divination_agent"]["tools"] == ["divination-tool"]
-    assert by_name["external_agent"]["tools"] == ["external-tool"]
-
-
-def test_domain_subagents_tell_main_agent_about_staged_artifacts(monkeypatch):
-    import utils.subagents as subagents_module
-
-    monkeypatch.setattr(
-        subagents_module.agent_tools,
-        "subagent_tools",
-        {
-            "research": [],
-            "astro": ["astro-tool"],
-            "earth": [],
-            "media": [],
-            "memory": [],
-            "divination": [],
-            "external": [],
-        },
-        raising=False,
-    )
-
-    astro = subagents_module.get_astro_subagent()
-
-    assert "send_staged_artifact" in astro["system_prompt"]
-    assert "staged_artifact" in astro["system_prompt"]
-
-
-def test_frontier_cognitive_uses_main_tools_and_domain_subagents(monkeypatch):
-    domain_subagents = [{"name": "research_agent", "tools": ["research-tool"]}]
+def test_frontier_cognitive_uses_main_tools(monkeypatch):
     monkeypatch.setattr(agents.agent_tools, "all_tools", ["all-tool"], raising=False)
     monkeypatch.setattr(agents.agent_tools, "main_tools", ["main-tool"], raising=False)
-    monkeypatch.setattr(agents, "get_domain_subagents", lambda: domain_subagents, raising=False)
 
     frontier = agents.FrontierCognitive()
 
     assert frontier.tools == ["main-tool"]
-    assert frontier.subagents == domain_subagents
+    assert not hasattr(frontier, "subagents")
 
 
 def test_frontier_cognitive_uses_in_memory_checkpoint(monkeypatch):
@@ -392,7 +287,6 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
-    frontier.subagents = []
     frontier.checkpoint = None
     frontier.backend = None
 
@@ -446,7 +340,6 @@ async def test_chat_agent_uses_thread_scoped_composite_backend(monkeypatch, tmp_
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
-    frontier.subagents = []
     frontier.checkpoint = None
     frontier.working_dir = str(tmp_path / "sandbox")
 
