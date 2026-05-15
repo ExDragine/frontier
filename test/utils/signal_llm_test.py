@@ -39,7 +39,7 @@ async def test_signal_structured_uses_json_mode_and_signal_model_config(monkeypa
         user_prompt="Is this gateway safe?",
         schema=Gateway,
         temperature=0,
-        model_kwargs={"extra_body": {"thinking": {"type": "disabled"}}},
+        extra_body={"thinking": {"type": "disabled"}},
     )
 
     assert response.is_safe is True
@@ -53,7 +53,7 @@ async def test_signal_structured_uses_json_mode_and_signal_model_config(monkeypa
         "provider": "deepseek",
         "endpoint": "deepseek_signal",
         "temperature": 0,
-        "model_kwargs": {"extra_body": {"thinking": {"type": "disabled"}}},
+        "extra_body": {"thinking": {"type": "disabled"}},
     }
     assert captured["messages"][0][0] == "system"
     assert "Classify the gateway." in captured["messages"][0][1]

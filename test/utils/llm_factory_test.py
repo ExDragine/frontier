@@ -162,6 +162,28 @@ def test_openai_kwargs_filtered_for_anthropic(monkeypatch):
     assert kw.get("max_retries") == 2
 
 
+def test_openai_extra_body_forwarded_as_explicit_kwarg(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
+
+    factory.create_llm(model="gpt-4o", extra_body={"thinking": {"type": "disabled"}})
+
+    kw = mock_cls.call_args.kwargs
+    assert kw["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert "model_kwargs" not in kw
+
+
+def test_deepseek_extra_body_forwarded_as_explicit_kwarg(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatDeepSeek", mock_cls)
+
+    factory.create_llm(model="deepseek-v4-flash", extra_body={"thinking": {"type": "disabled"}})
+
+    kw = mock_cls.call_args.kwargs
+    assert kw["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert "model_kwargs" not in kw
+
+
 def test_unknown_prefix_routes_to_openai_compatible(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)

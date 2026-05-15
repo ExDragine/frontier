@@ -37,10 +37,11 @@ _OPENAI_VALID = {
     "verbosity",
     "temperature",
     "model_kwargs",
+    "extra_body",
 }
 _GOOGLE_VALID = {"streaming", "max_retries", "timeout", "temperature"}
 _ANTHROPIC_VALID = {"streaming", "max_retries", "timeout", "temperature"}
-_DEEPSEEK_VALID = {"streaming", "max_retries", "timeout", "temperature", "model_kwargs"}
+_DEEPSEEK_VALID = {"streaming", "max_retries", "timeout", "temperature", "model_kwargs", "extra_body"}
 
 _openai_config = ProviderConfig(
     cls_fn=lambda: ChatOpenAI,

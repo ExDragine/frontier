@@ -33,6 +33,7 @@ class SignalLLM:
         *,
         temperature: float | None = None,
         model_kwargs: dict | None = None,
+        extra_body: dict | None = None,
     ) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -46,6 +47,8 @@ class SignalLLM:
             kwargs["temperature"] = temperature
         if model_kwargs is not None:
             kwargs["model_kwargs"] = model_kwargs
+        if extra_body is not None:
+            kwargs["extra_body"] = extra_body
         return kwargs
 
     @staticmethod
@@ -64,8 +67,11 @@ class SignalLLM:
         method: str = "json_mode",
         temperature: float | None = None,
         model_kwargs: dict | None = None,
+        extra_body: dict | None = None,
     ) -> Any:
-        llm = create_llm(**self._llm_kwargs(temperature=temperature, model_kwargs=model_kwargs))
+        llm = create_llm(
+            **self._llm_kwargs(temperature=temperature, model_kwargs=model_kwargs, extra_body=extra_body)
+        )
         structured_llm = llm.with_structured_output(schema, method=method)
         return await structured_llm.ainvoke(
             [
@@ -82,6 +88,7 @@ async def signal_structured(
     *,
     temperature: float | None = None,
     model_kwargs: dict | None = None,
+    extra_body: dict | None = None,
     method: str = "json_mode",
 ) -> Any:
     return await SignalLLM().structured(
@@ -91,4 +98,5 @@ async def signal_structured(
         method=method,
         temperature=temperature,
         model_kwargs=model_kwargs,
+        extra_body=extra_body,
     )

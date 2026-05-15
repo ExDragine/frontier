@@ -643,7 +643,7 @@ async def test_agent_choice_uses_signal_llm(monkeypatch):
     assert "reply-gate classifier" in captured["system_prompt"]
     assert captured["user_prompt"] == "user: history\nuser: 这个问题怎么解决"
     assert captured["kwargs"]["temperature"] == 0.7
-    assert captured["kwargs"]["model_kwargs"] == {"extra_body": {"thinking": {"type": "disabled"}}}
+    assert captured["kwargs"]["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
 @pytest.mark.asyncio
