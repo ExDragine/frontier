@@ -1,6 +1,7 @@
 import html
 import os
 import re
+import secrets
 
 from bs4 import BeautifulSoup
 from markdown_it import MarkdownIt
@@ -72,8 +73,8 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
         template_html = f.read()
 
     full_html = template_html.replace("{style_block}", style_block).replace("{html_content}", html_content)
-    temp_html_path = "./cache/temp_markdown.html"
-    with open(temp_html_path, "w", encoding="utf-8") as f:
+    temp_html_path = f"./cache/{secrets.token_hex(16)}.html"
+    with open(temp_html_path, mode="w", encoding="utf-8") as f:
         f.write(full_html)
 
     await init_playwright()
