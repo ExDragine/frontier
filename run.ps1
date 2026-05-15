@@ -8,4 +8,4 @@ do {
     uv sync --upgrade
     nb run
     sleep 5
-}
+}while($true)
