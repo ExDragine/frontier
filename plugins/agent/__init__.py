@@ -1,4 +1,5 @@
 import base64
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +44,18 @@ message_heap = RepeatMessageHeap(capacity=10, threshold=2)
 agent_queue = AgentQueueManager(maxsize=5, idle_ttl_seconds=1800.0, job_timeout_seconds=900.0)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+_CAPABILITY_REFUSAL_RE = re.compile(
+    "|".join(
+        [
+            r"我(?:这边)?(?:现在|暂时)?(?:没法|无法|不能|做不到|查不了|做不了|处理不了|操作不了|生成不了|访问不了|看不了|搜不了|发不了)",
+            r"(?:我这边|这边)(?:现在|暂时)?(?:查不了|做不了|办不了|处理不了|操作不了|生成不了|访问不了|看不了|搜不了|发不了|不支持)",
+            r"(?:没(?:有)?(?:这个|这方面)?能力|没有权限|没权限|无法帮|不能帮|没法帮|办不到|不支持(?:这个|该|此)?(?:功能|操作|请求)?)",
+            r"\b(?:i\s+can't|i\s+cannot|can't|cannot|unable to)\b",
+        ]
+    ),
+    re.IGNORECASE,
+)
+
 
 class AgentChoice(BaseModel):
     should_reply: bool = Field(
@@ -60,6 +73,8 @@ class AgentChoice(BaseModel):
             "Whether the heavy cognitive agent is needed to handle this message. "
             "False when a short, personality-driven reply fully handles a low-risk, self-contained "
             "plain-text message without memory, external tools, media analysis, or multi-step reasoning. "
+            "Do not use False for capability disclaimers or refusal-like answers; route those to the "
+            "heavy agent instead. "
             "True when the message requires search, memory, real-time or external information, "
             "image/video/link/file handling, complex reasoning, precise calculation, or sensitive handling."
         )
@@ -70,6 +85,7 @@ class AgentChoice(BaseModel):
             "When needs_agent is False: a complete, personality-driven reply (1-2 sentences) "
             "that fully addresses the message. This will be sent as the final response. "
             "Match the assistant's casual, direct gamer tone — use slang, be witty, keep it short. "
+            "Never use pre_response to say the assistant cannot do something, lacks access, or lacks tools. "
             "When needs_agent is True or should_reply is False, set to null."
         ),
     )
@@ -120,6 +136,21 @@ def _build_agent_choice_input(context: AgentRequestContext, history_messages: li
     if latest_parts:
         lines.append(f"user: {' '.join(latest_parts)}")
     return "\n".join(lines)
+
+
+def _looks_like_capability_refusal(text: str | None) -> bool:
+    if not text:
+        return False
+    normalized = " ".join(str(text).strip().lower().split())
+    return bool(_CAPABILITY_REFUSAL_RE.search(normalized))
+
+
+def _upgrade_refusal_short_reply(choice: AgentChoice) -> AgentChoice:
+    if choice.should_reply and not choice.needs_agent and _looks_like_capability_refusal(choice.pre_response):
+        logger.info("AgentChoice produced a capability-refusal short reply; routing to heavy agent instead.")
+        choice.needs_agent = True
+        choice.pre_response = None
+    return choice
 
 
 async def _agent_choice_should_reply(context: AgentRequestContext, history_messages: list[dict]) -> AgentChoice | None:
@@ -367,6 +398,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                     )
         await common.finish()
 
+    choice = _upgrade_refusal_short_reply(choice)
     if not choice.needs_agent:
         match risk_check:
             case "Safe":

@@ -562,6 +562,8 @@ def test_agent_choice_prompt_describes_direct_reply_boundaries(monkeypatch):
     assert '"今天北京天气"' in prompt
     assert '"这图是什么"' in prompt
     assert '"今天北京天气" → {"should_reply": true, "needs_agent": true, "pre_response": null}' in prompt
+    assert "capability refusal" in prompt
+    assert '"帮我查一下今天北京天气" → {"should_reply": true, "needs_agent": true, "pre_response": null}' in prompt
     assert "waiting preview" not in prompt
 
 
@@ -739,6 +741,100 @@ async def test_agent_needed_does_not_send_pre_response(monkeypatch):  # noqa: C9
         ctx.should_finished()
 
     assert calls["agent"] == 1
+    assert sent_messages == []
+
+
+@pytest.mark.asyncio
+async def test_agent_choice_capability_refusal_falls_through_to_agent(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    calls = {"queue": 0}
+    sent_messages = []
+
+    class DummyQueue:
+        async def submit(self, *_args, **_kwargs):
+            calls["queue"] += 1
+
+    class DummyMessagesDb:
+        async def insert(self, **_kwargs):
+            return None
+
+        async def insert_images(self, **_kwargs):
+            return []
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+    class DummyUniMessage:
+        def __init__(self, content):
+            self.content = content
+
+        @classmethod
+        def text(cls, text):
+            return cls(text)
+
+        async def send(self):
+            sent_messages.append(self.content)
+
+    async def fake_message_extract(_segments):
+        return "帮我查一下今天北京天气", [], [], []
+
+    async def fake_message_gateway(_event, _messages):
+        return True
+
+    async def fake_signal_structured(*_args, **_kwargs):
+        return agent.AgentChoice(should_reply=True, needs_agent=False, pre_response="我这边查不了实时天气")
+
+    monkeypatch.setattr(agent, "agent_queue", DummyQueue())
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(agent, "message_extract", fake_message_extract)
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "signal_structured", fake_signal_structured, raising=False)
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=1,
+        sender_id=456,
+        time=0,
+        segments=[{"type": "text", "data": {"text": "帮我查一下今天北京天气"}}],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert calls["queue"] == 1
     assert sent_messages == []
 
 
