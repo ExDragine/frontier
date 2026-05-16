@@ -7,7 +7,7 @@ import types
 from pathlib import Path
 
 import pytest
-from sqlmodel import SQLModel, create_engine
+from sqlmodel import create_engine
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "plugins"
 
@@ -27,6 +27,8 @@ TaskManager = task_manager_module.TaskManager
 TaskConfig = task_models_module.TaskConfig
 TaskExecutionHistory = task_models_module.TaskExecutionHistory
 TaskGroupMapping = task_models_module.TaskGroupMapping
+ScheduledTaskMetadata = task_models_module.ScheduledTaskMetadata
+TaskRunResult = task_models_module.TaskRunResult
 
 
 class DummyScheduler:
@@ -49,6 +51,11 @@ class DummyScheduler:
     def pause_job(self, job_id):
         self.jobs[job_id]["paused"] = True
 
+    def resume_job(self, job_id):
+        if job_id not in self.jobs:
+            raise RuntimeError("missing job")
+        self.jobs[job_id]["paused"] = False
+
     def reschedule_job(self, job_id, trigger, **trigger_args):
         if job_id not in self.jobs:
             raise RuntimeError("missing job")
@@ -68,6 +75,7 @@ def task_manager(tmp_path):
     TaskConfig.metadata.create_all(engine)
     TaskGroupMapping.metadata.create_all(engine)
     TaskExecutionHistory.metadata.create_all(engine)
+    ScheduledTaskMetadata.metadata.create_all(engine)
     scheduler = DummyScheduler()
     manager = TaskManager(scheduler, engine)
     manager.set_job_func(lambda job_id: None)
@@ -107,6 +115,28 @@ async def test_register_and_update_task(task_manager):
 
 
 @pytest.mark.asyncio
+async def test_register_scheduled_task_metadata_and_permissions(task_manager):
+    await task_manager.register_scheduled_task(
+        job_id="scheduled_1",
+        name="Auto",
+        prompt="Say hi",
+        trigger_type="interval",
+        trigger_args={"minutes": 5},
+        owner_user_id="123",
+        target_type="group",
+        target_id="456",
+    )
+
+    metadata = await task_manager.get_task_metadata("scheduled_1")
+    assert metadata is not None
+    assert metadata.owner_user_id == "123"
+    assert metadata.target_type == "group"
+    assert metadata.target_id == "456"
+    assert await task_manager.user_can_manage_task("scheduled_1", "123")
+    assert not await task_manager.user_can_manage_task("scheduled_1", "999")
+
+
+@pytest.mark.asyncio
 async def test_log_execution_updates_stats(task_manager):
     await task_manager.register_task(
         job_id="job2",
@@ -128,6 +158,7 @@ async def test_task_executor_execute_paths(monkeypatch, task_manager):
 
     async def handler(**kwargs):
         handler_called["count"] += 1
+        return TaskRunResult(groups_sent=[9], messages_sent=2, output_summary="ok")
 
     await task_manager.register_task(
         job_id="job3",
@@ -144,6 +175,8 @@ async def test_task_executor_execute_paths(monkeypatch, task_manager):
     monkeypatch.setattr(executor, "_load_handler", lambda m, f: handler)
     await executor.execute("job3")
     assert handler_called["count"] == 1
+    stats = await task_manager.get_task_statistics("job3")
+    assert stats["recent_history"][0]["output_summary"] == "ok"
 
     async def failing_handler(**kwargs):
         raise RuntimeError("boom")
@@ -152,3 +185,54 @@ async def test_task_executor_execute_paths(monkeypatch, task_manager):
     await executor.execute("job3")
     history = await task_manager.get_execution_history("job3")
     assert history[0].status in {"failed", "success"}
+
+
+@pytest.mark.asyncio
+async def test_date_scheduled_task_archives_after_success(monkeypatch, task_manager):
+    async def handler(**kwargs):
+        return TaskRunResult(messages_sent=1, output_summary="done")
+
+    await task_manager.register_scheduled_task(
+        job_id="scheduled_date",
+        name="One shot",
+        prompt="Do once",
+        trigger_type="date",
+        trigger_args={"run_date": "2099-01-01T00:00:00+08:00"},
+        owner_user_id="1",
+        target_type="user",
+        target_id="1",
+    )
+
+    executor = TaskExecutor(task_manager)
+    monkeypatch.setattr(executor, "_load_handler", lambda m, f: handler)
+    await executor.execute("scheduled_date")
+
+    metadata = await task_manager.get_task_metadata("scheduled_date")
+    task = await task_manager.get_task("scheduled_date")
+    assert metadata is not None and metadata.archived is True
+    assert task is not None and task.enabled is False
+    assert "scheduled_date" not in task_manager.scheduler.jobs
+
+
+@pytest.mark.asyncio
+async def test_migrate_legacy_reminder(task_manager):
+    await task_manager.register_task(
+        job_id="reminder_42_1",
+        name="提醒: 喝水",
+        handler_module="plugins.clockwork.reminder_handler",
+        handler_function="fire_reminder",
+        trigger_type="date",
+        trigger_args={"run_date": "2099-01-01T00:00:00+08:00"},
+        group_ids=[100],
+        description=json.dumps({"text": "喝水", "user_id": "42", "group_id": 100, "private": False}),
+    )
+
+    migrated = await task_manager.migrate_legacy_reminders()
+    task = await task_manager.get_task("reminder_42_1")
+    metadata = await task_manager.get_task_metadata("reminder_42_1")
+    assert migrated == 1
+    assert task is not None
+    assert task.handler_module == "plugins.clockwork.agent_task_handler"
+    assert metadata is not None
+    assert metadata.owner_user_id == "42"
+    assert metadata.target_type == "group"

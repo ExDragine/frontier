@@ -8,14 +8,18 @@ from typing import Any
 from apscheduler.events import EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from nonebot import logger
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
-from .task_models import TaskConfig, TaskExecutionHistory, TaskGroupMapping
+from .task_models import ScheduledTaskMetadata, TaskConfig, TaskExecutionHistory, TaskGroupMapping, TaskRunResult
 
 
 class TaskManager:
     """定时任务管理器 - 统一管理所有定时任务"""
+
+    AGENT_TASK_HANDLER_MODULE = "plugins.clockwork.agent_task_handler"
+    AGENT_TASK_HANDLER_FUNCTION = "run_agent_task"
 
     JOB_ID_TO_CONFIG_KEY = {
         "apod_everyday": "APOD_GROUP_ID",
@@ -39,7 +43,17 @@ class TaskManager:
         """设置任务执行函数（由 TaskExecutor.execute 提供）"""
         self._job_func = func
 
-    def add_job_to_scheduler(self, task: "TaskConfig"):
+    def ensure_schema(self) -> None:
+        """补齐 create_all 不会自动添加的轻量 schema 变更。"""
+        inspector = inspect(self.engine)
+        table_names = set(inspector.get_table_names())
+        if "taskexecutionhistory" in table_names:
+            columns = {column["name"] for column in inspector.get_columns("taskexecutionhistory")}
+            if "output_summary" not in columns:
+                with self.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE taskexecutionhistory ADD COLUMN output_summary VARCHAR"))
+
+    def add_job_to_scheduler(self, task: TaskConfig):
         """将任务添加到 APScheduler"""
         if not self._job_func:
             raise RuntimeError("TaskExecutor 未设置，请先调用 set_job_func()")
@@ -72,6 +86,7 @@ class TaskManager:
         description: str | None = None,
         enabled: bool = True,
         misfire_grace_time: int = 60,
+        metadata: ScheduledTaskMetadata | dict[str, Any] | None = None,
     ) -> TaskConfig:
         """注册新任务到数据库和调度器"""
         with Session(self.engine) as session:
@@ -96,23 +111,84 @@ class TaskManager:
                 misfire_grace_time=misfire_grace_time,
             )
             session.add(task)
-            session.commit()
-            session.refresh(task)
 
             # 添加群组映射
-            for group_id in group_ids:
+            for group_id in sorted(set(group_ids)):
                 mapping = TaskGroupMapping(
                     job_id=job_id,
                     group_id=group_id,
                 )
                 session.add(mapping)
-            session.commit()
+
+            if metadata:
+                if isinstance(metadata, ScheduledTaskMetadata):
+                    task_metadata = metadata
+                    task_metadata.job_id = job_id
+                else:
+                    task_metadata = ScheduledTaskMetadata(job_id=job_id, **metadata)
+                session.add(task_metadata)
+
+            try:
+                self.add_job_to_scheduler(task)
+            except Exception:
+                session.rollback()
+                raise
+
+            try:
+                session.commit()
+                session.refresh(task)
+            except Exception:
+                try:
+                    self.scheduler.remove_job(job_id)
+                except Exception as cleanup_error:
+                    self.logger.warning(f"回滚调度器任务 {job_id} 失败: {cleanup_error}")
+                raise
 
             self._sync_group_config(job_id, group_ids)
-            self.add_job_to_scheduler(task)
 
             self.logger.info(f"任务 {job_id} 注册成功")
             return task
+
+    async def register_scheduled_task(
+        self,
+        *,
+        job_id: str,
+        name: str,
+        prompt: str,
+        trigger_type: str,
+        trigger_args: dict,
+        owner_user_id: str,
+        target_type: str,
+        target_id: str | int,
+        description: str | None = None,
+        enabled: bool = True,
+        misfire_grace_time: int = 300,
+        created_from: str = "tool",
+        delivery_mode: str = "final",
+    ) -> TaskConfig:
+        """注册统一的用户自动任务。"""
+        group_ids = [int(target_id)] if target_type == "group" else []
+        return await self.register_task(
+            job_id=job_id,
+            name=name,
+            handler_module=self.AGENT_TASK_HANDLER_MODULE,
+            handler_function=self.AGENT_TASK_HANDLER_FUNCTION,
+            trigger_type=trigger_type,
+            trigger_args=trigger_args,
+            group_ids=group_ids,
+            description=description,
+            enabled=enabled,
+            misfire_grace_time=misfire_grace_time,
+            metadata=ScheduledTaskMetadata(
+                job_id=job_id,
+                owner_user_id=str(owner_user_id),
+                target_type=target_type,
+                target_id=str(target_id),
+                prompt=prompt,
+                created_from=created_from,
+                delivery_mode=delivery_mode,
+            ),
+        )
 
     async def update_task_trigger(self, job_id: str, trigger_type: str, trigger_args: dict) -> bool:
         """修改任务触发器"""
@@ -180,11 +256,13 @@ class TaskManager:
             if not task:
                 self.logger.warning(f"任务 {job_id} 不存在")
                 return False
+            metadata = session.exec(select(ScheduledTaskMetadata).where(ScheduledTaskMetadata.job_id == job_id)).first()
+            if metadata and metadata.archived:
+                self.logger.warning(f"任务 {job_id} 已归档，不能启用")
+                return False
 
             task.enabled = True
             task.updated_at = int(time.time())
-            session.add(task)
-            session.commit()
 
             # 恢复或重新添加到 APScheduler
             try:
@@ -193,11 +271,15 @@ class TaskManager:
             except Exception:
                 # 任务不在 scheduler 中，重新添加
                 try:
-                    session.refresh(task)
                     self.add_job_to_scheduler(task)
                     self.logger.info(f"任务 {job_id} 已重新添加到调度器并启用")
                 except Exception as e:
                     self.logger.error(f"无法将任务 {job_id} 添加到调度器: {e}")
+                    session.rollback()
+                    return False
+
+            session.add(task)
+            session.commit()
 
             return True
 
@@ -213,8 +295,6 @@ class TaskManager:
 
             task.enabled = False
             task.updated_at = int(time.time())
-            session.add(task)
-            session.commit()
 
             # 暂停APScheduler任务
             try:
@@ -224,6 +304,8 @@ class TaskManager:
                 # 任务可能还未注册到 scheduler，这是正常的
                 self.logger.warning(f"无法在 scheduler 中暂停任务 {job_id}: {e}")
 
+            session.add(task)
+            session.commit()
             return True
 
     async def delete_task(self, job_id: str) -> bool:
@@ -242,6 +324,11 @@ class TaskManager:
             for mapping in mappings:
                 session.delete(mapping)
 
+            statement = select(ScheduledTaskMetadata).where(ScheduledTaskMetadata.job_id == job_id)
+            metadata = session.exec(statement).first()
+            if metadata:
+                session.delete(metadata)
+
             # 删除任务配置
             session.delete(task)
             session.commit()
@@ -257,6 +344,49 @@ class TaskManager:
             self.logger.info(f"任务 {job_id} 已删除")
             return True
 
+    async def archive_task(self, job_id: str) -> bool:
+        """归档任务并从 APScheduler 移除，保留配置和历史。"""
+        with Session(self.engine) as session:
+            task = session.exec(select(TaskConfig).where(TaskConfig.job_id == job_id)).first()
+            if not task:
+                self.logger.warning(f"任务 {job_id} 不存在")
+                return False
+
+            now = int(time.time())
+            metadata = session.exec(select(ScheduledTaskMetadata).where(ScheduledTaskMetadata.job_id == job_id)).first()
+            if metadata:
+                metadata.archived = True
+                metadata.archived_at = now
+                metadata.updated_at = now
+                session.add(metadata)
+
+            task.enabled = False
+            task.next_run_time = None
+            task.updated_at = now
+            session.add(task)
+            session.commit()
+
+            try:
+                self.scheduler.remove_job(job_id)
+            except Exception as e:
+                self.logger.debug(f"任务 {job_id} 不在调度器中，无需移除: {e}")
+
+            self.logger.info(f"任务 {job_id} 已归档")
+            return True
+
+    async def run_task_now(self, job_id: str) -> bool:
+        """立即运行任务一次。"""
+        if not self._job_func:
+            raise RuntimeError("TaskExecutor 未设置，请先调用 set_job_func()")
+        task = await self.get_task(job_id)
+        if not task:
+            return False
+        metadata = await self.get_task_metadata(job_id)
+        if metadata and metadata.archived:
+            return False
+        await self._job_func(job_id)
+        return True
+
     # ==================== 任务查询 ====================
 
     async def get_task(self, job_id: str) -> TaskConfig | None:
@@ -265,7 +395,13 @@ class TaskManager:
             statement = select(TaskConfig).where(TaskConfig.job_id == job_id)
             return session.exec(statement).first()
 
-    async def list_tasks(self, enabled: bool | None = None, keyword: str | None = None) -> list[TaskConfig]:
+    async def list_tasks(
+        self,
+        enabled: bool | None = None,
+        keyword: str | None = None,
+        owner_user_id: str | None = None,
+        include_archived: bool = False,
+    ) -> list[TaskConfig]:
         """列出任务。enabled=True 只返回启用的，enabled=False 只返回禁用的，enabled=None 返回全部"""
         with Session(self.engine) as session:
             statement = select(TaskConfig)
@@ -279,7 +415,44 @@ class TaskManager:
                 )
 
             results = session.exec(statement).all()
-            return list(results)
+            tasks = list(results)
+            if not tasks:
+                return []
+
+            metadata_items = session.exec(select(ScheduledTaskMetadata)).all()
+            metadata_by_job_id = {item.job_id: item for item in metadata_items}
+            filtered_tasks = []
+            for task in tasks:
+                metadata = metadata_by_job_id.get(task.job_id)
+                if owner_user_id is not None:
+                    if not metadata or metadata.owner_user_id != str(owner_user_id):
+                        continue
+                if not include_archived and metadata and metadata.archived:
+                    continue
+                filtered_tasks.append(task)
+            return filtered_tasks
+
+    async def get_task_metadata(self, job_id: str) -> ScheduledTaskMetadata | None:
+        """获取统一自动任务元数据。"""
+        with Session(self.engine) as session:
+            statement = select(ScheduledTaskMetadata).where(ScheduledTaskMetadata.job_id == job_id)
+            return session.exec(statement).first()
+
+    async def get_task_metadata_map(self, job_ids: list[str] | None = None) -> dict[str, ScheduledTaskMetadata]:
+        """批量获取任务元数据。"""
+        with Session(self.engine) as session:
+            statement = select(ScheduledTaskMetadata)
+            if job_ids:
+                statement = statement.where(ScheduledTaskMetadata.job_id.in_(job_ids))  # type: ignore[attr-defined]
+            items = session.exec(statement).all()
+            return {item.job_id: item for item in items}
+
+    async def user_can_manage_task(self, job_id: str, user_id: str, is_superuser: bool = False) -> bool:
+        """检查用户是否可以管理指定任务。"""
+        if is_superuser:
+            return await self.get_task(job_id) is not None
+        metadata = await self.get_task_metadata(job_id)
+        return bool(metadata and metadata.owner_user_id == str(user_id))
 
     async def get_task_groups(self, job_id: str) -> list[int]:
         """获取任务的推送群组"""
@@ -298,6 +471,7 @@ class TaskManager:
         duration_ms: int | None = None,
         error_message: str | None = None,
         error_traceback: str | None = None,
+        output_summary: str | None = None,
         groups_sent: list[int] | None = None,
         messages_sent: int = 0,
         scheduled_time: int | None = None,
@@ -311,6 +485,7 @@ class TaskManager:
                 duration_ms=duration_ms,
                 error_message=error_message,
                 error_traceback=error_traceback,
+                output_summary=output_summary,
                 groups_sent=json.dumps(groups_sent) if groups_sent else None,
                 messages_sent=messages_sent,
                 scheduled_time=scheduled_time,
@@ -336,8 +511,8 @@ class TaskManager:
                         task.next_run_time = int(job.next_run_time.timestamp())
                     else:
                         task.next_run_time = None
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.logger.debug(f"同步任务 {job_id} next_run_time 失败: {e}")
 
                 session.add(task)
 
@@ -392,7 +567,12 @@ class TaskManager:
                 "last_run_time": task.last_run_time,
                 "next_run_time": task.next_run_time,
                 "recent_history": [
-                    {"execution_time": h.execution_time, "status": h.status, "duration_ms": h.duration_ms}
+                    {
+                        "execution_time": h.execution_time,
+                        "status": h.status,
+                        "duration_ms": h.duration_ms,
+                        "output_summary": h.output_summary,
+                    }
                     for h in recent_history
                 ],
             }
@@ -427,6 +607,60 @@ class TaskManager:
                 setattr(EnvConfig, config_key, group_ids)
                 self.logger.info(f"同步群组配置: {config_key} = {group_ids}")
 
+    async def migrate_legacy_reminders(self) -> int:
+        """将旧 reminder_handler 任务迁移到统一 Scheduled Agent Task。"""
+        migrated = 0
+        with Session(self.engine) as session:
+            statement = select(TaskConfig).where(TaskConfig.job_id.startswith("reminder_"))  # type: ignore[attr-defined]
+            tasks = session.exec(statement).all()
+            for task in tasks:
+                existing = session.exec(
+                    select(ScheduledTaskMetadata).where(ScheduledTaskMetadata.job_id == task.job_id)
+                ).first()
+                if existing:
+                    continue
+                if task.handler_module != "plugins.clockwork.reminder_handler" or task.handler_function != "fire_reminder":
+                    continue
+                if not task.description:
+                    continue
+                try:
+                    payload = json.loads(task.description)
+                except json.JSONDecodeError:
+                    self.logger.warning(f"旧提醒任务 {task.job_id} description 不是 JSON，跳过迁移")
+                    continue
+
+                reminder_text = str(payload.get("text") or "")
+                owner_user_id = str(payload.get("user_id") or "")
+                group_id = payload.get("group_id")
+                private = bool(payload.get("private", False))
+                if not reminder_text or not owner_user_id:
+                    self.logger.warning(f"旧提醒任务 {task.job_id} 缺少 text/user_id，跳过迁移")
+                    continue
+
+                target_type = "user" if private or not group_id else "group"
+                target_id = owner_user_id if target_type == "user" else str(group_id)
+                metadata = ScheduledTaskMetadata(
+                    job_id=task.job_id,
+                    owner_user_id=owner_user_id,
+                    target_type=target_type,
+                    target_id=str(target_id),
+                    prompt=f"在指定时间提醒用户：{reminder_text}。请生成一条简短提醒消息。",
+                    created_from="legacy_reminder",
+                    delivery_mode="final",
+                )
+                session.add(metadata)
+                task.handler_module = self.AGENT_TASK_HANDLER_MODULE
+                task.handler_function = self.AGENT_TASK_HANDLER_FUNCTION
+                task.description = f"提醒: {reminder_text[:80]}"
+                task.updated_at = int(time.time())
+                session.add(task)
+                migrated += 1
+
+            session.commit()
+        if migrated:
+            self.logger.info(f"已迁移 {migrated} 个旧提醒任务到统一自动任务")
+        return migrated
+
     def _sync_group_config(self, job_id: str, group_ids: list[int]) -> None:
         """运行期同步群组配置到 EnvConfig"""
         from utils.configs import EnvConfig
@@ -460,6 +694,10 @@ class TaskExecutor:
             if not task or not task.enabled:
                 await self.task_manager.log_execution(job_id, "skipped", execution_time)
                 return
+            metadata = await self.task_manager.get_task_metadata(job_id)
+            if metadata and metadata.archived:
+                await self.task_manager.log_execution(job_id, "skipped", execution_time)
+                return
 
             # 动态导入任务处理函数
             handler = self._load_handler(task.handler_module, task.handler_function)
@@ -468,7 +706,9 @@ class TaskExecutor:
             group_ids = await self.task_manager.get_task_groups(job_id)
 
             # 执行任务
-            await handler(job_id=job_id)
+            result = await handler(job_id=job_id)
+            if not isinstance(result, TaskRunResult):
+                result = TaskRunResult(groups_sent=group_ids, messages_sent=len(group_ids))
 
             # 记录成功
             duration = int((time.time() - start_time) * 1000)
@@ -477,9 +717,12 @@ class TaskExecutor:
                 status="success",
                 execution_time=execution_time,
                 duration_ms=duration,
-                groups_sent=group_ids,
-                messages_sent=len(group_ids),
+                output_summary=result.output_summary,
+                groups_sent=result.groups_sent if result.groups_sent is not None else group_ids,
+                messages_sent=result.messages_sent,
             )
+            if task.trigger_type == "date":
+                await self.task_manager.archive_task(job_id)
 
         except Exception as e:
             duration = int((time.time() - start_time) * 1000)

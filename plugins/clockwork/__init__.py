@@ -8,7 +8,7 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 from .task_manager import TaskExecutor, TaskManager  # noqa: E402
-from .task_models import TaskConfig, TaskExecutionHistory, TaskGroupMapping  # noqa: E402
+from .task_models import ScheduledTaskMetadata, TaskConfig, TaskExecutionHistory, TaskGroupMapping  # noqa: E402
 
 # 初始化任务管理系统
 engine = create_engine(DATABASE_FILE)
@@ -19,7 +19,7 @@ task_manager.set_job_func(task_executor.execute)
 driver = get_driver()
 
 # 导入命令和处理器（必须在 task_manager 创建之后）
-from . import task_commands, task_handlers  # noqa: E402, F401, I001
+from . import agent_task_handler, task_commands, task_handlers  # noqa: E402, F401, I001
 
 
 # ==================== 任务管理系统初始化 ====================
@@ -34,9 +34,12 @@ async def init_task_system():
     TaskConfig.metadata.create_all(engine)
     TaskGroupMapping.metadata.create_all(engine)
     TaskExecutionHistory.metadata.create_all(engine)
+    ScheduledTaskMetadata.metadata.create_all(engine)
+    task_manager.ensure_schema()
     logger.info("数据库表创建完成")
 
-    # 2. 读取所有任务配置
+    # 2. 迁移旧提醒并读取所有任务配置
+    await task_manager.migrate_legacy_reminders()
     tasks = await task_manager.list_tasks()
     logger.info(f"发现 {len(tasks)} 个已存在的任务配置")
 

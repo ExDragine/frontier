@@ -318,6 +318,7 @@ class FrontierCognitive:
         query_text: str = "",
         image_inputs: list[bytes] | None = None,
         video_inputs: list[bytes] | None = None,
+        thread_id_override: uuid.UUID | str | None = None,
     ):
         model_kwargs: dict = {
             "model": EnvConfig.ADVAN_MODEL,
@@ -338,7 +339,9 @@ class FrontierCognitive:
             endpoint=EnvConfig.ADVAN_MODEL_ENDPOINT,
         )
         working_dir = getattr(self, "working_dir", os.path.join(os.getcwd(), "cache", "sandbox"))
-        thread_id = _agent_thread_id(user_id, group_id)
+        thread_id = thread_id_override or _agent_thread_id(user_id, group_id)
+        if not isinstance(thread_id, uuid.UUID):
+            thread_id = uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=str(thread_id))
         backend = _build_agent_backend(working_dir, thread_id)
         workspace_dir = os.path.join(working_dir, "workspaces", str(thread_id))
         agent = create_deep_agent(

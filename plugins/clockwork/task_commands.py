@@ -1,3 +1,5 @@
+# ruff: noqa: C901
+
 import datetime
 import json
 import zoneinfo
@@ -31,12 +33,34 @@ def _strip_task_prefix(text: str) -> str:
     return stripped
 
 
+def _format_time(ts: int | None, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+    if not ts:
+        return "无"
+    return datetime.datetime.fromtimestamp(ts).astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime(fmt)
+
+
+async def _can_access_task(job_id: str, user_id: str, is_superuser: bool) -> bool:
+    return await get_task_manager().user_can_manage_task(job_id, user_id, is_superuser)
+
+
+def _target_label(metadata) -> str:
+    if not metadata:
+        return "系统任务"
+    return f"{metadata.target_type}:{metadata.target_id}"
+
+
 def _help_message() -> str:
     """返回帮助信息"""
     return (
         "定时任务管理命令:\n"
-        "/task list [enabled|disabled|all]           - 列出任务\n"
+        "/task my [all]                               - 查看我的自动任务\n"
         "/task info <job_id>                          - 查看任务详情\n"
+        "/task pause <job_id>                         - 暂停我的自动任务\n"
+        "/task resume <job_id>                        - 恢复我的自动任务\n"
+        "/task cancel <job_id>                        - 取消我的自动任务\n"
+        "/task run <job_id>                           - 立即运行我的自动任务\n"
+        "\n管理员命令:\n"
+        "/task list [enabled|disabled|all]           - 列出任务\n"
         "/task enable <job_id>                        - 启用任务\n"
         "/task disable <job_id>                       - 禁用任务\n"
         "/task trigger <job_id> cron <时间>           - 修改cron触发器\n"
@@ -57,11 +81,7 @@ async def handle_task_command(event: MessageEvent):
     from nonebot_plugin_alconna import UniMessage
 
     user_id = event.get_user_id()
-
-    # 权限检查
-    if not _is_superuser(user_id):
-        await UniMessage.text("此命令仅限管理员使用").send()
-        return
+    is_superuser = _is_superuser(user_id)
 
     text = _strip_task_prefix(event.get_plaintext())
     if not text:
@@ -72,39 +92,100 @@ async def handle_task_command(event: MessageEvent):
     action = args[0].lower()
 
     # 路由到具体的处理函数
+    if action in {"my", "我的"}:
+        await handle_task_my(args, user_id)
+        return
+
     if action in {"list", "列表", "ls"}:
+        if not is_superuser:
+            await UniMessage.text("普通用户请使用 /task my 查看自己的自动任务").send()
+            return
         await handle_task_list(args)
         return
 
     if action in {"info", "详情", "show"}:
-        await handle_task_info(args)
+        await handle_task_info(args, user_id=user_id, is_superuser=is_superuser)
         return
 
     if action in {"enable", "启用", "开启"}:
+        if not is_superuser:
+            await UniMessage.text("普通用户请使用 /task resume <job_id> 恢复自己的自动任务").send()
+            return
         await handle_task_enable(args)
         return
 
     if action in {"disable", "禁用", "关闭"}:
+        if not is_superuser:
+            await UniMessage.text("普通用户请使用 /task pause <job_id> 暂停自己的自动任务").send()
+            return
         await handle_task_disable(args)
         return
 
+    if action in {"pause", "暂停"}:
+        await handle_task_pause(args, user_id=user_id, is_superuser=is_superuser)
+        return
+
+    if action in {"resume", "恢复"}:
+        await handle_task_resume(args, user_id=user_id, is_superuser=is_superuser)
+        return
+
+    if action in {"cancel", "取消"}:
+        await handle_task_cancel(args, user_id=user_id, is_superuser=is_superuser)
+        return
+
+    if action in {"run", "运行", "立即运行"}:
+        await handle_task_run(args, user_id=user_id, is_superuser=is_superuser)
+        return
+
     if action in {"trigger", "触发器", "时间"}:
+        if not is_superuser:
+            await UniMessage.text("此命令仅限管理员使用").send()
+            return
         await handle_task_trigger(args)
         return
 
     if action in {"groups", "群组", "group"}:
+        if not is_superuser:
+            await UniMessage.text("此命令仅限管理员使用").send()
+            return
         await handle_task_groups(args)
         return
 
     if action in {"history", "历史", "hist"}:
-        await handle_task_history(args)
+        await handle_task_history(args, user_id=user_id, is_superuser=is_superuser)
         return
 
     if action in {"stats", "统计", "stat"}:
-        await handle_task_stats(args)
+        await handle_task_stats(args, user_id=user_id, is_superuser=is_superuser)
         return
 
     await UniMessage.text(_help_message()).send()
+
+
+async def handle_task_my(args: list[str], user_id: str):
+    """处理 /task my 命令"""
+    from nonebot_plugin_alconna import UniMessage
+
+    include_archived = len(args) > 1 and args[1].lower() in {"all", "全部", "archived", "归档"}
+    tasks = await get_task_manager().list_tasks(owner_user_id=user_id, include_archived=include_archived)
+    if not tasks:
+        await UniMessage.text("你还没有自动任务").send()
+        return
+
+    metadata_map = await get_task_manager().get_task_metadata_map([task.job_id for task in tasks])
+    lines = [f"我的自动任务 (共{len(tasks)}个):\n"]
+    for task in tasks:
+        metadata = metadata_map.get(task.job_id)
+        status = "📦" if metadata and metadata.archived else ("✅" if task.enabled else "⏸️")
+        next_run = _format_time(task.next_run_time, "%m-%d %H:%M") if task.next_run_time else "无"
+        lines.append(f"{status} {task.name} ({task.job_id})")
+        lines.append(f"   目标: {_target_label(metadata)}")
+        lines.append(f"   下次执行: {next_run}")
+        if metadata:
+            lines.append(f"   Prompt: {metadata.prompt[:80]}")
+        lines.append("")
+
+    await UniMessage.text("\n".join(lines)).send()
 
 
 async def handle_task_list(args: list[str]):
@@ -119,7 +200,7 @@ async def handle_task_list(args: list[str]):
     elif filter_type in {"disabled", "禁用"}:
         enabled = False
 
-    tasks = await get_task_manager().list_tasks(enabled=enabled)
+    tasks = await get_task_manager().list_tasks(enabled=enabled, include_archived=True)
 
     if not tasks:
         await UniMessage.text("没有找到任务").send()
@@ -127,8 +208,10 @@ async def handle_task_list(args: list[str]):
 
     # 格式化输出
     lines = [f"定时任务列表 (共{len(tasks)}个):\n"]
+    metadata_map = await get_task_manager().get_task_metadata_map([task.job_id for task in tasks])
     for task in tasks:
-        status = "✅" if task.enabled else "⏸️"
+        metadata = metadata_map.get(task.job_id)
+        status = "📦" if metadata and metadata.archived else ("✅" if task.enabled else "⏸️")
         trigger_args = json.loads(task.trigger_args)
 
         # 格式化触发器信息
@@ -144,11 +227,13 @@ async def handle_task_list(args: list[str]):
 
         # 下次执行时间
         if task.next_run_time:
-            next_run = datetime.datetime.fromtimestamp(task.next_run_time).strftime("%m-%d %H:%M")
+            next_run = _format_time(task.next_run_time, "%m-%d %H:%M")
         else:
             next_run = "无"
 
         lines.append(f"{status} {task.name} ({task.job_id})")
+        lines.append(f"   类型: {'自动任务' if metadata else '系统任务'}")
+        lines.append(f"   目标: {_target_label(metadata)}")
         lines.append(f"   触发器: {trigger_info}")
         lines.append(f"   下次执行: {next_run}")
         lines.append(f"   成功/失败: {task.success_runs}/{task.failed_runs}\n")
@@ -156,7 +241,7 @@ async def handle_task_list(args: list[str]):
     await UniMessage.text("\n".join(lines)).send()
 
 
-async def handle_task_info(args: list[str]):
+async def handle_task_info(args: list[str], user_id: str, is_superuser: bool):
     """处理 /task info 命令"""
     from nonebot_plugin_alconna import UniMessage
 
@@ -165,6 +250,10 @@ async def handle_task_info(args: list[str]):
         return
 
     job_id = args[1]
+    if not await _can_access_task(job_id, user_id, is_superuser):
+        await UniMessage.text(f"没有权限查看任务 {job_id}").send()
+        return
+
     task = await get_task_manager().get_task(job_id)
 
     if not task:
@@ -174,23 +263,16 @@ async def handle_task_info(args: list[str]):
     # 获取群组配置
     group_ids = await get_task_manager().get_task_groups(job_id)
     groups_str = ", ".join(map(str, group_ids)) if group_ids else "无"
+    metadata = await get_task_manager().get_task_metadata(job_id)
 
     # 解析触发器
     trigger_args = json.loads(task.trigger_args)
     trigger_str = json.dumps(trigger_args, ensure_ascii=False)
 
     # 格式化时间
-    created_at = datetime.datetime.fromtimestamp(task.created_at).strftime("%Y-%m-%d %H:%M:%S")
-    last_run = (
-        datetime.datetime.fromtimestamp(task.last_run_time).strftime("%Y-%m-%d %H:%M:%S")
-        if task.last_run_time
-        else "从未执行"
-    )
-    next_run = (
-        datetime.datetime.fromtimestamp(task.next_run_time).strftime("%Y-%m-%d %H:%M:%S")
-        if task.next_run_time
-        else "无"
-    )
+    created_at = _format_time(task.created_at)
+    last_run = _format_time(task.last_run_time) if task.last_run_time else "从未执行"
+    next_run = _format_time(task.next_run_time)
 
     # 计算成功率
     success_rate = (task.success_runs / task.total_runs * 100) if task.total_runs > 0 else 0
@@ -200,6 +282,10 @@ async def handle_task_info(args: list[str]):
 🆔 ID: {task.job_id}
 📝 描述: {task.description or "无"}
 ⚙️ 处理函数: {task.handler_module}.{task.handler_function}
+🧭 类型: {"自动任务" if metadata else "系统任务"}
+🎯 目标: {_target_label(metadata)}
+👤 创建者: {metadata.owner_user_id if metadata else "系统"}
+📦 归档: {"是" if metadata and metadata.archived else "否"}
 
 ⏰ 触发器:
   类型: {task.trigger_type}
@@ -220,6 +306,8 @@ async def handle_task_info(args: list[str]):
 
 👥 推送群组: {groups_str}
 """
+    if metadata:
+        info += f"\n🧠 Prompt:\n{metadata.prompt}"
 
     await UniMessage.text(info).send()
 
@@ -258,6 +346,66 @@ async def handle_task_disable(args: list[str]):
         await UniMessage.text(f"禁用任务 {job_id} 失败，请检查任务是否存在").send()
 
 
+async def handle_task_pause(args: list[str], user_id: str, is_superuser: bool):
+    """处理 /task pause 命令"""
+    from nonebot_plugin_alconna import UniMessage
+
+    if len(args) < 2:
+        await UniMessage.text("用法: /task pause <job_id>").send()
+        return
+    job_id = args[1]
+    if not await _can_access_task(job_id, user_id, is_superuser):
+        await UniMessage.text(f"没有权限暂停任务 {job_id}").send()
+        return
+    success = await get_task_manager().disable_task(job_id)
+    await UniMessage.text(f"任务 {job_id} 已暂停" if success else f"暂停任务 {job_id} 失败").send()
+
+
+async def handle_task_resume(args: list[str], user_id: str, is_superuser: bool):
+    """处理 /task resume 命令"""
+    from nonebot_plugin_alconna import UniMessage
+
+    if len(args) < 2:
+        await UniMessage.text("用法: /task resume <job_id>").send()
+        return
+    job_id = args[1]
+    if not await _can_access_task(job_id, user_id, is_superuser):
+        await UniMessage.text(f"没有权限恢复任务 {job_id}").send()
+        return
+    success = await get_task_manager().enable_task(job_id)
+    await UniMessage.text(f"任务 {job_id} 已恢复" if success else f"恢复任务 {job_id} 失败").send()
+
+
+async def handle_task_cancel(args: list[str], user_id: str, is_superuser: bool):
+    """处理 /task cancel 命令"""
+    from nonebot_plugin_alconna import UniMessage
+
+    if len(args) < 2:
+        await UniMessage.text("用法: /task cancel <job_id>").send()
+        return
+    job_id = args[1]
+    if not await _can_access_task(job_id, user_id, is_superuser):
+        await UniMessage.text(f"没有权限取消任务 {job_id}").send()
+        return
+    success = await get_task_manager().archive_task(job_id)
+    await UniMessage.text(f"任务 {job_id} 已取消" if success else f"取消任务 {job_id} 失败").send()
+
+
+async def handle_task_run(args: list[str], user_id: str, is_superuser: bool):
+    """处理 /task run 命令"""
+    from nonebot_plugin_alconna import UniMessage
+
+    if len(args) < 2:
+        await UniMessage.text("用法: /task run <job_id>").send()
+        return
+    job_id = args[1]
+    if not await _can_access_task(job_id, user_id, is_superuser):
+        await UniMessage.text(f"没有权限运行任务 {job_id}").send()
+        return
+    success = await get_task_manager().run_task_now(job_id)
+    await UniMessage.text(f"任务 {job_id} 已运行" if success else f"运行任务 {job_id} 失败").send()
+
+
 async def handle_task_trigger(args: list[str]):
     """处理 /task trigger 命令"""
     from nonebot_plugin_alconna import UniMessage
@@ -294,7 +442,7 @@ async def handle_task_trigger(args: list[str]):
     if success:
         await UniMessage.text(f"任务 {job_id} 触发器已更新为 {trigger_type}: {trigger_args}").send()
     else:
-        await UniMessage.text(f"更新失败，请检查任务是否存在").send()
+        await UniMessage.text("更新失败，请检查任务是否存在").send()
 
 
 async def handle_task_groups(args: list[str]):
@@ -329,7 +477,7 @@ async def handle_task_groups(args: list[str]):
             await get_task_manager().initialize()
             await UniMessage.text(f"任务 {job_id} 群组已设置为: {', '.join(map(str, new_groups))}").send()
         else:
-            await UniMessage.text(f"设置失败，请检查任务是否存在").send()
+            await UniMessage.text("设置失败，请检查任务是否存在").send()
 
     elif operation in {"add", "添加"}:
         # 添加群组
@@ -353,7 +501,7 @@ async def handle_task_groups(args: list[str]):
             await get_task_manager().initialize()
             await UniMessage.text(f"已添加群组 {group_to_add} 到任务 {job_id}").send()
         else:
-            await UniMessage.text(f"添加失败，请检查任务是否存在").send()
+            await UniMessage.text("添加失败，请检查任务是否存在").send()
 
     elif operation in {"remove", "移除", "删除"}:
         # 移除群组
@@ -377,13 +525,13 @@ async def handle_task_groups(args: list[str]):
             await get_task_manager().initialize()
             await UniMessage.text(f"已从任务 {job_id} 移除群组 {group_to_remove}").send()
         else:
-            await UniMessage.text(f"移除失败，请检查任务是否存在").send()
+            await UniMessage.text("移除失败，请检查任务是否存在").send()
 
     else:
         await UniMessage.text("操作必须是 set、add 或 remove").send()
 
 
-async def handle_task_history(args: list[str]):
+async def handle_task_history(args: list[str], user_id: str, is_superuser: bool):
     """处理 /task history 命令"""
     from nonebot_plugin_alconna import UniMessage
 
@@ -392,6 +540,9 @@ async def handle_task_history(args: list[str]):
         return
 
     job_id = args[1]
+    if not await _can_access_task(job_id, user_id, is_superuser):
+        await UniMessage.text(f"没有权限查看任务 {job_id} 的历史").send()
+        return
     limit = int(args[2]) if len(args) > 2 else 20
 
     history = await get_task_manager().get_execution_history(job_id=job_id, limit=limit)
@@ -403,10 +554,7 @@ async def handle_task_history(args: list[str]):
     lines = [f"任务 {job_id} 执行历史 (最近{len(history)}条):\n"]
 
     for h in history:
-        exec_time = datetime.datetime.fromtimestamp(h.execution_time / 1000).astimezone(
-            zoneinfo.ZoneInfo("Asia/Shanghai")
-        )
-        time_str = exec_time.strftime("%m-%d %H:%M:%S")
+        time_str = _format_time(h.execution_time, "%m-%d %H:%M:%S")
 
         status_icon = {"success": "✅", "failed": "❌", "skipped": "⏭️", "missed": "⏰"}.get(h.status, "❓")
 
@@ -416,13 +564,15 @@ async def handle_task_history(args: list[str]):
 
         if h.error_message:
             line += f"\n   错误: {h.error_message[:100]}"
+        if h.output_summary:
+            line += f"\n   输出: {h.output_summary[:100]}"
 
         lines.append(line)
 
     await UniMessage.text("\n".join(lines)).send()
 
 
-async def handle_task_stats(args: list[str]):
+async def handle_task_stats(args: list[str], user_id: str, is_superuser: bool):
     """处理 /task stats 命令"""
     from nonebot_plugin_alconna import UniMessage
 
@@ -431,22 +581,17 @@ async def handle_task_stats(args: list[str]):
         return
 
     job_id = args[1]
+    if not await _can_access_task(job_id, user_id, is_superuser):
+        await UniMessage.text(f"没有权限查看任务 {job_id} 的统计").send()
+        return
     stats = await get_task_manager().get_task_statistics(job_id)
 
     if not stats:
         await UniMessage.text(f"任务 {job_id} 不存在").send()
         return
 
-    last_run = (
-        datetime.datetime.fromtimestamp(stats["last_run_time"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        if stats.get("last_run_time")
-        else "从未执行"
-    )
-    next_run = (
-        datetime.datetime.fromtimestamp(stats["next_run_time"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        if stats.get("next_run_time")
-        else "无"
-    )
+    last_run = _format_time(stats["last_run_time"]) if stats.get("last_run_time") else "从未执行"
+    next_run = _format_time(stats["next_run_time"])
 
     stats_text = f"""任务统计: {stats["name"]} ({stats["job_id"]})
 
@@ -464,7 +609,7 @@ async def handle_task_stats(args: list[str]):
 """
 
     for h in stats.get("recent_history", [])[:5]:
-        exec_time = datetime.datetime.fromtimestamp(h["execution_time"] / 1000).strftime("%m-%d %H:%M")
+        exec_time = _format_time(h["execution_time"], "%m-%d %H:%M")
         status_icon = {"success": "✅", "failed": "❌", "skipped": "⏭️"}.get(h["status"], "❓")
         duration_str = f"{h['duration_ms']}ms" if h.get("duration_ms") else "-"
         stats_text += f"  {status_icon} {exec_time} | {duration_str}\n"
