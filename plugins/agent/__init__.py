@@ -372,18 +372,18 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             case "Safe":
                 if group_id:
                     await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="351", is_add=False
+                        group_id=group_id, message_seq=event_id, reaction="32", is_add=False
                     )
             case "Controversial":
                 # 使用表情回复功能
                 if group_id:
                     await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="32", is_add=False
+                        group_id=group_id, message_seq=event_id, reaction="212", is_add=False
                     )
             case "Unsafe":
                 if group_id:
                     await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="267", is_add=False
+                        group_id=group_id, message_seq=event_id, reaction="26", is_add=False
                     )
         await common.finish()
 
@@ -393,24 +393,24 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             case "Safe":
                 if group_id:
                     await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="351", is_add=False
+                        group_id=group_id, message_seq=event_id, reaction="32", is_add=False
                     )
             case "Controversial":
                 # 使用表情回复功能
                 if group_id:
                     await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="32", is_add=False
+                        group_id=group_id, message_seq=event_id, reaction="212", is_add=False
                     )
             case "Unsafe":
                 if group_id:
                     await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="267", is_add=False
+                        group_id=group_id, message_seq=event_id, reaction="26", is_add=False
                     )
         if group_id:
             await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="324", is_add=True)
         if choice.pre_response:
             pre_response = await sanitize_outgoing_text(choice.pre_response)
-            await UniMessage.text(pre_response).send()
+            await UniMessage.text(pre_response).send() if pre_response else None
             await messages_db.insert(
                 time=int(time.time() * 1000),
                 msg_id=None,
@@ -418,13 +418,16 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                 group_id=context.group_id,
                 user_name="Assistant",
                 role="assistant",
-                content=pre_response,
+                content=pre_response if pre_response else "",
             )
         await common.finish()
-
     thread_id = _agent_thread_id(user_id, group_id)
     try:
+        if group_id:
+            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=True)
         await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
+        if group_id:
+            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="319", is_add=True)
     except AgentQueueFullError:
         logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
         await common.finish("前面还有请求在处理，稍等一下")
