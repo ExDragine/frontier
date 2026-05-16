@@ -340,18 +340,18 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         case "Safe":
             if group_id:
                 await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="351", is_add=True
+                    group_id=group_id, message_seq=event_id, reaction="32", is_add=True
                 )
         case "Controversial":
             # 使用表情回复功能
             if group_id:
                 await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="32", is_add=True
+                    group_id=group_id, message_seq=event_id, reaction="212", is_add=True
                 )
         case "Unsafe":
             if group_id:
                 await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="267", is_add=True
+                    group_id=group_id, message_seq=event_id, reaction="26", is_add=True
                 )
 
     context = AgentRequestContext(
@@ -407,9 +407,11 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                     await bot.send_group_message_reaction(
                         group_id=group_id, message_seq=event_id, reaction="26", is_add=False
                     )
-        if group_id:
-            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="324", is_add=True)
         if choice.pre_response:
+            if group_id:
+                await bot.send_group_message_reaction(
+                    group_id=group_id, message_seq=event_id, reaction="324", is_add=True
+                )
             pre_response = await sanitize_outgoing_text(choice.pre_response)
             await UniMessage.text(pre_response).send() if pre_response else None
             await messages_db.insert(
