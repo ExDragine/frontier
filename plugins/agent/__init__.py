@@ -430,6 +430,10 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=True)
         await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
         if group_id:
+            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="32", is_add=False)
+            await bot.send_group_message_reaction(
+                group_id=group_id, message_seq=event_id, reaction="351", is_add=False
+            )
             await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="319", is_add=True)
     except AgentQueueFullError:
         logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
