@@ -1,5 +1,6 @@
 import base64
 import datetime
+import json
 import os
 import time
 import zoneinfo
@@ -212,7 +213,7 @@ class MessageDatabase:
                 if missing_images:
                     content_text += "\n" + " ".join("[图片]" for _ in range(missing_images))
 
-            text_str = str(
+            text_str = json.dumps(
                 {
                     "metadata": build_message_metadata(
                         timestamp_ms=message.time,
@@ -350,7 +351,9 @@ class MessageDatabase:
             if content_query:
                 statement = statement.where(col(Message.content).like(self._like_pattern(content_query), escape="\\"))
             if target_user_name:
-                statement = statement.where(col(Message.user_name).like(self._like_pattern(target_user_name), escape="\\"))
+                statement = statement.where(
+                    col(Message.user_name).like(self._like_pattern(target_user_name), escape="\\")
+                )
             if msg_id is not None:
                 statement = statement.where(Message.msg_id == msg_id)
             if start_time is not None:

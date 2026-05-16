@@ -1,4 +1,5 @@
 import base64
+import json
 import re
 import time
 from dataclasses import dataclass
@@ -187,7 +188,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
             "content": [
                 {
                     "type": "text",
-                    "text": str(
+                    "text": json.dumps(
                         {
                             "metadata": build_message_metadata(
                                 timestamp_ms=context.msg_time,
