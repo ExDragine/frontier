@@ -171,7 +171,6 @@ async def _agent_choice_should_reply(context: AgentRequestContext, history_messa
         user_prompt=_build_agent_choice_input(context, history_messages),
         schema=AgentChoice,
         temperature=0.7,
-        extra_body={"thinking": {"type": "disabled"}},
     )
     return agent_choice
 
