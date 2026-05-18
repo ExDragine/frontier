@@ -1,9 +1,11 @@
 from pathlib import Path
 
 from langchain.tools import tool
-from nonebot import require
+from langchain_core.runnables import RunnableConfig
+from nonebot import get_bot, require
+from nonebot.adapters.milky.message import MessageSegment
 
-from utils.milky_tools import is_local, validate_url
+from utils.milky_tools import is_local, resolve_group_id, validate_url
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
@@ -79,28 +81,75 @@ async def send_file(path_or_url: str, name: str) -> tuple[str, UniMessage]:
     return f"构建了一个文件消息：{name}", UniMessage.file(url=path_or_url, name=name)
 
 
-@tool(response_format="content_and_artifact")
-async def send_at(user_id: str) -> tuple[str, UniMessage]:
+def _message_seq(response) -> str:
+    seq = getattr(response, "message_seq", None)
+    if seq is None and isinstance(response, dict):
+        seq = response.get("message_seq")
+    return f"，message_seq={seq}" if seq is not None else ""
+
+
+def _mention(user_id: str | int) -> MessageSegment:
+    return MessageSegment.mention(int(user_id))
+
+
+@tool(response_format="content")
+async def send_at(
+    user_id: str,
+    group_id: int | None = None,
+    config: RunnableConfig = None,
+) -> str:
     """@ 某个用户
     Args:
         user_id: 目标用户的 QQ 号或用户 ID
+        group_id: 可选群号，未传时使用当前群聊
     """
-    return f"构建了一个 @{user_id} 消息", UniMessage.at(user_id)
+    resolved_group_id, error = resolve_group_id(group_id, config)
+    if error:
+        return error
+    response = await get_bot().send_group_message(
+        group_id=resolved_group_id,
+        message=[_mention(user_id)],
+    )
+    return f"已在群 {resolved_group_id} @ {user_id}{_message_seq(response)}"
 
 
-@tool(response_format="content_and_artifact")
-async def send_at_all() -> tuple[str, UniMessage]:
-    """@ 全体成员"""
-    return "构建了一个 @全体成员 消息", UniMessage.at_all()
+@tool(response_format="content")
+async def send_at_all(
+    group_id: int | None = None,
+    config: RunnableConfig = None,
+) -> str:
+    """@ 全体成员
+    Args:
+        group_id: 可选群号，未传时使用当前群聊
+    """
+    resolved_group_id, error = resolve_group_id(group_id, config)
+    if error:
+        return error
+    response = await get_bot().send_group_message(
+        group_id=resolved_group_id,
+        message=[MessageSegment.mention_all()],
+    )
+    return f"已在群 {resolved_group_id} @全体成员{_message_seq(response)}"
 
 
-@tool(response_format="content_and_artifact")
-async def send_text_with_at(user_id: str, text: str) -> tuple[str, UniMessage]:
+@tool(response_format="content")
+async def send_text_with_at(
+    user_id: str,
+    text: str,
+    group_id: int | None = None,
+    config: RunnableConfig = None,
+) -> str:
     """@ 某个用户并附带文字内容，适合回复或提醒特定用户
     Args:
         user_id: 目标用户的 QQ 号或用户 ID
         text: 附带的文字内容
+        group_id: 可选群号，未传时使用当前群聊
     """
-    msg: UniMessage = UniMessage.at(user_id)
-    msg.extend(UniMessage.text(f" {text}"))
-    return f"构建了一条 @{user_id} 的消息", msg
+    resolved_group_id, error = resolve_group_id(group_id, config)
+    if error:
+        return error
+    response = await get_bot().send_group_message(
+        group_id=resolved_group_id,
+        message=[_mention(user_id), MessageSegment.text(f" {text}")],
+    )
+    return f"已在群 {resolved_group_id} @ {user_id} 并发送消息{_message_seq(response)}"

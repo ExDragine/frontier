@@ -73,7 +73,8 @@ async def test_station_location(load_tool_module, monkeypatch):
     monkeypatch.setattr(mod.httpx, "get", sync_get_should_not_run)
     text, artifact = await mod.station_location("国际空间站")
     assert text.startswith("空间站位置获取成功")
-    assert "send_staged_artifact" in text
+    assert "send_staged_artifact" not in text
+    assert "staged_artifact" not in text
     assert artifact.content["raw"] == b"img"
 
 

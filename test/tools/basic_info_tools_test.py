@@ -233,7 +233,6 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
     tools_dir = Path(__file__).resolve().parents[2] / "tools"
     fake_modules = {
         "adapter": types.SimpleNamespace(send_image=FakeBaseTool("send_image")),
-        "artifact_bridge": types.SimpleNamespace(send_staged_artifact=FakeBaseTool("send_staged_artifact")),
         "calculator": types.SimpleNamespace(simple_calculator=FakeBaseTool("simple_calculator")),
         "milky_file": types.SimpleNamespace(upload_group_file=FakeBaseTool("upload_group_file")),
         "milky_friend": types.SimpleNamespace(send_friend_nudge=FakeBaseTool("send_friend_nudge")),
@@ -285,7 +284,6 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
 
     assert {tool.name for tool in module.agent_tools.main_tools} == {
         "send_image",
-        "send_staged_artifact",
         "simple_calculator",
         "upload_group_file",
         "send_friend_nudge",

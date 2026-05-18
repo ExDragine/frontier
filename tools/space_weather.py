@@ -7,8 +7,6 @@ from langchain.tools import tool
 from nonebot import require
 from playwright.async_api import async_playwright
 
-from utils.staged_artifacts import stage_artifact_response
-
 transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
 httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 
@@ -153,7 +151,7 @@ async def geospace() -> tuple[str, UniMessage]:
         "https://services.swpc.noaa.gov/images/animations/geospace/pressure/latest.png",
     ]
     message = "这是来自地磁场的径向速度，密度与压力图"
-    return stage_artifact_response(message, UniMessage([Image(url=url) for url in urls]))
+    return message, UniMessage([Image(url=url) for url in urls])
 
 
 @tool(response_format="content_and_artifact")
@@ -171,7 +169,7 @@ async def noaa_enlil_predict() -> tuple[str, UniMessage]:
     images = [a["href"] for a in page.select("a[href]")]
     link = images[-2][:17]
     link = f"{enlil}{link}{time}0000.jpg"
-    return stage_artifact_response("这是当下的太阳风预测，基于NOAA Enlil模型", UniMessage(Image(url=link)))
+    return "这是当下的太阳风预测，基于NOAA Enlil模型", UniMessage(Image(url=link))
 
 
 @tool(response_format="content_and_artifact")
@@ -222,7 +220,7 @@ async def solar_image(imageType) -> tuple[str, UniMessage | None]:
 
     if imageType not in imagesURL:
         return "查无此图\n数据来源: NOAA SWPC", None
-    return stage_artifact_response("获取成功", UniMessage.image(url=imagesURL[imageType]))
+    return "获取成功", UniMessage.image(url=imagesURL[imageType])
 
 
 @tool(response_format="content_and_artifact")
@@ -241,7 +239,7 @@ async def goes_suvi(
     if type not in ["94", "131", "171", "195", "284", "304", "map"]:
         return "查无此图\n数据来源: NOAA SWPC", None
     url = f"https://services.swpc.noaa.gov/images/animations/suvi/primary/{type}/latest.png"
-    return stage_artifact_response("获取成功", UniMessage.image(url=url))
+    return "获取成功", UniMessage.image(url=url)
 
 
 @tool(response_format="content_and_artifact")
@@ -261,11 +259,11 @@ async def sunspot(source: Literal["SOHO", "SDO", "ASO-S"] | None) -> tuple[str, 
         case "SOHO":
             url = "https://soho.nascom.nasa.gov/data/synoptic/sunspots_earth/mdi_sunspots_1024.jpg"
             content = (await httpx_client.get(url)).content
-            return stage_artifact_response("获取成功", UniMessage.image(raw=content))
+            return "获取成功", UniMessage.image(raw=content)
         case "SDO":
             url = "https://sdo.gsfc.nasa.gov/assets/img/latest/latest_2048_HMIIC.jpg"
             content = (await httpx_client.get(url)).content
-            return stage_artifact_response("获取成功", UniMessage.image(raw=content))
+            return "获取成功", UniMessage.image(raw=content)
         case "ASO-S" | _:
             # 构造请求的基本信息
             url = "http://aso-s.pmo.ac.cn:80/asosToday/getLastImg"
@@ -276,7 +274,7 @@ async def sunspot(source: Literal["SOHO", "SDO", "ASO-S"] | None) -> tuple[str, 
             }
             aso_s_url = await httpx_client.post(url, data=payload)
             aso_s_img = (await httpx_client.get(aso_s_url.json()["msg"])).content
-            return stage_artifact_response("获取成功", UniMessage.image(raw=aso_s_img))
+            return "获取成功", UniMessage.image(raw=aso_s_img)
 
 
 @tool(response_format="content_and_artifact")
@@ -305,7 +303,7 @@ async def swpc_page() -> tuple[str, UniMessage | None]:
                 picture = await element_handle.screenshot()
                 message = picture
             await browser.close()
-            return stage_artifact_response("获取成功", UniMessage.image(raw=message))
+            return "获取成功", UniMessage.image(raw=message)
         except Exception:
             return "获取超时，请稍后再试", None
 
@@ -402,7 +400,7 @@ async def planets_weather(planet) -> tuple[str, UniMessage | None]:
     ]
     for p in planets:
         if p[0] == planet:
-            return stage_artifact_response(
+            return (
                 f"> {p[0]}天气\n最高气温: {p[1]} ℃ / 最低气温 {p[2]} ℃\n气压: {p[3]}\n",
                 UniMessage(Image(url=p[4])),
             )

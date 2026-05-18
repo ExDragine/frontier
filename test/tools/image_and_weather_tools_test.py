@@ -241,7 +241,8 @@ async def test_satellite_tools(load_tool_module, monkeypatch):
     monkeypatch.setattr(mod.httpx, "AsyncClient", lambda **kwargs: DummyAsyncClient())
     text2, artifact2 = await mod.get_fy4b_geos_cloud_map("MOS", "24h")
     assert text2.startswith("成功获取FY4B卫星全地球视角云图视频")
-    assert "send_staged_artifact" in text2
+    assert "send_staged_artifact" not in text2
+    assert "staged_artifact" not in text2
     assert artifact2.content["type"] == "video"
 
     assert await mod.get_fy4b_geos_cloud_map("BAD", "24h") is None
@@ -288,5 +289,6 @@ async def test_weather_tools(load_tool_module, monkeypatch):
 
     text, artifact = await mod.get_wind_map("wind_shear")
     assert text.startswith("获取成功")
-    assert "send_staged_artifact" in text
+    assert "send_staged_artifact" not in text
+    assert "staged_artifact" not in text
     assert artifact.content["type"] == "image"

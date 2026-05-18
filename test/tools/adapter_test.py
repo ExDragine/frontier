@@ -1,5 +1,6 @@
 # ruff: noqa: S101
 import tempfile
+import types
 from pathlib import Path
 
 import pytest
@@ -169,24 +170,61 @@ async def test_invalid_url_rejected(load_tool_module, bad_source):
 @pytest.mark.asyncio
 async def test_send_at(load_tool_module):
     adapter = load_tool_module("adapter")
-    _, artifact = await adapter.send_at("12345")
-    assert artifact.content["type"] == "at"
-    assert artifact.content["user_id"] == "12345"
+    calls = []
+
+    class DummyBot:
+        async def send_group_message(self, **kwargs):
+            calls.append(kwargs)
+            return types.SimpleNamespace(message_seq=9)
+
+    adapter.get_bot = lambda: DummyBot()
+
+    result = await adapter.send_at("12345", config={"configurable": {"group_id": 67890}})
+
+    assert result == "已在群 67890 @ 12345，message_seq=9"
+    assert len(calls) == 1
+    assert calls[0]["group_id"] == 67890
+    assert calls[0]["message"][0].type == "mention"
+    assert calls[0]["message"][0].data == {"user_id": 12345}
 
 
 @pytest.mark.asyncio
 async def test_send_at_all(load_tool_module):
     adapter = load_tool_module("adapter")
-    text, artifact = await adapter.send_at_all()
-    assert text == "构建了一个 @全体成员 消息"
-    assert artifact.content["type"] == "at_all"
-    assert artifact.content["online"] is False
+    calls = []
+
+    class DummyBot:
+        async def send_group_message(self, **kwargs):
+            calls.append(kwargs)
+            return types.SimpleNamespace(message_seq=11)
+
+    adapter.get_bot = lambda: DummyBot()
+
+    result = await adapter.send_at_all(config={"configurable": {"group_id": 67890}})
+
+    assert result == "已在群 67890 @全体成员，message_seq=11"
+    assert len(calls) == 1
+    assert calls[0]["group_id"] == 67890
+    assert calls[0]["message"][0].type == "mention_all"
 
 
 @pytest.mark.asyncio
 async def test_send_text_with_at(load_tool_module):
     adapter = load_tool_module("adapter")
-    _, artifact = await adapter.send_text_with_at("12345", "你好")
-    assert isinstance(artifact.content, list)
-    assert artifact.content[0] == {"type": "at", "user_id": "12345"}
-    assert artifact.content[1] == {"type": "text", "text": " 你好"}
+    calls = []
+
+    class DummyBot:
+        async def send_group_message(self, **kwargs):
+            calls.append(kwargs)
+            return types.SimpleNamespace(message_seq=10)
+
+    adapter.get_bot = lambda: DummyBot()
+
+    result = await adapter.send_text_with_at("12345", "你好", config={"configurable": {"group_id": 67890}})
+
+    assert result == "已在群 67890 @ 12345 并发送消息，message_seq=10"
+    assert len(calls) == 1
+    assert calls[0]["group_id"] == 67890
+    assert [segment.type for segment in calls[0]["message"]] == ["mention", "text"]
+    assert calls[0]["message"][0].data == {"user_id": 12345}
+    assert calls[0]["message"][1].data == {"text": " 你好"}

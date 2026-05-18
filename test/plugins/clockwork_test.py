@@ -21,6 +21,7 @@ sys.modules.setdefault("plugins.clockwork", clockwork_pkg)
 
 task_manager_module = importlib.import_module("plugins.clockwork.task_manager")
 task_models_module = importlib.import_module("plugins.clockwork.task_models")
+agent_task_handler_module = importlib.import_module("plugins.clockwork.agent_task_handler")
 
 TaskExecutor = task_manager_module.TaskExecutor
 TaskManager = task_manager_module.TaskManager
@@ -236,3 +237,47 @@ async def test_migrate_legacy_reminder(task_manager):
     assert metadata is not None
     assert metadata.owner_user_id == "42"
     assert metadata.target_type == "group"
+
+
+@pytest.mark.asyncio
+async def test_agent_task_final_group_delivery_mentions_owner(monkeypatch):
+    calls = []
+    metadata = types.SimpleNamespace(
+        target_type="group",
+        target_id="123",
+        owner_user_id="456",
+        prompt="提醒我喝水",
+        archived=False,
+        delivery_mode="final",
+    )
+
+    class DummyTaskManager:
+        async def get_task_metadata(self, job_id):
+            assert job_id == "scheduled_1"
+            return metadata
+
+    class DummyCognitive:
+        async def chat_agent(self, *_args, **_kwargs):
+            return {
+                "uni_messages": [],
+                "response": {"messages": [types.SimpleNamespace(text="该喝水了")]},
+            }
+
+    class DummyBot:
+        async def send_group_message(self, **kwargs):
+            calls.append(kwargs)
+            return types.SimpleNamespace(message_seq=77)
+
+    monkeypatch.setattr(clockwork_pkg, "task_manager", DummyTaskManager(), raising=False)
+    monkeypatch.setattr(agent_task_handler_module, "FrontierCognitive", lambda: DummyCognitive())
+    monkeypatch.setattr(agent_task_handler_module, "get_bot", lambda: DummyBot(), raising=False)
+
+    result = await agent_task_handler_module.run_agent_task("scheduled_1")
+
+    assert result.messages_sent == 1
+    assert result.groups_sent == [123]
+    assert len(calls) == 1
+    assert calls[0]["group_id"] == 123
+    assert [segment.type for segment in calls[0]["message"]] == ["mention", "text"]
+    assert calls[0]["message"][0].data == {"user_id": 456}
+    assert calls[0]["message"][1].data == {"text": " 该喝水了"}
