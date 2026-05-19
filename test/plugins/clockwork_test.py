@@ -240,6 +240,72 @@ async def test_migrate_legacy_reminder(task_manager):
 
 
 @pytest.mark.asyncio
+async def test_daily_news_uses_general_news_tools_and_custom_layout(monkeypatch):
+    task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
+    captured = {}
+    sent_targets = []
+
+    async def fake_assistant_agent(system_prompt, user_prompt, **kwargs):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        captured["kwargs"] = kwargs
+        return '<main class="news-page">summary</main>'
+
+    async def fake_markdown_to_image(summary, **kwargs):
+        captured["rendered_summary"] = summary
+        captured["render_kwargs"] = kwargs
+        return b"news-image"
+
+    class DummyTarget:
+        @staticmethod
+        def group(group_id):
+            return f"group:{group_id}"
+
+    class DummyUniMessage:
+        def image(self, *, raw):
+            captured["image_raw"] = raw
+            return self
+
+        async def send(self, *, target):
+            sent_targets.append(target)
+
+    async def fail_if_http_get_called(*_args, **_kwargs):
+        raise AssertionError("daily_news should not fetch a fixed news API")
+
+    monkeypatch.setattr(task_handlers_module, "assistant_agent", fake_assistant_agent)
+    monkeypatch.setattr(task_handlers_module, "markdown_to_image", fake_markdown_to_image)
+    monkeypatch.setattr(task_handlers_module, "Target", DummyTarget)
+    monkeypatch.setattr(task_handlers_module, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(task_handlers_module.httpx_client, "get", fail_if_http_get_called)
+    monkeypatch.setattr(task_handlers_module.EnvConfig, "NEWS_SUMMARY_GROUP_ID", [101, 202])
+    monkeypatch.setattr(task_handlers_module, "tools", ["web-search-tool"])
+    monkeypatch.setattr(task_handlers_module, "load_daily_news_css", lambda: ".news-hero {} .impact {} .watch-card {}")
+
+    await task_handlers_module.daily_news()
+
+    fixed_api_constant = "SPACEFLIGHT" + "_NEWS_URL"
+    narrow_topic = "航天" + "新闻"
+    assert not hasattr(task_handlers_module, fixed_api_constant)
+    assert "全球与中国主要新闻" in captured["user_prompt"]
+    assert "最近24小时" in captured["user_prompt"]
+    assert narrow_topic not in captured["user_prompt"]
+    assert "今日要闻" in captured["system_prompt"]
+    assert "值得一看" in captured["system_prompt"]
+    assert "watch-card" in captured["system_prompt"]
+    assert "看点" in captured["system_prompt"]
+    assert "具体进展、背景和影响" in captured["system_prompt"]
+    assert narrow_topic not in captured["system_prompt"]
+    assert captured["kwargs"]["tools"] == ["web-search-tool"]
+    assert captured["rendered_summary"] == '<main class="news-page">summary</main>'
+    assert "css" in captured["render_kwargs"]
+    assert ".news-hero" in captured["render_kwargs"]["css"]
+    assert ".impact" in captured["render_kwargs"]["css"]
+    assert ".watch-card" in captured["render_kwargs"]["css"]
+    assert captured["image_raw"] == b"news-image"
+    assert sent_targets == ["group:101", "group:202"]
+
+
+@pytest.mark.asyncio
 async def test_agent_task_final_group_delivery_mentions_owner(monkeypatch):
     calls = []
     metadata = types.SimpleNamespace(
