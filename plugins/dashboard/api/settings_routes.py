@@ -206,6 +206,12 @@ def _reload_env_config():
     EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS = int(
         fn.get("video_poll_timeout_seconds", EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS)
     )
+    EnvConfig.AGENT_LLM_TIMEOUT_SECONDS = int(
+        fn.get("agent_llm_timeout_seconds", EnvConfig.AGENT_LLM_TIMEOUT_SECONDS)
+    )
+    EnvConfig.AGENT_JOB_TIMEOUT_SECONDS = int(
+        fn.get("agent_job_timeout_seconds", EnvConfig.AGENT_JOB_TIMEOUT_SECONDS)
+    )
     EnvConfig.AGENT_DEBUG_MODE = dbg.get("agent_debug_mode", EnvConfig.AGENT_DEBUG_MODE)
 
     EnvConfig.TEST_GROUP_ID = msg.get("test_group_id", EnvConfig.TEST_GROUP_ID)

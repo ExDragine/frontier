@@ -1,6 +1,7 @@
 # ruff: noqa: S101
 
 import builtins
+import os
 import types
 
 import pytest
@@ -421,3 +422,39 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
     assert captured.get("use_responses_api") is True
     assert captured.get("reasoning_effort") == "medium"
     assert captured.get("verbosity") == "low"
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
+    from utils import agents
+
+    class DummyAgent:
+        async def ainvoke(self, payload, config=None):
+            return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]}
+
+    def fake_create_deep_agent(**_kwargs):
+        return DummyAgent()
+
+    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
+
+    captured = {}
+
+    def capturing_create_llm(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
+    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(agents.EnvConfig, "AGENT_LLM_TIMEOUT_SECONDS", 1234, raising=False)
+
+    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier.tools = []
+    frontier.working_dir = os.getcwd()
+
+    await frontier.chat_agent(
+        messages=[{"role": "user", "content": "hi"}],
+        user_id="u1",
+        user_name="test",
+    )
+
+    assert captured["timeout"] == 1234

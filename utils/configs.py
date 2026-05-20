@@ -79,6 +79,8 @@ class EnvConfig:
     VIDEO_RATE_LIMIT_WINDOW_SECONDS: int = int(function_list.get("video_rate_limit_window_seconds", 900))
     VIDEO_POLL_INTERVAL_SECONDS: int = int(function_list.get("video_poll_interval_seconds", 15))
     VIDEO_POLL_TIMEOUT_SECONDS: int = int(function_list.get("video_poll_timeout_seconds", 900))
+    AGENT_LLM_TIMEOUT_SECONDS: int = int(function_list.get("agent_llm_timeout_seconds", 900))
+    AGENT_JOB_TIMEOUT_SECONDS: int = int(function_list.get("agent_job_timeout_seconds", 3600))
 
     RAW_MESSAGE_GROUP_ID: list = message["raw_message_group_id"]
     TEST_GROUP_ID: list = message["test_group_id"]

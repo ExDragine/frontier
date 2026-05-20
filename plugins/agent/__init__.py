@@ -41,7 +41,11 @@ driver = get_driver()
 common = on_message(priority=10)
 
 message_heap = RepeatMessageHeap(capacity=10, threshold=2)
-agent_queue = AgentQueueManager(maxsize=5, idle_ttl_seconds=1800.0, job_timeout_seconds=900.0)
+agent_queue = AgentQueueManager(
+    maxsize=5,
+    idle_ttl_seconds=1800.0,
+    job_timeout_seconds=EnvConfig.AGENT_JOB_TIMEOUT_SECONDS,
+)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 _CAPABILITY_REFUSAL_RE = re.compile(
@@ -427,6 +431,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     try:
         if group_id:
             await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=True)
+        agent_queue.job_timeout_seconds = EnvConfig.AGENT_JOB_TIMEOUT_SECONDS
         await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
         if group_id:
             await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="32", is_add=False)

@@ -324,7 +324,7 @@ class FrontierCognitive:
             "model": EnvConfig.ADVAN_MODEL,
             "streaming": False,
             "max_retries": 2,
-            "timeout": 300,
+            "timeout": EnvConfig.AGENT_LLM_TIMEOUT_SECONDS,
             "use_responses_api": EnvConfig.ADVAN_MODEL_USE_RESPONSES_API,
             "provider": EnvConfig.ADVAN_MODEL_PROVIDER,
             "endpoint": EnvConfig.ADVAN_MODEL_ENDPOINT,

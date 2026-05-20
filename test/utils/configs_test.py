@@ -471,6 +471,8 @@ video_rate_limit_max_requests = 2
 video_rate_limit_window_seconds = 1200
 video_poll_interval_seconds = 5
 video_poll_timeout_seconds = 600
+agent_llm_timeout_seconds = 1234
+agent_job_timeout_seconds = 4321
 
 [message]
 raw_message_group_id = []
@@ -500,3 +502,5 @@ jwt_secret = "secret"
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 1200
     assert configs.EnvConfig.VIDEO_POLL_INTERVAL_SECONDS == 5
     assert configs.EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS == 600
+    assert configs.EnvConfig.AGENT_LLM_TIMEOUT_SECONDS == 1234
+    assert configs.EnvConfig.AGENT_JOB_TIMEOUT_SECONDS == 4321
