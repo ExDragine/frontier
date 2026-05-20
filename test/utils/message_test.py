@@ -77,6 +77,33 @@ async def test_send_messages_fallback_to_text(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_send_messages_retries_image_render(monkeypatch):
+    monkeypatch.setattr(message_module, "UniMessage", DummyUniMessage)
+
+    calls = 0
+    sleeps = []
+
+    async def fake_markdown_to_image(_content):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("render failed")
+        return b"img"
+
+    async def fake_sleep(delay):
+        sleeps.append(delay)
+
+    monkeypatch.setattr(message_module, "markdown_to_image", fake_markdown_to_image)
+    monkeypatch.setattr(message_module.asyncio, "sleep", fake_sleep)
+
+    response = {"messages": [types.SimpleNamespace(content=str({"content": "x" * 500}))]}
+    await message_module.send_messages(group_id=None, message_id=1, response=response)
+
+    assert calls == 2
+    assert sleeps == [message_module.MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS]
+
+
+@pytest.mark.asyncio
 async def test_message_http_client_can_be_closed(monkeypatch):
     closed = False
 

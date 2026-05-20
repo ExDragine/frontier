@@ -25,6 +25,8 @@ httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
+MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
+MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
 
 
 class ReplyCheck(BaseModel):
@@ -208,6 +210,32 @@ async def sanitize_outgoing_message(raw: Any) -> Any:
     return SimpleNamespace(text=sanitized)
 
 
+async def _markdown_to_image_with_retry(content: str) -> bytes | None:
+    last_error: Exception | None = None
+    for attempt in range(1, MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS + 1):
+        try:
+            result = await markdown_to_image(content)
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                f"消息图片渲染失败，第 {attempt}/{MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS} 次: "
+                f"{type(e).__name__}: {e}"
+            )
+        else:
+            if result:
+                if attempt > 1:
+                    logger.info(f"消息图片渲染重试成功，第 {attempt}/{MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS} 次")
+                return result
+            logger.warning(f"消息图片渲染返回空，第 {attempt}/{MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS} 次")
+
+        if attempt < MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS:
+            await asyncio.sleep(MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS * attempt)
+
+    if last_error is not None:
+        logger.error(f"消息图片渲染最终失败: {type(last_error).__name__}: {last_error}")
+    return None
+
+
 async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
     raw = response["messages"][-1]
     content = outgoing_message_content(raw)
@@ -227,7 +255,7 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
             except ActionFailed as e:
                 logger.warning(f"文本消息发送失败，尝试图片回退: {e}")
 
-        result = await markdown_to_image(content)
+        result = await _markdown_to_image_with_retry(content)
         if not result:
             logger.error(f"图片生成失败 (内容长度: {len(content)})")
             # 尝试发送错误提示

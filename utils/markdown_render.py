@@ -77,6 +77,7 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
     with open(temp_html_path, mode="w", encoding="utf-8") as f:
         f.write(full_html)
 
+    img = None
     await init_playwright()
     if page:
         await page.goto("about:blank")  # 清空页面
@@ -131,10 +132,11 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
         else:
             img = await page.screenshot(full_page=True, type="png")
 
-        try:
-            os.remove(temp_html_path)
-        except Exception as e:
-            print(f"⚠️ 删除临时文件失败: {e}")
+        if img:
+            try:
+                os.remove(temp_html_path)
+            except Exception as e:
+                print(f"⚠️ 删除临时文件失败: {e}")
 
         return img
     else:
