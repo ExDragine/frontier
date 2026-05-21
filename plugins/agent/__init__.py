@@ -90,7 +90,9 @@ class AgentChoice(BaseModel):
             "that fully addresses the message. This will be sent as the final response. "
             "Match the assistant's casual, direct gamer tone — use slang, be witty, keep it short. "
             "Never use pre_response to say the assistant cannot do something, lacks access, or lacks tools. "
-            "When needs_agent is True or should_reply is False, set to null."
+            "When needs_agent is True: a short (5-15 char) Chinese preview phrase like "
+            "'思考中...', '正在看图...', '让我想想...' to reduce perceived waiting time. "
+            "When should_reply is False, set to null."
         ),
     )
 
@@ -429,6 +431,9 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         await common.finish()
     thread_id = _agent_thread_id(user_id, group_id)
     try:
+        if choice.pre_response:
+            pre_response = await sanitize_outgoing_text(choice.pre_response)
+            await UniMessage.text(pre_response).send() if pre_response else None
         if group_id:
             await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=True)
         agent_queue.job_timeout_seconds = EnvConfig.AGENT_JOB_TIMEOUT_SECONDS

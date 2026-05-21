@@ -561,10 +561,10 @@ def test_agent_choice_prompt_describes_direct_reply_boundaries(monkeypatch):
     assert '"Python list 怎么去重"' in prompt
     assert '"今天北京天气"' in prompt
     assert '"这图是什么"' in prompt
-    assert '"今天北京天气" → {"should_reply": true, "needs_agent": true, "pre_response": null}' in prompt
+    assert '"今天北京天气" → {"should_reply": true, "needs_agent": true, "pre_response": "查查..."}' in prompt
     assert "capability refusal" in prompt
-    assert '"帮我查一下今天北京天气" → {"should_reply": true, "needs_agent": true, "pre_response": null}' in prompt
-    assert "waiting preview" not in prompt
+    assert '"帮我查一下今天北京天气" → {"should_reply": true, "needs_agent": true, "pre_response": "查查..."}' in prompt
+    assert "waiting preview" in prompt
 
 
 def test_agent_choice_prompt_requires_clear_reply_invitation(monkeypatch):
@@ -579,7 +579,7 @@ def test_agent_choice_prompt_requires_clear_reply_invitation(monkeypatch):
 
     assert "clear invitation" in should_reply_description
     assert "anything that invites engagement" not in should_reply_description
-    assert "When needs_agent is True or should_reply is False, set to null." in pre_response_description
+    assert "When needs_agent is True: a short (5-15 char) Chinese preview phrase" in pre_response_description
     assert "明确邀请" in prompt
     assert "bare reactions" in prompt
     assert "prefer `should_reply=false`" in prompt
@@ -647,17 +647,21 @@ async def test_agent_choice_uses_signal_llm(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_agent_needed_does_not_send_pre_response(monkeypatch):  # noqa: C901
+async def test_agent_needed_sends_pre_response_before_agent(monkeypatch):  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
     from plugins import agent
 
     sent_messages = []
+    stored_messages = []
+    sanitized_messages = []
     calls = {"agent": 0}
 
     class DummyMessagesDb:
-        async def insert(self, **_kwargs):
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "assistant":
+                stored_messages.append(kwargs["content"])
             return None
 
         async def insert_images(self, **_kwargs):
@@ -695,6 +699,10 @@ async def test_agent_needed_does_not_send_pre_response(monkeypatch):  # noqa: C9
     async def fake_signal_structured(*_args, **_kwargs):
         return agent.AgentChoice(should_reply=True, needs_agent=True, pre_response="让我想想...")
 
+    async def fake_sanitize(text):
+        sanitized_messages.append(text)
+        return text
+
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
@@ -702,6 +710,7 @@ async def test_agent_needed_does_not_send_pre_response(monkeypatch):  # noqa: C9
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "signal_structured", fake_signal_structured, raising=False)
+    monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
     monkeypatch.setattr(agent, "send_messages", _noop)
     monkeypatch.setattr(agent, "send_artifacts", _noop)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
@@ -741,7 +750,9 @@ async def test_agent_needed_does_not_send_pre_response(monkeypatch):  # noqa: C9
         ctx.should_finished()
 
     assert calls["agent"] == 1
-    assert sent_messages == []
+    assert sent_messages == ["让我想想..."]
+    assert sanitized_messages == ["让我想想...", "ok"]
+    assert stored_messages == ["ok"]
 
 
 @pytest.mark.asyncio
