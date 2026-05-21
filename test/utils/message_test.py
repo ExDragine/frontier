@@ -59,6 +59,23 @@ class DummyReplyCheckFalse:
     confidence = 0.0
 
 
+class DummyReplyCheckTrue:
+    should_reply = "true"
+    confidence = 0.9
+
+
+class DummyReplyCheckDb:
+    def __init__(self, *, message_count=0, latest_assistant_time=None):
+        self.message_count = message_count
+        self.latest_assistant_time = latest_assistant_time
+
+    async def count_group_messages_since(self, *, group_id, since_time):
+        return self.message_count
+
+    async def latest_group_role_message_time(self, *, group_id, role):
+        return self.latest_assistant_time
+
+
 def patch_reply_check_prompt(monkeypatch, prompt_text: str) -> None:
     import builtins
 
@@ -80,6 +97,14 @@ def patch_reply_check_prompt(monkeypatch, prompt_text: str) -> None:
         return original_open(path, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "open", fake_open)
+
+
+@pytest.fixture(autouse=True)
+def clear_reply_check_state(monkeypatch):
+    monkeypatch.setattr(message_module, "messages_db", DummyReplyCheckDb())
+    message_module._reply_check_last_checked_at.clear()
+    yield
+    message_module._reply_check_last_checked_at.clear()
 
 
 @pytest.mark.asyncio
@@ -255,7 +280,7 @@ async def test_message_gateway_test_group_reply_check_does_not_mutate_messages(m
     patch_reply_check_prompt(monkeypatch, "{name}")
     messages = [{"role": "user", "content": "history"}]
 
-    result = await message_module.message_gateway(DummyTestGroupEvent(), messages)
+    result = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), messages)
 
     assert result is False
     assert messages == [{"role": "user", "content": "history"}]
@@ -287,14 +312,120 @@ async def test_message_gateway_test_group_reply_check_strips_image_data(monkeypa
         }
     ]
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("new text"), messages)
+    result = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), messages)
 
     assert result is False
     assert captured["system_prompt"] == "bot=Frontier"
     assert "history text" in captured["user_prompt"]
-    assert "new text" in captured["user_prompt"]
+    assert "这个报错怎么解决？" in captured["user_prompt"]
     assert "data:image" not in captured["user_prompt"]
     assert "base64" not in captured["user_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_test_group_skips_casual_messages(monkeypatch):
+    calls = 0
+
+    async def fake_signal_structured(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return DummyReplyCheckFalse()
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "TEST_GROUP_ID", [5])
+    monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
+    patch_reply_check_prompt(monkeypatch, "{name}")
+
+    result = await message_module.message_gateway(DummyTestGroupEvent("哈哈确实"), [])
+
+    assert result is False
+    assert calls == 0
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_test_group_reply_check_has_group_cooldown(monkeypatch):
+    calls = 0
+
+    async def fake_signal_structured(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return DummyReplyCheckFalse()
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "TEST_GROUP_ID", [5])
+    monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(message_module.time, "monotonic", lambda: 1000.0)
+    patch_reply_check_prompt(monkeypatch, "{name}")
+
+    first = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
+    second = await message_module.message_gateway(DummyTestGroupEvent("这个问题有人知道吗？"), [])
+
+    assert first is False
+    assert second is False
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_test_group_active_group_requires_strong_signal(monkeypatch):
+    calls = 0
+
+    async def fake_signal_structured(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return DummyReplyCheckFalse()
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "TEST_GROUP_ID", [5])
+    monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(
+        message_module,
+        "messages_db",
+        DummyReplyCheckDb(message_count=message_module.REPLY_CHECK_ACTIVE_GROUP_MESSAGE_LIMIT + 1),
+    )
+    patch_reply_check_prompt(monkeypatch, "{name}")
+
+    normal_question = await message_module.message_gateway(DummyTestGroupEvent("这个东西怎么处理比较好？"), [])
+    strong_question = await message_module.message_gateway(DummyTestGroupEvent("求助，这个报错怎么解决？"), [])
+
+    assert normal_question is False
+    assert strong_question is False
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_test_group_uses_database_assistant_reply_cooldown(monkeypatch):
+    calls = 0
+
+    async def fake_signal_structured(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return DummyReplyCheckTrue()
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "TEST_GROUP_ID", [5])
+    monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(message_module.time, "time", lambda: 2000.0)
+    monkeypatch.setattr(
+        message_module,
+        "messages_db",
+        DummyReplyCheckDb(
+            latest_assistant_time=2_000_000 - message_module.REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS * 1000 + 1
+        ),
+    )
+    patch_reply_check_prompt(monkeypatch, "{name}")
+
+    result = await message_module.message_gateway(DummyTestGroupEvent("求助，这个报错怎么解决？"), [])
+
+    assert result is False
+    assert calls == 0
 
 
 @pytest.mark.asyncio

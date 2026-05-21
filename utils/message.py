@@ -1,6 +1,7 @@
 import ast
 import asyncio
 import re
+import time
 from io import BytesIO
 from types import SimpleNamespace
 from typing import Any, Literal
@@ -14,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
+from utils.database import MessageDatabase
 from utils.markdown_render import markdown_to_image, markdown_to_text
 from utils.signal_llm import signal_structured
 
@@ -22,11 +24,51 @@ from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
 httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+messages_db = MessageDatabase()
 text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
 MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
 MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
+REPLY_CHECK_MIN_TEXT_LENGTH = 8
+REPLY_CHECK_GROUP_COOLDOWN_SECONDS = 120
+REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS = 20 * 60
+REPLY_CHECK_ACTIVE_GROUP_WINDOW_SECONDS = 60
+REPLY_CHECK_ACTIVE_GROUP_MESSAGE_LIMIT = 20
+REPLY_CHECK_STRONG_KEYWORDS = (
+    "求助",
+    "救命",
+    "帮忙",
+    "帮我",
+    "谁知道",
+    "有没有人知道",
+    "报错",
+    "失败",
+    "崩了",
+    "卡住",
+    "不会",
+    "不懂",
+    "问一下ai",
+    "问一下 ai",
+    "机器人看看",
+    "有没有bot",
+    "有没有 bot",
+)
+REPLY_CHECK_QUESTION_KEYWORDS = (
+    "?",
+    "？",
+    "怎么",
+    "为什么",
+    "为啥",
+    "哪里",
+    "如何",
+    "能不能",
+    "有没有",
+    "什么",
+    "哪个",
+    "咋",
+)
+_reply_check_last_checked_at: dict[int, float] = {}
 
 
 class ReplyCheck(BaseModel):
@@ -55,6 +97,82 @@ def _reply_check_content_text(content: Any) -> str:
         elif item_type:
             parts.append(f"[{item_type}]")
     return "\n".join(part for part in parts if part)
+
+
+def _reply_check_on_cooldown(group_id: int, now: float) -> bool:
+    last_checked_at = _reply_check_last_checked_at.get(group_id)
+    return last_checked_at is not None and now - last_checked_at < REPLY_CHECK_GROUP_COOLDOWN_SECONDS
+
+
+def _looks_like_reply_check_candidate(text: str, *, active_group: bool) -> bool:
+    compact_text = "".join(text.lower().split())
+    if not compact_text:
+        return False
+
+    has_strong_signal = any(keyword in compact_text for keyword in REPLY_CHECK_STRONG_KEYWORDS)
+    if active_group:
+        return has_strong_signal
+
+    if has_strong_signal:
+        return True
+    if len(compact_text) < REPLY_CHECK_MIN_TEXT_LENGTH:
+        return False
+    return any(keyword in compact_text for keyword in REPLY_CHECK_QUESTION_KEYWORDS)
+
+
+def _message_gateway_user_id(event: MessageEvent) -> int | str:
+    user_id_raw = event.get_user_id()
+    try:
+        return int(user_id_raw)
+    except ValueError:
+        return user_id_raw
+
+
+def _message_gateway_blocked_by_access_policy(group_id: int, user_id: int | str) -> bool:
+    if group_id != 0 and EnvConfig.AGENT_WHITELIST_MODE and group_id not in EnvConfig.AGENT_WHITELIST_GROUP_LIST:
+        return True
+    if group_id in EnvConfig.AGENT_BLACKLIST_GROUP_LIST:
+        return True
+    if EnvConfig.AGENT_WHITELIST_MODE and user_id not in EnvConfig.AGENT_WHITELIST_PERSON_LIST:
+        return True
+    return user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST
+
+
+async def _reply_check_group_is_active(group_id: int, now_ms: int) -> bool:
+    since_time = now_ms - REPLY_CHECK_ACTIVE_GROUP_WINDOW_SECONDS * 1000
+    message_count = await messages_db.count_group_messages_since(group_id=group_id, since_time=since_time)
+    return message_count > REPLY_CHECK_ACTIVE_GROUP_MESSAGE_LIMIT
+
+
+async def _reply_check_assistant_recently_replied(group_id: int, now_ms: int) -> bool:
+    latest_time = await messages_db.latest_group_role_message_time(group_id=group_id, role="assistant")
+    if latest_time is None:
+        return False
+    return now_ms - latest_time < REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS * 1000
+
+
+async def _reply_check_should_reply(group_id: int, plaintext: str, messages: list) -> bool:
+    now_ms = int(time.time() * 1000)
+    now = time.monotonic()
+    active_group = await _reply_check_group_is_active(group_id, now_ms)
+    if not _looks_like_reply_check_candidate(plaintext, active_group=active_group):
+        return False
+    if await _reply_check_assistant_recently_replied(group_id, now_ms):
+        return False
+    if _reply_check_on_cooldown(group_id, now):
+        return False
+    _reply_check_last_checked_at[group_id] = now
+
+    reply_check_messages = [
+        *messages,
+        {"role": "user", "content": str({"metadata": {}, "content": plaintext})},
+    ]
+    temp_conv: list[dict] = reply_check_messages[-5:]
+    plain_conv = "\n".join(_reply_check_content_text(conv.get("content", "")) for conv in temp_conv)
+    with open("prompts/reply_check.md", encoding="utf-8") as f:
+        system_prompt = f.read().format(name=EnvConfig.BOT_NAME)
+    reply_check: ReplyCheck = await signal_structured(system_prompt, plain_conv, ReplyCheck)
+    return reply_check.should_reply == "true" and reply_check.confidence > 0.5
 
 
 async def aclose_http_client() -> None:
@@ -298,35 +416,16 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
 
 async def message_gateway(event: MessageEvent, messages: list):
     group_id = event.data.group.group_id if event.data.group else 0
-    user_id_raw = event.get_user_id()
-    try:
-        user_id: int | str = int(user_id_raw)
-    except ValueError:
-        user_id = user_id_raw
-
-    if group_id != 0 and EnvConfig.AGENT_WHITELIST_MODE and group_id not in EnvConfig.AGENT_WHITELIST_GROUP_LIST:
-        return False
-    if group_id in EnvConfig.AGENT_BLACKLIST_GROUP_LIST:
-        return False
-    if EnvConfig.AGENT_WHITELIST_MODE and user_id not in EnvConfig.AGENT_WHITELIST_PERSON_LIST:
-        return False
-    if user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST:
+    user_id = _message_gateway_user_id(event)
+    if _message_gateway_blocked_by_access_policy(group_id, user_id):
         return False
     if event.is_tome() or event.to_me:
         return True
-    if event.get_plaintext().startswith(EnvConfig.BOT_NAME):
+    plaintext = event.get_plaintext().strip()
+    if plaintext.startswith(EnvConfig.BOT_NAME):
         return True
     if group_id in EnvConfig.TEST_GROUP_ID:
-        reply_check_messages = [
-            *messages,
-            {"role": "user", "content": str({"metadata": {}, "content": event.get_plaintext().strip()})},
-        ]
-        temp_conv: list[dict] = reply_check_messages[-5:]
-        plain_conv = "\n".join(_reply_check_content_text(conv.get("content", "")) for conv in temp_conv)
-        with open("prompts/reply_check.md", encoding="utf-8") as f:
-            system_prompt = f.read().format(name=EnvConfig.BOT_NAME)
-        reply_check: ReplyCheck = await signal_structured(system_prompt, plain_conv, ReplyCheck)
-        return reply_check.should_reply == "true" and reply_check.confidence > 0.5
+        return await _reply_check_should_reply(group_id, plaintext, messages)
     return False
 
 

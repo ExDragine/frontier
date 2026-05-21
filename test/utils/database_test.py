@@ -1,6 +1,6 @@
 # ruff: noqa: S101
 
-import ast
+import json
 
 import pytest
 from sqlmodel import create_engine
@@ -96,13 +96,13 @@ async def test_prepare_message_includes_chat_scope_metadata(monkeypatch, memory_
     await database.insert(4000, 302, 20, None, "Bob", "user", "private current")
 
     group_prepared = await database.prepare_message(user_id=10, group_id=123, query_numbers=10, before_time=2000)
-    group_payload = ast.literal_eval(group_prepared[0]["content"])
+    group_payload = json.loads(group_prepared[0]["content"])
     assert group_payload["metadata"]["chat_type"] == "group"
     assert group_payload["metadata"]["group_id"] == 123
     assert group_payload["metadata"]["user_id"] == "10"
 
     private_prepared = await database.prepare_message(user_id=20, query_numbers=10, before_time=4000)
-    private_payload = ast.literal_eval(private_prepared[0]["content"])
+    private_payload = json.loads(private_prepared[0]["content"])
     assert private_payload["metadata"]["chat_type"] == "private"
     assert private_payload["metadata"]["group_id"] is None
     assert private_payload["metadata"]["user_id"] == "20"
@@ -146,6 +146,38 @@ async def test_search_messages_filters_history_by_scope_name_id_and_content(monk
 
     private_messages = await database.search_messages(group_id=None, user_id=1, content_query="Python", limit=10)
     assert [message.msg_id for message in private_messages] == [14]
+
+
+@pytest.mark.asyncio
+async def test_count_group_messages_since(monkeypatch, memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+
+    await database.insert(1000, 10, 1, 123, "Alice", "user", "old")
+    await database.insert(2000, 11, 2, 123, "Bob", "user", "recent")
+    await database.insert(3000, 12, 3, 123, "Assistant", "assistant", "recent assistant")
+    await database.insert(4000, 13, 4, 999, "Mallory", "user", "other group")
+
+    count = await database.count_group_messages_since(group_id=123, since_time=1500)
+
+    assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_latest_group_role_message_time(monkeypatch, memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+
+    await database.insert(1000, 10, 1, 123, "Assistant", "assistant", "old assistant")
+    await database.insert(2000, 11, 2, 123, "Alice", "user", "user")
+    await database.insert(3000, 12, 3, 123, "Assistant", "assistant", "latest assistant")
+    await database.insert(4000, 13, 4, 999, "Assistant", "assistant", "other group")
+
+    latest_time = await database.latest_group_role_message_time(group_id=123, role="assistant")
+
+    assert latest_time == 3000
 
 
 @pytest.mark.asyncio

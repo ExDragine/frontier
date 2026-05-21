@@ -5,7 +5,7 @@ import os
 import time
 import zoneinfo
 
-from sqlmodel import Field, Session, SQLModel, col, create_engine, desc, select
+from sqlmodel import Field, Session, SQLModel, col, create_engine, desc, func, select
 
 DATABASE_FILE = "sqlite:///frontier.db"
 
@@ -316,6 +316,27 @@ class MessageDatabase:
                 statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
             statement = statement.order_by(Message.time).limit(limit)
             return session.exec(statement).all()
+
+    async def count_group_messages_since(self, *, group_id: int, since_time: int) -> int:
+        with Session(self.engine) as session:
+            statement = (
+                select(func.count())
+                .select_from(Message)
+                .where(Message.group_id == group_id)
+                .where(Message.time >= since_time)
+            )
+            return int(session.exec(statement).one())
+
+    async def latest_group_role_message_time(self, *, group_id: int, role: str) -> int | None:
+        with Session(self.engine) as session:
+            statement = (
+                select(Message.time)
+                .where(Message.group_id == group_id)
+                .where(Message.role == role)
+                .order_by(desc(Message.time))
+                .limit(1)
+            )
+            return session.exec(statement).first()
 
     @staticmethod
     def _like_pattern(value: str) -> str:
