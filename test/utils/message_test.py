@@ -37,6 +37,51 @@ class DummyResponse:
         self.content = content
 
 
+class DummyTestGroupEvent:
+    def __init__(self, plaintext="hello"):
+        self.data = types.SimpleNamespace(group=types.SimpleNamespace(group_id=5))
+        self.plaintext = plaintext
+
+    def get_user_id(self):
+        return "12345"
+
+    def is_tome(self):
+        return False
+
+    def get_plaintext(self):
+        return self.plaintext
+
+    to_me = False
+
+
+class DummyReplyCheckFalse:
+    should_reply = "false"
+    confidence = 0.0
+
+
+def patch_reply_check_prompt(monkeypatch, prompt_text: str) -> None:
+    import builtins
+
+    original_open = builtins.open
+
+    class DummyPromptFile:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return prompt_text
+
+    def fake_open(path, *args, **kwargs):
+        if str(path).endswith("reply_check.md"):
+            return DummyPromptFile()
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
+
+
 @pytest.mark.asyncio
 async def test_message_extract(monkeypatch):
     async def fake_get(_url):
@@ -199,59 +244,57 @@ async def test_message_gateway_whitelist_dm_allowed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_message_gateway_test_group_reply_check_does_not_mutate_messages(monkeypatch):
-    import builtins
-
-    class DummyEvent:
-        def __init__(self):
-            self.data = types.SimpleNamespace(group=types.SimpleNamespace(group_id=5))
-
-        def get_user_id(self):
-            return "12345"
-
-        def is_tome(self):
-            return False
-
-        def get_plaintext(self):
-            return "hello"
-
-        to_me = False
-
-    class DummyReplyCheck:
-        should_reply = "false"
-        confidence = 0.0
-
     async def fake_signal_structured(*_args, **_kwargs):
-        return DummyReplyCheck()
-
-    original_open = builtins.open
-
-    class DummyPromptFile:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return None
-
-        def read(self):
-            return "{name}"
-
-    def fake_open(path, *args, **kwargs):
-        if str(path).endswith("reply_check.md"):
-            return DummyPromptFile()
-        return original_open(path, *args, **kwargs)
+        return DummyReplyCheckFalse()
 
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     monkeypatch.setattr(message_module.EnvConfig, "TEST_GROUP_ID", [5])
     monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
-    monkeypatch.setattr(builtins, "open", fake_open)
+    patch_reply_check_prompt(monkeypatch, "{name}")
     messages = [{"role": "user", "content": "history"}]
 
-    result = await message_module.message_gateway(DummyEvent(), messages)
+    result = await message_module.message_gateway(DummyTestGroupEvent(), messages)
 
     assert result is False
     assert messages == [{"role": "user", "content": "history"}]
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_test_group_reply_check_strips_image_data(monkeypatch):
+    captured = {}
+
+    async def fake_signal_structured(system_prompt, user_prompt, *_args, **_kwargs):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        return DummyReplyCheckFalse()
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "TEST_GROUP_ID", [5])
+    monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "Frontier")
+    monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
+    patch_reply_check_prompt(monkeypatch, "bot={name}")
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "history text"},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + "a" * 1000}},
+            ],
+        }
+    ]
+
+    result = await message_module.message_gateway(DummyTestGroupEvent("new text"), messages)
+
+    assert result is False
+    assert captured["system_prompt"] == "bot=Frontier"
+    assert "history text" in captured["user_prompt"]
+    assert "new text" in captured["user_prompt"]
+    assert "data:image" not in captured["user_prompt"]
+    assert "base64" not in captured["user_prompt"]
 
 
 @pytest.mark.asyncio

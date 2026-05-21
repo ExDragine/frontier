@@ -36,6 +36,27 @@ class ReplyCheck(BaseModel):
     confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
 
 
+def _reply_check_content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return str(content or "")
+
+    parts = []
+    for item in content:
+        if not isinstance(item, dict):
+            parts.append(str(item))
+            continue
+        item_type = item.get("type")
+        if item_type == "text":
+            parts.append(str(item.get("text", "")))
+        elif item_type == "image_url":
+            parts.append("[图片]")
+        elif item_type:
+            parts.append(f"[{item_type}]")
+    return "\n".join(part for part in parts if part)
+
+
 async def aclose_http_client() -> None:
     await httpx_client.aclose()
 
@@ -218,8 +239,7 @@ async def _markdown_to_image_with_retry(content: str) -> bytes | None:
         except Exception as e:
             last_error = e
             logger.warning(
-                f"消息图片渲染失败，第 {attempt}/{MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS} 次: "
-                f"{type(e).__name__}: {e}"
+                f"消息图片渲染失败，第 {attempt}/{MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS} 次: {type(e).__name__}: {e}"
             )
         else:
             if result:
@@ -302,9 +322,9 @@ async def message_gateway(event: MessageEvent, messages: list):
             {"role": "user", "content": str({"metadata": {}, "content": event.get_plaintext().strip()})},
         ]
         temp_conv: list[dict] = reply_check_messages[-5:]
-        plain_conv = "\n".join(str(conv.get("content", "")) for conv in temp_conv)
+        plain_conv = "\n".join(_reply_check_content_text(conv.get("content", "")) for conv in temp_conv)
         with open("prompts/reply_check.md", encoding="utf-8") as f:
-            system_prompt = f.read().format(name={EnvConfig.BOT_NAME})
+            system_prompt = f.read().format(name=EnvConfig.BOT_NAME)
         reply_check: ReplyCheck = await signal_structured(system_prompt, plain_conv, ReplyCheck)
         return reply_check.should_reply == "true" and reply_check.confidence > 0.5
     return False
