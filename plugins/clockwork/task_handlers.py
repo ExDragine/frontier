@@ -1,6 +1,7 @@
 """定时任务处理函数"""
 
 import datetime
+import traceback
 import zoneinfo
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,8 @@ from utils.configs import EnvConfig
 from utils.database import EventDatabase
 from utils.render import html_to_image, playwright_render
 
+from .task_models import TaskRunResult
+
 # 共享的资源
 event_database = EventDatabase()
 transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
@@ -24,6 +27,7 @@ httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
 tools = agent_tools.mcp_tools + agent_tools.web_tools
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
+DAILY_NEWS_SEARCH_TOOL_NAMES = {"tavily_search", "web_search_exa"}
 
 
 class TopStory(BaseModel):
@@ -57,6 +61,12 @@ class DailyNewsArtifacts:
 
 def load_daily_news_css() -> str:
     return (TEMPLATES_DIR / "daily_news.css").read_text(encoding="utf-8")
+
+
+def _daily_news_tools(available_tools=None) -> list:
+    available_tools = list(tools if available_tools is None else available_tools)
+    search_tools = [tool for tool in available_tools if getattr(tool, "name", "") in DAILY_NEWS_SEARCH_TOOL_NAMES]
+    return search_tools or available_tools
 
 
 def _source_text(value) -> str:
@@ -145,7 +155,12 @@ async def build_daily_news_artifacts(now_cn: datetime.datetime | None = None) ->
     _now_cn, today, period, report_time = daily_news_context(now_cn)
     system_prompt, user_prompt = daily_news_research_prompts(today, period, report_time)
 
-    material = await assistant_agent(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
+    material = await assistant_agent(
+        system_prompt,
+        user_prompt,
+        use_model=EnvConfig.ADVAN_MODEL,
+        tools=_daily_news_tools(),
+    )
     if not material:
         logger.warning("每日新闻素材包为空，跳过推送")
         return None
@@ -384,9 +399,27 @@ async def daily_news(**kwargs):
     if not artifacts:
         return
 
-    message = UniMessage().image(raw=await html_to_image(artifacts.html, css=load_daily_news_css()))
+    image = await html_to_image(artifacts.html, css=load_daily_news_css())
+    message = UniMessage().image(raw=image)
+    groups_sent: list[int] = []
+    send_errors: list[Exception] = []
     for group in EnvConfig.NEWS_SUMMARY_GROUP_ID:
-        await message.send(target=Target.group(str(group)))
+        try:
+            await message.send(target=Target.group(str(group)))
+            groups_sent.append(int(group))
+        except Exception as e:
+            send_errors.append(e)
+            error_traceback = "".join(traceback.format_exception(e))
+            logger.error(f"每日新闻推送到群 {group} 失败:\n{error_traceback}")
+
+    if send_errors and not groups_sent:
+        raise send_errors[0]
+
+    return TaskRunResult(
+        groups_sent=groups_sent,
+        messages_sent=len(groups_sent),
+        output_summary=f"daily_news sent {len(groups_sent)} group(s)",
+    )
 
 
 async def happy_new_year(**kwargs):

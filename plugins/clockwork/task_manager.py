@@ -726,15 +726,16 @@ class TaskExecutor:
 
         except Exception as e:
             duration = int((time.time() - start_time) * 1000)
+            error_traceback = traceback.format_exc()
             await self.task_manager.log_execution(
                 job_id=job_id,
                 status="failed",
                 execution_time=execution_time,
                 duration_ms=duration,
                 error_message=str(e),
-                error_traceback=traceback.format_exc(),
+                error_traceback=error_traceback,
             )
-            self.task_manager.logger.error(f"任务 {job_id} 执行失败: {e}")
+            self.task_manager.logger.error(f"任务 {job_id} 执行失败: {e}\n{error_traceback}")
 
     def _load_handler(self, module_name: str, function_name: str):
         """动态加载任务处理函数"""

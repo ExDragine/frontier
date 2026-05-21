@@ -187,6 +187,9 @@ async def test_task_executor_execute_paths(monkeypatch, task_manager):
     await executor.execute("job3")
     history = await task_manager.get_execution_history("job3")
     assert history[0].status in {"failed", "success"}
+    failed_history = [record for record in history if record.status == "failed"]
+    assert failed_history
+    assert "RuntimeError: boom" in (failed_history[0].error_traceback or "")
 
 
 @pytest.mark.asyncio
@@ -300,7 +303,7 @@ async def test_daily_news_uses_general_news_tools_and_custom_layout(monkeypatch)
     monkeypatch.setattr(task_handlers_module, "tools", ["web-search-tool"])
     monkeypatch.setattr(task_handlers_module, "load_daily_news_css", lambda: ".news-hero {} .impact {} .watch-card {}")
 
-    await task_handlers_module.daily_news()
+    result = await task_handlers_module.daily_news()
 
     assert len(calls) == 2
     assert not hasattr(task_handlers_module, "markdown_to_image")
@@ -330,6 +333,68 @@ async def test_daily_news_uses_general_news_tools_and_custom_layout(monkeypatch)
     assert ".watch-card" in captured["render_kwargs"]["css"]
     assert captured["image_raw"] == b"news-image"
     assert sent_targets == ["group:101", "group:202"]
+    assert result.groups_sent == [101, 202]
+    assert result.messages_sent == 2
+
+
+def test_daily_news_tools_only_expose_search_tools():
+    task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
+    selected_tools = task_handlers_module._daily_news_tools(
+        [
+            types.SimpleNamespace(name="web_search_exa"),
+            types.SimpleNamespace(name="web_fetch_exa"),
+            types.SimpleNamespace(name="tavily_search"),
+            types.SimpleNamespace(name="tavily_extract"),
+        ]
+    )
+
+    assert {tool.name for tool in selected_tools} == {"web_search_exa", "tavily_search"}
+
+
+@pytest.mark.asyncio
+async def test_daily_news_continues_when_one_group_send_fails(monkeypatch):
+    task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
+    sent_targets = []
+
+    class DummyTarget:
+        @staticmethod
+        def group(group_id):
+            return f"group:{group_id}"
+
+    class DummyUniMessage:
+        def image(self, *, raw):
+            return self
+
+        async def send(self, *, target):
+            if target == "group:101":
+                raise RuntimeError("send failed")
+            sent_targets.append(target)
+
+    async def fake_build_daily_news_artifacts():
+        return task_handlers_module.DailyNewsArtifacts(
+            today="2026年05月21日",
+            period="晚报",
+            report_time="18:30",
+            material="素材",
+            payload=task_handlers_module.DailyNewsPayload(top_stories=[], worth_reading=[]),
+            html="<main class=\"news-page\"></main>",
+        )
+
+    async def fake_html_to_image(summary, **kwargs):
+        return b"news-image"
+
+    monkeypatch.setattr(task_handlers_module, "build_daily_news_artifacts", fake_build_daily_news_artifacts)
+    monkeypatch.setattr(task_handlers_module, "html_to_image", fake_html_to_image)
+    monkeypatch.setattr(task_handlers_module, "Target", DummyTarget)
+    monkeypatch.setattr(task_handlers_module, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(task_handlers_module.EnvConfig, "NEWS_SUMMARY_GROUP_ID", [101, 202])
+    monkeypatch.setattr(task_handlers_module, "load_daily_news_css", lambda: "")
+
+    result = await task_handlers_module.daily_news()
+
+    assert sent_targets == ["group:202"]
+    assert result.groups_sent == [202]
+    assert result.messages_sent == 1
 
 
 @pytest.mark.asyncio
