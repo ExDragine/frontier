@@ -1,5 +1,7 @@
 import base64
+import json
 import os
+import re
 import time
 import uuid
 from typing import Any
@@ -16,6 +18,7 @@ from langchain.agents.middleware import (
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from nonebot import logger
+from pydantic import ValidationError
 
 from tools import agent_tools
 from utils.configs import EnvConfig
@@ -40,6 +43,11 @@ def _configured_model_route(model: str) -> dict[str, str]:
         return {
             "provider": EnvConfig.ADVAN_MODEL_PROVIDER,
             "endpoint": EnvConfig.ADVAN_MODEL_ENDPOINT,
+        }
+    if model == EnvConfig.SIGNAL_MODEL:
+        return {
+            "provider": EnvConfig.SIGNAL_MODEL_PROVIDER,
+            "endpoint": EnvConfig.SIGNAL_MODEL_ENDPOINT,
         }
     return {}
 
@@ -85,6 +93,61 @@ def _filter_messages_for_model_capabilities(messages: list[dict], model: str, en
         else:
             filtered_messages.append(message)
     return filtered_messages
+
+
+def _message_text_content(message) -> str:
+    text = getattr(message, "text", None)
+    if text:
+        return str(text)
+
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(str(part.get("text", "")))
+        return "\n".join(text_parts)
+    return str(content or "")
+
+
+def _json_document_candidates(text: str, *, prefer_object: bool = False) -> list[str]:
+    fenced_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    if fenced_match:
+        text = fenced_match.group(1).strip()
+
+    decoder = json.JSONDecoder()
+    candidates = []
+    for index, char in enumerate(text):
+        if char not in ("{" if prefer_object else "{["):
+            continue
+        try:
+            _, end = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        candidates.append(text[index : index + end])
+    return candidates or [text]
+
+
+def _parse_structured_response_from_messages(messages: list, response_format):
+    for message in reversed(messages):
+        if getattr(message, "type", None) != "ai":
+            continue
+        text = _message_text_content(message).strip()
+        if not text:
+            continue
+        if hasattr(response_format, "model_validate_json"):
+            last_error = None
+            for candidate in _json_document_candidates(text, prefer_object=True):
+                try:
+                    return response_format.model_validate_json(candidate)
+                except ValidationError as e:
+                    last_error = e
+            if last_error is not None:
+                raise last_error
+        break
+    raise KeyError("structured_response")
 
 
 async def assistant_agent(
@@ -145,7 +208,9 @@ async def assistant_agent(
         }
     )
     if response_format:
-        return result["structured_response"]
+        if "structured_response" in result:
+            return result["structured_response"]
+        return _parse_structured_response_from_messages(result.get("messages", []), response_format)
     content = ""
     for msg in result["messages"]:
         if msg.type == "ai" and msg.text:

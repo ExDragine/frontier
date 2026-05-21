@@ -254,6 +254,77 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_assistant_agent_uses_signal_model_config(monkeypatch):
+    import builtins
+    import types
+
+    from utils import agents
+
+    original_open = builtins.open
+
+    def fake_open(path, *args, **kwargs):
+        if str(path).endswith("system_prompt.md"):
+            raise FileNotFoundError()
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
+
+    captured = {}
+
+    class DummyAgent:
+        async def ainvoke(self, payload):
+            captured["payload"] = payload
+            return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok")]}
+
+    monkeypatch.setattr(agents, "create_agent", lambda **_kwargs: DummyAgent())
+
+    def capturing_create_llm(model, **kwargs):
+        captured.update(kwargs)
+        captured["model"] = model
+        return object()
+
+    monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
+    monkeypatch.setattr(agents.EnvConfig, "SIGNAL_MODEL", "signal-model")
+    monkeypatch.setattr(agents.EnvConfig, "SIGNAL_MODEL_PROVIDER", "deepseek")
+    monkeypatch.setattr(agents.EnvConfig, "SIGNAL_MODEL_ENDPOINT", "deepseek_signal")
+
+    await agents.assistant_agent(user_prompt="hello", use_model="signal-model")
+
+    assert captured["model"] == "signal-model"
+    assert captured["provider"] == "deepseek"
+    assert captured["endpoint"] == "deepseek_signal"
+
+
+@pytest.mark.asyncio
+async def test_assistant_agent_parses_structured_response_from_ai_json_text(monkeypatch):
+    from pydantic import BaseModel
+
+    class StructuredPayload(BaseModel):
+        title: str
+        count: int
+
+    class DummyAgent:
+        async def ainvoke(self, _payload):
+            return {
+                "messages": [
+                    types.SimpleNamespace(type="ai", text='{"title": "日报", "count": 2}', content="")
+                ]
+            }
+
+    monkeypatch.setattr(agents, "create_agent", lambda **_kwargs: DummyAgent())
+    monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
+
+    result = await agents.assistant_agent(
+        system_prompt="system",
+        user_prompt="hello",
+        use_model="any-model",
+        response_format=StructuredPayload,
+    )
+
+    assert result == StructuredPayload(title="日报", count=2)
+
+
+@pytest.mark.asyncio
 async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypatch):
     import types
 

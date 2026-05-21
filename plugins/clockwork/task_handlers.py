@@ -2,18 +2,20 @@
 
 import datetime
 import zoneinfo
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+from jinja2 import Environment, FileSystemLoader
 from nonebot import get_bot, logger
 from nonebot_plugin_alconna import Image, Target, Text, UniMessage
+from pydantic import BaseModel, Field
 
 from tools import agent_tools
 from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 from utils.database import EventDatabase
-from utils.markdown_render import markdown_to_image
-from utils.render import playwright_render
+from utils.render import html_to_image, playwright_render
 
 # 共享的资源
 event_database = EventDatabase()
@@ -24,8 +26,159 @@ PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
 
 
+class TopStory(BaseModel):
+    title: str = Field(description="新闻标题")
+    summary: str = Field(description="不超过130个中文字符，包含关键背景、进展和结果")
+    impact: str = Field(description="一句话说明影响或后续观察点，不超过60个中文字符")
+    sources: list[str] = Field(description="来源名称列表")
+
+
+class WorthReadingStory(BaseModel):
+    category: str = Field(description="短分类标签，如 科技/经济/国际")
+    title: str = Field(description="新闻标题")
+    summary: str = Field(description="不超过110个中文字符，包含具体进展、背景和影响")
+    sources: list[str] = Field(description="来源名称列表")
+
+
+class DailyNewsPayload(BaseModel):
+    top_stories: list[TopStory] = Field(description="今日要闻，4-6条")
+    worth_reading: list[WorthReadingStory] = Field(description="值得一看，10-12条")
+
+
+@dataclass
+class DailyNewsArtifacts:
+    today: str
+    period: str
+    report_time: str
+    material: str
+    payload: DailyNewsPayload
+    html: str
+
+
 def load_daily_news_css() -> str:
     return (TEMPLATES_DIR / "daily_news.css").read_text(encoding="utf-8")
+
+
+def _source_text(value) -> str:
+    if isinstance(value, list):
+        return "、".join(str(source).strip() for source in value if str(source).strip())
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _normalise_news_items(items, *, include_category: bool = False) -> list[dict]:
+    if not isinstance(items, list):
+        return []
+
+    normalised = []
+    for item in items:
+        if isinstance(item, BaseModel):
+            item = item.model_dump()
+        if not isinstance(item, dict):
+            continue
+        news_item = {
+            "title": str(item.get("title", "")).strip(),
+            "summary": str(item.get("summary", "")).strip(),
+            "impact": str(item.get("impact", "")).strip(),
+            "source_text": _source_text(item.get("sources")),
+        }
+        if include_category:
+            news_item["category"] = str(item.get("category", "")).strip()
+        normalised.append(news_item)
+    return normalised
+
+
+def render_daily_news_html(payload: dict | BaseModel, *, current_time: str, period: str, report_time: str) -> str:
+    if isinstance(payload, BaseModel):
+        payload = payload.model_dump()
+
+    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
+    template = env.get_template("daily_news.html")
+    return template.render(
+        current_time=current_time,
+        period=period,
+        report_time=report_time,
+        top_stories=_normalise_news_items(payload.get("top_stories")),
+        worth_reading=_normalise_news_items(payload.get("worth_reading"), include_category=True),
+    )
+
+
+def daily_news_format_prompt(today: str, period: str, report_time: str) -> str:
+    return f"""你是新闻简报格式化编辑。请只根据用户提供的纯文本素材包，整理成严格 JSON。
+
+要求：
+1. 输出必须符合 DailyNewsPayload schema，不要输出 Markdown、HTML 或解释文字。
+2. 今日要闻选 4-6 条；值得一看选 10-12 条。
+3. 摘要使用简体中文，保持客观、具体，不添加素材包之外的新事实。
+4. sources 只放来源名称，不要放 URL。
+5. 如果素材不足，可以保留较少条目，但不要编造。
+
+简报日期：{today}
+简报类型：{period}
+生成时间：北京时间 {report_time}
+"""
+
+
+def daily_news_context(now_cn: datetime.datetime | None = None) -> tuple[datetime.datetime, str, str, str]:
+    now_cn = (now_cn or datetime.datetime.now()).astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
+    today = now_cn.strftime("%Y年%m月%d日")
+    period = "早报" if now_cn.hour < 18 else "晚报"
+    report_time = now_cn.strftime("%H:%M")
+    return now_cn, today, period, report_time
+
+
+def daily_news_research_prompts(today: str, period: str, report_time: str) -> tuple[str, str]:
+    with open(PROMPTS_DIR / "daily_news.md", encoding="utf-8") as f:
+        system_prompt = f.read().format(current_time=today)
+
+    user_prompt = (
+        f"请生成{today}全球与中国主要新闻{period}。"
+        f"当前北京时间为{report_time}。"
+        "请主动搜索最近24小时内的重要新闻，不需要再另行询问。"
+    )
+    return system_prompt, user_prompt
+
+
+async def build_daily_news_artifacts(now_cn: datetime.datetime | None = None) -> DailyNewsArtifacts | None:
+    """构建日报素材包、结构化数据和 HTML；不发送消息。"""
+    _now_cn, today, period, report_time = daily_news_context(now_cn)
+    system_prompt, user_prompt = daily_news_research_prompts(today, period, report_time)
+
+    material = await assistant_agent(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
+    if not material:
+        logger.warning("每日新闻素材包为空，跳过推送")
+        return None
+
+    payload = await assistant_agent(
+        daily_news_format_prompt(today, period, report_time),
+        f"请把下面的新闻素材包整理成严格 JSON：\n\n{material}",
+        use_model=EnvConfig.SIGNAL_MODEL,
+        tools=None,
+        response_format=DailyNewsPayload,
+        temperature=0,
+        model_kwargs={
+            "response_format": {"type": "json_object"},
+            "max_tokens": 8192,
+        },
+    )
+    if not payload:
+        return None
+
+    html = render_daily_news_html(
+        payload,
+        current_time=today,
+        period=period,
+        report_time=report_time,
+    )
+    return DailyNewsArtifacts(
+        today=today,
+        period=period,
+        report_time=report_time,
+        material=material,
+        payload=payload,
+        html=html,
+    )
 
 
 async def aclose_http_client() -> None:
@@ -227,23 +380,13 @@ async def daily_news(**kwargs):
     """每日新闻摘要 - 每天9:00、21:00推送"""
     logger.info("开始获取每日新闻摘要")
 
-    now_cn = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
-    today = now_cn.strftime("%Y年%m月%d日")
-    period = "早报" if now_cn.hour < 18 else "晚报"
+    artifacts = await build_daily_news_artifacts()
+    if not artifacts:
+        return
 
-    with open(PROMPTS_DIR / "daily_news.md", encoding="utf-8") as f:
-        system_prompt = f.read().format(current_time=today)
-
-    user_prompt = (
-        f"请生成{today}全球与中国主要新闻{period}。"
-        f"当前北京时间为{now_cn.strftime('%H:%M')}。"
-        "请主动搜索最近24小时内的重要新闻，不需要再另行询问。"
-    )
-    summary = await assistant_agent(system_prompt, user_prompt, use_model=EnvConfig.ADVAN_MODEL, tools=tools)
-    if summary:
-        message = UniMessage().image(raw=await markdown_to_image(summary, css=load_daily_news_css()))
-        for group in EnvConfig.NEWS_SUMMARY_GROUP_ID:
-            await message.send(target=Target.group(str(group)))
+    message = UniMessage().image(raw=await html_to_image(artifacts.html, css=load_daily_news_css()))
+    for group in EnvConfig.NEWS_SUMMARY_GROUP_ID:
+        await message.send(target=Target.group(str(group)))
 
 
 async def happy_new_year(**kwargs):

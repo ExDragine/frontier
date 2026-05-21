@@ -1,5 +1,6 @@
 # ruff: noqa: S101
 
+import datetime
 import importlib
 import json
 import sys
@@ -243,15 +244,33 @@ async def test_migrate_legacy_reminder(task_manager):
 async def test_daily_news_uses_general_news_tools_and_custom_layout(monkeypatch):
     task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
     captured = {}
+    calls = []
     sent_targets = []
 
     async def fake_assistant_agent(system_prompt, user_prompt, **kwargs):
-        captured["system_prompt"] = system_prompt
-        captured["user_prompt"] = user_prompt
-        captured["kwargs"] = kwargs
-        return '<main class="news-page">summary</main>'
+        calls.append({"system_prompt": system_prompt, "user_prompt": user_prompt, "kwargs": kwargs})
+        if len(calls) == 1:
+            return "今日要闻候选：\n- 标题：要闻标题\n  要点：要闻摘要\n  影响：后续影响\n  来源：新华社"
+        return task_handlers_module.DailyNewsPayload(
+            top_stories=[
+                task_handlers_module.TopStory(
+                    title="要闻标题",
+                    summary="要闻摘要",
+                    impact="后续影响",
+                    sources=["新华社"],
+                )
+            ],
+            worth_reading=[
+                task_handlers_module.WorthReadingStory(
+                    category="科技",
+                    title="更多标题",
+                    summary="更多内容",
+                    sources=["路透"],
+                )
+            ],
+        )
 
-    async def fake_markdown_to_image(summary, **kwargs):
+    async def fake_html_to_image(summary, **kwargs):
         captured["rendered_summary"] = summary
         captured["render_kwargs"] = kwargs
         return b"news-image"
@@ -273,7 +292,7 @@ async def test_daily_news_uses_general_news_tools_and_custom_layout(monkeypatch)
         raise AssertionError("daily_news should not fetch a fixed news API")
 
     monkeypatch.setattr(task_handlers_module, "assistant_agent", fake_assistant_agent)
-    monkeypatch.setattr(task_handlers_module, "markdown_to_image", fake_markdown_to_image)
+    monkeypatch.setattr(task_handlers_module, "html_to_image", fake_html_to_image)
     monkeypatch.setattr(task_handlers_module, "Target", DummyTarget)
     monkeypatch.setattr(task_handlers_module, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(task_handlers_module.httpx_client, "get", fail_if_http_get_called)
@@ -283,26 +302,72 @@ async def test_daily_news_uses_general_news_tools_and_custom_layout(monkeypatch)
 
     await task_handlers_module.daily_news()
 
+    assert len(calls) == 2
+    assert not hasattr(task_handlers_module, "markdown_to_image")
     fixed_api_constant = "SPACEFLIGHT" + "_NEWS_URL"
     narrow_topic = "航天" + "新闻"
     assert not hasattr(task_handlers_module, fixed_api_constant)
-    assert "全球与中国主要新闻" in captured["user_prompt"]
-    assert "最近24小时" in captured["user_prompt"]
-    assert narrow_topic not in captured["user_prompt"]
-    assert "今日要闻" in captured["system_prompt"]
-    assert "值得一看" in captured["system_prompt"]
-    assert "watch-card" in captured["system_prompt"]
-    assert "看点" in captured["system_prompt"]
-    assert "具体进展、背景和影响" in captured["system_prompt"]
-    assert narrow_topic not in captured["system_prompt"]
-    assert captured["kwargs"]["tools"] == ["web-search-tool"]
-    assert captured["rendered_summary"] == '<main class="news-page">summary</main>'
+    assert "全球与中国主要新闻" in calls[0]["user_prompt"]
+    assert "最近24小时" in calls[0]["user_prompt"]
+    assert "纯文本素材包" in calls[0]["system_prompt"]
+    assert "不要输出 HTML" in calls[0]["system_prompt"]
+    assert narrow_topic not in calls[0]["user_prompt"]
+    assert narrow_topic not in calls[0]["system_prompt"]
+    assert calls[0]["kwargs"]["use_model"] == task_handlers_module.EnvConfig.ADVAN_MODEL
+    assert calls[0]["kwargs"]["tools"] == ["web-search-tool"]
+    assert "response_format" not in calls[0]["kwargs"]
+    assert "今日要闻候选" in calls[1]["user_prompt"]
+    assert "整理成严格 JSON" in calls[1]["system_prompt"]
+    assert calls[1]["kwargs"]["use_model"] == task_handlers_module.EnvConfig.SIGNAL_MODEL
+    assert calls[1]["kwargs"]["tools"] is None
+    assert calls[1]["kwargs"]["response_format"] is task_handlers_module.DailyNewsPayload
+    assert captured["rendered_summary"].startswith("<main class=\"news-page\">")
+    assert "要闻标题" in captured["rendered_summary"]
+    assert "更多标题" in captured["rendered_summary"]
     assert "css" in captured["render_kwargs"]
     assert ".news-hero" in captured["render_kwargs"]["css"]
     assert ".impact" in captured["render_kwargs"]["css"]
     assert ".watch-card" in captured["render_kwargs"]["css"]
     assert captured["image_raw"] == b"news-image"
     assert sent_targets == ["group:101", "group:202"]
+
+
+@pytest.mark.asyncio
+async def test_build_daily_news_artifacts_returns_material_payload_and_html(monkeypatch):
+    task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
+    calls = []
+
+    async def fake_assistant_agent(system_prompt, user_prompt, **kwargs):
+        calls.append({"system_prompt": system_prompt, "user_prompt": user_prompt, "kwargs": kwargs})
+        if len(calls) == 1:
+            return "今日要闻候选：\n- 标题：要闻标题\n  要点：要闻摘要\n  影响：后续影响\n  来源：新华社"
+        return task_handlers_module.DailyNewsPayload(
+            top_stories=[
+                task_handlers_module.TopStory(
+                    title="要闻标题",
+                    summary="要闻摘要",
+                    impact="后续影响",
+                    sources=["新华社"],
+                )
+            ],
+            worth_reading=[],
+        )
+
+    monkeypatch.setattr(task_handlers_module, "assistant_agent", fake_assistant_agent)
+    monkeypatch.setattr(task_handlers_module, "tools", ["web-search-tool"])
+
+    artifacts = await task_handlers_module.build_daily_news_artifacts(
+        now_cn=datetime.datetime(2026, 5, 21, 9, 30, tzinfo=datetime.UTC)
+    )
+
+    assert artifacts is not None
+    assert artifacts.today == "2026年05月21日"
+    assert artifacts.period == "早报"
+    assert artifacts.report_time == "17:30"
+    assert "今日要闻候选" in artifacts.material
+    assert artifacts.payload.top_stories[0].title == "要闻标题"
+    assert "<main class=\"news-page\">" in artifacts.html
+    assert len(calls) == 2
 
 
 @pytest.mark.asyncio

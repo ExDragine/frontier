@@ -1,0 +1,61 @@
+<main class="news-page">
+  <section class="news-hero masthead">
+    <div class="masthead-bar">
+      <div class="brand-mark">FRONTIER</div>
+      <div class="edition">Global News Brief</div>
+    </div>
+    <div class="masthead-main">
+      <h1 class="news-title">{{ current_time }} 全球新闻{{ period }}</h1>
+      <div class="news-meta">北京时间 {{ report_time }} · Top Stories · Worth Reading</div>
+    </div>
+  </section>
+
+  <section class="news-section">
+    <div class="section-heading">
+      <h2 class="news-section-title">今日要闻 <span>Top Stories</span></h2>
+      <div class="section-rule"></div>
+    </div>
+    <div class="lead-grid">
+      {% for item in top_stories %}
+      <article class="lead-card{% if loop.first %} lead-card-primary{% endif %}">
+        <div class="story-meta">
+          <span class="rank">{{ "%02d"|format(loop.index) }}</span>
+          {% if item.source_text %}
+          <span class="source">来源：{{ item.source_text }}</span>
+          {% endif %}
+        </div>
+        <div class="story-body">
+          <div class="headline">{{ item.title }}</div>
+          <p class="summary">{{ item.summary }}</p>
+          {% if item.impact %}
+          <p class="impact">看点：{{ item.impact }}</p>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="news-section">
+    <div class="section-heading">
+      <h2 class="news-section-title">值得一看 <span>Worth Reading</span></h2>
+      <div class="section-rule"></div>
+    </div>
+    <div class="watch-list">
+      {% for item in worth_reading %}
+      <article class="watch-card">
+        <div class="watch-topline">
+          <span class="tag">{{ item.category }}</span>
+          {% if item.source_text %}
+          <span class="watch-source">{{ item.source_text }}</span>
+          {% endif %}
+        </div>
+        <div class="watch-title">{{ item.title }}</div>
+        <p class="watch-summary">{{ item.summary }}</p>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="news-footer">生成于 {{ current_time }} {{ report_time }} · 来源按新闻条目列示</div>
+</main>
