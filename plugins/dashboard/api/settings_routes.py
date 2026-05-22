@@ -216,7 +216,6 @@ def _reload_env_config():
 
     EnvConfig.TEST_GROUP_ID = msg.get("test_group_id", EnvConfig.TEST_GROUP_ID)
     EnvConfig.ANNOUNCE_GROUP_ID = msg.get("announce_group_id", EnvConfig.TEST_GROUP_ID)
-    EnvConfig.RAW_MESSAGE_GROUP_ID = msg.get("raw_message_group_id", EnvConfig.RAW_MESSAGE_GROUP_ID)
     EnvConfig.APOD_GROUP_ID = msg.get("apod_group_id", EnvConfig.TEST_GROUP_ID)
     EnvConfig.EARTH_NOW_GROUP_ID = msg.get("earth_now_group_id", EnvConfig.TEST_GROUP_ID)
     EnvConfig.NEWS_SUMMARY_GROUP_ID = msg.get("news_summary_group_id", EnvConfig.TEST_GROUP_ID)

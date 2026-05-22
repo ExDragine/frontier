@@ -312,7 +312,6 @@ paint_blacklist_person_list = []
 paint_blacklist_group_list = []
 
 [message]
-raw_message_group_id = []
 test_group_id = []
 
 [database]

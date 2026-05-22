@@ -30,6 +30,7 @@ image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
 MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
 MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
+MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD = 768
 REPLY_CHECK_MIN_TEXT_LENGTH = 8
 REPLY_CHECK_GROUP_COOLDOWN_SECONDS = 120
 REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS = 20 * 60
@@ -69,6 +70,23 @@ REPLY_CHECK_QUESTION_KEYWORDS = (
     "咋",
 )
 _reply_check_last_checked_at: dict[int, float] = {}
+_BLOCK_MATH_RE = re.compile(r"(?<!\\)\$\$(?!\$).+?(?<!\\)\$\$", re.DOTALL)
+_INLINE_MATH_RE = re.compile(r"(?<!\\)\$(?![\s\d$])[^$\n]+?(?<!\\)\$(?!\w)")
+_LATEX_DELIMITED_MATH_RE = re.compile(r"\\\[(.|\n)+?\\\]|\\\((.|\n)+?\\\)")
+_LATEX_COMMAND_RE = re.compile(
+    r"\\(?:"
+    r"alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|Delta|Omega|"
+    r"frac|sqrt|sum|prod|int|lim|begin\{(?:equation|align|matrix|pmatrix|bmatrix|cases)\}"
+    r")\b"
+)
+_MARKDOWN_TABLE_RE = re.compile(r"(?m)^\s*\|?.+\|.+\|?\s*\n\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
+_MERMAID_FENCE_RE = re.compile(r"(?im)^\s*```+\s*mermaid\b")
+_MERMAID_DIAGRAM_RE = re.compile(
+    r"(?im)"
+    r"^\s*(?:graph|flowchart)\s+(?:TB|TD|BT|RL|LR)\b|"
+    r"^\s*(?:sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|journey|gitGraph|mindmap|timeline)\b|"
+    r"^\s*pie\s+(?:title\b)?.*"
+)
 
 
 class ReplyCheck(BaseModel):
@@ -97,6 +115,27 @@ def _reply_check_content_text(content: Any) -> str:
         elif item_type:
             parts.append(f"[{item_type}]")
     return "\n".join(part for part in parts if part)
+
+
+def _message_has_hard_to_text_content(content: str) -> bool:
+    return any(
+        pattern.search(content)
+        for pattern in (
+            _BLOCK_MATH_RE,
+            _INLINE_MATH_RE,
+            _LATEX_DELIMITED_MATH_RE,
+            _LATEX_COMMAND_RE,
+            _MARKDOWN_TABLE_RE,
+            _MERMAID_FENCE_RE,
+            _MERMAID_DIAGRAM_RE,
+        )
+    )
+
+
+def _message_should_render_as_image(content: str) -> bool:
+    if _message_has_hard_to_text_content(content):
+        return True
+    return len(content) >= MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD
 
 
 def _reply_check_on_cooldown(group_id: int, now: float) -> bool:
@@ -378,9 +417,7 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
     raw = response["messages"][-1]
     content = outgoing_message_content(raw)
     if content:
-        pattern = re.compile(r"\$(.*?)\$")
-        matches = pattern.findall(content)
-        if len(content) < 500 or group_id in EnvConfig.RAW_MESSAGE_GROUP_ID and not matches:
+        if not _message_should_render_as_image(content):
             text_content = (await markdown_to_text(content)).rstrip("\r\n").strip()
             messages = (
                 UniMessage.reply(str(message_id)) + UniMessage.text(text_content)

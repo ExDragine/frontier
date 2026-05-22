@@ -264,7 +264,6 @@ agent_llm_timeout_seconds = 1500
 agent_job_timeout_seconds = 5400
 
 [message]
-raw_message_group_id = []
 test_group_id = []
 
 [database]

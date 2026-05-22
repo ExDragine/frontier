@@ -173,6 +173,37 @@ async def test_send_messages_retries_image_render(monkeypatch):
     assert sleeps == [message_module.MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS]
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "短公式应该渲染成图片：$E = mc^2$",
+        "块级公式应该渲染成图片：\n$$\n\\int_0^1 x^2 dx\n$$",
+        "LaTeX 括号公式应该渲染成图片：\\[a^2 + b^2 = c^2\\]",
+        "| 名称 | 数值 |\n| --- | ---: |\n| alpha | 1 |",
+        "```mermaid\ngraph TD\nA --> B\n```",
+        "flowchart LR\nA[开始] --> B[结束]",
+    ],
+)
+def test_message_should_render_image_for_hard_to_text_content(content):
+    assert message_module._message_should_render_as_image(content) is True
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "普通短消息继续走文本",
+        "The price is $5 today.",
+        "Use `echo hello` in shell.",
+    ],
+)
+def test_message_keeps_simple_short_content_as_text(content):
+    assert message_module._message_should_render_as_image(content) is False
+
+
+def test_message_renders_long_simple_content_as_image_for_any_group():
+    assert message_module._message_should_render_as_image("x" * 600) is True
+
+
 @pytest.mark.asyncio
 async def test_message_http_client_can_be_closed(monkeypatch):
     closed = False

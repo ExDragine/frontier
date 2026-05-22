@@ -41,7 +41,6 @@ paint_blacklist_person_list = []
 paint_blacklist_group_list = []
 
 [message]
-raw_message_group_id = []
 test_group_id = []
 
 [database]
@@ -61,6 +60,7 @@ jwt_secret = "secret"
     importlib.reload(configs)
 
     assert configs.EnvConfig.DASHBOARD_PASSWORD == "admin"
+    assert not hasattr(configs.EnvConfig, "RAW_MESSAGE_GROUP_ID")
     assert isinstance(configs.EnvConfig.OPENAI_API_KEY, SecretStr)
     assert configs.EnvConfig.ANNOUNCE_GROUP_ID == configs.EnvConfig.TEST_GROUP_ID
     assert configs.EnvConfig.CONTENT_CHECK_ENABLED is False
@@ -128,7 +128,6 @@ paint_blacklist_person_list = []
 paint_blacklist_group_list = []
 
 [message]
-raw_message_group_id = []
 test_group_id = []
 
 [database]
@@ -215,7 +214,6 @@ paint_blacklist_person_list = []
 paint_blacklist_group_list = []
 
 [message]
-raw_message_group_id = []
 test_group_id = []
 
 [database]
@@ -289,7 +287,6 @@ paint_blacklist_person_list = []
 paint_blacklist_group_list = []
 
 [message]
-raw_message_group_id = []
 test_group_id = []
 
 [database]
@@ -347,7 +344,6 @@ paint_blacklist_person_list = []
 paint_blacklist_group_list = []
 
 [message]
-raw_message_group_id = []
 test_group_id = []
 
 [database]
@@ -407,7 +403,6 @@ paint_blacklist_person_list = []
 paint_blacklist_group_list = []
 
 [message]
-raw_message_group_id = []
 test_group_id = []
 
 [database]
@@ -475,7 +470,6 @@ agent_llm_timeout_seconds = 1234
 agent_job_timeout_seconds = 4321
 
 [message]
-raw_message_group_id = []
 test_group_id = []
 
 [database]
