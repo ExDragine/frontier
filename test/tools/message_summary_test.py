@@ -44,6 +44,7 @@ async def test_search_messages_tool_forwards_filters_and_formats_results(load_to
         "start_time": None,
         "end_time": None,
         "limit": 20,
+        "mode": "hybrid",
     }
     assert "找到 1 条聊天记录" in result
     assert "msg_id=88" in result
@@ -59,3 +60,24 @@ async def test_search_messages_tool_requires_at_least_one_filter(load_tool_modul
     result = await mod.search_messages(config={"configurable": {"user_id": "456", "group_id": 123}})
 
     assert "请至少提供" in result
+
+
+@pytest.mark.asyncio
+async def test_search_messages_tool_forwards_search_mode(load_tool_module, monkeypatch):
+    mod = load_tool_module("memory")
+    captured = {}
+
+    class DummyMessageDb:
+        async def search_messages(self, **kwargs):
+            captured.update(kwargs)
+            return []
+
+    monkeypatch.setattr(mod, "message_db", DummyMessageDb())
+
+    await mod.search_messages(
+        query="数据库性能",
+        search_mode="semantic",
+        config={"configurable": {"user_id": "456", "group_id": 123}},
+    )
+
+    assert captured["mode"] == "semantic"

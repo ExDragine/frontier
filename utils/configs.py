@@ -21,6 +21,7 @@ debug: dict = config.get("debug", {})
 dashboard: dict = config.get("dashboard", {})
 image_memory: dict = config.get("image_memory", {})
 content_check: dict = config.get("content_check", {})
+vector_memory: dict = config.get("vector_memory", config.get("memory", {}))
 
 
 class EnvConfig:
@@ -103,3 +104,11 @@ class EnvConfig:
     IMAGE_AUTO_CLEANUP: bool = image_memory.get("auto_cleanup", True)
 
     CONTENT_CHECK_ENABLED: bool = content_check.get("enabled", False)
+
+    VECTOR_MEMORY_ENABLED: bool = bool(vector_memory.get("semantic_search_enabled", vector_memory.get("enabled", True)))
+    VECTOR_MEMORY_CHROMA_PATH: str = str(vector_memory.get("chroma_path", "cache/chroma"))
+    VECTOR_MEMORY_COLLECTION: str = str(vector_memory.get("chroma_collection", "frontier_messages"))
+    VECTOR_MEMORY_EMBEDDING_MODEL: str = str(
+        vector_memory.get("embedding_model", "microsoft/harrier-oss-v1-0.6b")
+    )
+    VECTOR_MEMORY_SEMANTIC_TOP_K: int = int(vector_memory.get("semantic_top_k", 30))

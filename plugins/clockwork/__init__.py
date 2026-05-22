@@ -1,7 +1,6 @@
 from nonebot import get_driver, logger, require
-from sqlmodel import create_engine
 
-from utils.database import DATABASE_FILE
+from utils.database import get_engine
 
 require("nonebot_plugin_apscheduler")
 require("nonebot_plugin_alconna")
@@ -11,7 +10,7 @@ from .task_manager import TaskExecutor, TaskManager  # noqa: E402
 from .task_models import ScheduledTaskMetadata, TaskConfig, TaskExecutionHistory, TaskGroupMapping  # noqa: E402
 
 # 初始化任务管理系统
-engine = create_engine(DATABASE_FILE)
+engine = get_engine()
 task_manager = TaskManager(scheduler, engine)
 task_executor = TaskExecutor(task_manager)
 task_manager.set_job_func(task_executor.execute)

@@ -12,6 +12,8 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
+from utils.database import ensure_database_performance_indexes
+
 from .task_models import ScheduledTaskMetadata, TaskConfig, TaskExecutionHistory, TaskGroupMapping, TaskRunResult
 
 
@@ -52,6 +54,7 @@ class TaskManager:
             if "output_summary" not in columns:
                 with self.engine.begin() as conn:
                     conn.execute(text("ALTER TABLE taskexecutionhistory ADD COLUMN output_summary VARCHAR"))
+        ensure_database_performance_indexes(self.engine)
 
     def add_job_to_scheduler(self, task: TaskConfig):
         """将任务添加到 APScheduler"""
