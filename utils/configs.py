@@ -112,3 +112,6 @@ class EnvConfig:
         vector_memory.get("embedding_model", "microsoft/harrier-oss-v1-0.6b")
     )
     VECTOR_MEMORY_SEMANTIC_TOP_K: int = int(vector_memory.get("semantic_top_k", 30))
+    VECTOR_MEMORY_EMBEDDING_BATCH_SIZE: int = int(vector_memory.get("semantic_embedding_batch_size", 1))
+    VECTOR_MEMORY_EMBEDDING_DEVICE: str = str(vector_memory.get("semantic_embedding_device", "cpu")).strip()
+    VECTOR_MEMORY_PRELOAD_ON_STARTUP: bool = bool(vector_memory.get("preload_on_startup", True))

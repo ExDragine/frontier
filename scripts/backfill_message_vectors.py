@@ -12,7 +12,9 @@ from utils.database import Message, MessageDatabase
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Backfill Chroma semantic indexes from SQLite messages.")
-    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--batch-size", type=int, default=16, help="SQLite rows to read per loop.")
+    parser.add_argument("--embedding-batch-size", type=int, default=None, help="Texts to embed per model forward pass.")
+    parser.add_argument("--device", default=None, help='Embedding device override, for example "cpu", "cuda", or "cuda:0".')
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args()
 
@@ -21,6 +23,10 @@ def main() -> None:
     if not vector_index or not getattr(vector_index, "available", False):
         print("Chroma message vector index is unavailable.")
         return
+    if args.embedding_batch_size is not None:
+        vector_index.config.embedding_batch_size = max(1, args.embedding_batch_size)
+    if args.device is not None:
+        vector_index.config.embedding_device = args.device
 
     total = 0
     last_time = -1

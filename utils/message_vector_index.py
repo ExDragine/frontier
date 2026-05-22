@@ -8,6 +8,8 @@ from utils.database import Message
 DEFAULT_EMBEDDING_MODEL = "microsoft/harrier-oss-v1-0.6b"
 DEFAULT_CHROMA_PATH = "cache/chroma"
 DEFAULT_COLLECTION_NAME = "frontier_messages"
+DEFAULT_EMBEDDING_BATCH_SIZE = 1
+DEFAULT_EMBEDDING_DEVICE = "cpu"
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,9 @@ class MessageVectorIndexConfig:
     collection_name: str = DEFAULT_COLLECTION_NAME
     embedding_model: str = DEFAULT_EMBEDDING_MODEL
     top_k: int = 30
+    embedding_batch_size: int = DEFAULT_EMBEDDING_BATCH_SIZE
+    embedding_device: str | None = DEFAULT_EMBEDDING_DEVICE
+    preload_on_startup: bool = True
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> MessageVectorIndexConfig:
@@ -28,6 +33,9 @@ class MessageVectorIndexConfig:
             collection_name=str(value.get("chroma_collection", DEFAULT_COLLECTION_NAME)),
             embedding_model=str(value.get("embedding_model", DEFAULT_EMBEDDING_MODEL)),
             top_k=int(value.get("semantic_top_k", 30)),
+            embedding_batch_size=max(1, int(value.get("semantic_embedding_batch_size", DEFAULT_EMBEDDING_BATCH_SIZE))),
+            embedding_device=value.get("semantic_embedding_device", DEFAULT_EMBEDDING_DEVICE) or None,
+            preload_on_startup=bool(value.get("preload_on_startup", True)),
         )
 
 
@@ -61,7 +69,14 @@ def build_chroma_where(
 def _default_embeddings_factory(config: MessageVectorIndexConfig):
     from langchain_huggingface import HuggingFaceEmbeddings
 
-    return HuggingFaceEmbeddings(model_name=config.embedding_model)
+    model_kwargs = {}
+    if config.embedding_device:
+        model_kwargs["device"] = config.embedding_device
+    return HuggingFaceEmbeddings(
+        model_name=config.embedding_model,
+        model_kwargs=model_kwargs,
+        encode_kwargs={"batch_size": config.embedding_batch_size},
+    )
 
 
 def _default_collection_factory(config: MessageVectorIndexConfig):
@@ -105,12 +120,21 @@ class MessageVectorIndex:
             )
             return True
         except Exception as exc:
+            _clear_cuda_cache_if_oom(exc)
             logger.warning("Failed to add message to Chroma index: %s", exc)
             return False
 
     def add_messages(self, messages: list[Message]) -> int:
         if not self.available or self._collection is None or self._embeddings is None or not messages:
             return 0
+        added = 0
+        batch_size = max(1, self.config.embedding_batch_size)
+        for start in range(0, len(messages), batch_size):
+            batch = messages[start : start + batch_size]
+            added += self._add_message_batch(batch)
+        return added
+
+    def _add_message_batch(self, messages: list[Message]) -> int:
         try:
             documents = [message.content for message in messages]
             self._write(
@@ -121,6 +145,7 @@ class MessageVectorIndex:
             )
             return len(messages)
         except Exception as exc:
+            _clear_cuda_cache_if_oom(exc)
             logger.warning("Failed to add message batch to Chroma index: %s", exc)
             return 0
 
@@ -155,3 +180,15 @@ class MessageVectorIndex:
         ids = result.get("ids", [[]])[0] if isinstance(result, dict) else []
         distances = result.get("distances", [[]])[0] if isinstance(result, dict) else []
         return [(int(item_id), float(distances[i] if i < len(distances) else 0.0)) for i, item_id in enumerate(ids)]
+
+
+def _clear_cuda_cache_if_oom(exc: Exception) -> None:
+    if "out of memory" not in str(exc).lower():
+        return
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        return

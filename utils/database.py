@@ -18,6 +18,7 @@ SQLITE_CACHE_SIZE_KIB = 65536
 SQLITE_MMAP_SIZE_BYTES = 256 * 1024 * 1024
 MESSAGE_FTS_MIN_QUERY_LENGTH = 3
 logger = logging.getLogger(__name__)
+_MESSAGE_VECTOR_INDEX = None
 
 
 def _is_memory_database(database_url: str) -> bool:
@@ -414,6 +415,7 @@ class MessageDatabase:
         MessageImage.metadata.create_all(self.engine)
         ensure_database_performance_indexes(self.engine)
         ensure_message_fts(self.engine)
+        self._preload_vector_index_if_configured()
 
     async def insert(
         self,
@@ -762,6 +764,10 @@ class MessageDatabase:
     def _get_vector_index(self):
         if self._vector_index is not None:
             return self._vector_index
+        global _MESSAGE_VECTOR_INDEX
+        if _MESSAGE_VECTOR_INDEX is not None:
+            self._vector_index = _MESSAGE_VECTOR_INDEX
+            return self._vector_index
         try:
             from utils.configs import EnvConfig
             from utils.message_vector_index import MessageVectorIndex, MessageVectorIndexConfig
@@ -772,12 +778,27 @@ class MessageDatabase:
                 collection_name=EnvConfig.VECTOR_MEMORY_COLLECTION,
                 embedding_model=EnvConfig.VECTOR_MEMORY_EMBEDDING_MODEL,
                 top_k=EnvConfig.VECTOR_MEMORY_SEMANTIC_TOP_K,
+                embedding_batch_size=EnvConfig.VECTOR_MEMORY_EMBEDDING_BATCH_SIZE,
+                embedding_device=EnvConfig.VECTOR_MEMORY_EMBEDDING_DEVICE or None,
+                preload_on_startup=EnvConfig.VECTOR_MEMORY_PRELOAD_ON_STARTUP,
             )
-            self._vector_index = MessageVectorIndex(config)
+            _MESSAGE_VECTOR_INDEX = MessageVectorIndex(config)
+            self._vector_index = _MESSAGE_VECTOR_INDEX
         except Exception as exc:
             logger.warning("Message vector index initialization failed: %s", exc)
-            self._vector_index = False
+            _MESSAGE_VECTOR_INDEX = False
+            self._vector_index = _MESSAGE_VECTOR_INDEX
         return self._vector_index
+
+    def _preload_vector_index_if_configured(self) -> None:
+        try:
+            from utils.configs import EnvConfig
+        except Exception as exc:
+            logger.debug("Vector index preload skipped: %s", exc)
+            return
+        if EnvConfig.VECTOR_MEMORY_ENABLED and EnvConfig.VECTOR_MEMORY_PRELOAD_ON_STARTUP:
+            logger.info("Preloading message vector index")
+            self._get_vector_index()
 
     def _add_message_to_vector_index(self, message: Message) -> None:
         snapshot = Message(

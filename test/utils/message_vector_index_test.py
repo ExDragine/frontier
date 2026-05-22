@@ -25,6 +25,19 @@ class FakeEmbeddings:
         return [float(len(text)), 1.0, 0.0]
 
 
+class BatchLimitedEmbeddings(FakeEmbeddings):
+    def __init__(self, max_batch_size):
+        super().__init__()
+        self.max_batch_size = max_batch_size
+        self.batch_sizes = []
+
+    def embed_documents(self, texts):
+        self.batch_sizes.append(len(texts))
+        if len(texts) > self.max_batch_size:
+            raise RuntimeError("CUDA out of memory")
+        return super().embed_documents(texts)
+
+
 class FakeCollection:
     def __init__(self):
         self.added = {}
@@ -51,6 +64,21 @@ def test_default_vector_config_uses_harrier_model():
     assert config.enabled is True
     assert config.embedding_model == DEFAULT_EMBEDDING_MODEL
     assert config.persist_path == "cache/chroma"
+    assert config.embedding_batch_size == 1
+    assert config.embedding_device == "cpu"
+    assert config.preload_on_startup is True
+
+
+def test_vector_config_accepts_batch_size_and_device_overrides():
+    config = MessageVectorIndexConfig.from_mapping(
+        {
+            "semantic_embedding_batch_size": 2,
+            "semantic_embedding_device": "cpu",
+        }
+    )
+
+    assert config.embedding_batch_size == 2
+    assert config.embedding_device == "cpu"
 
 
 def test_message_metadata_normalizes_private_and_group_scope():
@@ -92,6 +120,26 @@ def test_vector_index_adds_and_queries_messages_with_scope_filter():
     assert collection.added["1000"]["metadata"]["group_id"] == 123
     assert collection.queries[0]["where"] == {"group_id": 123}
     assert results == [(1000, 0.0)]
+
+
+def test_vector_index_embeds_large_message_batches_in_configured_chunks():
+    collection = FakeCollection()
+    embeddings = BatchLimitedEmbeddings(max_batch_size=2)
+    index = MessageVectorIndex(
+        MessageVectorIndexConfig(enabled=True, embedding_batch_size=2),
+        collection_factory=lambda _config: collection,
+        embeddings_factory=lambda _config: embeddings,
+    )
+    messages = [
+        Message(time=i, msg_id=i, user_id=1, group_id=123, user_name="Alice", role="user", content=f"message {i}")
+        for i in range(1, 6)
+    ]
+
+    added = index.add_messages(messages)
+
+    assert added == 5
+    assert embeddings.batch_sizes == [2, 2, 1]
+    assert set(collection.added) == {"1", "2", "3", "4", "5"}
 
 
 def test_build_chroma_where_uses_private_scope_for_private_search():
