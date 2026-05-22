@@ -1,11 +1,11 @@
 # ruff: noqa: S101
 
 import datetime
-import json
 import sys
 import time
 import types
 import zoneinfo
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,7 +13,7 @@ import pytest
 
 def _make_clockwork_task_manager_stub():
     mgr = MagicMock()
-    mgr.register_task = AsyncMock(return_value=MagicMock())
+    mgr.register_scheduled_task = AsyncMock(return_value=MagicMock())
     return mgr
 
 
@@ -35,6 +35,9 @@ def reminder_mod(load_tool_module, monkeypatch):
     if "plugins" not in sys.modules:
         plugins_stub = types.ModuleType("plugins")
         monkeypatch.setitem(sys.modules, "plugins", plugins_stub)
+    tools_stub = types.ModuleType("tools")
+    tools_stub.__path__ = [str(Path(__file__).resolve().parents[2] / "tools")]
+    monkeypatch.setitem(sys.modules, "tools", tools_stub)
 
     mod = load_tool_module("reminder")
     mod._mock_tm = mock_tm
@@ -56,17 +59,14 @@ async def test_create_reminder_group_context(reminder_mod, future_time):
     )
 
     assert "开会" in result
-    reminder_mod._mock_tm.register_task.assert_awaited_once()
-    kwargs = reminder_mod._mock_tm.register_task.call_args.kwargs
+    reminder_mod._mock_tm.register_scheduled_task.assert_awaited_once()
+    kwargs = reminder_mod._mock_tm.register_scheduled_task.call_args.kwargs
     assert kwargs["trigger_type"] == "date"
-    assert kwargs["group_ids"] == [100]
-    assert kwargs["handler_module"] == "plugins.clockwork.reminder_handler"
-    assert kwargs["handler_function"] == "fire_reminder"
-    payload = json.loads(kwargs["description"])
-    assert payload["text"] == "开会"
-    assert payload["user_id"] == "12345"
-    assert payload["group_id"] == 100
-    assert payload["private"] is False
+    assert kwargs["target_type"] == "group"
+    assert kwargs["target_id"] == "100"
+    assert kwargs["owner_user_id"] == "12345"
+    assert "开会" in kwargs["prompt"]
+    assert kwargs["created_from"] == "reminder_tool"
 
 
 @pytest.mark.asyncio
@@ -80,10 +80,10 @@ async def test_create_reminder_dm_context(reminder_mod, future_time):
     )
 
     assert "取快递" in result
-    kwargs = reminder_mod._mock_tm.register_task.call_args.kwargs
-    assert kwargs["group_ids"] == []
-    payload = json.loads(kwargs["description"])
-    assert payload["group_id"] is None
+    kwargs = reminder_mod._mock_tm.register_scheduled_task.call_args.kwargs
+    assert kwargs["target_type"] == "user"
+    assert kwargs["target_id"] == "99999"
+    assert kwargs["owner_user_id"] == "99999"
 
 
 @pytest.mark.asyncio
@@ -96,7 +96,7 @@ async def test_create_reminder_past_time_rejected(reminder_mod):
     )
 
     assert "将来" in result or "错误" in result
-    reminder_mod._mock_tm.register_task.assert_not_awaited()
+    reminder_mod._mock_tm.register_scheduled_task.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -109,7 +109,7 @@ async def test_create_reminder_invalid_format(reminder_mod):
     )
 
     assert "格式" in result
-    reminder_mod._mock_tm.register_task.assert_not_awaited()
+    reminder_mod._mock_tm.register_scheduled_task.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -123,7 +123,7 @@ async def test_create_reminder_job_id_format(reminder_mod, future_time):
     )
     after_ms = int(time.time() * 1000)
 
-    job_id: str = reminder_mod._mock_tm.register_task.call_args.kwargs["job_id"]
-    assert job_id.startswith("reminder_42_")
+    job_id: str = reminder_mod._mock_tm.register_scheduled_task.call_args.kwargs["job_id"]
+    assert job_id.startswith("scheduled_42_")
     ts = int(job_id.split("_")[-1])
     assert before_ms <= ts <= after_ms

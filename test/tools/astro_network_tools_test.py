@@ -1,5 +1,7 @@
 # ruff: noqa: S101
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 
@@ -60,9 +62,19 @@ async def test_station_location(load_tool_module, monkeypatch):
     class DummyResp:
         content = b"img"
 
-    monkeypatch.setattr(mod.httpx, "get", lambda *args, **kwargs: DummyResp())
+    class DummyClient:
+        async def get(self, *_args, **_kwargs):
+            return DummyResp()
+
+    def sync_get_should_not_run(*_args, **_kwargs):
+        raise AssertionError("async heavens_above tool should not call synchronous httpx.get")
+
+    monkeypatch.setattr(mod, "httpx_client", DummyClient())
+    monkeypatch.setattr(mod.httpx, "get", sync_get_should_not_run)
     text, artifact = await mod.station_location("国际空间站")
-    assert text == "空间站位置获取成功"
+    assert text.startswith("空间站位置获取成功")
+    assert "send_staged_artifact" not in text
+    assert "staged_artifact" not in text
     assert artifact.content["raw"] == b"img"
 
 
@@ -73,7 +85,11 @@ async def test_station_location_empty_content(load_tool_module, monkeypatch):
     class DummyResp:
         content = b""
 
-    monkeypatch.setattr(mod.httpx, "get", lambda *args, **kwargs: DummyResp())
+    class DummyClient:
+        async def get(self, *_args, **_kwargs):
+            return DummyResp()
+
+    monkeypatch.setattr(mod, "httpx_client", DummyClient())
     text, artifact = await mod.station_location("天宫")
     assert text == "空间站位置获取失败"
     assert artifact is None
@@ -82,19 +98,20 @@ async def test_station_location_empty_content(load_tool_module, monkeypatch):
 @pytest.mark.asyncio
 async def test_get_launches_success(load_tool_module, monkeypatch):
     mod = load_tool_module("rocket")
+    launch_time = datetime.now(UTC) + timedelta(hours=1)
 
     class DummyResp:
         status_code = 200
 
         def json(self):
             return {
-                "count": 1,
-                "results": [
+                "pagination": {"total": 1},
+                "data": [
                     {
                         "name": "Falcon 9 | Starlink",
-                        "pad": {"location": {"country_code": "US"}},
-                        "launch_service_provider": {"name": "SpaceX"},
-                        "net": "2030-01-01T00:00:00+00:00",
+                        "site": "LC-39A",
+                        "provider": "SpaceX",
+                        "launch_date": launch_time.isoformat(),
                     }
                 ],
             }

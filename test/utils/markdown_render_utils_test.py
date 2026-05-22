@@ -1,7 +1,8 @@
 # ruff: noqa: S101
 
-import pytest
 import types
+
+import pytest
 
 from utils import markdown_render
 
@@ -75,3 +76,5 @@ async def test_markdown_to_image_calls(monkeypatch, tmp_path):
 
     result = await markdown_render.markdown_to_image("```mermaid\nA-->B\n```")
     assert result == b"img"
+    assert list((tmp_path / "cache").glob("*.html")) == []
+

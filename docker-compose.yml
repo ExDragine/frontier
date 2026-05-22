@@ -3,11 +3,13 @@ services:
     build: .
     container_name: frontier
     ports:
-      - 3000:3000
-      - 3000:3001
+      - "3000:8080"
     env_file:
       - .env
+    environment:
+      - HOST=0.0.0.0
+    restart: unless-stopped
     volumes:
-      - env.toml:env.toml
-      - mcp.json:mcp.json
-      - frontier.db:frontier.db
+      - ./env.toml:/app/env.toml
+      - ./mcp.json:/app/mcp.json
+      - ./frontier.db:/app/frontier.db

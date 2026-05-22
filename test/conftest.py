@@ -1,9 +1,11 @@
 # ruff: noqa: S101
 
 import importlib
+import inspect
 import sys
-from pathlib import Path
 import types
+from pathlib import Path
+from typing import get_args, get_origin
 
 import pytest
 
@@ -35,6 +37,21 @@ class _DummyEmbeddings:
 class _DummyPersistentClient:
     def __init__(self, **_kwargs):
         pass
+
+
+class _DummyFilesystemBackend:
+    def __init__(self, **kw):
+        self.kwargs = kw
+        self.root_dir = kw.get("root_dir")
+        self.virtual_mode = kw.get("virtual_mode")
+
+
+class _DummyCompositeBackend:
+    def __init__(self, default, routes, **kw):
+        self.default = default
+        self.routes = routes
+        self.kwargs = kw
+        self.artifacts_root = kw.get("artifacts_root", "/")
 
 
 class _DummyModel:
@@ -71,27 +88,60 @@ class _DummyTokenizer:
         return "Safety: Safe"
 
 
+def _is_injected_tool_arg(annotation) -> bool:
+    if get_origin(annotation) is not None:
+        return any(_is_injected_tool_arg(item) for item in get_args(annotation))
+    return getattr(annotation, "__name__", "") == "InjectedState" or annotation.__class__.__name__ == "InjectedState"
+
+
+def _fake_tool(name_or_callable=None, *_args, **_kwargs):
+    def decorate(func):
+        signature = inspect.signature(func)
+        func.name = name_or_callable if isinstance(name_or_callable, str) else func.__name__
+        func.args = {
+            name: {"title": name.replace("_", " ").title().replace(" ", ""), "type": "string"}
+            for name, parameter in signature.parameters.items()
+            if not _is_injected_tool_arg(parameter.annotation)
+        }
+        return func
+
+    if callable(name_or_callable):
+        return decorate(name_or_callable)
+    return decorate
+
+
 def _install_third_party_stubs():
     _install_stub("chromadb", PersistentClient=_DummyPersistentClient)
     _install_stub("uuid_utils", uuid7=lambda: "uuid")
     _install_stub("langchain_huggingface", HuggingFaceEmbeddings=_DummyEmbeddings)
     _install_stub("deepagents", create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}))
     _install_stub(
-        "deepagents.backends", FilesystemBackend=type("FilesystemBackend", (), {"__init__": lambda self, **_kw: None})
+        "deepagents.backends",
+        CompositeBackend=_DummyCompositeBackend,
+        FilesystemBackend=_DummyFilesystemBackend,
     )
     _install_stub(
         "langchain.agents",
         AgentState=type("AgentState", (), {}),
         create_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}),
     )
-    _install_stub("langchain.tools", tool=lambda func=None, **_kwargs: func if func else (lambda f: f))
-    _install_stub("langchain.agents.middleware", PIIMiddleware=object)
+    _install_stub("langchain.tools", tool=_fake_tool)
+    _install_stub(
+        "langchain.agents.middleware",
+        FilesystemFileSearchMiddleware=type(
+            "FilesystemFileSearchMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}
+        ),
+        ModelRetryMiddleware=type("ModelRetryMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
+        PIIMiddleware=type("PIIMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
+        ToolRetryMiddleware=type("ToolRetryMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
+    )
     _install_stub(
         "langchain.messages",
         AIMessage=type("AIMessage", (), {"__init__": lambda self, content=None: setattr(self, "content", content)}),
     )
     _install_stub("langchain_core.runnables", RunnableConfig=dict)
     _install_stub("langchain_openai", ChatOpenAI=type("ChatOpenAI", (), {"__init__": lambda self, **_kw: None}))
+    _install_stub("langchain_deepseek", ChatDeepSeek=type("ChatDeepSeek", (), {"__init__": lambda self, **_kw: None}))
     _install_stub(
         "langchain_anthropic",
         ChatAnthropic=type("ChatAnthropic", (), {"__init__": lambda self, **_kw: None}),
@@ -108,8 +158,18 @@ def _install_third_party_stubs():
     _install_stub(
         "tools.agent_tools",
         all_tools=[],
+        main_tools=[],
         web_tools=[],
         mcp_tools=[],
+        subagent_tools={
+            "research": [],
+            "astro": [],
+            "earth": [],
+            "media": [],
+            "memory": [],
+            "divination": [],
+            "external": [],
+        },
     )
 
     class _DummyScheduler:
@@ -183,8 +243,8 @@ def pytest_configure(config):
     config.stash[NONEBOT_INIT_KWARGS]["driver"] = "nonebot.drivers.fastapi:Driver"
     try:
         from nonebug import NONEBOT_START_LIFESPAN
-    except Exception:
-        pass
+    except Exception as exc:
+        config.stash["nonebug_start_lifespan_import_error"] = exc
     else:
         config.stash[NONEBOT_START_LIFESPAN] = False
 
@@ -195,8 +255,8 @@ def pytest_configure(config):
     nonebot.require = plugin_load.require
     try:
         nonebot.init(**config.stash[NONEBOT_INIT_KWARGS])
-    except Exception:
-        pass
+    except Exception as exc:
+        config.stash["nonebot_init_error"] = exc
 
 
 def pytest_sessionstart(session):
@@ -222,14 +282,19 @@ name = "FrontierBot"
 
 [endpoint]
 openai_base_url = "https://example.com"
-basic_model = "basic"
-advan_model = "advan"
-paint_model = "paint"
+basic_model = "gpt-4o-mini"
+advan_model = "gpt-4"
+paint_model = "gpt-4-vision"
+basic_model_use_responses_api = true
+advan_model_use_responses_api = true
 
 [key]
 openai_api_key = "sk-test"
 nasa_api_key = "nasa-test"
 github_pat = "ghp-test"
+google_api_key = "ggl-test"
+anthropic_api_key = "ant-test"
+anthropic_base_url = ""
 
 [function]
 agent_module_enabled = true
@@ -247,7 +312,6 @@ paint_blacklist_person_list = []
 paint_blacklist_group_list = []
 
 [message]
-raw_message_group_id = []
 test_group_id = []
 
 [database]

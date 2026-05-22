@@ -18,6 +18,10 @@ const TasksPage = {
                         <option value="disabled">已禁用</option>
                     </select>
                 </div>
+                <label class="flex items-end gap-2 pb-2 text-sm text-gray-700">
+                    <input v-model="includeArchived" @change="fetchTasks" type="checkbox">
+                    显示归档
+                </label>
                 <div class="flex-1">
                     <label class="text-sm text-gray-600 mb-1 block">搜索</label>
                     <input v-model="keyword" @input="debouncedFetch" type="text"
@@ -39,15 +43,23 @@ const TasksPage = {
                         <div>
                             <h3 class="text-lg font-semibold text-gray-800">{{ task.name }}</h3>
                             <p class="text-sm text-gray-500 font-mono">{{ task.job_id }}</p>
+                            <p class="text-xs mt-1"
+                               :class="task.task_type === 'automatic' ? 'text-blue-600' : 'text-gray-500'">
+                                {{ task.task_type === 'automatic' ? '自动任务' : '系统任务' }}
+                                <span v-if="task.metadata"> · {{ task.metadata.target_type }}:{{ task.metadata.target_id }}</span>
+                                <span v-if="task.metadata && task.metadata.archived"> · 已归档</span>
+                            </p>
                         </div>
                         <button @click="toggleTask(task)"
+                                :disabled="task.metadata && task.metadata.archived"
                                 :class="task.enabled ? 'bg-green-500' : 'bg-gray-400'"
-                                class="px-3 py-1 text-white text-sm rounded hover:opacity-80">
+                                class="px-3 py-1 text-white text-sm rounded hover:opacity-80 disabled:opacity-50">
                             {{ task.enabled ? '已启用' : '已禁用' }}
                         </button>
                     </div>
                     
                     <p v-if="task.description" class="text-sm text-gray-600 mb-3">{{ task.description }}</p>
+                    <p v-if="task.metadata" class="text-sm text-gray-600 mb-3 line-clamp-2">{{ task.metadata.prompt }}</p>
                     
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between">
@@ -73,6 +85,15 @@ const TasksPage = {
                                 class="flex-1 px-3 py-2 bg-gray-50 text-gray-600 rounded hover:bg-gray-100">
                             执行历史
                         </button>
+                        <button @click="runTask(task.job_id)"
+                                class="px-3 py-2 bg-emerald-50 text-emerald-700 rounded hover:bg-emerald-100">
+                            运行
+                        </button>
+                        <button v-if="task.task_type === 'automatic' && !(task.metadata && task.metadata.archived)"
+                                @click="cancelTask(task.job_id)"
+                                class="px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100">
+                            取消
+                        </button>
                     </div>
                 </div>
             </div>
@@ -87,6 +108,23 @@ const TasksPage = {
                 </div>
                 
                 <div class="space-y-4">
+                    <div>
+                        <label class="text-sm font-medium text-gray-700">任务类型</label>
+                        <p class="mt-1 text-sm">{{ detailTask.task_type === 'automatic' ? '自动任务' : '系统任务' }}</p>
+                    </div>
+
+                    <div v-if="detailTask.metadata">
+                        <label class="text-sm font-medium text-gray-700">Owner / Target</label>
+                        <p class="mt-1 text-sm font-mono">
+                            {{ detailTask.metadata.owner_user_id }} -> {{ detailTask.metadata.target_type }}:{{ detailTask.metadata.target_id }}
+                        </p>
+                    </div>
+
+                    <div v-if="detailTask.metadata">
+                        <label class="text-sm font-medium text-gray-700">Prompt</label>
+                        <pre class="mt-1 p-3 bg-gray-50 rounded text-sm whitespace-pre-wrap">{{ detailTask.metadata.prompt }}</pre>
+                    </div>
+
                     <div>
                         <label class="text-sm font-medium text-gray-700">触发配置</label>
                         <pre class="mt-1 p-3 bg-gray-50 rounded text-sm">{{ JSON.stringify(detailTask.trigger_args, null, 2) }}</pre>
@@ -147,6 +185,7 @@ const TasksPage = {
         const loading = ref(false);
         const filter = ref('all');
         const keyword = ref('');
+        const includeArchived = ref(false);
         const detailTask = ref(null);
         const historyTask = ref(null);
         const history = ref([]);
@@ -160,6 +199,9 @@ const TasksPage = {
                 }
                 if (keyword.value) {
                     params.append('keyword', keyword.value);
+                }
+                if (includeArchived.value) {
+                    params.append('include_archived', 'true');
                 }
 
                 const data = await ApiClient.get('/tasks/?' + params);
@@ -206,6 +248,26 @@ const TasksPage = {
                 showToast('加载历史失败: ' + err.message, 'error');
             }
         };
+
+        const runTask = async (jobId) => {
+            try {
+                await ApiClient.post(`/tasks/${jobId}/run`, {});
+                showToast('任务已运行', 'success');
+                await fetchTasks();
+            } catch (err) {
+                showToast('运行失败: ' + err.message, 'error');
+            }
+        };
+
+        const cancelTask = async (jobId) => {
+            try {
+                await ApiClient.delete(`/tasks/${jobId}`);
+                showToast('任务已取消', 'success');
+                await fetchTasks();
+            } catch (err) {
+                showToast('取消失败: ' + err.message, 'error');
+            }
+        };
         
         const triggerLabel = (task) => {
             if (task.trigger_type === 'cron') {
@@ -223,9 +285,9 @@ const TasksPage = {
             return task.trigger_type;
         };
         
-        const formatTime = (ms) => {
-            if (!ms) return '-';
-            const date = new Date(ms);
+        const formatTime = (seconds) => {
+            if (!seconds) return '-';
+            const date = new Date(seconds * 1000);
             return date.toLocaleString('zh-CN');
         };
         
@@ -238,8 +300,9 @@ const TasksPage = {
         onMounted(fetchTasks);
         
         return {
-            tasks, loading, filter, keyword, detailTask, historyTask, history,
-            fetchTasks, debouncedFetch, toggleTask, viewDetail, viewHistory, triggerLabel, formatTime, statusClass
+            tasks, loading, filter, keyword, includeArchived, detailTask, historyTask, history,
+            fetchTasks, debouncedFetch, toggleTask, viewDetail, viewHistory, runTask, cancelTask,
+            triggerLabel, formatTime, statusClass
         };
     }
 };

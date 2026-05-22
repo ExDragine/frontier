@@ -11,6 +11,10 @@ TLP_LAUNCH_URL = "https://tlpnetwork.com/api/launches"
 http_client = AsyncClient(timeout=30, http2=True)
 
 
+async def aclose_http_client() -> None:
+    await http_client.aclose()
+
+
 # 火箭发射
 @tool(response_format="content")
 async def get_launches(days: int = 7):

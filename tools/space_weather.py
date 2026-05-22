@@ -14,6 +14,10 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import Image, UniMessage  # noqa: E402
 
 
+async def aclose_http_client() -> None:
+    await httpx_client.aclose()
+
+
 @tool(response_format="content")
 async def solar_flare():
     """
@@ -396,5 +400,8 @@ async def planets_weather(planet) -> tuple[str, UniMessage | None]:
     ]
     for p in planets:
         if p[0] == planet:
-            return f"> {p[0]}天气\n最高气温: {p[1]} ℃ / 最低气温 {p[2]} ℃\n气压: {p[3]}\n", UniMessage(Image(url=p[4]))
+            return (
+                f"> {p[0]}天气\n最高气温: {p[1]} ℃ / 最低气温 {p[2]} ℃\n气压: {p[3]}\n",
+                UniMessage(Image(url=p[4])),
+            )
     return "你要找的是太阳系的货吗", None

@@ -1,5 +1,6 @@
+# ruff: noqa: B008, B904
+
 import json
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -18,10 +19,26 @@ class GroupsUpdate(BaseModel):
     group_ids: list[int]
 
 
+def _metadata_payload(metadata):
+    if not metadata:
+        return None
+    return {
+        "owner_user_id": metadata.owner_user_id,
+        "target_type": metadata.target_type,
+        "target_id": metadata.target_id,
+        "prompt": metadata.prompt,
+        "archived": metadata.archived,
+        "archived_at": metadata.archived_at,
+        "created_from": metadata.created_from,
+        "delivery_mode": metadata.delivery_mode,
+    }
+
+
 @router.get("/")
 async def list_tasks(
-    enabled: Optional[bool] = None,
-    keyword: Optional[str] = None,
+    enabled: bool | None = None,
+    keyword: str | None = None,
+    include_archived: bool = False,
     user: dict = Depends(require_auth),
 ):
     """列出所有任务"""
@@ -30,11 +47,13 @@ async def list_tasks(
     except ImportError:
         raise HTTPException(status_code=503, detail="任务管理系统未加载")
 
-    tasks = await task_manager.list_tasks(enabled=enabled, keyword=keyword)
+    tasks = await task_manager.list_tasks(enabled=enabled, keyword=keyword, include_archived=include_archived)
+    metadata_map = await task_manager.get_task_metadata_map([task.job_id for task in tasks])
 
     result = []
     for task in tasks:
         groups = await task_manager.get_task_groups(task.job_id)
+        metadata = metadata_map.get(task.job_id)
         result.append(
             {
                 "job_id": task.job_id,
@@ -51,6 +70,8 @@ async def list_tasks(
                 "groups": groups,
                 "created_at": task.created_at,
                 "updated_at": task.updated_at,
+                "task_type": "automatic" if metadata else "system",
+                "metadata": _metadata_payload(metadata),
             }
         )
 
@@ -70,6 +91,7 @@ async def get_task(job_id: str, user: dict = Depends(require_auth)):
         raise HTTPException(status_code=404, detail="任务不存在")
 
     groups = await task_manager.get_task_groups(job_id)
+    metadata = await task_manager.get_task_metadata(job_id)
 
     return {
         "job_id": task.job_id,
@@ -89,6 +111,8 @@ async def get_task(job_id: str, user: dict = Depends(require_auth)):
         "groups": groups,
         "created_at": task.created_at,
         "updated_at": task.updated_at,
+        "task_type": "automatic" if metadata else "system",
+        "metadata": _metadata_payload(metadata),
     }
 
 
@@ -130,6 +154,44 @@ async def disable_task(job_id: str, user: dict = Depends(require_auth)):
         raise HTTPException(status_code=400, detail="禁用任务失败，请查看日志")
 
     return {"message": "任务已禁用", "job_id": job_id}
+
+
+@router.post("/{job_id}/run")
+async def run_task(job_id: str, user: dict = Depends(require_auth)):
+    """立即运行任务"""
+    try:
+        from plugins.clockwork import task_manager
+    except ImportError:
+        raise HTTPException(status_code=503, detail="任务管理系统未加载")
+
+    task = await task_manager.get_task(job_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    success = await task_manager.run_task_now(job_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="运行任务失败，请查看日志")
+
+    return {"message": "任务已运行", "job_id": job_id}
+
+
+@router.delete("/{job_id}")
+async def cancel_task(job_id: str, user: dict = Depends(require_auth)):
+    """取消/归档任务"""
+    try:
+        from plugins.clockwork import task_manager
+    except ImportError:
+        raise HTTPException(status_code=503, detail="任务管理系统未加载")
+
+    task = await task_manager.get_task(job_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    success = await task_manager.archive_task(job_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="取消任务失败，请查看日志")
+
+    return {"message": "任务已取消", "job_id": job_id}
 
 
 @router.put("/{job_id}/trigger")
@@ -180,6 +242,7 @@ async def get_history(job_id: str, limit: int = Query(default=50, ge=1, le=500),
                 "status": h.status,
                 "duration_ms": h.duration_ms,
                 "error_message": h.error_message,
+                "output_summary": h.output_summary,
                 "groups_sent": json.loads(h.groups_sent) if h.groups_sent else [],
                 "messages_sent": h.messages_sent,
                 "scheduled_time": h.scheduled_time,

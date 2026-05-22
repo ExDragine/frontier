@@ -11,6 +11,7 @@ ADD . /app
 WORKDIR /app
 RUN uv sync --locked
 ENV PATH="/app/.venv/bin:$PATH"
+ENV HF_ENDPOINT="https://hf-mirror.com"
 
 RUN uv run playwright install
 RUN uv run playwright install-deps

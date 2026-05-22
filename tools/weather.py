@@ -16,6 +16,10 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?format=json"
 OPEN_METEO_WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 
 
+async def aclose_http_client() -> None:
+    await httpx_client.aclose()
+
+
 async def geocode(city_name: str) -> tuple[float, float]:
     """返回 (latitude, longitude)，未找到抛出 ValueError"""
     if city_name in _geocode_cache:
@@ -75,29 +79,29 @@ class WeatherTool:
 weather_tool = WeatherTool(httpx_client)
 
 
-@tool(response_format="content")
-async def get_current_weather(city_name: str) -> str:
-    """
-    获取城市天气
-    Args:
-        city_name: 城市名称
-    Returns:
-        城市天气
-    """
-    return await weather_tool.current(city_name)
+# @tool(response_format="content")
+# async def get_current_weather(city_name: str) -> str:
+#     """
+#     获取城市天气
+#     Args:
+#         city_name: 城市名称
+#     Returns:
+#         城市天气
+#     """
+#     return await weather_tool.current(city_name)
 
 
-@tool(response_format="content")
-async def get_future_weather(city_name: str, days: int) -> str:
-    """
-    获取城市未来天气
-    Args:
-        city_name: 城市名称
-        days: 未来天数
-    Returns:
-        未来天气
-    """
-    return await weather_tool.forecast(city_name, days)
+# @tool(response_format="content")
+# async def get_future_weather(city_name: str, days: int) -> str:
+#     """
+#     获取城市未来天气
+#     Args:
+#         city_name: 城市名称
+#         days: 未来天数
+#     Returns:
+#         未来天气
+#     """
+#     return await weather_tool.forecast(city_name, days)
 
 
 # 火星天气

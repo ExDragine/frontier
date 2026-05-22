@@ -1,4 +1,5 @@
 import datetime
+from dataclasses import dataclass
 
 from sqlmodel import Field, SQLModel
 
@@ -66,6 +67,7 @@ class TaskExecutionHistory(SQLModel, table=True):
     duration_ms: int | None = Field(default=None)  # 执行耗时（毫秒）
     error_message: str | None = Field(default=None)  # 错误信息
     error_traceback: str | None = Field(default=None)  # 错误堆栈
+    output_summary: str | None = Field(default=None)  # 执行输出摘要
 
     # 消息推送信息
     groups_sent: str | None = Field(default=None)  # JSON数组，记录推送的群组
@@ -73,3 +75,33 @@ class TaskExecutionHistory(SQLModel, table=True):
 
     # APScheduler事件信息
     scheduled_time: int | None = Field(default=None)  # 计划执行时间
+
+
+class ScheduledTaskMetadata(SQLModel, table=True):
+    """用户自动任务元数据。
+
+    TaskConfig 仍负责 APScheduler 调度，ScheduledTaskMetadata 保存普通用户
+    自动任务需要的 owner、投递目标和 Agent prompt。
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+    job_id: str = Field(unique=True, index=True)
+    owner_user_id: str = Field(index=True)
+    target_type: str = Field(index=True)  # "group" | "user"
+    target_id: str = Field(index=True)
+    prompt: str
+    archived: bool = Field(default=False, index=True)
+    archived_at: int | None = Field(default=None, index=True)
+    created_from: str = Field(default="tool", index=True)
+    delivery_mode: str = Field(default="final")
+    created_at: int = Field(default_factory=lambda: int(datetime.datetime.now().timestamp()))
+    updated_at: int = Field(default_factory=lambda: int(datetime.datetime.now().timestamp()))
+
+
+@dataclass(slots=True)
+class TaskRunResult:
+    """任务 handler 返回给 TaskExecutor 的结构化结果。"""
+
+    groups_sent: list[int] | None = None
+    messages_sent: int = 0
+    output_summary: str | None = None

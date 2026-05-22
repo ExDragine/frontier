@@ -1,3 +1,4 @@
+import os
 import tomllib
 
 import dotenv
@@ -11,15 +12,16 @@ with open("env.toml", "rb") as f:
 
 information: dict = config.get("information", {})
 endpoint: dict = config.get("endpoint", {})
+llm_endpoints: dict = config.get("llm_endpoints", {})
 key: dict = config.get("key", {})
 function_list = config.get("function", {})
 message: dict = config.get("message", {})
 database: dict = config.get("database", {})
 debug: dict = config.get("debug", {})
-memory: dict = config.get("memory", {})
 dashboard: dict = config.get("dashboard", {})
 image_memory: dict = config.get("image_memory", {})
 content_check: dict = config.get("content_check", {})
+vector_memory: dict = config.get("vector_memory", config.get("memory", {}))
 
 
 class EnvConfig:
@@ -27,15 +29,39 @@ class EnvConfig:
 
     AGENT_MODULE_ENABLED: bool = function_list["agent_module_enabled"]
     PAINT_MODULE_ENABLED: bool = function_list["paint_module_enabled"]
+    VIDEO_MODULE_ENABLED: bool = function_list.get("video_module_enabled", PAINT_MODULE_ENABLED)
 
     OPENAI_BASE_URL: str = endpoint["openai_base_url"]
     BASIC_MODEL: str = endpoint["basic_model"]
+    BASIC_MODEL_PROVIDER: str = endpoint.get("basic_model_provider", "")
+    BASIC_MODEL_ENDPOINT: str = endpoint.get("basic_model_endpoint", "")
+    BASIC_MODEL_CAPABILITIES: list[str] = endpoint.get("basic_model_capabilities", [])
+    SIGNAL_MODEL: str = endpoint.get("signal_model", "deepseek-v4-flash")
+    SIGNAL_MODEL_PROVIDER: str = endpoint.get("signal_model_provider", "deepseek")
+    SIGNAL_MODEL_ENDPOINT: str = endpoint.get("signal_model_endpoint", "")
+    SIGNAL_MODEL_CAPABILITIES: list[str] = endpoint.get("signal_model_capabilities", ["text"])
     ADVAN_MODEL: str = endpoint["advan_model"]
+    ADVAN_MODEL_PROVIDER: str = endpoint.get("advan_model_provider", "")
+    ADVAN_MODEL_ENDPOINT: str = endpoint.get("advan_model_endpoint", "")
+    ADVAN_MODEL_CAPABILITIES: list[str] = endpoint.get("advan_model_capabilities", [])
     PAINT_MODEL: str = endpoint["paint_model"]
+    PAINT_BASE_URL: str = endpoint.get("paint_base_url") or OPENAI_BASE_URL
+    VIDEO_MODEL: str = endpoint.get("video_model") or "alibaba/happyhorse-1.0"
+    VIDEO_BASE_URL: str = endpoint.get("video_base_url") or "https://zenmux.ai/api/vertex-ai"
+    BASIC_MODEL_USE_RESPONSES_API: bool = endpoint.get("basic_model_use_responses_api", True)
+    ADVAN_MODEL_USE_RESPONSES_API: bool = endpoint.get("advan_model_use_responses_api", True)
 
     OPENAI_API_KEY: SecretStr = SecretStr(key["openai_api_key"])
+    PAINT_API_KEY: SecretStr = SecretStr(key.get("paint_api_key") or key["openai_api_key"])
+    VIDEO_API_KEY: SecretStr = SecretStr(key.get("video_api_key") or os.getenv("ZENMUX_API_KEY", ""))
     NASA_API_KEY: SecretStr = SecretStr(key["nasa_api_key"])
     GITHUB_PAT: SecretStr = SecretStr(key["github_pat"])
+    GOOGLE_API_KEY: SecretStr = SecretStr(key.get("google_api_key", ""))
+    ANTHROPIC_API_KEY: SecretStr = SecretStr(key.get("anthropic_api_key", ""))
+    ANTHROPIC_BASE_URL: str = key.get("anthropic_base_url", "")
+    DEEPSEEK_API_KEY: SecretStr = SecretStr(key.get("deepseek_api_key", ""))
+    DEEPSEEK_API_BASE: str = key.get("deepseek_api_base", "")
+    LLM_ENDPOINTS: dict = llm_endpoints
 
     AGENT_CAPABILITY = function_list["agent_capability"]
     AGENT_WHITELIST_MODE: bool = function_list["agent_whitelist_mode"]
@@ -48,8 +74,15 @@ class EnvConfig:
     PAINT_WHITELIST_GROUP_LIST: list = function_list["paint_whitelist_group_list"]
     PAINT_BLACKLIST_PERSON_LIST: list = function_list["paint_blacklist_person_list"]
     PAINT_BLACKLIST_GROUP_LIST: list = function_list["paint_blacklist_group_list"]
+    PAINT_RATE_LIMIT_MAX_REQUESTS: int = int(function_list.get("paint_rate_limit_max_requests", 3))
+    PAINT_RATE_LIMIT_WINDOW_SECONDS: int = int(function_list.get("paint_rate_limit_window_seconds", 600))
+    VIDEO_RATE_LIMIT_MAX_REQUESTS: int = int(function_list.get("video_rate_limit_max_requests", 1))
+    VIDEO_RATE_LIMIT_WINDOW_SECONDS: int = int(function_list.get("video_rate_limit_window_seconds", 900))
+    VIDEO_POLL_INTERVAL_SECONDS: int = int(function_list.get("video_poll_interval_seconds", 15))
+    VIDEO_POLL_TIMEOUT_SECONDS: int = int(function_list.get("video_poll_timeout_seconds", 900))
+    AGENT_LLM_TIMEOUT_SECONDS: int = int(function_list.get("agent_llm_timeout_seconds", 900))
+    AGENT_JOB_TIMEOUT_SECONDS: int = int(function_list.get("agent_job_timeout_seconds", 3600))
 
-    RAW_MESSAGE_GROUP_ID: list = message["raw_message_group_id"]
     TEST_GROUP_ID: list = message["test_group_id"]
     ANNOUNCE_GROUP_ID: list = message.get("announce_group_id", TEST_GROUP_ID)
     APOD_GROUP_ID: list = message.get("apod_group_id", TEST_GROUP_ID)
@@ -61,24 +94,23 @@ class EnvConfig:
 
     AGENT_DEBUG_MODE: bool = debug["agent_debug_mode"]
 
-    MEMORY_ENABLED: bool = memory.get("enabled", True)
-    MEMORY_SCHEMA_VERSION: str = str(memory.get("schema_version", "v2"))
-    MEMORY_AUTO_REBUILD_ON_STARTUP: bool = memory.get("auto_rebuild_on_startup", True)
-    MEMORY_EMBEDDING_MODEL: str = memory.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
-    MEMORY_DEFAULT_TASK_TTL_DAYS: int = int(memory.get("default_task_ttl_days", 30))
-    MEMORY_MAX_INJECTED_MEMORIES: int = int(memory.get("max_injected_memories", 4))
-    MEMORY_RETRIEVAL_USER_K: int = int(memory.get("retrieval_user_k", 6))
-    MEMORY_RETRIEVAL_GROUP_K: int = int(memory.get("retrieval_group_k", 6))
-    MEMORY_PRIVACY_MODE: str = str(memory.get("privacy_mode", "balanced"))
-    MEMORY_INJECT_TIMEOUT_MS: int = int(memory.get("inject_timeout_ms", 500))
-
     DASHBOARD_PASSWORD: str = dashboard.get("password", "admin")
     DASHBOARD_JWT_SECRET: str = dashboard.get("jwt_secret", "frontier-dashboard-default-secret")
     DASHBOARD_JWT_EXPIRE_HOURS: int = int(dashboard.get("jwt_expire_hours", 24))
 
     IMAGE_ENABLED: bool = image_memory.get("enabled", True)
-    IMAGE_WINDOW_SIZE: int = int(image_memory.get("window_size", 10))
     IMAGE_TTL_DAYS: int = int(image_memory.get("ttl_days", 30))
     IMAGE_AUTO_CLEANUP: bool = image_memory.get("auto_cleanup", True)
 
     CONTENT_CHECK_ENABLED: bool = content_check.get("enabled", False)
+
+    VECTOR_MEMORY_ENABLED: bool = bool(vector_memory.get("semantic_search_enabled", vector_memory.get("enabled", True)))
+    VECTOR_MEMORY_CHROMA_PATH: str = str(vector_memory.get("chroma_path", "cache/chroma"))
+    VECTOR_MEMORY_COLLECTION: str = str(vector_memory.get("chroma_collection", "frontier_messages"))
+    VECTOR_MEMORY_EMBEDDING_MODEL: str = str(
+        vector_memory.get("embedding_model", "microsoft/harrier-oss-v1-0.6b")
+    )
+    VECTOR_MEMORY_SEMANTIC_TOP_K: int = int(vector_memory.get("semantic_top_k", 30))
+    VECTOR_MEMORY_EMBEDDING_BATCH_SIZE: int = int(vector_memory.get("semantic_embedding_batch_size", 1))
+    VECTOR_MEMORY_EMBEDDING_DEVICE: str = str(vector_memory.get("semantic_embedding_device", "cpu")).strip()
+    VECTOR_MEMORY_PRELOAD_ON_STARTUP: bool = bool(vector_memory.get("preload_on_startup", True))

@@ -5,6 +5,9 @@ from nonebot import require
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
+transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
+httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+
 
 @tool(response_format="content_and_artifact")
 async def station_location(name) -> tuple[str, UniMessage | None]:
@@ -21,8 +24,12 @@ async def station_location(name) -> tuple[str, UniMessage | None]:
     ENDPOINT = (
         f"https://www.heavens-above.com/orbitdisplay.aspx?icon=default&width=300&height=300&satid={stations[name]}"
     )
-    content = httpx.get(ENDPOINT, timeout=30).content
+    content = (await httpx_client.get(ENDPOINT)).content
     if content:
         return "空间站位置获取成功", UniMessage.image(raw=content)
     else:
         return "空间站位置获取失败", None
+
+
+async def aclose_http_client() -> None:
+    await httpx_client.aclose()

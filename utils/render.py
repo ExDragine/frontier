@@ -25,6 +25,51 @@ async def markdown_to_image(markdown_text):
         return image
 
 
+async def html_to_image(html: str, css: str | None = None, width: int = 1000, selector: str = "#render-content"):
+    trigger_mark = secrets.token_hex(16)
+    cache_file = f"{os.getcwd()}/cache/{trigger_mark}.html"
+    style_block = f"<style>{css}</style>" if css else ""
+    rendered_html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {style_block}
+</head>
+<body>
+    <div class="markdown-body" id="render-content">
+        {html}
+    </div>
+</body>
+</html>
+"""
+
+    with open(cache_file, "w", encoding="utf-8") as f:
+        f.write(rendered_html)
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page(viewport={"width": width, "height": 600})
+        await page.goto(f"file://{cache_file}")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(500)
+        height = await page.evaluate("""
+            Math.max(
+                document.body.scrollHeight,
+                document.body.offsetHeight,
+                document.documentElement.clientHeight,
+                document.documentElement.scrollHeight,
+                document.documentElement.offsetHeight
+            )
+        """)
+        await page.set_viewport_size({"width": width, "height": max(int(height), 100)})
+        target = await page.query_selector(selector)
+        image = await target.screenshot(type="png") if target else await page.screenshot(full_page=True, type="png")
+        await browser.close()
+        os.remove(cache_file)
+        return image
+
+
 async def playwright_render(name: str, packed_args: dict):
     trigger_mark = secrets.token_hex(16)
     cache_file = f"{os.getcwd()}/cache/{trigger_mark}.html"

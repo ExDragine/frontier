@@ -8,6 +8,9 @@ from nonebot import logger, require
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
+transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
+httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+
 
 @tool(response_format="content_and_artifact")
 async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, UniMessage | None]:
@@ -54,7 +57,7 @@ async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, UniMessage | None]
 
     try:
         url = f"https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/VIDEO/FY4B.{area}.{t}.mp4"
-        file = httpx.get(url).content
+        file = (await httpx_client.get(url)).content
         result = UniMessage.video(raw=file)
         end_time = time.time()
         logger.info(f"✅ 工具执行成功: get_fy4b_cloud_map (耗时: {end_time - start_time:.2f}s)")
@@ -119,3 +122,7 @@ async def get_himawari_satellite_image() -> tuple[str, UniMessage | None]:
         end_time = time.time()
         logger.error(f"💥 工具执行异常: get_himawari_satellite_image - {str(e)} (耗时: {end_time - start_time:.2f}s)")
         return f"获取Himawari卫星图像失败: {str(e)}", None
+
+
+async def aclose_http_client() -> None:
+    await httpx_client.aclose()
