@@ -75,8 +75,10 @@ class AgentChoice(BaseModel):
     needs_agent: bool = Field(
         description=(
             "Whether the heavy cognitive agent is needed to handle this message. "
-            "False when a short, personality-driven reply fully handles a low-risk, self-contained "
-            "plain-text message without memory, external tools, media analysis, or multi-step reasoning. "
+            "False only for no-thinking social turns such as greetings, goodbyes, lightweight banter, "
+            "simple reactions, or brief emotional acknowledgment. "
+            "Use True for any question, request, explanation, technical topic, tool-capable task, "
+            "or content that may benefit from the heavy agent. "
             "Do not use False for capability disclaimers or refusal-like answers; route those to the "
             "heavy agent instead. "
             "True when the message requires search, memory, real-time or external information, "
@@ -144,6 +146,26 @@ def _build_agent_choice_input(context: AgentRequestContext, history_messages: li
     return "\n".join(lines)
 
 
+def _build_agent_tools_summary(tools: list[Any]) -> str:
+    lines = [
+        "## Available heavy-agent tools",
+        "The heavy agent can call these tools. If the latest message may benefit from any of them, set `needs_agent=true`.",
+    ]
+    seen: set[str] = set()
+    for tool in tools:
+        name = str(getattr(tool, "name", "") or tool.__class__.__name__).strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        description = " ".join(str(getattr(tool, "description", "") or "").split())
+        if len(description) > 160:
+            description = f"{description[:157]}..."
+        lines.append(f"- {name}: {description}" if description else f"- {name}")
+    if len(lines) == 2:
+        lines.append("- No tools are currently registered.")
+    return "\n".join(lines)
+
+
 def _looks_like_capability_refusal(text: str | None) -> bool:
     if not text:
         return False
@@ -171,12 +193,14 @@ async def _agent_choice_should_reply(context: AgentRequestContext, history_messa
         logger.error(f"❌ 读取 agent_choice.md 失败: {e}")
         await UniMessage.text("⚙️ 系统配置错误，请联系管理员").send()
         return None
+    system_prompt = f"{system_prompt.rstrip()}\n\n{_build_agent_tools_summary(getattr(f_cognitive, 'tools', []))}"
 
     agent_choice: AgentChoice = await signal_structured(
         system_prompt=system_prompt,
         user_prompt=_build_agent_choice_input(context, history_messages),
         schema=AgentChoice,
         temperature=0.7,
+        extra_body={"thinking": {"type": "disabled"}},
     )
     return agent_choice
 

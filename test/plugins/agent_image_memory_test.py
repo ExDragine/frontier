@@ -553,38 +553,38 @@ def test_agent_choice_prompt_describes_direct_reply_boundaries(monkeypatch):
     from plugins import agent
 
     prompt = (agent.PROJECT_ROOT / "prompts" / "agent_choice.md").read_text(encoding="utf-8")
+    needs_agent_description = agent.AgentChoice.model_fields["needs_agent"].description
 
-    assert "低风险" in prompt
-    assert "简单自包含问答" in prompt
-    assert "搜索/记忆/外部工具" in prompt
-    assert "回复风险高" in prompt
+    assert "## should_reply" not in prompt
+    assert "## needs_agent" not in prompt
+    assert "## pre_response" not in prompt
+    assert "低风险" not in prompt
+    assert "简单自包含问答" not in prompt
+    assert "no-thinking social turns" in needs_agent_description
+    assert "search, memory, real-time or external information" in needs_agent_description
     assert '"Python list 怎么去重"' in prompt
+    assert '"Python list 怎么去重" → {"should_reply": true, "needs_agent": true' in prompt
     assert '"今天北京天气"' in prompt
     assert '"这图是什么"' in prompt
-    assert '"今天北京天气" → {"should_reply": true, "needs_agent": true, "pre_response": "查查..."}' in prompt
-    assert "capability refusal" in prompt
-    assert '"帮我查一下今天北京天气" → {"should_reply": true, "needs_agent": true, "pre_response": "查查..."}' in prompt
+    assert '"今天北京天气" → {"should_reply": true, "needs_agent": true, "pre_response": "我查查..."}' in prompt
+    assert "capability disclaimers" in needs_agent_description
+    assert '"帮我查一下今天北京天气" → {"should_reply": true, "needs_agent": true, "pre_response": "我查查..."}' in prompt
     assert "waiting preview" in prompt
 
 
-def test_agent_choice_prompt_requires_clear_reply_invitation(monkeypatch):
+def test_agent_choice_schema_requires_clear_reply_invitation(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
     from plugins import agent
 
-    prompt = (agent.PROJECT_ROOT / "prompts" / "agent_choice.md").read_text(encoding="utf-8")
     should_reply_description = agent.AgentChoice.model_fields["should_reply"].description
     pre_response_description = agent.AgentChoice.model_fields["pre_response"].description
 
     assert "clear invitation" in should_reply_description
     assert "anything that invites engagement" not in should_reply_description
     assert "When needs_agent is True: a short (5-15 char) Chinese preview phrase" in pre_response_description
-    assert "明确邀请" in prompt
-    assert "bare reactions" in prompt
-    assert "prefer `should_reply=false`" in prompt
-    assert '"哈哈哈哈"' in prompt
-    assert '"我到家了"' in prompt
+    assert "bare reaction" in should_reply_description
 
 
 def test_system_prompt_describes_chat_metadata_and_tool_scope(monkeypatch):
@@ -644,6 +644,51 @@ async def test_agent_choice_uses_signal_llm(monkeypatch):
     assert captured["user_prompt"] == "user: history\nuser: 这个问题怎么解决"
     assert captured["kwargs"]["temperature"] == 0.7
     assert captured["kwargs"]["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+@pytest.mark.asyncio
+async def test_agent_choice_includes_available_agent_tools(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {}
+
+    async def fake_signal_structured(system_prompt, user_prompt, schema, **kwargs):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        captured["schema"] = schema
+        captured["kwargs"] = kwargs
+        return schema(should_reply=True, needs_agent=True, pre_response="我查查...")
+
+    context = agent.AgentRequestContext(
+        bot=None,
+        event=types.SimpleNamespace(self_id="1"),
+        user_id="456",
+        user_name="Bob",
+        event_id=1,
+        group_id=123,
+        msg_time=1000,
+        text="帮我查今天上海天气",
+        quoted_images=[],
+        images=[],
+        videos=[],
+    )
+    fake_tools = [
+        types.SimpleNamespace(name="weather_now", description="查询实时天气和预报"),
+        types.SimpleNamespace(name="paint", description="根据文字或参考图生成图片"),
+    ]
+
+    monkeypatch.setattr(agent, "f_cognitive", types.SimpleNamespace(tools=fake_tools))
+    monkeypatch.setattr(agent, "signal_structured", fake_signal_structured)
+
+    result = await agent._agent_choice_should_reply(context, [])
+
+    assert result.needs_agent is True
+    assert "Available heavy-agent tools" in captured["system_prompt"]
+    assert "- weather_now: 查询实时天气和预报" in captured["system_prompt"]
+    assert "- paint: 根据文字或参考图生成图片" in captured["system_prompt"]
 
 
 @pytest.mark.asyncio
