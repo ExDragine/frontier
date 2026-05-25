@@ -1,6 +1,5 @@
 import base64
 import json
-import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,10 +8,9 @@ from typing import Any
 
 from nonebot import get_bot, get_driver, logger, on_message, require
 from nonebot.adapters.milky.event import MessageEvent
-from pydantic import BaseModel, Field
 
 from utils.agent_queue import AgentQueueFullError, AgentQueueManager
-from utils.agents import FrontierCognitive, _agent_thread_id
+from utils.agents import NO_REPLY_SENTINEL, FrontierCognitive, _agent_thread_id
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
 from utils.message import (
@@ -29,7 +27,6 @@ from utils.message import (
 )
 from utils.min_heap import RepeatMessageHeap
 from utils.reply_context import build_reply_context, reply_seq_from_segments
-from utils.signal_llm import signal_structured
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
@@ -47,56 +44,7 @@ agent_queue = AgentQueueManager(
     job_timeout_seconds=EnvConfig.AGENT_JOB_TIMEOUT_SECONDS,
 )
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-_CAPABILITY_REFUSAL_RE = re.compile(
-    "|".join(
-        [
-            r"我(?:这边)?(?:现在|暂时)?(?:没法|无法|不能|做不到|查不了|做不了|处理不了|操作不了|生成不了|访问不了|看不了|搜不了|发不了)",
-            r"(?:我这边|这边)(?:现在|暂时)?(?:查不了|做不了|办不了|处理不了|操作不了|生成不了|访问不了|看不了|搜不了|发不了|不支持)",
-            r"(?:没(?:有)?(?:这个|这方面)?能力|没有权限|没权限|无法帮|不能帮|没法帮|办不到|不支持(?:这个|该|此)?(?:功能|操作|请求)?)",
-            r"\b(?:i\s+can't|i\s+cannot|can't|cannot|unable to)\b",
-        ]
-    ),
-    re.IGNORECASE,
-)
-
-
-class AgentChoice(BaseModel):
-    should_reply: bool = Field(
-        description=(
-            "Whether the assistant should continue the conversation. "
-            "False when the latest input is only ended-context noise, a pure acknowledgment after "
-            "a resolved issue, meaningless context, passive sharing, a bare reaction, or something "
-            "too risky or unsuitable to answer. True only when the latest input has a clear invitation "
-            "for the assistant: a direct question, request, addressed banter, meaningful emotional bid, "
-            "follow-up, or intentional media/link/file request."
-        )
-    )
-    needs_agent: bool = Field(
-        description=(
-            "Whether the heavy cognitive agent is needed to handle this message. "
-            "False only for no-thinking social turns such as greetings, goodbyes, lightweight banter, "
-            "simple reactions, or brief emotional acknowledgment. "
-            "Use True for any question, request, explanation, technical topic, tool-capable task, "
-            "or content that may benefit from the heavy agent. "
-            "Do not use False for capability disclaimers or refusal-like answers; route those to the "
-            "heavy agent instead. "
-            "True when the message requires search, memory, real-time or external information, "
-            "image/video/link/file handling, complex reasoning, precise calculation, or sensitive handling."
-        )
-    )
-    pre_response: str | None = Field(
-        default=None,
-        description=(
-            "When needs_agent is False: a complete, personality-driven reply (1-2 sentences) "
-            "that fully addresses the message. This will be sent as the final response. "
-            "Match the assistant's casual, direct gamer tone — use slang, be witty, keep it short. "
-            "Never use pre_response to say the assistant cannot do something, lacks access, or lacks tools. "
-            "When needs_agent is True: a short (5-15 char) Chinese preview phrase like "
-            "'思考中...', '正在看图...', '让我想想...' to reduce perceived waiting time. "
-            "When should_reply is False, set to null."
-        ),
-    )
+AGENT_NO_REPLY_SENTINEL = NO_REPLY_SENTINEL
 
 
 @dataclass(slots=True)
@@ -114,98 +62,11 @@ class AgentRequestContext:
     videos: list[bytes]
 
 
-def _summarize_message_content(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return str(content or "")
-
-    parts = []
-    for item in content:
-        if not isinstance(item, dict):
-            parts.append(str(item))
-        elif item.get("type") == "text":
-            parts.append(str(item.get("text", "")))
-    return "\n".join(part for part in parts if part)
+def _is_agent_no_reply(text: str | None) -> bool:
+    return bool(text is not None and str(text).strip() == AGENT_NO_REPLY_SENTINEL)
 
 
-def _build_agent_choice_input(context: AgentRequestContext, history_messages: list[dict]) -> str:
-    lines = []
-    for message in history_messages[-8:]:
-        content = _summarize_message_content(message.get("content", "")).strip()
-        if content:
-            lines.append(f"{message.get('role', '')}: {content}")
-    latest_parts = []
-    if context.text.strip():
-        latest_parts.append(context.text.strip())
-    latest_parts.extend("[图片]" for _ in context.quoted_images + context.images)
-    missing_video_markers = max(0, len(context.videos) - context.text.count("[视频]"))
-    latest_parts.extend("[视频]" for _ in range(missing_video_markers))
-    if latest_parts:
-        lines.append(f"user: {' '.join(latest_parts)}")
-    return "\n".join(lines)
-
-
-def _build_agent_tools_summary(tools: list[Any]) -> str:
-    lines = [
-        "## Available heavy-agent tools",
-        "The heavy agent can call these tools. If the latest message may benefit from any of them, set `needs_agent=true`.",
-    ]
-    seen: set[str] = set()
-    for tool in tools:
-        name = str(getattr(tool, "name", "") or tool.__class__.__name__).strip()
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        description = " ".join(str(getattr(tool, "description", "") or "").split())
-        if len(description) > 160:
-            description = f"{description[:157]}..."
-        lines.append(f"- {name}: {description}" if description else f"- {name}")
-    if len(lines) == 2:
-        lines.append("- No tools are currently registered.")
-    return "\n".join(lines)
-
-
-def _looks_like_capability_refusal(text: str | None) -> bool:
-    if not text:
-        return False
-    normalized = " ".join(str(text).strip().lower().split())
-    return bool(_CAPABILITY_REFUSAL_RE.search(normalized))
-
-
-def _upgrade_refusal_short_reply(choice: AgentChoice) -> AgentChoice:
-    if choice.should_reply and not choice.needs_agent and _looks_like_capability_refusal(choice.pre_response):
-        logger.info("AgentChoice produced a capability-refusal short reply; routing to heavy agent instead.")
-        choice.needs_agent = True
-        choice.pre_response = None
-    return choice
-
-
-async def _agent_choice_should_reply(context: AgentRequestContext, history_messages: list[dict]) -> AgentChoice | None:
-    try:
-        with open(PROJECT_ROOT / "prompts" / "agent_choice.md", encoding="utf-8") as f:
-            system_prompt = f.read()
-    except FileNotFoundError:
-        logger.error("❌ 未找到 agent_choice.md 文件")
-        await UniMessage.text("⚙️ 系统配置文件缺失，请联系管理员").send()
-        return None
-    except (PermissionError, OSError, UnicodeDecodeError) as e:
-        logger.error(f"❌ 读取 agent_choice.md 失败: {e}")
-        await UniMessage.text("⚙️ 系统配置错误，请联系管理员").send()
-        return None
-    system_prompt = f"{system_prompt.rstrip()}\n\n{_build_agent_tools_summary(getattr(f_cognitive, 'tools', []))}"
-
-    agent_choice: AgentChoice = await signal_structured(
-        system_prompt=system_prompt,
-        user_prompt=_build_agent_choice_input(context, history_messages),
-        schema=AgentChoice,
-        temperature=0.7,
-        extra_body={"thinking": {"type": "disabled"}},
-    )
-    return agent_choice
-
-
-async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> None:
+async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:
     messages = list(history_messages or [])
     messages += [
         {
@@ -250,16 +111,23 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         query_text=context.text,
         image_inputs=context.quoted_images + context.images,
         video_inputs=context.videos,
+        allow_no_reply=True,
     )
 
     if not isinstance(result, dict) or "response" not in result:
         await UniMessage.text(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用").send()
-        return
+        return True
 
     response = result["response"]
     if not response:
         await UniMessage.text(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用").send()
-        return
+        return True
+
+    if response["messages"] and isinstance(response["messages"], list):
+        response_content = outgoing_message_content(response["messages"][-1])
+        if _is_agent_no_reply(response_content):
+            logger.info("Agent chose not to reply to the latest message.")
+            return False
 
     artifacts: list[UniMessage] | None = result.get("uni_messages", [])
     if artifacts:
@@ -283,6 +151,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         await send_messages(context.group_id, context.event_id, response)
     else:
         await UniMessage.text(response["messages"]).send()
+    return True
 
 
 @driver.on_shutdown
@@ -396,78 +265,34 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         images=images,
         videos=videos,
     )
-    choice = await _agent_choice_should_reply(context, messages)
-    if choice is None or not choice.should_reply:
-        match risk_check:
-            case "Safe":
-                if group_id:
-                    await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="32", is_add=False
-                    )
-            case "Controversial":
-                # 使用表情回复功能
-                if group_id:
-                    await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="212", is_add=False
-                    )
-            case "Unsafe":
-                if group_id:
-                    await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="26", is_add=False
-                    )
-        await common.finish()
-
-    choice = _upgrade_refusal_short_reply(choice)
-    if not choice.needs_agent:
-        match risk_check:
-            case "Safe":
-                if group_id:
-                    await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="32", is_add=False
-                    )
-            case "Controversial":
-                # 使用表情回复功能
-                if group_id:
-                    await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="212", is_add=False
-                    )
-            case "Unsafe":
-                if group_id:
-                    await bot.send_group_message_reaction(
-                        group_id=group_id, message_seq=event_id, reaction="26", is_add=False
-                    )
-        if choice.pre_response:
-            if group_id:
-                await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="324", is_add=True
-                )
-            pre_response = await sanitize_outgoing_text(choice.pre_response)
-            await UniMessage.text(pre_response).send() if pre_response else None
-            await messages_db.insert(
-                time=int(time.time() * 1000),
-                msg_id=None,
-                user_id=int(context.event.self_id),
-                group_id=context.group_id,
-                user_name="Assistant",
-                role="assistant",
-                content=pre_response if pre_response else "",
-            )
-        await common.finish()
     thread_id = _agent_thread_id(user_id, group_id)
     try:
-        if choice.pre_response:
-            pre_response = await sanitize_outgoing_text(choice.pre_response)
-            await UniMessage.text(pre_response).send() if pre_response else None
         if group_id:
             await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=True)
         agent_queue.job_timeout_seconds = EnvConfig.AGENT_JOB_TIMEOUT_SECONDS
-        await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
+        replied = await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
         if group_id:
-            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="32", is_add=False)
             await bot.send_group_message_reaction(
                 group_id=group_id, message_seq=event_id, reaction="351", is_add=False
             )
-            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="319", is_add=True)
+            if not replied:
+                if not group_id:
+                    return
+                match risk_check:
+                    case "Safe":
+                        await bot.send_group_message_reaction(
+                            group_id=group_id, message_seq=event_id, reaction="32", is_add=False
+                        )
+                    case "Controversial":
+                        await bot.send_group_message_reaction(
+                            group_id=group_id, message_seq=event_id, reaction="212", is_add=False
+                        )
+                    case "Unsafe":
+                        await bot.send_group_message_reaction(
+                            group_id=group_id, message_seq=event_id, reaction="26", is_add=False
+                        )
+                await common.finish()
+            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="32", is_add=False)
     except AgentQueueFullError:
         logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
         await common.finish("前面还有请求在处理，稍等一下")

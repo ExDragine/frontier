@@ -438,6 +438,7 @@ async def test_build_daily_news_artifacts_returns_material_payload_and_html(monk
 @pytest.mark.asyncio
 async def test_agent_task_final_group_delivery_mentions_owner(monkeypatch):
     calls = []
+    agent_calls = []
     metadata = types.SimpleNamespace(
         target_type="group",
         target_id="123",
@@ -453,7 +454,8 @@ async def test_agent_task_final_group_delivery_mentions_owner(monkeypatch):
             return metadata
 
     class DummyCognitive:
-        async def chat_agent(self, *_args, **_kwargs):
+        async def chat_agent(self, *_args, **kwargs):
+            agent_calls.append(kwargs)
             return {
                 "uni_messages": [],
                 "response": {"messages": [types.SimpleNamespace(text="该喝水了")]},
@@ -473,6 +475,7 @@ async def test_agent_task_final_group_delivery_mentions_owner(monkeypatch):
     assert result.messages_sent == 1
     assert result.groups_sent == [123]
     assert len(calls) == 1
+    assert agent_calls[0].get("allow_no_reply", False) is False
     assert calls[0]["group_id"] == 123
     assert [segment.type for segment in calls[0]["message"]] == ["mention", "text"]
     assert calls[0]["message"][0].data == {"user_id": 456}
