@@ -5,14 +5,18 @@
 ## 核心架构
 
 ```
-消息 → Signal LLM（门控决策）→ Deep Agent（复杂推理）→ 工具调用 → 回复生成
-                                ↘ 快速人格回复（简单对话）
+消息 → message_gateway（门控）→ FrontierCognitive Deep Agent → 工具调用 → 回复生成
+         │                        │
+         ├─ 访问控制（黑白名单）     ├─ NO_REPLY_SENTINEL（自主沉默）
+         ├─ @提及 / 机器人名触发    ├─ 文件系统后端（代码执行/数据分析）
+         ├─ reply_check 规则匹配    └─ 多工具调用（33 个工具）
+         └─ Signal LLM 辅助决策
 ```
 
-- **两级决策系统**：轻量 Signal 模型负责判断是否回复及回复策略；对于复杂请求，交由 LangGraph 深度 Agent 执行多步推理和工具调用
-- **多模型路由**：支持 OpenAI、Google Gemini、Anthropic Claude、DeepSeek，根据模型名自动识别 provider
-- **长期记忆**：SQLite 存储结构化消息 + Chroma 向量数据库实现语义搜索
-- **文件系统后端**：Agent 可读写文件，支持代码执行、数据分析等持久化操作
+- **消息门控**：基于访问控制、@提及、关键词匹配和 Signal LLM 辅助决策，判断是否触发 Agent 回复
+- **Deep Agent**：基于 LangGraph `deepagents`，具备文件系统后端、技能加载和长期记忆，可自主决定是否回复（`NO_REPLY_SENTINEL` 机制）
+- **内容安全**：文本 + 图片审核，Safe/Controversial/Unsafe 三级分级，通过表情反应标识
+- **多模型路由**：[`llm_factory.py`](utils/llm_factory.py) 根据模型名自动识别 provider（OpenAI / Google Gemini / Anthropic Claude / DeepSeek）
 
 ## 功能模块
 
@@ -20,19 +24,19 @@
 
 | 插件 | 功能 |
 |------|------|
-| `agent` | 核心对话引擎：消息拦截、门控决策、Agent 调度、内容安全检测、回复渲染 |
-| `clockwork` | 定时任务：提醒、每日新闻、天文图片、地震预警、新闻摘要 |
+| `agent` | 核心对话引擎：消息门控、Agent 调度、内容安全检测、回复渲染（文本/图片） |
+| `clockwork` | 定时任务：提醒、每日新闻、APOD 天文图片、地震预警、新闻摘要 |
 | `dashboard` | Web 管理面板：消息浏览、配置管理、任务管理、JWT 鉴权 |
-| `toolbox` | 管理命令：`/update` 热更新、`/model` 查看模型配置 |
+| `toolbox` | 管理命令：`/update` 热更新、`/model` 查看模型配置、技能沙箱初始化 |
 | `playground` | 媒体生成：`/paint` AI 绘图、`/video` AI 视频、戳一戳回复 |
 
-### Agent 工具能力（33 个工具）
+### Agent 工具能力（33 个）
 
 | 类别 | 工具 |
 |------|------|
-| **平台操作** | 发送消息、文件上传、好友/群组管理、系统信息 |
+| **平台操作** | 消息发送、文件上传、好友/群组管理、系统信息 |
 | **网络检索** | Tavily 网页搜索、Wikipedia、ArXiv 论文、Bilibili 视频、网页爬取 |
-| **天文空间** | 极光、彗星、卫星过境、火箭发射、空间天气、Heavens Above |
+| **天文空间** | 极光、彗星、卫星过境、火箭发射、空间天气 |
 | **地球信息** | 地震速报、雷达云图、天气预报 |
 | **记忆** | 聊天记录语义搜索 + 全文检索 |
 | **占卜** | 易经、塔罗牌 |
@@ -41,13 +45,16 @@
 
 ## 技术栈
 
-- **框架**：Python 3.14+ / NoneBot2 + FastAPI / milky 适配器（QQ 协议）
-- **AI**：LangChain + LangGraph / deepagents / 多模型路由（OpenAI / Gemini / Claude / DeepSeek）
-- **向量**：sentence-transformers + Chroma / 本地 embedding 模型
-- **存储**：SQLite（SQLModel/SQLAlchemy）+ Chroma 向量库
-- **渲染**：Playwright 无头浏览器 / markdown-it-py / Pillow
-- **任务**：APScheduler / httpx（HTTP/2）
-- **部署**：Docker / uv 包管理
+| 层面 | 技术 |
+|------|------|
+| **运行时** | Python 3.14+ / Node.js（Playwright MCP） |
+| **框架** | NoneBot2 + FastAPI / milky 适配器（QQ 协议） |
+| **Agent** | LangChain + LangGraph / deepagents / 多模型路由 |
+| **向量** | sentence-transformers + Chroma / 本地 embedding |
+| **存储** | SQLite（SQLModel + FTS 全文搜索）+ Chroma 向量库 |
+| **渲染** | Playwright 无头浏览器 / markdown-it-py / Pillow |
+| **任务** | APScheduler |
+| **部署** | Docker / uv 包管理 |
 
 ## 快速开始
 
@@ -55,8 +62,8 @@
 
 - Python 3.14+
 - [uv](https://docs.astral.sh/uv/) 包管理器
-- Node.js（如需使用 npx 方式的 MCP 工具）
-- Playwright 浏览器（用于 Markdown 渲染和网页爬取）
+- Node.js（如需 npx 方式的 MCP 工具）
+- Playwright 浏览器（Markdown 渲染和网页爬取）
 
 ### 安装步骤
 
@@ -65,19 +72,19 @@
 uv sync
 
 # 2. 激活虚拟环境
-source .venv/bin/activate  # Linux
-# 或 .venv\Scripts\activate.ps1  # Windows
+source .venv/bin/activate  # Linux / macOS
+# .venv\Scripts\activate.ps1  # Windows
 
 # 3. 安装 Playwright 浏览器
 playwright install
 
-# 4. 配置文件
-# 将 .env.example 复制为 .env 并填写 NoneBot 配置
-# 将 env.toml.example 复制为 env.toml 并填写 API Key 等功能配置
+# 4. 配置
+cp .env.example .env        # NoneBot 环境变量
+cp env.toml.example env.toml  # 应用配置（API Key 等）
 
 # 5. 启动
-bash run.sh  # Linux
-# 或 ./run.ps1  # Windows
+bash run.sh  # Linux / macOS
+# ./run.ps1  # Windows
 ```
 
 ### Docker 部署
@@ -94,30 +101,33 @@ docker compose up -d
 | `env.toml` | 应用配置（LLM 端点、API Key、功能开关、速率限制等） |
 | `mcp.json` | MCP 服务器定义（Agent 外部工具扩展） |
 
-详细配置项请参考 `.env.example` 和 `env.toml.example` 中的注释。
+详细配置项参考 `.env.example` 和 `env.toml.example`。
 
 ## 项目结构
 
 ```
 frontier/
-├── plugins/          # NoneBot2 插件模块
-│   ├── agent/        #   核心对话 Agent
-│   ├── clockwork/    #   定时任务
-│   ├── dashboard/    #   Web 管理面板
-│   ├── toolbox/      #   管理命令
-│   └── playground/   #   媒体生成
-├── tools/            # LangChain 工具（33个）
-├── utils/            # 核心工具库
-│   ├── agents.py     #   Agent 创建与编排
-│   ├── database.py   #   SQLite 数据库
-│   ├── message.py    #   消息处理管道
-│   ├── llm_factory.py#   多模型路由
+├── plugins/            # NoneBot2 插件
+│   ├── agent/          #   核心对话 Agent
+│   ├── clockwork/      #   定时任务
+│   ├── dashboard/      #   Web 管理面板
+│   ├── toolbox/        #   管理命令
+│   └── playground/     #   媒体生成
+├── tools/              # LangChain 工具（33 个）
+├── utils/              # 核心工具库
+│   ├── agents.py       #   FrontierCognitive Agent
+│   ├── message.py      #   消息门控与处理管道
+│   ├── database.py     #   SQLite 数据库（SQLModel + FTS）
+│   ├── message_vector_index.py  #   Chroma 向量索引
+│   ├── llm_factory.py  #   多模型路由工厂
+│   ├── signal_llm.py   #   轻量 Signal LLM 封装
+│   ├── configs.py      #   配置加载
 │   └── ...
-├── templates/        # HTML 消息模板
-├── prompts/          # Agent 系统提示词
-├── data/             # 静态数据（易经、塔罗牌等）
-├── scripts/          # 维护脚本
-├── test/             # 测试套件
-├── docs/             # 设计文档
-└── sandbox/          # Agent 技能沙箱
+├── templates/          # HTML/CSS 消息模板
+├── prompts/            # Agent 系统提示词
+├── data/               # 静态数据（易经、塔罗牌）
+├── scripts/            # 维护脚本
+├── test/               # 测试套件
+├── docs/               # 设计文档
+└── sandbox/            # Agent 技能与文件系统沙箱
 ```
