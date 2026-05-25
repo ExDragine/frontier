@@ -267,14 +267,14 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     )
     thread_id = _agent_thread_id(user_id, group_id)
     try:
-        if group_id:
-            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=True)
+        # if group_id:
+        #     await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=True)
         agent_queue.job_timeout_seconds = EnvConfig.AGENT_JOB_TIMEOUT_SECONDS
         replied = await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
         if group_id:
-            await bot.send_group_message_reaction(
-                group_id=group_id, message_seq=event_id, reaction="351", is_add=False
-            )
+            # await bot.send_group_message_reaction(
+            #     group_id=group_id, message_seq=event_id, reaction="351", is_add=False
+            # )
             if not replied:
                 if not group_id:
                     return
