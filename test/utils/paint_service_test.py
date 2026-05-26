@@ -34,6 +34,7 @@ async def test_paint_uses_images_generate_without_reference_images(monkeypatch):
             self.images = DummyImages()
 
     monkeypatch.setattr(paint_service.EnvConfig, "OPENAI_BASE_URL", "https://global.example.com/v1")
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "gpt-4o")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "https://paint.example.com/v1")
     monkeypatch.setattr(paint_service.EnvConfig, "OPENAI_API_KEY", SecretStr("sk-global"))
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint"))
@@ -64,6 +65,7 @@ async def test_paint_passes_empty_paint_base_url_to_openai_client(monkeypatch):
             self.images = DummyImages()
 
     monkeypatch.setattr(paint_service.EnvConfig, "OPENAI_BASE_URL", "https://global.example.com/v1")
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "gpt-4o")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "")
     monkeypatch.setattr(paint_service.EnvConfig, "OPENAI_API_KEY", SecretStr("sk-global"))
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint"))
@@ -96,6 +98,7 @@ async def test_paint_uses_google_genai_for_vertex_style_gateway(monkeypatch):
             self.aio = SimpleNamespace(models=DummyAioModels())
 
     monkeypatch.setattr(paint_service.EnvConfig, "OPENAI_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "gpt-4o")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "https://zenmux.ai/api/vertex-ai")
     monkeypatch.setattr(paint_service.EnvConfig, "OPENAI_API_KEY", SecretStr("sk-global"))
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint"))
@@ -147,6 +150,7 @@ async def test_paint_edits_images_with_google_genai_for_vertex_style_gateway(mon
             self.aio = SimpleNamespace(models=DummyAioModels())
 
     monkeypatch.setattr(paint_service.EnvConfig, "OPENAI_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "gpt-4o")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "https://zenmux.ai/api/vertex-ai")
     monkeypatch.setattr(paint_service.EnvConfig, "OPENAI_API_KEY", SecretStr("sk-global"))
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint"))
@@ -190,6 +194,7 @@ async def test_paint_uses_images_edit_with_reference_images(monkeypatch):
             calls["client"] = kwargs
             self.images = DummyImages()
 
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "gpt-4o")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "https://paint.example.com/v1")
     monkeypatch.setattr(paint_service, "AsyncClient", DummyClient)
 
@@ -217,12 +222,51 @@ async def test_paint_returns_none_when_images_api_fails(monkeypatch):
         def __init__(self, **_kwargs):
             self.images = DummyImages()
 
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "gpt-4o")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "https://paint.example.com/v1")
     monkeypatch.setattr(paint_service, "AsyncClient", DummyClient)
 
     result = await paint_service.paint("a crystal fox")
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_paint_uses_pollinations_when_paint_model_empty(monkeypatch):
+    """PAINT_MODEL 为空时直接使用 Pollinations。"""
+    pollinations_called = False
+
+    async def mock_pollinations(prompt):
+        nonlocal pollinations_called
+        pollinations_called = True
+        return b"pollinations-generated-image"
+
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "")
+    monkeypatch.setattr(paint_service, "_paint_with_pollinations", mock_pollinations)
+
+    result = await paint_service.paint("a crystal fox")
+
+    assert pollinations_called
+    assert result == b"pollinations-generated-image"
+
+
+@pytest.mark.asyncio
+async def test_paint_skips_pollinations_with_reference_images_when_model_empty(monkeypatch):
+    """PAINT_MODEL 为空且有参考图片时跳过 Pollinations（不支持参考图片）。"""
+    pollinations_called = False
+
+    async def mock_pollinations(prompt):
+        nonlocal pollinations_called
+        pollinations_called = True
+        return b"should-not-be-returned"
+
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "")
+    monkeypatch.setattr(paint_service, "_paint_with_pollinations", mock_pollinations)
+
+    result = await paint_service.paint("turn it into watercolor", [_tiny_png_bytes()])
+
+    assert result is None
+    assert not pollinations_called
 
 
 def test_paint_rate_limiter_rejects_requests_over_limit():

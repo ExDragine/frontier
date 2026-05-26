@@ -4,7 +4,9 @@ import io
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from urllib.parse import quote
 
+import httpx
 from google import genai
 from google.genai import types as genai_types
 from google.genai.errors import ClientError
@@ -170,8 +172,48 @@ async def _paint_with_vertex_gateway(prompt: str, reference_images: list[bytes])
     return image_bytes
 
 
+POLLINATIONS_IMAGE_URL = "https://image.pollinations.ai/prompt"
+POLLINATIONS_FALLBACK_MODEL = "flux"
+
+
+async def _paint_with_pollinations(prompt: str) -> bytes | None:
+    encoded_prompt = quote(prompt, safe="")
+    url = f"{POLLINATIONS_IMAGE_URL}/{encoded_prompt}"
+    params = {
+        "model": POLLINATIONS_FALLBACK_MODEL,
+        "nologo": "true",
+        "width": 1024,
+        "height": 1024,
+    }
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.get(url, params=params)
+        if response.status_code != 200:
+            logger.warning(f"Pollinations fallback API 返回非 200: {response.status_code}")
+            return None
+        content_type = response.headers.get("content-type", "")
+        if "image" not in content_type:
+            logger.warning(f"Pollinations fallback 返回非图片内容: {content_type}")
+            return None
+        return response.content
+
+
 async def paint(prompt: str, reference_images: list[bytes] | None = None) -> bytes | None:
     reference_images = reference_images or []
+
+    if not EnvConfig.PAINT_MODEL:
+        if reference_images:
+            logger.warning("Pollinations 不支持参考图片，跳过")
+            return None
+        logger.info(f"🎨 PAINT_MODEL 未配置，使用 Pollinations ({POLLINATIONS_FALLBACK_MODEL})")
+        try:
+            result = await _paint_with_pollinations(prompt)
+            if result:
+                logger.info("✅ Pollinations 绘图成功")
+            return result
+        except Exception as e:
+            logger.exception(f"💥 Pollinations 绘图失败: {e}")
+            return None
+
     logger.info(
         f"🎨 调用 GPT Image API, model={EnvConfig.PAINT_MODEL}, prompt_length={len(prompt)}, references={len(reference_images)}"
     )
