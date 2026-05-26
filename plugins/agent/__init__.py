@@ -63,7 +63,20 @@ class AgentRequestContext:
 
 
 def _is_agent_no_reply(text: str | None) -> bool:
-    return bool(text is not None and str(text).strip() == AGENT_NO_REPLY_SENTINEL)
+    if text is None:
+        return False
+    text = str(text).strip()
+    if text == AGENT_NO_REPLY_SENTINEL:
+        return True
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            for value in data.values():
+                if isinstance(value, str) and value.strip() == AGENT_NO_REPLY_SENTINEL:
+                    return True
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return False
 
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:
@@ -111,7 +124,6 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         query_text=context.text,
         image_inputs=context.quoted_images + context.images,
         video_inputs=context.videos,
-        allow_no_reply=True,
     )
 
     if not isinstance(result, dict) or "response" not in result:

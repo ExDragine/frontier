@@ -439,7 +439,8 @@ async def test_chat_agent_uses_thread_scoped_composite_backend(monkeypatch, tmp_
 
 
 @pytest.mark.asyncio
-async def test_chat_agent_adds_no_reply_instruction_only_when_enabled(monkeypatch, tmp_path):
+async def test_chat_agent_uses_base_system_prompt_without_no_reply_append(monkeypatch, tmp_path):
+    """No-reply instructions are now part of system_prompt.md; no conditional append."""
     import types
 
     from utils import agents
@@ -469,17 +470,7 @@ async def test_chat_agent_adds_no_reply_instruction_only_when_enabled(monkeypatc
         user_name="test",
     )
 
-    assert agents.NO_REPLY_SENTINEL not in captured["system_prompt"]
-
-    await frontier.chat_agent(
-        messages=[{"role": "user", "content": "hi"}],
-        user_id="u1",
-        user_name="test",
-        allow_no_reply=True,
-    )
-
-    assert "实时聊天回复取舍" in captured["system_prompt"]
-    assert agents.NO_REPLY_SENTINEL in captured["system_prompt"]
+    assert captured["system_prompt"] == "base prompt"
 
 
 def test_agent_thread_id_isolated_by_group_and_user():

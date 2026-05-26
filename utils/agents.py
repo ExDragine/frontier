@@ -31,15 +31,7 @@ VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 SKILLS_BACKEND_PATH = "/skills"
 MEMORY_BACKEND_PATH = "/memory"
 MEMORY_FILE_PATH = "/memory/AGENTS.md"
-NO_REPLY_SENTINEL = "__FRONTIER_NO_REPLY__"
-NO_REPLY_SYSTEM_PROMPT = f"""
-
-## 实时聊天回复取舍
-当前是实时聊天入口。你可以自己决定是否实际发言：
-- 如果最新消息不值得回复、只是寒暄结束语/无意义反应/别人之间的闲聊，最终只输出 `{NO_REPLY_SENTINEL}`。
-- 如果适合回复，直接给自然聊天回复；简单寒暄可以短答，复杂问题照常使用工具和推理。
-- 不要解释为什么沉默；不要把 `{NO_REPLY_SENTINEL}` 和其他文字混在一起。
-""".rstrip()
+NO_REPLY_SENTINEL = "_NO_REPLY_"
 
 
 def _configured_model_route(model: str) -> dict[str, str]:
@@ -393,7 +385,6 @@ class FrontierCognitive:
         image_inputs: list[bytes] | None = None,
         video_inputs: list[bytes] | None = None,
         thread_id_override: uuid.UUID | str | None = None,
-        allow_no_reply: bool = False,
     ):
         model_kwargs: dict = {
             "model": EnvConfig.ADVAN_MODEL,
@@ -420,8 +411,6 @@ class FrontierCognitive:
         backend = _build_agent_backend(working_dir, thread_id)
         workspace_dir = os.path.join(working_dir, "workspaces", str(thread_id))
         system_prompt = self.load_system_prompt()
-        if allow_no_reply:
-            system_prompt = f"{system_prompt.rstrip()}\n\n{NO_REPLY_SYSTEM_PROMPT}"
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,

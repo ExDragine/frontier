@@ -737,7 +737,6 @@ async def test_agent_no_reply_clears_reactions_without_completion_reaction(monke
 
     class DummyCognitive:
         async def chat_agent(self, *_args, **kwargs):
-            assert kwargs["allow_no_reply"] is True
             return {
                 "response": {"messages": [types.SimpleNamespace(text=agent.AGENT_NO_REPLY_SENTINEL)]},
                 "uni_messages": [],
@@ -937,7 +936,6 @@ async def test_process_agent_request_suppresses_exact_no_reply_sentinel(monkeypa
 
     class DummyCognitive:
         async def chat_agent(self, *_args, **kwargs):
-            assert kwargs["allow_no_reply"] is True
             return {
                 "response": {"messages": [types.SimpleNamespace(text=f"  {agent.AGENT_NO_REPLY_SENTINEL}\n")]},
                 "uni_messages": [object()],
@@ -996,7 +994,6 @@ async def test_process_agent_request_sends_non_exact_no_reply_text(monkeypatch):
 
     class DummyCognitive:
         async def chat_agent(self, *_args, **kwargs):
-            assert kwargs["allow_no_reply"] is True
             return {
                 "response": {"messages": [types.SimpleNamespace(text=f"{agent.AGENT_NO_REPLY_SENTINEL} 但这不是哨兵")]},
                 "uni_messages": [],
@@ -1030,6 +1027,57 @@ async def test_process_agent_request_sends_non_exact_no_reply_text(monkeypatch):
     assert replied is True
     assert captured["sent"] == f"{agent.AGENT_NO_REPLY_SENTINEL} 但这不是哨兵"
     assert captured["stored"] == f"{agent.AGENT_NO_REPLY_SENTINEL} 但这不是哨兵"
+
+
+@pytest.mark.asyncio
+async def test_process_agent_request_suppresses_json_wrapped_no_reply_sentinel(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    calls = {"sent": 0, "stored": 0}
+
+    class DummyMessagesDb:
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "assistant":
+                calls["stored"] += 1
+
+    class DummyCognitive:
+        async def chat_agent(self, *_args, **kwargs):
+            return {
+                "response": {"messages": [types.SimpleNamespace(text=f'{{"reply": "{agent.AGENT_NO_REPLY_SENTINEL}"}}')]},
+                "uni_messages": [],
+            }
+
+    async def fake_send_messages(*_args, **_kwargs):
+        calls["sent"] += 1
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "send_messages", fake_send_messages)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
+
+    context = agent.AgentRequestContext(
+        bot=None,
+        event=types.SimpleNamespace(self_id="1"),
+        user_id="456",
+        user_name="Bob",
+        event_id=1,
+        group_id=123,
+        msg_time=1000,
+        text="test",
+        quoted_images=[],
+        images=[],
+        videos=[],
+    )
+
+    replied = await agent._process_agent_request(context)
+
+    assert replied is False
+    assert calls["sent"] == 0
+    assert calls["stored"] == 0
 
 
 @pytest.mark.asyncio

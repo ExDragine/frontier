@@ -475,7 +475,6 @@ async def test_agent_task_final_group_delivery_mentions_owner(monkeypatch):
     assert result.messages_sent == 1
     assert result.groups_sent == [123]
     assert len(calls) == 1
-    assert agent_calls[0].get("allow_no_reply", False) is False
     assert calls[0]["group_id"] == 123
     assert [segment.type for segment in calls[0]["message"]] == ["mention", "text"]
     assert calls[0]["message"][0].data == {"user_id": 456}
