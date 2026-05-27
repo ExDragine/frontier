@@ -22,7 +22,7 @@ from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
 
 driver = get_driver()
 updater = on_command("update", priority=1, block=True, aliases={"更新"}, permission=SUPERUSER)
-setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
+setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"}, permission=SUPERUSER)
 
 SKILL_CREATOR_URL = "https://gh-proxy.org/https://github.com/anthropics/skills.git"
 SKILL_CREATOR_PATH = os.path.join(".", "cache", "sandbox", "skills", "skill-creator")
