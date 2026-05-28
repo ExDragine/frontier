@@ -7,8 +7,24 @@ MISSING_USER_ID = "缺少用户号：请显式传入 user_id，或在用户上�
 SCENES = {"friend", "group", "temp"}
 
 
-def is_local(source: str) -> bool:
-    return Path(source).is_file()
+def is_local(source: str, root_dir: str | None = None) -> bool:
+    if Path(source).is_file():
+        return True
+    if root_dir:
+        normalized = source.lstrip("/")
+        return (Path(root_dir) / normalized).is_file()
+    return False
+
+
+def resolve_local_path(source: str, root_dir: str | None = None) -> Path | None:
+    if Path(source).is_file():
+        return Path(source)
+    if root_dir:
+        normalized = source.lstrip("/")
+        candidate = Path(root_dir) / normalized
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def validate_url(url: str) -> None:

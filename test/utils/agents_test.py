@@ -389,7 +389,7 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_chat_agent_uses_thread_scoped_composite_backend(monkeypatch, tmp_path):
+async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     import types
 
     from utils import agents
@@ -422,20 +422,20 @@ async def test_chat_agent_uses_thread_scoped_composite_backend(monkeypatch, tmp_
         group_id=123,
     )
 
-    thread_id = agents._agent_thread_id("u1", 123)
     backend = captured["backend"]
 
     assert isinstance(backend, agents.CompositeBackend)
     assert backend.default.virtual_mode is True
-    assert backend.default.root_dir == str(tmp_path / "sandbox" / "workspaces" / str(thread_id))
+    assert backend.default.root_dir == str(tmp_path / "sandbox" / "workspaces" / "123")
     assert set(backend.routes) == {"/skills/", "/memory/"}
     assert backend.routes["/skills/"].root_dir == str(tmp_path / "sandbox" / "skills")
     assert backend.routes["/memory/"].root_dir == str(tmp_path / "sandbox" / "memory")
     assert captured["skills"] == ["/skills"]
     assert captured["memory"] == ["/memory/AGENTS.md"]
-    assert (tmp_path / "sandbox" / "workspaces" / str(thread_id)).is_dir()
+    assert (tmp_path / "sandbox" / "workspaces" / "123").is_dir()
     assert (tmp_path / "sandbox" / "skills").is_dir()
     assert (tmp_path / "sandbox" / "memory").is_dir()
+    assert captured["config"]["configurable"]["workspace_dir"] == str(tmp_path / "sandbox" / "workspaces" / "123")
 
 
 @pytest.mark.asyncio

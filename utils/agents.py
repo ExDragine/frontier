@@ -236,8 +236,8 @@ def _ensure_dir(path: str) -> str:
     return path
 
 
-def _build_agent_backend(working_dir: str, thread_id: uuid.UUID) -> CompositeBackend:
-    workspace_dir = _ensure_dir(os.path.join(working_dir, "workspaces", str(thread_id)))
+def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBackend:
+    workspace_dir = _ensure_dir(os.path.join(working_dir, "workspaces", workspace_key))
     skills_dir = _ensure_dir(os.path.join(working_dir, "skills"))
     memory_dir = _ensure_dir(os.path.join(working_dir, "memory"))
 
@@ -408,8 +408,9 @@ class FrontierCognitive:
         thread_id = thread_id_override or _agent_thread_id(user_id, group_id)
         if not isinstance(thread_id, uuid.UUID):
             thread_id = uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=str(thread_id))
-        backend = _build_agent_backend(working_dir, thread_id)
-        workspace_dir = os.path.join(working_dir, "workspaces", str(thread_id))
+        workspace_key = str(group_id) if group_id is not None else str(user_id)
+        backend = _build_agent_backend(working_dir, workspace_key)
+        workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
         system_prompt = self.load_system_prompt()
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
@@ -444,6 +445,7 @@ class FrontierCognitive:
                 "thread_id": thread_id,
                 "user_id": user_id,
                 "group_id": group_id,
+                "workspace_dir": workspace_dir,
             }
         }
         try:
