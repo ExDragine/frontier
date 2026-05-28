@@ -18,6 +18,11 @@ SQLITE_CACHE_SIZE_KIB = 65536
 SQLITE_MMAP_SIZE_BYTES = 256 * 1024 * 1024
 MESSAGE_FTS_MIN_QUERY_LENGTH = 3
 logger = logging.getLogger(__name__)
+
+
+async def _run_in_thread(func, *args, **kwargs):
+    """将同步数据库操作放入线程池执行，避免阻塞 asyncio 事件循环。"""
+    return await asyncio.to_thread(func, *args, **kwargs)
 _MESSAGE_VECTOR_INDEX = None
 
 
@@ -245,9 +250,13 @@ def sqlite_supports_fts5(engine: Engine) -> bool:
     with engine.begin() as conn:
         try:
             conn.execute(text("CREATE VIRTUAL TABLE temp.frontier_fts5_probe USING fts5(content)"))
-            conn.execute(text("DROP TABLE temp.frontier_fts5_probe"))
-        except Exception:
+        except Exception as exc:
+            logger.warning("FTS5 probe failed during CREATE: %s: %s", type(exc).__name__, exc)
             return False
+        try:
+            conn.execute(text("DROP TABLE temp.frontier_fts5_probe"))
+        except Exception as exc:
+            logger.warning("FTS5 probe succeeded CREATE but failed DROP: %s: %s", type(exc).__name__, exc)
     return True
 
 
@@ -381,36 +390,118 @@ class UserDatabase:
         User.metadata.create_all(self.engine)
 
     async def insert(self, user_id, user_name, custom_model):
-        with Session(self.engine) as session:
-            user = User(id=user_id, name=user_name, model=custom_model)
-            session.add(user)
-            session.commit()
-
-    async def select(self, user_id: int):
-        with Session(self.engine) as session:
-            user = session.get(User, user_id)
-            return user
-
-    async def update(self, user_id):
-        with Session(self.engine) as session:
-            user = await self.select(user_id)
-            if user:
-                user.name = ""
+        def _do():
+            with Session(self.engine) as session:
+                user = User(id=user_id, name=user_name, model=custom_model)
                 session.add(user)
                 session.commit()
+        await _run_in_thread(_do)
+
+    async def select(self, user_id: int):
+        def _do():
+            with Session(self.engine) as session:
+                return session.get(User, user_id)
+        return await _run_in_thread(_do)
+
+    async def update(self, user_id):
+        def _do():
+            with Session(self.engine) as session:
+                user = session.get(User, user_id)
+                if user:
+                    user.name = ""
+                    session.add(user)
+                    session.commit()
+        await _run_in_thread(_do)
 
     async def delete(self, user_id):
-        with Session(self.engine) as session:
-            user = await self.select(user_id)
-            if user:
-                session.delete(user)
+        def _do():
+            with Session(self.engine) as session:
+                user = session.get(User, user_id)
+                if user:
+                    session.delete(user)
+                    session.commit()
+        await _run_in_thread(_do)
+
+
+class _MessageImageManager:
+    """图片管理：存储、清理和加载消息图片。"""
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
+        def _do():
+            from utils.configs import EnvConfig
+
+            now_ms = int(time.time() * 1000)
+            expires_ms = now_ms + EnvConfig.IMAGE_TTL_DAYS * 86400 * 1000
+            dir_path = os.path.join(os.getcwd(), "cache", "images", str(user_id))
+            os.makedirs(dir_path, exist_ok=True)
+            paths = []
+            with Session(self.engine) as session:
+                for i, image_bytes in enumerate(images):
+                    file_path = os.path.join("cache", "images", str(user_id), f"{msg_time}_{i}.jpg")
+                    with open(os.path.join(os.getcwd(), file_path), "wb") as f:
+                        f.write(image_bytes)
+                    record = session.exec(
+                        select(MessageImage).where(MessageImage.msg_time == msg_time).where(MessageImage.index == i)
+                    ).first()
+                    if record:
+                        record.file_path = file_path
+                        record.file_size = len(image_bytes)
+                        record.expires_at = expires_ms
+                    else:
+                        record = MessageImage(
+                            msg_time=msg_time,
+                            user_id=user_id,
+                            group_id=group_id,
+                            index=i,
+                            file_path=file_path,
+                            file_size=len(image_bytes),
+                            created_at=now_ms,
+                            expires_at=expires_ms,
+                        )
+                    session.add(record)
+                    paths.append(file_path)
                 session.commit()
+            return paths
+        return await _run_in_thread(_do)
+
+    async def cleanup_expired_images(self) -> int:
+        def _do():
+            now_ms = int(time.time() * 1000)
+            cleaned = 0
+            with Session(self.engine) as session:
+                expired = session.exec(select(MessageImage).where(MessageImage.expires_at < now_ms)).all()
+                for record in expired:
+                    full_path = os.path.join(os.getcwd(), record.file_path)
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                    session.delete(record)
+                    cleaned += 1
+                session.commit()
+            return cleaned
+        return await _run_in_thread(_do)
+
+    @staticmethod
+    def load_image_files(image_records: list[MessageImage]) -> tuple[list[bytes], int]:
+        file_images: list[bytes] = []
+        missing_images = 0
+        for img in sorted(image_records, key=lambda x: x.index):
+            full_path = os.path.join(os.getcwd(), img.file_path)
+            if os.path.exists(full_path):
+                with open(full_path, "rb") as f:
+                    file_images.append(f.read())
+            else:
+                missing_images += 1
+        return file_images, missing_images
 
 
 class MessageDatabase:
     def __init__(self):
         self.engine = get_engine()
         self._vector_index = None
+        self._images = _MessageImageManager(self.engine)
         Message.metadata.create_all(self.engine)
         MessageImage.metadata.create_all(self.engine)
         ensure_database_performance_indexes(self.engine)
@@ -427,19 +518,21 @@ class MessageDatabase:
         role: str,
         content: str,
     ):
-        with Session(self.engine) as session:
-            message = Message(
-                time=time,
-                msg_id=msg_id,
-                user_id=user_id,
-                group_id=group_id,
-                user_name=user_name,
-                role=role,
-                content=content,
-            )
-            session.add(message)
-            session.commit()
-            self._add_message_to_vector_index(message)
+        def _do():
+            with Session(self.engine) as session:
+                message = Message(
+                    time=time,
+                    msg_id=msg_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    user_name=user_name,
+                    role=role,
+                    content=content,
+                )
+                session.add(message)
+                session.commit()
+                self._add_message_to_vector_index(message)
+        await _run_in_thread(_do)
 
     async def select(
         self,
@@ -476,21 +569,8 @@ class MessageDatabase:
             statement = select(MessageImage).where(MessageImage.msg_time == msg_time).order_by(MessageImage.index)
             return session.exec(statement).all()
 
-    @staticmethod
-    def _load_image_files(image_records: list[MessageImage]) -> tuple[list[bytes], int]:
-        file_images: list[bytes] = []
-        missing_images = 0
-        for img in sorted(image_records, key=lambda x: x.index):
-            full_path = os.path.join(os.getcwd(), img.file_path)
-            if os.path.exists(full_path):
-                with open(full_path, "rb") as f:
-                    file_images.append(f.read())
-            else:
-                missing_images += 1
-        return file_images, missing_images
-
     def load_image_files(self, image_records: list[MessageImage]) -> tuple[list[bytes], int]:
-        return self._load_image_files(image_records)
+        return self._images.load_image_files(image_records)
 
     async def prepare_message(  # noqa: C901
         self,
@@ -528,7 +608,7 @@ class MessageDatabase:
             file_images: list[bytes] = []
 
             if msg_images:
-                file_images, missing_images = self._load_image_files(msg_images)
+                file_images, missing_images = self._images.load_image_files(msg_images)
                 if missing_images:
                     content_text += "\n" + " ".join("[图片]" for _ in range(missing_images))
 
@@ -568,54 +648,10 @@ class MessageDatabase:
         return messages_seq
 
     async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
-        from utils.configs import EnvConfig
-
-        now_ms = int(time.time() * 1000)
-        expires_ms = now_ms + EnvConfig.IMAGE_TTL_DAYS * 86400 * 1000
-        dir_path = os.path.join(os.getcwd(), "cache", "images", str(user_id))
-        os.makedirs(dir_path, exist_ok=True)
-        paths = []
-        with Session(self.engine) as session:
-            for i, image_bytes in enumerate(images):
-                file_path = os.path.join("cache", "images", str(user_id), f"{msg_time}_{i}.jpg")
-                with open(os.path.join(os.getcwd(), file_path), "wb") as f:
-                    f.write(image_bytes)
-                record = session.exec(
-                    select(MessageImage).where(MessageImage.msg_time == msg_time).where(MessageImage.index == i)
-                ).first()
-                if record:
-                    record.file_path = file_path
-                    record.file_size = len(image_bytes)
-                    record.expires_at = expires_ms
-                else:
-                    record = MessageImage(
-                        msg_time=msg_time,
-                        user_id=user_id,
-                        group_id=group_id,
-                        index=i,
-                        file_path=file_path,
-                        file_size=len(image_bytes),
-                        created_at=now_ms,
-                        expires_at=expires_ms,
-                    )
-                session.add(record)
-                paths.append(file_path)
-            session.commit()
-        return paths
+        return await self._images.insert_images(msg_time, user_id, group_id, images)
 
     async def cleanup_expired_images(self) -> int:
-        now_ms = int(time.time() * 1000)
-        cleaned = 0
-        with Session(self.engine) as session:
-            expired = session.exec(select(MessageImage).where(MessageImage.expires_at < now_ms)).all()
-            for record in expired:
-                full_path = os.path.join(os.getcwd(), record.file_path)
-                if os.path.exists(full_path):
-                    os.remove(full_path)
-                session.delete(record)
-                cleaned += 1
-            session.commit()
-        return cleaned
+        return await self._images.cleanup_expired_images()
 
     async def select_by_time_range(
         self,
@@ -760,6 +796,10 @@ class MessageDatabase:
         messages = session.exec(select(Message).where(col(Message.time).in_(ids))).all()
         messages_by_id = {message.time: message for message in messages}
         return [messages_by_id[message_id] for message_id in ids if message_id in messages_by_id]
+
+    def get_vector_index(self):
+        """公共访问器，替代对 _get_vector_index 的私有访问。"""
+        return self._get_vector_index()
 
     def _get_vector_index(self):
         if self._vector_index is not None:
@@ -986,28 +1026,36 @@ class EventDatabase:
         TimeStamp.metadata.create_all(self.engine)
 
     async def insert(self, name, id: str | None = None):
-        with Session(self.engine) as session:
-            target = TimeStamp(name=name, id=id)
-            session.add(target)
-            session.commit()
-
-    async def delete(self, name):
-        with Session(self.engine) as session:
-            target = session.get(TimeStamp, name)
-            if target:
-                session.delete(target)
-                session.commit()
-
-    async def update(self, name, id):
-        with Session(self.engine) as session:
-            target = session.get(TimeStamp, name)
-            if target:
-                target.id = id
+        def _do():
+            with Session(self.engine) as session:
+                target = TimeStamp(name=name, id=id)
                 session.add(target)
                 session.commit()
+        await _run_in_thread(_do)
+
+    async def delete(self, name):
+        def _do():
+            with Session(self.engine) as session:
+                target = session.get(TimeStamp, name)
+                if target:
+                    session.delete(target)
+                    session.commit()
+        await _run_in_thread(_do)
+
+    async def update(self, name, id):
+        def _do():
+            with Session(self.engine) as session:
+                target = session.get(TimeStamp, name)
+                if target:
+                    target.id = id
+                    session.add(target)
+                    session.commit()
+        await _run_in_thread(_do)
 
     async def select(self, name):
-        with Session(self.engine) as session:
-            target = session.get(TimeStamp, name)
-            if target:
-                return target.id
+        def _do():
+            with Session(self.engine) as session:
+                target = session.get(TimeStamp, name)
+                if target:
+                    return target.id
+        return await _run_in_thread(_do)

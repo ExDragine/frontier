@@ -72,21 +72,41 @@ def _discover_tools() -> tuple[list[BaseTool], list[BaseTool], dict[str, list[Ba
 
 class ModuleTools:
     def __init__(self):
-        self.mcp_tools = mcp_get_tools()
+        self._mcp_tools = None
         self.local_tools, self.web_tools, self.subagent_tools = _discover_tools()
-        self.subagent_tools["external"].extend(self.mcp_tools)
-
-        # 将 MCP 工具、联网搜索、记忆查询全部暴露给主 Agent
-        self.subagent_tools["main"].extend(self.mcp_tools)
+        # MCP 工具延迟加载，在 mcp_tools property 首次访问时才执行 asyncio.run()
         self.subagent_tools["main"].extend(self.web_tools)
         self.subagent_tools["main"].extend(self.subagent_tools["memory"])
 
-        # 将所有子代理组的工具也暴露给主 Agent，方便直接调用
+        # 将所有子代理组的工具也暴露给主 Agent
         for group in ("research", "astro", "earth", "divination", "media"):
             self.subagent_tools["main"].extend(self.subagent_tools[group])
 
-        self.main_tools = self.subagent_tools["main"]
-        self.all_tools = self.mcp_tools + self.local_tools
+    @property
+    def mcp_tools(self):
+        if self._mcp_tools is None:
+            self._mcp_tools = mcp_get_tools()
+            self.subagent_tools["external"].extend(self._mcp_tools)
+            self.subagent_tools["main"].extend(self._mcp_tools)
+        return self._mcp_tools
+
+    @property
+    def main_tools(self):
+        _ = self.mcp_tools  # 确保 MCP 工具已加载
+        return self.subagent_tools["main"]
+
+    @property
+    def all_tools(self):
+        return self.mcp_tools + self.local_tools
 
 
-agent_tools = ModuleTools()
+_AGENT_TOOLS = None
+
+
+def __getattr__(name):
+    if name == "agent_tools":
+        global _AGENT_TOOLS
+        if _AGENT_TOOLS is None:
+            _AGENT_TOOLS = ModuleTools()
+        return _AGENT_TOOLS
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

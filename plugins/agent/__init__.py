@@ -135,6 +135,9 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         await UniMessage.text(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用").send()
         return True
 
+    if result.get("error"):
+        logger.warning("Agent returned error response: %s", result["error"])
+
     if response["messages"] and isinstance(response["messages"], list):
         response_content = outgoing_message_content(response["messages"][-1])
         if _is_agent_no_reply(response_content):

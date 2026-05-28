@@ -465,6 +465,7 @@ class FrontierCognitive:
                 "response": {"messages": [AIMessage("💥 服务暂时不可用，请稍后重试。")]},
                 "total_time": time.time() - start_time,
                 "uni_messages": [],
+                "error": str(e),
             }
 
         uni_messages = await FrontierCognitive.extract_uni_messages(response)

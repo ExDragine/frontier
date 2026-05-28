@@ -1,4 +1,5 @@
 import html
+import logging
 import os
 import re
 import secrets
@@ -6,6 +7,8 @@ import secrets
 from bs4 import BeautifulSoup
 from markdown_it import MarkdownIt
 from playwright.async_api import async_playwright
+
+logger = logging.getLogger(__name__)
 
 browser = None
 page = None
@@ -21,14 +24,14 @@ async def init_playwright():
         def _on_console(msg):
             try:
                 loc = msg.location
-                print(f"[playwright console][{msg.type}] {msg.text} -- {loc}")
+                logger.debug("[playwright console][%s] %s -- %s", msg.type, msg.text, loc)
             except Exception:
-                print(f"[playwright console][{msg.type}] {msg.text}")
+                logger.debug("[playwright console][%s] %s", msg.type, msg.text)
 
         page.on("console", _on_console)
 
         def _on_page_error(exc):
-            print(f"[playwright pageerror] {exc}")
+            logger.warning("[playwright pageerror] %s", exc)
 
         page.on("pageerror", _on_page_error)
 
@@ -89,9 +92,9 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
         try:
             await page.wait_for_function("typeof renderMathInElement !== 'undefined'", timeout=1000)
             await page.wait_for_timeout(1000)
-            print("✅ KaTeX 渲染完成")
+            logger.debug("KaTeX rendering complete")
         except Exception as e:
-            print(f"⚠️ KaTeX 渲染可能有问题，继续截图: {e}")
+            logger.warning("KaTeX may have issues, continuing screenshot: %s", e)
             await page.wait_for_timeout(1000)
 
         try:
@@ -99,18 +102,18 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
                 "typeof mermaid !== 'undefined' && document.querySelectorAll('svg').length > 0", timeout=1000
             )
             await page.wait_for_timeout(500)
-            print("✅ Mermaid 渲染完成")
+            logger.debug("Mermaid rendering complete")
         except Exception as e:
-            print(f"⚠️ Mermaid 渲染可能有问题，继续截图: {e}")
+            logger.warning("Mermaid may have issues, continuing screenshot: %s", e)
             await page.wait_for_timeout(500)
 
         try:
             await page.wait_for_function("window.codeHighlightComplete === true", timeout=1000)
             await page.wait_for_timeout(200)
-            print("✅ 代码高亮（Prism）完成")
+            logger.debug("Prism highlighting complete")
         except Exception as e:
             # 若超时或页面未设置标志，继续截图但记录警告
-            print(f"⚠️ 代码高亮可能未完成或未启用: {e}")
+            logger.warning("Prism highlighting may have issues: %s", e)
             await page.wait_for_timeout(200)
 
         height = await page.evaluate("""
@@ -136,7 +139,7 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
             try:
                 os.remove(temp_html_path)
             except Exception as e:
-                print(f"⚠️ 删除临时文件失败: {e}")
+                logger.warning("Failed to delete temp file: %s", e)
 
         return img
     else:

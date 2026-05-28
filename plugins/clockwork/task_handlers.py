@@ -1,6 +1,7 @@
 """定时任务处理函数"""
 
 import datetime
+import json
 import traceback
 import zoneinfo
 from dataclasses import dataclass
@@ -28,6 +29,28 @@ tools = agent_tools.mcp_tools + agent_tools.web_tools
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
 DAILY_NEWS_SEARCH_TOOL_NAMES = {"tavily_search", "web_search_exa"}
+
+NEWS_HISTORY_KEY = "daily_news_recent_titles"
+
+
+async def _load_recent_titles() -> list[str]:
+    """读取最近一次推送中报道过的新闻标题，用于去重。"""
+    data = await event_database.select(NEWS_HISTORY_KEY)
+    if not data:
+        return []
+    try:
+        return json.loads(data)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+async def _save_recent_titles(titles: list[str]) -> None:
+    """保存本次推送的新闻标题，供下次去重使用。"""
+    data = json.dumps(titles, ensure_ascii=False)
+    try:
+        await event_database.insert(NEWS_HISTORY_KEY, data)
+    except Exception:
+        await event_database.update(NEWS_HISTORY_KEY, data)
 
 
 class TopStory(BaseModel):
@@ -138,7 +161,9 @@ def daily_news_context(now_cn: datetime.datetime | None = None) -> tuple[datetim
     return now_cn, today, period, report_time
 
 
-def daily_news_research_prompts(today: str, period: str, report_time: str) -> tuple[str, str]:
+def daily_news_research_prompts(
+    today: str, period: str, report_time: str, recent_titles: list[str] | None = None
+) -> tuple[str, str]:
     with open(PROMPTS_DIR / "daily_news.md", encoding="utf-8") as f:
         system_prompt = f.read().format(current_time=today)
 
@@ -147,13 +172,25 @@ def daily_news_research_prompts(today: str, period: str, report_time: str) -> tu
         f"当前北京时间为{report_time}。"
         "请主动搜索最近24小时内的重要新闻，不需要再另行询问。"
     )
+
+    if recent_titles:
+        titles_text = "\n".join(f"  - {t}" for t in recent_titles)
+        user_prompt += (
+            f"\n\n⚠️ 以下是上一次推送中已经报道过的新闻标题，"
+            f"请务必避免重复报道相同事件，优先搜索其他重要新闻：\n{titles_text}"
+        )
+
     return system_prompt, user_prompt
 
 
-async def build_daily_news_artifacts(now_cn: datetime.datetime | None = None) -> DailyNewsArtifacts | None:
+async def build_daily_news_artifacts(
+    now_cn: datetime.datetime | None = None, recent_titles: list[str] | None = None
+) -> DailyNewsArtifacts | None:
     """构建日报素材包、结构化数据和 HTML；不发送消息。"""
     _now_cn, today, period, report_time = daily_news_context(now_cn)
-    system_prompt, user_prompt = daily_news_research_prompts(today, period, report_time)
+    system_prompt, user_prompt = daily_news_research_prompts(
+        today, period, report_time, recent_titles
+    )
 
     material = await assistant_agent(
         system_prompt,
@@ -221,7 +258,7 @@ async def github_post_news(**kwargs):
         headers={"Authorization": f"Bearer {EnvConfig.GITHUB_PAT.get_secret_value()}"},
         json={"query": query},
     )
-    print(response.json())
+    logger.debug("GitHub GraphQL response: %s", response.text)
 
 
 async def apod_everyday(**kwargs):
@@ -395,7 +432,8 @@ async def daily_news(**kwargs):
     """每日新闻摘要 - 每天9:00、21:00推送"""
     logger.info("开始获取每日新闻摘要")
 
-    artifacts = await build_daily_news_artifacts()
+    recent_titles = await _load_recent_titles()
+    artifacts = await build_daily_news_artifacts(recent_titles=recent_titles)
     if not artifacts:
         return
 
@@ -414,6 +452,20 @@ async def daily_news(**kwargs):
 
     if send_errors and not groups_sent:
         raise send_errors[0]
+
+    # 保存本次推送的标题，供下次去重使用
+    payload = artifacts.payload
+    if isinstance(payload, BaseModel):
+        payload = payload.model_dump()
+    all_titles: list[str] = []
+    for story in payload.get("top_stories", []):
+        if title := story.get("title", "").strip():
+            all_titles.append(title)
+    for story in payload.get("worth_reading", []):
+        if title := story.get("title", "").strip():
+            all_titles.append(title)
+    if all_titles:
+        await _save_recent_titles(all_titles)
 
     return TaskRunResult(
         groups_sent=groups_sent,

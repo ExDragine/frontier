@@ -1,8 +1,11 @@
 import zoneinfo
+import logging
 from datetime import UTC, datetime, timedelta
 
 from httpx import AsyncClient
 from langchain.tools import tool
+
+logger = logging.getLogger(__name__)
 
 # 常量配置
 TLP_LAUNCH_URL = "https://tlpnetwork.com/api/launches"
@@ -86,5 +89,5 @@ async def get_launches(days: int = 7):
             )
         return messages
     except Exception as e:
-        print(f"❌ 发生错误: {e}")
+        logger.error("Failed to fetch launch schedule: %s", e)
         return f"❌ 获取发射计划时发生错误： {e}。"

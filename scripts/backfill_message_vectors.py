@@ -19,7 +19,7 @@ def main() -> None:
     args = parser.parse_args()
 
     database = MessageDatabase()
-    vector_index = database._get_vector_index()  # noqa: SLF001
+    vector_index = database.get_vector_index()
     if not vector_index or not getattr(vector_index, "available", False):
         print("Chroma message vector index is unavailable.")
         return

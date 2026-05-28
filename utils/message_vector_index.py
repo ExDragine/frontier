@@ -105,7 +105,7 @@ class MessageVectorIndex:
             self._collection = (collection_factory or _default_collection_factory)(config)
             self.available = True
         except Exception as exc:
-            logger.warning("Chroma message vector index unavailable: %s", exc)
+            logger.error("Chroma message vector index unavailable: %s", exc)
 
     def add_message(self, message: Message) -> bool:
         if not self.available or self._collection is None or self._embeddings is None:
@@ -121,7 +121,7 @@ class MessageVectorIndex:
             return True
         except Exception as exc:
             _clear_cuda_cache_if_oom(exc)
-            logger.warning("Failed to add message to Chroma index: %s", exc)
+            logger.error("Failed to add message to Chroma index: %s", exc)
             return False
 
     def add_messages(self, messages: list[Message]) -> int:
@@ -146,7 +146,14 @@ class MessageVectorIndex:
             return len(messages)
         except Exception as exc:
             _clear_cuda_cache_if_oom(exc)
-            logger.warning("Failed to add message batch to Chroma index: %s", exc)
+            logger.error("Failed to add message batch to Chroma index: %s", exc)
+            # 批量失败后逐条重试
+            if len(messages) > 1:
+                added = 0
+                for message in messages:
+                    if self.add_message(message):
+                        added += 1
+                return added
             return 0
 
     def _write(self, *, ids: list[str], documents: list[str], embeddings: list, metadatas: list[dict]) -> None:
@@ -174,7 +181,7 @@ class MessageVectorIndex:
                 where=where,
             )
         except Exception as exc:
-            logger.warning("Chroma message vector search failed: %s", exc)
+            logger.error("Chroma message vector search failed: %s", exc)
             return []
 
         ids = result.get("ids", [[]])[0] if isinstance(result, dict) else []
