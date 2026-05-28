@@ -7,10 +7,10 @@ from nonebot import get_bot
 from utils.milky_tools import binary_kwargs_from_uri, format_files_info, resolve_group_id, resolve_user_id
 
 
-def _file_name_from_uri(file_uri: str, file_name: str | None) -> str | None:
+def _file_name_from_uri(file_uri: str, file_name: str | None, root_dir: str | None = None) -> str | None:
     if file_name:
         return file_name
-    kwargs = binary_kwargs_from_uri(file_uri)
+    kwargs = binary_kwargs_from_uri(file_uri, root_dir=root_dir)
     if path := kwargs.get("path"):
         return Path(path).name
     return None
@@ -32,8 +32,9 @@ async def upload_private_file(
     resolved_user_id, error = resolve_user_id(user_id, config)
     if error:
         return error
-    kwargs = binary_kwargs_from_uri(file_uri)
-    resolved_file_name = _file_name_from_uri(file_uri, file_name)
+    workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
+    kwargs = binary_kwargs_from_uri(file_uri, root_dir=workspace_dir)
+    resolved_file_name = _file_name_from_uri(file_uri, file_name, root_dir=workspace_dir)
     if not resolved_file_name:
         return "请提供 file_name。"
     file_id = await get_bot().upload_private_file(user_id=resolved_user_id, **kwargs, file_name=resolved_file_name)
@@ -58,8 +59,9 @@ async def upload_group_file(
     resolved_group_id, error = resolve_group_id(group_id, config)
     if error:
         return error
-    kwargs = binary_kwargs_from_uri(file_uri)
-    resolved_file_name = _file_name_from_uri(file_uri, file_name)
+    workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
+    kwargs = binary_kwargs_from_uri(file_uri, root_dir=workspace_dir)
+    resolved_file_name = _file_name_from_uri(file_uri, file_name, root_dir=workspace_dir)
     if not resolved_file_name:
         return "请提供 file_name。"
     file_id = await get_bot().upload_group_file(

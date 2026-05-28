@@ -74,7 +74,7 @@ def resolve_peer(
     return resolve_user_id(config=config)
 
 
-def binary_kwargs_from_uri(uri: str | None) -> dict[str, str]:
+def binary_kwargs_from_uri(uri: str | None, root_dir: str | None = None) -> dict[str, str]:
     raw = (uri or "").strip()
     if not raw:
         return {}
@@ -95,8 +95,8 @@ def binary_kwargs_from_uri(uri: str | None) -> dict[str, str]:
         if not encoded:
             raise ValueError(f"无效的文件 URI：{uri!r}")
         return {"base64": encoded}
-    if is_local(raw):
-        return {"path": raw}
+    if resolved := resolve_local_path(raw, root_dir):
+        return {"path": str(resolved)}
 
     raise ValueError(f"无效的文件 URI：{uri!r}，仅支持 file://、http(s)://、base64:// 或本地文件路径")
 
