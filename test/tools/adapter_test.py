@@ -228,3 +228,44 @@ async def test_send_text_with_at(load_tool_module):
     assert [segment.type for segment in calls[0]["message"]] == ["mention", "text"]
     assert calls[0]["message"][0].data == {"user_id": 12345}
     assert calls[0]["message"][1].data == {"text": " 你好"}
+
+
+# ── 沙箱 workspace 路径解析 ───────────────────────────────────────────────────
+
+
+def _ws_config(workspace_dir: str) -> dict:
+    return {"configurable": {"workspace_dir": workspace_dir}}
+
+
+@pytest.mark.asyncio
+async def test_send_image_resolves_workspace_path(load_tool_module, tmp_path):
+    adapter = load_tool_module("adapter")
+    img = tmp_path / "photo.png"
+    img.write_bytes(b"\x89PNG")
+
+    _, artifact = await adapter.send_image("/photo.png", config=_ws_config(str(tmp_path)))
+
+    assert artifact.content["type"] == "image"
+    assert artifact.content["path"] == str(img)
+
+
+@pytest.mark.asyncio
+async def test_send_file_resolves_workspace_path(load_tool_module, tmp_path):
+    adapter = load_tool_module("adapter")
+    f = tmp_path / "report.pdf"
+    f.write_bytes(b"%PDF")
+
+    text, artifact = await adapter.send_file("/report.pdf", "report.pdf", config=_ws_config(str(tmp_path)))
+
+    assert text == "构建了一个文件消息：report.pdf"
+    assert artifact.content["type"] == "file"
+    assert artifact.content["path"] == str(f)
+    assert artifact.content["name"] == "report.pdf"
+
+
+@pytest.mark.asyncio
+async def test_send_image_falls_through_to_url_validation_when_unresolvable(load_tool_module):
+    adapter = load_tool_module("adapter")
+
+    with pytest.raises(ValueError, match="无效的 URL"):
+        await adapter.send_image("/nope.png", config=_ws_config("/nonexistent"))

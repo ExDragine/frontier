@@ -439,6 +439,45 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_path):
+    import types
+
+    from utils import agents
+
+    captured = {}
+
+    class DummyAgent:
+        async def ainvoke(self, payload, config=None):
+            captured["payload"] = payload
+            captured["config"] = config
+            return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]}
+
+    def fake_create_deep_agent(**kwargs):
+        captured.update(kwargs)
+        return DummyAgent()
+
+    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
+
+    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier.tools = []
+    frontier.checkpoint = None
+    frontier.working_dir = str(tmp_path / "sandbox")
+
+    await frontier.chat_agent(
+        messages=[{"role": "user", "content": "hi"}],
+        user_id="u1",
+        user_name="test",
+        group_id=None,
+    )
+
+    assert captured["backend"].default.root_dir == str(tmp_path / "sandbox" / "workspaces" / "u1")
+    assert captured["config"]["configurable"]["workspace_dir"] == str(tmp_path / "sandbox" / "workspaces" / "u1")
+    assert (tmp_path / "sandbox" / "workspaces" / "u1").is_dir()
+
+
+@pytest.mark.asyncio
 async def test_chat_agent_uses_base_system_prompt_without_no_reply_append(monkeypatch, tmp_path):
     """No-reply instructions are now part of system_prompt.md; no conditional append."""
     import types

@@ -11,6 +11,7 @@ OPS = {
     ast.Mult: op.mul,
     ast.Div: op.truediv,
     ast.Pow: op.pow,
+    ast.UAdd: op.pos,
     ast.USub: op.neg,
 }
 
