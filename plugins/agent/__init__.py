@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +46,8 @@ agent_queue = AgentQueueManager(
 )
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 AGENT_NO_REPLY_SENTINEL = NO_REPLY_SENTINEL
+# 匹配原始回复文本中的哨兵：独立文本或 JSON 字符串值
+_AGENT_NO_REPLY_RE = re.compile(rf'^\s*{re.escape(NO_REPLY_SENTINEL)}\s*$|"{re.escape(NO_REPLY_SENTINEL)}"')
 
 
 @dataclass(slots=True)
@@ -61,22 +64,6 @@ class AgentRequestContext:
     images: list[bytes]
     videos: list[bytes]
 
-
-def _is_agent_no_reply(text: str | None) -> bool:
-    if text is None:
-        return False
-    text = str(text).strip()
-    if text == AGENT_NO_REPLY_SENTINEL:
-        return True
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict):
-            for value in data.values():
-                if isinstance(value, str) and value.strip() == AGENT_NO_REPLY_SENTINEL:
-                    return True
-    except (json.JSONDecodeError, TypeError):
-        pass
-    return False
 
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:
@@ -139,8 +126,8 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         logger.warning("Agent returned error response: %s", result["error"])
 
     if response["messages"] and isinstance(response["messages"], list):
-        response_content = outgoing_message_content(response["messages"][-1])
-        if _is_agent_no_reply(response_content):
+        raw_text = str(getattr(response["messages"][-1], "text", "") or "")
+        if _AGENT_NO_REPLY_RE.search(raw_text):
             logger.info("Agent chose not to reply to the latest message.")
             return False
 
