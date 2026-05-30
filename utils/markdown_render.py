@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import secrets
+from asyncio import Lock
 
 from bs4 import BeautifulSoup
 from markdown_it import MarkdownIt
@@ -10,34 +11,45 @@ from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
 
-browser = None
-page = None
+_browser = None
+_browser_lock = Lock()
 
 
-async def init_playwright():
-    global browser, page
-    if browser is None:
-        playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=True)
-        page = await browser.new_page(viewport={"width": 1000, "height": 600})
+async def _get_browser():
+    """返回持久化浏览器实例（延迟初始化，线程安全）。"""
+    global _browser
+    async with _browser_lock:
+        if _browser is None:
+            playwright = await async_playwright().start()
+            _browser = await playwright.chromium.launch(headless=True)
+            logger.info("Playwright 浏览器已初始化")
+        return _browser
 
-        def _on_console(msg):
-            try:
-                loc = msg.location
-                logger.debug("[playwright console][%s] %s -- %s", msg.type, msg.text, loc)
-            except Exception:
-                logger.debug("[playwright console][%s] %s", msg.type, msg.text)
 
-        page.on("console", _on_console)
+async def close_playwright():
+    """清理全局浏览器实例（关闭时调用）。"""
+    global _browser
+    async with _browser_lock:
+        if _browser:
+            await _browser.close()
+            _browser = None
+            logger.info("Playwright 浏览器已关闭")
 
-        def _on_page_error(exc):
-            logger.warning("[playwright pageerror] %s", exc)
 
-        page.on("pageerror", _on_page_error)
+def _on_console(msg):
+    try:
+        loc = msg.location
+        logger.debug("[playwright console][%s] %s -- %s", msg.type, msg.text, loc)
+    except Exception:
+        logger.debug("[playwright console][%s] %s", msg.type, msg.text)
+
+
+def _on_page_error(exc):
+    logger.warning("[playwright pageerror] %s", exc)
 
 
 async def markdown_to_text(markdown_text):
-    md_html = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"]).render(markdown_text)
+    md_html = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"]).render(markdown_text)
     plain_text = BeautifulSoup(md_html, "html.parser").get_text()
     return plain_text
 
@@ -51,7 +63,7 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
         width: 输出图片宽度
         css: 自定义 CSS 样式
     """
-    md = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"])
+    md = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"])
     html_content = md.render(markdown_text)
 
     def replace_mermaid(match):
@@ -80,13 +92,14 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
     with open(temp_html_path, mode="w", encoding="utf-8") as f:
         f.write(full_html)
 
-    img = None
-    await init_playwright()
-    if page:
-        await page.goto("about:blank")  # 清空页面
-        await page.set_viewport_size({"width": width, "height": 600})
-        await page.goto(f"file://{os.path.abspath(temp_html_path)}")
+    browser = await _get_browser()
+    # 每次渲染使用独立 page，避免竞态
+    page = await browser.new_page(viewport={"width": width, "height": 600})
+    page.on("console", _on_console)
+    page.on("pageerror", _on_page_error)
 
+    try:
+        await page.goto(f"file://{os.path.abspath(temp_html_path)}")
         await page.wait_for_load_state("networkidle")
 
         try:
@@ -112,7 +125,6 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
             await page.wait_for_timeout(200)
             logger.debug("Prism highlighting complete")
         except Exception as e:
-            # 若超时或页面未设置标志，继续截图但记录警告
             logger.warning("Prism highlighting may have issues: %s", e)
             await page.wait_for_timeout(200)
 
@@ -130,17 +142,14 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
         await page.wait_for_timeout(500)
         target_element = await page.wait_for_selector("#markdown-content")
         if target_element:
-            # 截图
             img = await target_element.screenshot(type="png")
         else:
             img = await page.screenshot(full_page=True, type="png")
 
-        if img:
-            try:
-                os.remove(temp_html_path)
-            except Exception as e:
-                logger.warning("Failed to delete temp file: %s", e)
-
         return img
-    else:
-        return None
+    finally:
+        await page.close()
+        try:
+            os.remove(temp_html_path)
+        except Exception as e:
+            logger.warning("Failed to delete temp file: %s", e)

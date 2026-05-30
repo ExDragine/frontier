@@ -9,20 +9,22 @@ from playwright.async_api import async_playwright
 
 
 async def markdown_to_text(markdown_text):
-    html = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"]).render(markdown_text)
+    html = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"]).render(markdown_text)
     plain_text = BeautifulSoup(html, "html.parser").get_text()
     return plain_text
 
 
 async def markdown_to_image(markdown_text):
-    html = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"]).render(markdown_text)
+    html = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"]).render(markdown_text)
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        page = await browser.new_page()
-        await page.set_content(html)
-        image = await page.screenshot(full_page=True)
-        await browser.close()
-        return image
+        try:
+            page = await browser.new_page()
+            await page.set_content(html)
+            image = await page.screenshot(full_page=True)
+            return image
+        finally:
+            await browser.close()
 
 
 async def html_to_image(html: str, css: str | None = None, width: int = 1000, selector: str = "#render-content"):
@@ -49,25 +51,27 @@ async def html_to_image(html: str, css: str | None = None, width: int = 1000, se
 
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        page = await browser.new_page(viewport={"width": width, "height": 600})
-        await page.goto(f"file://{cache_file}")
-        await page.wait_for_load_state("networkidle")
-        await page.wait_for_timeout(500)
-        height = await page.evaluate("""
-            Math.max(
-                document.body.scrollHeight,
-                document.body.offsetHeight,
-                document.documentElement.clientHeight,
-                document.documentElement.scrollHeight,
-                document.documentElement.offsetHeight
-            )
-        """)
-        await page.set_viewport_size({"width": width, "height": max(int(height), 100)})
-        target = await page.query_selector(selector)
-        image = await target.screenshot(type="png") if target else await page.screenshot(full_page=True, type="png")
-        await browser.close()
-        os.remove(cache_file)
-        return image
+        try:
+            page = await browser.new_page(viewport={"width": width, "height": 600})
+            await page.goto(f"file://{cache_file}")
+            await page.wait_for_load_state("networkidle")
+            await page.wait_for_timeout(500)
+            height = await page.evaluate("""
+                Math.max(
+                    document.body.scrollHeight,
+                    document.body.offsetHeight,
+                    document.documentElement.clientHeight,
+                    document.documentElement.scrollHeight,
+                    document.documentElement.offsetHeight
+                )
+            """)
+            await page.set_viewport_size({"width": width, "height": max(int(height), 100)})
+            target = await page.query_selector(selector)
+            image = await target.screenshot(type="png") if target else await page.screenshot(full_page=True, type="png")
+        finally:
+            await browser.close()
+    os.remove(cache_file)
+    return image
 
 
 async def playwright_render(name: str, packed_args: dict):
@@ -112,15 +116,17 @@ async def playwright_render(name: str, packed_args: dict):
 
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        page = await browser.new_page()
-        await page.goto(f"file://{cache_file}")
-        await page.wait_for_load_state("networkidle")
-        await page.wait_for_timeout(3000)
-        bytes_picture = None
-        element_handle = await page.query_selector("id=card")
-        if element_handle is not None:
-            bytes_picture = await element_handle.screenshot()
-        await browser.close()
-        os.remove(cache_file)
-        if bytes_picture:
-            return bytes_picture
+        try:
+            page = await browser.new_page()
+            await page.goto(f"file://{cache_file}")
+            await page.wait_for_load_state("networkidle")
+            await page.wait_for_timeout(3000)
+            bytes_picture = None
+            element_handle = await page.query_selector("id=card")
+            if element_handle is not None:
+                bytes_picture = await element_handle.screenshot()
+        finally:
+            await browser.close()
+    os.remove(cache_file)
+    if bytes_picture:
+        return bytes_picture
