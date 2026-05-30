@@ -541,33 +541,39 @@ class MessageDatabase:
         query_numbers: int = 20,
         before_time: int | None = None,
     ):
-        with Session(self.engine) as session:
-            if group_id is not None:
-                statement = select(Message).where(Message.group_id == group_id)
-            elif user_id:
-                statement = select(Message).where(Message.user_id == user_id)
-            else:
-                return None
-            if before_time is not None:
-                statement = statement.where(Message.time < before_time)
-            statement = statement.order_by(desc(Message.time)).limit(query_numbers)
-            results = session.exec(statement)
-            return results.all()
+        def _do():
+            with Session(self.engine) as session:
+                if group_id is not None:
+                    statement = select(Message).where(Message.group_id == group_id)
+                elif user_id:
+                    statement = select(Message).where(Message.user_id == user_id)
+                else:
+                    return None
+                if before_time is not None:
+                    statement = statement.where(Message.time < before_time)
+                statement = statement.order_by(desc(Message.time)).limit(query_numbers)
+                results = session.exec(statement)
+                return results.all()
+        return await _run_in_thread(_do)
 
     async def select_by_msg_id(self, *, msg_id: int, group_id: int | None) -> Message | None:
-        with Session(self.engine) as session:
-            statement = select(Message).where(Message.msg_id == msg_id)
-            if group_id is None:
-                statement = statement.where(Message.group_id.is_(None))  # type: ignore
-            else:
-                statement = statement.where(Message.group_id == group_id)
-            statement = statement.order_by(desc(Message.time)).limit(1)
-            return session.exec(statement).first()
+        def _do():
+            with Session(self.engine) as session:
+                statement = select(Message).where(Message.msg_id == msg_id)
+                if group_id is None:
+                    statement = statement.where(Message.group_id.is_(None))  # type: ignore
+                else:
+                    statement = statement.where(Message.group_id == group_id)
+                statement = statement.order_by(desc(Message.time)).limit(1)
+                return session.exec(statement).first()
+        return await _run_in_thread(_do)
 
     async def select_images_by_msg_time(self, msg_time: int) -> list[MessageImage]:
-        with Session(self.engine) as session:
-            statement = select(MessageImage).where(MessageImage.msg_time == msg_time).order_by(MessageImage.index)
-            return session.exec(statement).all()
+        def _do():
+            with Session(self.engine) as session:
+                statement = select(MessageImage).where(MessageImage.msg_time == msg_time).order_by(MessageImage.index)
+                return session.exec(statement).all()
+        return await _run_in_thread(_do)
 
     def load_image_files(self, image_records: list[MessageImage]) -> tuple[list[bytes], int]:
         return self._images.load_image_files(image_records)
@@ -596,11 +602,15 @@ class MessageDatabase:
 
         all_msg_times = [m.time for m in messages]
 
-        images_by_time: dict[int, list[MessageImage]] = {}
-        with Session(self.engine) as session:
-            stmt = select(MessageImage).where(col(MessageImage.msg_time).in_(all_msg_times))
-            for img in session.exec(stmt).all():
-                images_by_time.setdefault(img.msg_time, []).append(img)
+        def _load_images():
+            images_by_time: dict[int, list[MessageImage]] = {}
+            with Session(self.engine) as session:
+                stmt = select(MessageImage).where(col(MessageImage.msg_time).in_(all_msg_times))
+                for img in session.exec(stmt).all():
+                    images_by_time.setdefault(img.msg_time, []).append(img)
+            return images_by_time
+
+        images_by_time = await _run_in_thread(_load_images)
 
         for message in messages:
             msg_images = images_by_time.get(message.time, [])
@@ -661,37 +671,43 @@ class MessageDatabase:
         user_id: int | None = None,
         limit: int = 500,
     ) -> list[Message]:
-        with Session(self.engine) as session:
-            statement = select(Message).where(Message.time >= start_time).where(Message.time <= end_time)
-            if group_id is not None:
-                statement = statement.where(Message.group_id == group_id)
-                if user_id is not None:
-                    statement = statement.where(Message.user_id == user_id)
-            elif user_id is not None:
-                statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
-            statement = statement.order_by(Message.time).limit(limit)
-            return session.exec(statement).all()
+        def _do():
+            with Session(self.engine) as session:
+                statement = select(Message).where(Message.time >= start_time).where(Message.time <= end_time)
+                if group_id is not None:
+                    statement = statement.where(Message.group_id == group_id)
+                    if user_id is not None:
+                        statement = statement.where(Message.user_id == user_id)
+                elif user_id is not None:
+                    statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
+                statement = statement.order_by(Message.time).limit(limit)
+                return session.exec(statement).all()
+        return await _run_in_thread(_do)
 
     async def count_group_messages_since(self, *, group_id: int, since_time: int) -> int:
-        with Session(self.engine) as session:
-            statement = (
-                select(func.count())
-                .select_from(Message)
-                .where(Message.group_id == group_id)
-                .where(Message.time >= since_time)
-            )
-            return int(session.exec(statement).one())
+        def _do():
+            with Session(self.engine) as session:
+                statement = (
+                    select(func.count())
+                    .select_from(Message)
+                    .where(Message.group_id == group_id)
+                    .where(Message.time >= since_time)
+                )
+                return int(session.exec(statement).one())
+        return await _run_in_thread(_do)
 
     async def latest_group_role_message_time(self, *, group_id: int, role: str) -> int | None:
-        with Session(self.engine) as session:
-            statement = (
-                select(Message.time)
-                .where(Message.group_id == group_id)
-                .where(Message.role == role)
-                .order_by(desc(Message.time))
-                .limit(1)
-            )
-            return session.exec(statement).first()
+        def _do():
+            with Session(self.engine) as session:
+                statement = (
+                    select(Message.time)
+                    .where(Message.group_id == group_id)
+                    .where(Message.role == role)
+                    .order_by(desc(Message.time))
+                    .limit(1)
+                )
+                return session.exec(statement).first()
+        return await _run_in_thread(_do)
 
     @staticmethod
     def _like_pattern(value: str) -> str:
@@ -926,38 +942,9 @@ class MessageDatabase:
         sort: str = "time",
         mode: str = "keyword",
     ) -> list[Message]:
-        with Session(self.engine) as session:
-            if mode == "semantic":
-                semantic_results = self._semantic_search_messages(
-                    session,
-                    group_id=group_id,
-                    user_id=user_id,
-                    content_query=content_query,
-                    target_user_id=target_user_id,
-                    target_user_name=target_user_name,
-                    msg_id=msg_id,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit,
-                )
-                if semantic_results:
-                    return semantic_results
-
-            if self._can_use_fts(content_query):
-                keyword_results = self._search_messages_fts(
-                    session,
-                    group_id=group_id,
-                    user_id=user_id,
-                    content_query=content_query or "",
-                    target_user_id=target_user_id,
-                    target_user_name=target_user_name,
-                    msg_id=msg_id,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit,
-                    sort=sort,
-                )
-                if mode == "hybrid":
+        def _do():
+            with Session(self.engine) as session:
+                if mode == "semantic":
                     semantic_results = self._semantic_search_messages(
                         session,
                         group_id=group_id,
@@ -970,39 +957,70 @@ class MessageDatabase:
                         end_time=end_time,
                         limit=limit,
                     )
-                    seen = {message.time for message in keyword_results}
-                    return (keyword_results + [m for m in semantic_results if m.time not in seen])[
-                        : max(1, min(limit, 500))
-                    ]
-                return keyword_results
+                    if semantic_results:
+                        return semantic_results
 
-            statement = select(Message)
-            if group_id is None:
-                if user_id is None:
-                    return []
-                statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
-                if target_user_id is not None and target_user_id != user_id:
-                    return []
-            else:
-                statement = statement.where(Message.group_id == group_id)
-                if target_user_id is not None:
-                    statement = statement.where(Message.user_id == target_user_id)
+                if self._can_use_fts(content_query):
+                    keyword_results = self._search_messages_fts(
+                        session,
+                        group_id=group_id,
+                        user_id=user_id,
+                        content_query=content_query or "",
+                        target_user_id=target_user_id,
+                        target_user_name=target_user_name,
+                        msg_id=msg_id,
+                        start_time=start_time,
+                        end_time=end_time,
+                        limit=limit,
+                        sort=sort,
+                    )
+                    if mode == "hybrid":
+                        semantic_results = self._semantic_search_messages(
+                            session,
+                            group_id=group_id,
+                            user_id=user_id,
+                            content_query=content_query,
+                            target_user_id=target_user_id,
+                            target_user_name=target_user_name,
+                            msg_id=msg_id,
+                            start_time=start_time,
+                            end_time=end_time,
+                            limit=limit,
+                        )
+                        seen = {message.time for message in keyword_results}
+                        return (keyword_results + [m for m in semantic_results if m.time not in seen])[
+                            : max(1, min(limit, 500))
+                        ]
+                    return keyword_results
 
-            if content_query:
-                statement = statement.where(col(Message.content).like(self._like_pattern(content_query), escape="\\"))
-            if target_user_name:
-                statement = statement.where(
-                    col(Message.user_name).like(self._like_pattern(target_user_name), escape="\\")
-                )
-            if msg_id is not None:
-                statement = statement.where(Message.msg_id == msg_id)
-            if start_time is not None:
-                statement = statement.where(Message.time >= start_time)
-            if end_time is not None:
-                statement = statement.where(Message.time <= end_time)
+                statement = select(Message)
+                if group_id is None:
+                    if user_id is None:
+                        return []
+                    statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
+                    if target_user_id is not None and target_user_id != user_id:
+                        return []
+                else:
+                    statement = statement.where(Message.group_id == group_id)
+                    if target_user_id is not None:
+                        statement = statement.where(Message.user_id == target_user_id)
 
-            statement = statement.order_by(desc(Message.time)).limit(max(1, min(limit, 500)))
-            return session.exec(statement).all()
+                if content_query:
+                    statement = statement.where(col(Message.content).like(self._like_pattern(content_query), escape="\\"))
+                if target_user_name:
+                    statement = statement.where(
+                        col(Message.user_name).like(self._like_pattern(target_user_name), escape="\\")
+                    )
+                if msg_id is not None:
+                    statement = statement.where(Message.msg_id == msg_id)
+                if start_time is not None:
+                    statement = statement.where(Message.time >= start_time)
+                if end_time is not None:
+                    statement = statement.where(Message.time <= end_time)
+
+                statement = statement.order_by(desc(Message.time)).limit(max(1, min(limit, 500)))
+                return session.exec(statement).all()
+        return await _run_in_thread(_do)
 
     @staticmethod
     def format_for_llm(messages: list[Message]) -> str:
