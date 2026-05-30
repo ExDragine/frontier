@@ -218,17 +218,19 @@ async def aclose_http_client() -> None:
     await httpx_client.aclose()
 
 
-async def message_extract(messages: list[dict]) -> tuple[str, list[bytes], list[bytes], list[bytes]]:
-    """提取消息中的文本和媒体内容
+async def message_extract(messages: list[dict]) -> tuple[str, list, list, list]:
+    """提取消息中的文本和媒体内容。
 
     Args:
         messages: 消息段列表,每个消息段包含 type 和 data 字段
 
     Returns:
-        tuple: (文本内容, 图片列表, 语音列表, 视频列表)
+        tuple: (文本内容, image_downloaders, audio_downloaders, video_downloaders)
+        媒体项是 async callable，调用后返回 bytes 或 None。
+        调用方应在网关通过后再下载媒体，避免浪费带宽。
     """
     text_parts = []
-    images, audio, video = [], [], []
+    image_downloaders, audio_downloaders, video_downloaders = [], [], []
 
     for message in messages:
         msg_type = message.get("type")
@@ -236,100 +238,95 @@ async def message_extract(messages: list[dict]) -> tuple[str, list[bytes], list[
 
         match msg_type:
             case "text":
-                # 文本消息段
                 if text_content := msg_data.get("text"):
                     text_parts.append(text_content)
 
             case "mention":
-                # 提及消息段
                 if user_id := msg_data.get("user_id"):
                     text_parts.append(f"@{user_id}")
 
             case "mention_all":
-                # 提及全体消息段
                 text_parts.append("@全体成员")
 
             case "face":
-                # 表情消息段
                 face_id = msg_data.get("face_id", "")
                 is_large = msg_data.get("is_large", False)
                 face_type = "超级表情" if is_large else "表情"
                 text_parts.append(f"[{face_type}:{face_id}]")
 
             case "reply":
-                # 回复消息段
                 message_seq = msg_data.get("message_seq")
                 if message_seq:
                     text_parts.append(f"[回复消息:{message_seq}]")
 
             case "image":
-                # 图片消息段
                 if temp_url := msg_data.get("temp_url"):
-                    try:
-                        image_content = (await httpx_client.get(temp_url)).content
-                        images.append(image_content)
-                    except Exception as e:
-                        logger.warning(f"下载图片失败: {e}")
-                        if summary := msg_data.get("summary"):
-                            text_parts.append(f"[图片:{summary}]")
+                    async def _download_image(url=temp_url, summary=msg_data.get("summary")):
+                        try:
+                            return (await httpx_client.get(url)).content
+                        except Exception as e:
+                            logger.warning(f"下载图片失败: {e}")
+                            if summary:
+                                return None  # caller can handle
+                            return None
+                    image_downloaders.append(_download_image)
+                elif summary := msg_data.get("summary"):
+                    text_parts.append(f"[图片:{summary}]")
 
             case "record":
-                # 语音消息段
                 if temp_url := msg_data.get("temp_url"):
-                    try:
-                        audio_content = (await httpx_client.get(temp_url)).content
-                        audio.append(audio_content)
-                    except Exception as e:
-                        logger.warning(f"下载语音失败: {e}")
-                        duration = msg_data.get("duration", 0)
-                        text_parts.append(f"[语音:{duration}秒]")
+                    async def _download_audio(url=temp_url):
+                        try:
+                            return (await httpx_client.get(url)).content
+                        except Exception as e:
+                            logger.warning(f"下载语音失败: {e}")
+                            return None
+                    audio_downloaders.append(_download_audio)
+                else:
+                    duration = msg_data.get("duration", 0)
+                    text_parts.append(f"[语音:{duration}秒]")
 
             case "video":
-                # 视频消息段
                 if temp_url := msg_data.get("temp_url"):
-                    try:
-                        video_content = (await httpx_client.get(temp_url)).content
-                        video.append(video_content)
-                    except Exception as e:
-                        logger.warning(f"下载视频失败: {e}")
-                        duration = msg_data.get("duration", 0)
-                        text_parts.append(f"[视频:{duration}秒]")
+                    async def _download_video(url=temp_url):
+                        try:
+                            return (await httpx_client.get(url)).content
+                        except Exception as e:
+                            logger.warning(f"下载视频失败: {e}")
+                            return None
+                    video_downloaders.append(_download_video)
+                else:
+                    duration = msg_data.get("duration", 0)
+                    text_parts.append(f"[视频:{duration}秒]")
 
             case "file":
-                # 文件消息段
                 file_name = msg_data.get("file_name", "")
                 file_size = msg_data.get("file_size", 0)
                 text_parts.append(f"[文件:{file_name} ({file_size}字节)]")
 
             case "forward":
-                # 合并转发消息段
                 title = msg_data.get("title", "")
                 summary = msg_data.get("summary", "")
                 text_parts.append(f"[合并转发:{title} - {summary}]")
 
             case "market_face":
-                # 市场表情消息段
                 summary = msg_data.get("summary", "")
                 text_parts.append(f"[市场表情:{summary}]")
 
             case "light_app":
-                # 小程序消息段
                 app_name = msg_data.get("app_name", "")
                 text_parts.append(f"[小程序:{app_name}]")
 
             case "xml":
-                # XML消息段
                 service_id = msg_data.get("service_id", "")
                 text_parts.append(f"[XML消息:{service_id}]")
 
             case _:
-                # 未知类型
                 logger.debug(f"未处理的消息类型: {msg_type}")
 
-    # 合并所有文本部分
     text = "".join(text_parts) if text_parts else ""
 
-    return text, images, audio, video
+    return text, image_downloaders, audio_downloaders, video_downloaders
 
 
 async def send_artifacts(artifacts):

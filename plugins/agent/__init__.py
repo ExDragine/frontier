@@ -2,6 +2,7 @@ import base64
 import json
 import re
 import time
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +29,7 @@ from utils.message import (
 )
 from utils.min_heap import RepeatMessageHeap
 from utils.reply_context import build_reply_context, reply_seq_from_segments
+from utils.user_profile import get_profile_manager
 
 require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
@@ -131,6 +133,18 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
             logger.info("Agent chose not to reply to the latest message.")
             return False
 
+    # ── 异步画像提取（不阻塞回复）──
+    try:
+        assistant_text = outgoing_message_content(response["messages"][-1]) if response.get("messages") else ""
+        if assistant_text and context.text:
+            asyncio.create_task(
+                get_profile_manager().maybe_extract_from_interaction(
+                    int(context.user_id), context.group_id, context.text, assistant_text
+                )
+            )
+    except Exception:
+        pass  # 画像提取失败不影响主流程
+
     artifacts: list[UniMessage] | None = result.get("uni_messages", [])
     if artifacts:
         logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
@@ -180,25 +194,32 @@ async def on_shutdown():
 async def handle_common(event: MessageEvent):  # noqa: C901
     if EnvConfig.AGENT_MODULE_ENABLED is False:
         await common.finish(f"{EnvConfig.BOT_NAME}飞升了,暂时不可用")
+
     bot = get_bot()
     user_id = event.get_user_id()
     user_name = event.data.sender.nickname
     event_id = event.data.message_seq
-    text, images, _audio, videos = await message_extract(event.data.segments)
     group_id = event.data.group.group_id if event.data.group else None
+
+    # ── Phase 1: 快速提取文本（不下载媒体）──
+    text, image_downloaders, audio_downloaders, video_downloaders = await message_extract(event.data.segments)
+
     quoted_images: list[bytes] = []
     if reply_seq := reply_seq_from_segments(event.data.segments):
         quote_text, quoted_images = await build_reply_context(bot, event, reply_seq, group_id, messages_db)
         if quote_text:
             text += quote_text
-    if videos:
-        text = f"{text}\n{' '.join('[视频]' for _ in videos)}".strip()
+    if video_downloaders:
+        text = f"{text}\n{' '.join('[视频]' for _ in video_downloaders)}".strip()
     if not text:
         if not event.is_tome():
             await common.finish()
         else:
             text = ""
+
     msg_time = int(time.time() * 1000)
+
+    # ── Phase 2: 存储消息文本 + 快速网关检查 ──
     await messages_db.insert(
         time=msg_time,
         msg_id=event_id,
@@ -208,11 +229,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         role="user" if user_id != str(event.self_id) else "assistant",
         content=text,
     )
-    if images and EnvConfig.IMAGE_ENABLED:
-        try:
-            await messages_db.insert_images(msg_time=msg_time, user_id=int(user_id), group_id=group_id, images=images)
-        except Exception as e:
-            logger.warning(f"⚠️ 图片保存失败（不影响主流程）: {e}")
+
     messages = await messages_db.prepare_message(
         int(user_id),
         group_id,
@@ -220,18 +237,19 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         before_time=msg_time,
     )
 
-    # Bot 自己的消息不参与复读检查
-    # if user_id == str(event.self_id):
-    #     await common.finish()
-    # 复读机检查
-    # gid = group_id or 0
-    # if text and message_heap.add(gid, text):
-    #     logger.info(f"🔁 触发复读：群{gid} 消息「{text[:20]}」")
-    #     await UniMessage.text(text).send()
-    # await common.finish()
-
     if not await message_gateway(event, messages):
         await common.finish()
+
+    # ── Phase 3: 网关通过后才下载媒体 ──
+    images, _audio, videos = await _download_media(image_downloaders, audio_downloaders, video_downloaders)
+
+    if images and EnvConfig.IMAGE_ENABLED:
+        try:
+            await messages_db.insert_images(msg_time=msg_time, user_id=int(user_id), group_id=group_id, images=images)
+        except Exception as e:
+            logger.warning(f"⚠️ 图片保存失败（不影响主流程）: {e}")
+
+    # ── Phase 4: 内容安全 + Agent 处理 ──
     if EnvConfig.CONTENT_CHECK_ENABLED:
         risk_check = await message_check(text, images)
     else:
@@ -243,7 +261,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                     group_id=group_id, message_seq=event_id, reaction="32", is_add=True
                 )
         case "Controversial":
-            # 使用表情回复功能
             if group_id:
                 await bot.send_group_message_reaction(
                     group_id=group_id, message_seq=event_id, reaction="212", is_add=True
@@ -269,14 +286,9 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     )
     thread_id = _agent_thread_id(user_id, group_id)
     try:
-        # if group_id:
-        #     await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=True)
         agent_queue.job_timeout_seconds = EnvConfig.AGENT_JOB_TIMEOUT_SECONDS
         replied = await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
         if group_id:
-            # await bot.send_group_message_reaction(
-            #     group_id=group_id, message_seq=event_id, reaction="351", is_add=False
-            # )
             if not replied:
                 if not group_id:
                     return
@@ -298,3 +310,31 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     except AgentQueueFullError:
         logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
         await common.finish("前面还有请求在处理，稍等一下")
+
+
+async def _download_media(
+    image_tasks: list, audio_tasks: list, video_tasks: list
+) -> tuple[list[bytes], list[bytes], list[bytes]]:
+    """并行下载所有媒体，单个下载失败不影响其他。"""
+    images, audio, videos = [], [], []
+
+    async def _download_one(getter, collector):
+        try:
+            data = await getter()
+            if data:
+                collector.append(data)
+        except Exception:
+            pass  # 单个媒体下载失败不阻塞整体
+
+    downloaders = []
+    for getter in image_tasks:
+        downloaders.append(_download_one(getter, images))
+    for getter in audio_tasks:
+        downloaders.append(_download_one(getter, audio))
+    for getter in video_tasks:
+        downloaders.append(_download_one(getter, videos))
+
+    if downloaders:
+        await asyncio.gather(*downloaders, return_exceptions=True)
+
+    return images, audio, videos
