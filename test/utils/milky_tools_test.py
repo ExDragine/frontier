@@ -8,42 +8,53 @@ import pytest
 # ── is_local ──────────────────────────────────────────────────────────────────
 
 
-def test_is_local_finds_file_on_real_filesystem(tmp_path):
-    from utils.milky_tools import is_local
-
-    f = tmp_path / "a.txt"
-    f.write_text("hello")
-
-    assert is_local(str(f)) is True
-
-
-def test_is_local_finds_file_in_root_dir(tmp_path):
+def test_is_local_finds_file_with_root_dir(tmp_path):
     from utils.milky_tools import is_local
 
     (tmp_path / "report.pdf").write_text("pdf")
 
-    assert is_local(str(tmp_path / "report.pdf")) is True
     assert is_local("/report.pdf", root_dir=str(tmp_path)) is True
+
+
+def test_is_local_finds_file_with_relative_path(tmp_path, monkeypatch):
+    from utils.milky_tools import is_local
+
+    (tmp_path / "a.txt").write_text("hello")
+    monkeypatch.chdir(tmp_path)
+
+    assert is_local("a.txt") is True
 
 
 def test_is_local_returns_false_when_not_found(tmp_path):
     from utils.milky_tools import is_local
 
-    assert is_local("/nope.txt") is False
     assert is_local("/nope.txt", root_dir=str(tmp_path)) is False
 
 
-# ── resolve_local_path ───────────────────────────────────────────────────────
-
-
-def test_resolve_local_path_returns_real_path_for_existing_file(tmp_path):
-    from utils.milky_tools import resolve_local_path
+def test_is_local_rejects_absolute_path_without_root_dir(tmp_path):
+    from utils.milky_tools import is_local
 
     f = tmp_path / "a.txt"
     f.write_text("hello")
 
-    result = resolve_local_path(str(f))
-    assert result == f
+    # Absolute paths are NOT allowed without a root_dir sandbox
+    assert is_local(str(f)) is False
+
+
+def test_is_local_blocks_path_traversal(tmp_path):
+    from utils.milky_tools import is_local
+
+    root = tmp_path / "sandbox"
+    root.mkdir()
+    (root / "legal.txt").write_text("ok")
+    (tmp_path / "secret.txt").write_text("secret")
+
+    assert is_local("/legal.txt", root_dir=str(root)) is True
+    assert is_local("../secret.txt", root_dir=str(root)) is False
+    assert is_local("../../secret.txt", root_dir=str(root)) is False
+
+
+# ── resolve_local_path ───────────────────────────────────────────────────────
 
 
 def test_resolve_local_path_resolves_against_root_dir(tmp_path):
@@ -52,38 +63,79 @@ def test_resolve_local_path_resolves_against_root_dir(tmp_path):
     (tmp_path / "report.pdf").write_text("pdf")
 
     result = resolve_local_path("/report.pdf", root_dir=str(tmp_path))
-    assert result == tmp_path / "report.pdf"
+    assert result == (tmp_path / "report.pdf").resolve()
+
+
+def test_resolve_local_path_resolves_relative_path(tmp_path, monkeypatch):
+    from utils.milky_tools import resolve_local_path
+
+    (tmp_path / "report.pdf").write_text("pdf")
+    monkeypatch.chdir(tmp_path)
+
+    result = resolve_local_path("report.pdf")
+    assert result == (tmp_path / "report.pdf").resolve()
 
 
 def test_resolve_local_path_returns_none_when_not_found(tmp_path):
     from utils.milky_tools import resolve_local_path
 
-    assert resolve_local_path("/nope.txt") is None
     assert resolve_local_path("/nope.txt", root_dir=str(tmp_path)) is None
 
 
-def test_resolve_local_path_prefers_real_filesystem_over_root_dir(tmp_path):
+def test_resolve_local_path_blocks_path_traversal(tmp_path):
     from utils.milky_tools import resolve_local_path
 
+    root = tmp_path / "sandbox"
+    root.mkdir()
+    (root / "legal.txt").write_text("ok")
+    (tmp_path / "secret.txt").write_text("secret")
+
+    assert resolve_local_path("/legal.txt", root_dir=str(root)) is not None
+    assert resolve_local_path("../secret.txt", root_dir=str(root)) is None
+    assert resolve_local_path("../../etc/passwd", root_dir=str(root)) is None
+
+
+def test_resolve_local_path_rejects_absolute_path_without_root_dir(tmp_path):
+    from utils.milky_tools import resolve_local_path
+
+    f = tmp_path / "real.txt"
+    f.write_text("real")
+
+    assert resolve_local_path(str(f)) is None
+
+
+def test_resolve_local_path_root_dir_takes_priority_over_absolute_path(tmp_path):
+    from utils.milky_tools import resolve_local_path
+
+    # File outside the sandbox — must NOT be accessible when root_dir is set
     real_file = tmp_path / "real.txt"
     real_file.write_text("real")
-    (tmp_path / "shadow").mkdir()
-    (tmp_path / "shadow" / "real.txt").write_text("shadow")
 
-    result = resolve_local_path(str(real_file), root_dir=str(tmp_path / "shadow"))
-    assert result == real_file
+    sandbox = tmp_path / "shadow"
+    sandbox.mkdir()
+
+    # When root_dir is provided, the path is always resolved inside the sandbox.
+    # An absolute path outside the sandbox does NOT exist inside, so return None.
+    result = resolve_local_path(str(real_file), root_dir=str(sandbox))
+    assert result is None
+
+    # Only files within the sandbox are accessible
+    (sandbox / "real.txt").write_text("shadow")
+    result = resolve_local_path("/real.txt", root_dir=str(sandbox))
+    assert result == (sandbox / "real.txt").resolve()
+    assert result.read_text() == "shadow"
 
 
 # ── binary_kwargs_from_uri ───────────────────────────────────────────────────
 
 
-def test_binary_kwargs_from_uri_resolves_local_file(tmp_path):
+def test_binary_kwargs_from_uri_resolves_local_file(tmp_path, monkeypatch):
     from utils.milky_tools import binary_kwargs_from_uri
 
-    f = tmp_path / "a.txt"
-    f.write_text("hello")
+    (tmp_path / "a.txt").write_text("hello")
+    monkeypatch.chdir(tmp_path)
 
-    assert binary_kwargs_from_uri(str(f)) == {"path": str(f)}
+    assert binary_kwargs_from_uri("a.txt") == {"path": str(Path("a.txt").resolve())}
 
 
 def test_binary_kwargs_from_uri_resolves_from_root_dir(tmp_path):

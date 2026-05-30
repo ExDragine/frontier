@@ -8,22 +8,54 @@ SCENES = {"friend", "group", "temp"}
 
 
 def is_local(source: str, root_dir: str | None = None) -> bool:
-    if Path(source).is_file():
-        return True
+    """Check if *source* points to an existing file.
+
+    When *root_dir* is given, *source* is resolved strictly inside that
+    directory — path-traversal attempts (``..``, symlinks that escape, etc.)
+    are rejected.  Absolute paths without *root_dir* are also rejected for
+    safety, since they would otherwise allow unrestricted filesystem access.
+    """
     if root_dir:
+        root = Path(root_dir).resolve()
         normalized = source.lstrip("/")
-        return (Path(root_dir) / normalized).is_file()
-    return False
+        candidate = (root / normalized).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return False
+        return candidate.is_file()
+
+    path = Path(source)
+    if path.is_absolute():
+        return False
+    return path.resolve().is_file()
 
 
 def resolve_local_path(source: str, root_dir: str | None = None) -> Path | None:
-    if Path(source).is_file():
-        return Path(source)
+    """Resolve *source* to an existing :class:`Path`.
+
+    When *root_dir* is given, *source* MUST stay inside that sandbox —
+    otherwise ``None`` is returned.  Absolute paths without *root_dir* are
+    rejected for the same reason.
+    """
     if root_dir:
+        root = Path(root_dir).resolve()
         normalized = source.lstrip("/")
-        candidate = Path(root_dir) / normalized
+        candidate = (root / normalized).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return None
         if candidate.is_file():
             return candidate
+        return None
+
+    path = Path(source)
+    if path.is_absolute():
+        return None
+    resolved = path.resolve()
+    if resolved.is_file():
+        return resolved
     return None
 
 
