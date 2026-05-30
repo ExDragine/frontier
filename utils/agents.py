@@ -412,6 +412,18 @@ class FrontierCognitive:
         backend = _build_agent_backend(working_dir, workspace_key)
         workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
         system_prompt = self.load_system_prompt()
+
+        # ── 注入长期用户画像到 system prompt ──
+        try:
+            from utils.user_profile import get_profile_manager
+
+            profile_context = get_profile_manager().build_context_injection(
+                int(user_id) if user_id else 0, group_id
+            )
+            if profile_context:
+                system_prompt = f"{system_prompt}\n\n{profile_context}"
+        except Exception:
+            pass  # 画像注入失败不影响主流程
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
