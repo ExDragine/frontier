@@ -43,6 +43,10 @@ SUMMARY_MIN_MESSAGES = 20                  # 至少 20 条未读消息才摘要
 ACTIVITY_SPIKE_MULTIPLIER = 5.0            # 消息量超过平均值 5 倍视为异常
 UNANSWERED_QUESTION_HOURS = 1              # 1 小时内的未回答问题
 
+# 深夜静默时段（服务端本地时间），不发送主动消息
+QUIET_HOURS_START = 23  # 23:00
+QUIET_HOURS_END = 8     # 08:00
+
 PROACTIVE_SYSTEM_PROMPT = (
     "你是一个友好的群聊助手，名叫{name}。你现在要发送一条主动消息给群成员。\n"
     "消息应该自然、简短、有用，不要显得像机器人通知。\n"
@@ -83,7 +87,15 @@ class ProactiveEngine:
     # ── 公开 API ──────────────────────────────────────────────────────────
 
     async def evaluate_and_act(self, group_id: int) -> bool:
-        """评估单个群组的所有主动场景，执行第一个符合条件的。"""
+        """评估单个群组的所有主动场景，执行第一个符合条件的。
+
+        仅在测试群中生效，深夜时段静默。
+        """
+        if group_id not in set(EnvConfig.TEST_GROUP_ID):
+            return False
+        if self._in_quiet_hours():
+            return False
+
         snapshot = await self._snapshot(group_id)
         if snapshot is None:
             return False
@@ -109,8 +121,13 @@ class ProactiveEngine:
         return False
 
     async def evaluate_all_groups(self) -> dict[int, str]:
-        """评估所有已配置群组，返回 {group_id: triggered_scenario}。"""
-        from utils.configs import EnvConfig
+        """评估所有测试群组，返回 {group_id: triggered_scenario}。
+
+        仅在 TEST_GROUP_ID 中配置的群组生效，深夜静默。
+        """
+        if self._in_quiet_hours():
+            logger.debug("主动引擎：深夜静默时段，跳过评估")
+            return {}
 
         results: dict[int, str] = {}
         groups = set(EnvConfig.TEST_GROUP_ID)
@@ -271,6 +288,13 @@ class ProactiveEngine:
         return f"{base}请发送一条友好的问候。"
 
     # ── 频率控制 ──────────────────────────────────────────────────────────
+
+    def _in_quiet_hours(self) -> bool:
+        """深夜静默：23:00-08:00 不出声。"""
+        from datetime import datetime, timezone
+
+        hour = datetime.now(tz=timezone.utc).hour
+        return hour >= QUIET_HOURS_START or hour < QUIET_HOURS_END
 
     def _can_act(self, group_id: int, scenario: str) -> bool:
         key = f"{group_id}:{scenario}"
