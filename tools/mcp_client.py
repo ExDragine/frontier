@@ -29,9 +29,10 @@ _MCP_JSON_SCHEMA = {
             "command": {"type": "string", "minLength": 1},
             "args": {"type": "array", "items": {"type": "string"}},
             "env": {"type": "object"},
-            "transport": {"type": "string", "enum": ["stdio", "sse", "streamable_http"]},
+            "url": {"type": "string", "format": "uri"},
+            "transport": {"type": "string", "enum": ["stdio", "sse", "streamable_http", "http"]},
         },
-        "required": ["command", "transport"],
+        "required": ["transport"],
         "additionalProperties": False,
     },
 }
@@ -47,6 +48,14 @@ def _validate_mcp_config(description: dict) -> None:
         command = entry.get("command", "")
         args = entry.get("args", [])
 
+        # HTTP-based MCP servers use url instead of command — skip cmd validation
+        if not command:
+            if not entry.get("url"):
+                raise ValueError(
+                    f"MCP server '{name}': 必须提供 'command' (stdio/sse) 或 'url' (http)"
+                )
+            continue
+
         if command not in _ALLOWED_COMMANDS:
             raise ValueError(
                 f"MCP server '{name}': 不允许的命令 '{command}'。仅允许: {', '.join(sorted(_ALLOWED_COMMANDS))}"
@@ -61,7 +70,13 @@ def _validate_mcp_config(description: dict) -> None:
 
 
 def _check_mcp_json_file_permissions(path: str) -> None:
-    """确保 mcp.json 文件权限安全（仅 owner 可写）。"""
+    """确保 mcp.json 文件权限安全（仅 owner 可写）。
+
+    Windows 下 os.stat().st_mode 不反映 Unix 权限语义，跳过检查。
+    """
+    if os.name == "nt":
+        return
+
     try:
         mode = os.stat(path).st_mode
         if mode & (stat.S_IWGRP | stat.S_IWOTH):
