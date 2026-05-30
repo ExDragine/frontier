@@ -78,6 +78,15 @@ class AgentQueueManager:
             state.last_used = time.monotonic()
             try:
                 result = await asyncio.wait_for(job.run(), timeout=self.job_timeout_seconds)
+            except asyncio.CancelledError:
+                # Python 3.9+ CancelledError is NOT an Exception subclass.
+                # We must resolve the pending future before re-raising, or
+                # the caller that awaits submit() will hang forever.
+                if not job.future.done():
+                    job.future.set_exception(
+                        RuntimeError(f"Agent queue worker for {key} cancelled during job execution")
+                    )
+                raise
             except Exception as exc:
                 if not job.future.done():
                     job.future.set_exception(exc)
@@ -88,14 +97,31 @@ class AgentQueueManager:
                 state.queue.task_done()
 
     async def aclose(self) -> None:
+        """Shut down all worker tasks, resolving any pending futures first."""
         async with self._states_lock:
-            tasks = [state.worker_task for state in self._states.values() if state.worker_task is not None]
+            tasks = [(key, state) for key, state in self._states.items() if state.worker_task is not None]
             self._states.clear()
-        for task in tasks:
+
+        # Resolve any pending futures to prevent callers from hanging
+        for _key, state in tasks:
+            while not state.queue.empty():
+                try:
+                    job = state.queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                if not job.future.done():
+                    job.future.set_exception(
+                        RuntimeError("Agent queue shutting down — job discarded")
+                    )
+                state.queue.task_done()
+
+        # Cancel workers with timeout guard
+        worker_tasks = [t for _, state in tasks if (t := state.worker_task) is not None]
+        for task in worker_tasks:
             task.cancel()
-        for task in tasks:
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+        for task in worker_tasks:
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(task, timeout=10.0)
 
     def queue_size(self, thread_id: object) -> int:
         state = self._states.get(str(thread_id))
