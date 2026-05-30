@@ -98,6 +98,51 @@ class EnvConfig:
     DASHBOARD_JWT_SECRET: str = dashboard.get("jwt_secret", "frontier-dashboard-default-secret")
     DASHBOARD_JWT_EXPIRE_HOURS: int = int(dashboard.get("jwt_expire_hours", 24))
 
+    # 启动时强制验证：拒绝默认 JWT secret。
+    # 使用模块级缓存避免每次 import 都生成不同的临时密钥。
+    if "frontier-dashboard-default-secret" == DASHBOARD_JWT_SECRET:
+        import secrets
+        import sys
+
+        # 写入一个运行时缓存文件，同一进程多次 import 不会重新生成
+        _cache_dir = os.path.join(os.getcwd(), "cache")
+        os.makedirs(_cache_dir, exist_ok=True)
+        _secret_cache = os.path.join(_cache_dir, ".runtime_jwt_secret")
+        if os.path.exists(_secret_cache):
+            with open(_secret_cache) as _f:
+                DASHBOARD_JWT_SECRET = _f.read().strip()
+        else:
+            generated = secrets.token_hex(32)
+            with open(_secret_cache, "w") as _f:
+                _f.write(generated)
+            DASHBOARD_JWT_SECRET = generated
+            msg = (
+                f"\n{'='*60}\n"
+                f"  ⚠️  安全警告：Dashboard JWT secret 使用默认值！\n"
+                f"  请在 env.toml 的 [dashboard] 段设置 jwt_secret。\n"
+                f"  已为本次运行生成临时密钥: {generated}\n"
+                f"  将以下内容添加到 env.toml 以避免下次启动再次生成:\n"
+                f"\n"
+                f"  [dashboard]\n"
+                f"  jwt_secret = \"{generated}\"\n"
+                f"{'='*60}\n"
+            )
+            print(msg, file=sys.stderr)
+
+    if DASHBOARD_PASSWORD == "admin":
+        import sys
+
+        msg = (
+            f"\n{'='*60}\n"
+            f"  ⚠️  安全警告：Dashboard 密码使用默认值 \"admin\"！\n"
+            f"  请在 env.toml 的 [dashboard] 段设置 password。\n"
+            f"  密码应使用 bcrypt 哈希存储。\n"
+            f"  生成哈希: python -c 'import bcrypt; print(bcrypt.hashpw(\n"
+            f"      b\"你的密码\", bcrypt.gensalt()).decode())'\n"
+            f"{'='*60}\n"
+        )
+        print(msg, file=sys.stderr)
+
     IMAGE_ENABLED: bool = image_memory.get("enabled", True)
     IMAGE_TTL_DAYS: int = int(image_memory.get("ttl_days", 30))
     IMAGE_AUTO_CLEANUP: bool = image_memory.get("auto_cleanup", True)
