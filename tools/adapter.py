@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
 from nonebot import get_bot, require
@@ -9,6 +11,14 @@ require("nonebot_plugin_alconna")
 from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 
+def _resolve_message_local_path(source: str, workspace_dir: str | None):
+    path = resolve_local_path(source, workspace_dir)
+    if path is not None or workspace_dir is not None:
+        return path
+    direct_path = Path(source)
+    return direct_path if direct_path.is_file() else None
+
+
 @tool(response_format="content_and_artifact")
 async def send_image(source: str, config: RunnableConfig = None) -> tuple[str, UniMessage]:
     """发送图片工具，支持本地路径或远程 URL
@@ -16,7 +26,7 @@ async def send_image(source: str, config: RunnableConfig = None) -> tuple[str, U
         source: 本地文件的绝对路径（如 /tmp/photo.png）或远程 URL
     """
     workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
-    if path := resolve_local_path(source, workspace_dir):
+    if path := _resolve_message_local_path(source, workspace_dir):
         return "构建了一个图片消息", UniMessage.image(path=path)
     validate_url(source)
     return "构建了一个图片消息", UniMessage.image(url=source)
@@ -29,7 +39,7 @@ async def send_audio(source: str, config: RunnableConfig = None) -> tuple[str, U
         source: 本地文件的绝对路径（如 /tmp/music.mp3）或远程 URL
     """
     workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
-    if path := resolve_local_path(source, workspace_dir):
+    if path := _resolve_message_local_path(source, workspace_dir):
         return "构建了一个音频消息", UniMessage.audio(path=path)
     validate_url(source)
     return "构建了一个音频消息", UniMessage.audio(url=source)
@@ -42,7 +52,7 @@ async def send_voice(source: str, config: RunnableConfig = None) -> tuple[str, U
         source: 本地文件的绝对路径（如 /tmp/voice.wav）或远程 URL
     """
     workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
-    if path := resolve_local_path(source, workspace_dir):
+    if path := _resolve_message_local_path(source, workspace_dir):
         return "构建了一个语音消息", UniMessage.voice(path=path)
     validate_url(source)
     return "构建了一个语音消息", UniMessage.voice(url=source)
@@ -55,7 +65,7 @@ async def send_video(source: str, config: RunnableConfig = None) -> tuple[str, U
         source: 本地文件的绝对路径（如 /tmp/clip.mp4）或远程 URL
     """
     workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
-    if path := resolve_local_path(source, workspace_dir):
+    if path := _resolve_message_local_path(source, workspace_dir):
         return "构建了一个视频消息", UniMessage.video(path=path)
     validate_url(source)
     return "构建了一个视频消息", UniMessage.video(url=source)
@@ -78,7 +88,7 @@ async def send_file(path_or_url: str, name: str, config: RunnableConfig = None) 
         name: 文件显示名称（含扩展名，如 report.pdf）
     """
     workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
-    if path := resolve_local_path(path_or_url, workspace_dir):
+    if path := _resolve_message_local_path(path_or_url, workspace_dir):
         return f"构建了一个文件消息：{name}", UniMessage.file(path=path, name=name)
     validate_url(path_or_url)
     return f"构建了一个文件消息：{name}", UniMessage.file(url=path_or_url, name=name)

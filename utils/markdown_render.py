@@ -148,7 +148,9 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
 
         return img
     finally:
-        await page.close()
+        close_page = getattr(page, "close", None)
+        if close_page is not None:
+            await close_page()
         try:
             os.remove(temp_html_path)
         except Exception as e:

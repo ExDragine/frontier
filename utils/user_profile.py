@@ -10,11 +10,10 @@
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from nonebot import logger
 from pydantic import BaseModel
-from sqlmodel import Column, Field, JSON, Session, SQLModel, select
+from sqlmodel import JSON, Column, Field, Session, SQLModel, select
 
 from utils.database import get_engine
 
@@ -66,7 +65,7 @@ class ProfileManager:
         cache_key = f"{user_id}:{gid}"
         if cache_key in self._cache:
             return self._cache[cache_key]
-        with Session(self._engine) as session:
+        with Session(self._engine, expire_on_commit=False) as session:
             stmt = select(UserProfile).where(
                 UserProfile.user_id == user_id,
                 UserProfile.group_id == gid,
@@ -78,7 +77,7 @@ class ProfileManager:
     def upsert_profile(self, profile: UserProfile) -> None:
         profile.updated_at = int(time.time())
         cache_key = f"{profile.user_id}:{profile.group_id}"
-        with Session(self._engine) as session:
+        with Session(self._engine, expire_on_commit=False) as session:
             existing = session.exec(
                 select(UserProfile).where(
                     UserProfile.user_id == profile.user_id,
@@ -149,17 +148,23 @@ class ProfileManager:
         assistant_response: str,
     ) -> None:
         gid = group_id or 0
-        profile = self.get_profile(user_id, group_id)
-        if profile and profile.total_interactions % 10 != 0:
+        profile = self.get_profile(user_id, group_id) or UserProfile(user_id=user_id, group_id=gid)
+        profile.total_interactions += 1
+        profile.last_interaction_at = int(time.time() * 1000)
+
+        should_extract = profile.total_interactions == 1 or profile.total_interactions % 10 == 0
+        if not should_extract:
+            self.upsert_profile(profile)
             return
         try:
             result = await self._extract_with_llm(user_message, assistant_response)
         except Exception as exc:
             logger.debug(f"画像提取失败 user={user_id}: {exc}")
+            self.upsert_profile(profile)
             return
         if result is None:
+            self.upsert_profile(profile)
             return
-        profile = profile or UserProfile(user_id=user_id, group_id=gid)
         if result.nickname:
             profile.nickname_preference = result.nickname
         if result.language_style:

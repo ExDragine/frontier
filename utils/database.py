@@ -23,6 +23,18 @@ logger = logging.getLogger(__name__)
 async def _run_in_thread(func, *args, **kwargs):
     """将同步数据库操作放入线程池执行，避免阻塞 asyncio 事件循环。"""
     return await asyncio.to_thread(func, *args, **kwargs)
+
+
+def _engine_uses_memory_database(engine: Engine) -> bool:
+    return engine.url.get_backend_name() == "sqlite" and _is_memory_database(str(engine.url))
+
+
+async def _run_database(engine: Engine, func, *args, **kwargs):
+    if _engine_uses_memory_database(engine):
+        return func(*args, **kwargs)
+    return await _run_in_thread(func, *args, **kwargs)
+
+
 _MESSAGE_VECTOR_INDEX = None
 
 
@@ -395,13 +407,13 @@ class UserDatabase:
                 user = User(id=user_id, name=user_name, model=custom_model)
                 session.add(user)
                 session.commit()
-        await _run_in_thread(_do)
+        await _run_database(self.engine, _do)
 
     async def select(self, user_id: int):
         def _do():
             with Session(self.engine) as session:
                 return session.get(User, user_id)
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)
 
     async def update(self, user_id):
         def _do():
@@ -411,7 +423,7 @@ class UserDatabase:
                     user.name = ""
                     session.add(user)
                     session.commit()
-        await _run_in_thread(_do)
+        await _run_database(self.engine, _do)
 
     async def delete(self, user_id):
         def _do():
@@ -420,7 +432,7 @@ class UserDatabase:
                 if user:
                     session.delete(user)
                     session.commit()
-        await _run_in_thread(_do)
+        await _run_database(self.engine, _do)
 
 
 class _MessageImageManager:
@@ -465,7 +477,7 @@ class _MessageImageManager:
                     paths.append(file_path)
                 session.commit()
             return paths
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)
 
     async def cleanup_expired_images(self) -> int:
         def _do():
@@ -481,7 +493,7 @@ class _MessageImageManager:
                     cleaned += 1
                 session.commit()
             return cleaned
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)
 
     @staticmethod
     def load_image_files(image_records: list[MessageImage]) -> tuple[list[bytes], int]:
@@ -532,7 +544,7 @@ class MessageDatabase:
                 session.add(message)
                 session.commit()
                 self._add_message_to_vector_index(message)
-        await _run_in_thread(_do)
+        await _run_database(self.engine, _do)
 
     async def select(
         self,
@@ -554,7 +566,7 @@ class MessageDatabase:
                 statement = statement.order_by(desc(Message.time)).limit(query_numbers)
                 results = session.exec(statement)
                 return results.all()
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)
 
     async def select_by_msg_id(self, *, msg_id: int, group_id: int | None) -> Message | None:
         def _do():
@@ -566,14 +578,14 @@ class MessageDatabase:
                     statement = statement.where(Message.group_id == group_id)
                 statement = statement.order_by(desc(Message.time)).limit(1)
                 return session.exec(statement).first()
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)
 
     async def select_images_by_msg_time(self, msg_time: int) -> list[MessageImage]:
         def _do():
             with Session(self.engine) as session:
                 statement = select(MessageImage).where(MessageImage.msg_time == msg_time).order_by(MessageImage.index)
                 return session.exec(statement).all()
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)
 
     def load_image_files(self, image_records: list[MessageImage]) -> tuple[list[bytes], int]:
         return self._images.load_image_files(image_records)
@@ -610,7 +622,7 @@ class MessageDatabase:
                     images_by_time.setdefault(img.msg_time, []).append(img)
             return images_by_time
 
-        images_by_time = await _run_in_thread(_load_images)
+        images_by_time = await _run_database(self.engine, _load_images)
 
         for message in messages:
             msg_images = images_by_time.get(message.time, [])
@@ -658,9 +670,11 @@ class MessageDatabase:
         return messages_seq
 
     async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
+        self._images.engine = self.engine
         return await self._images.insert_images(msg_time, user_id, group_id, images)
 
     async def cleanup_expired_images(self) -> int:
+        self._images.engine = self.engine
         return await self._images.cleanup_expired_images()
 
     async def select_by_time_range(
@@ -671,7 +685,7 @@ class MessageDatabase:
         user_id: int | None = None,
         limit: int = 500,
     ) -> list[Message]:
-        def _do():
+        def _do():  # noqa: C901
             with Session(self.engine) as session:
                 statement = select(Message).where(Message.time >= start_time).where(Message.time <= end_time)
                 if group_id is not None:
@@ -682,7 +696,7 @@ class MessageDatabase:
                     statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
                 statement = statement.order_by(Message.time).limit(limit)
                 return session.exec(statement).all()
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)
 
     async def count_group_messages_since(self, *, group_id: int, since_time: int) -> int:
         def _do():
@@ -694,7 +708,7 @@ class MessageDatabase:
                     .where(Message.time >= since_time)
                 )
                 return int(session.exec(statement).one())
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)
 
     async def latest_group_role_message_time(self, *, group_id: int, role: str) -> int | None:
         def _do():
@@ -707,7 +721,7 @@ class MessageDatabase:
                     .limit(1)
                 )
                 return session.exec(statement).first()
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)
 
     @staticmethod
     def _like_pattern(value: str) -> str:
@@ -942,7 +956,7 @@ class MessageDatabase:
         sort: str = "time",
         mode: str = "keyword",
     ) -> list[Message]:
-        def _do():
+        def _do():  # noqa: C901
             with Session(self.engine) as session:
                 if mode == "semantic":
                     semantic_results = self._semantic_search_messages(
@@ -1020,7 +1034,7 @@ class MessageDatabase:
 
                 statement = statement.order_by(desc(Message.time)).limit(max(1, min(limit, 500)))
                 return session.exec(statement).all()
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)
 
     @staticmethod
     def format_for_llm(messages: list[Message]) -> str:
@@ -1049,7 +1063,7 @@ class EventDatabase:
                 target = TimeStamp(name=name, id=id)
                 session.add(target)
                 session.commit()
-        await _run_in_thread(_do)
+        await _run_database(self.engine, _do)
 
     async def delete(self, name):
         def _do():
@@ -1058,7 +1072,7 @@ class EventDatabase:
                 if target:
                     session.delete(target)
                     session.commit()
-        await _run_in_thread(_do)
+        await _run_database(self.engine, _do)
 
     async def update(self, name, id):
         def _do():
@@ -1068,7 +1082,7 @@ class EventDatabase:
                     target.id = id
                     session.add(target)
                     session.commit()
-        await _run_in_thread(_do)
+        await _run_database(self.engine, _do)
 
     async def select(self, name):
         def _do():
@@ -1076,4 +1090,4 @@ class EventDatabase:
                 target = session.get(TimeStamp, name)
                 if target:
                     return target.id
-        return await _run_in_thread(_do)
+        return await _run_database(self.engine, _do)

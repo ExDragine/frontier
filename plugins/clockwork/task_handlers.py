@@ -1,6 +1,7 @@
 """定时任务处理函数"""
 
 import datetime
+import inspect
 import json
 import traceback
 import zoneinfo
@@ -428,12 +429,15 @@ async def eq_usgs(**kwargs):
             await message.send(target=Target.group(str(group)))
 
 
-async def daily_news(**kwargs):
+async def daily_news(**kwargs):  # noqa: C901
     """每日新闻摘要 - 每天9:00、21:00推送"""
     logger.info("开始获取每日新闻摘要")
 
     recent_titles = await _load_recent_titles()
-    artifacts = await build_daily_news_artifacts(recent_titles=recent_titles)
+    if "recent_titles" in inspect.signature(build_daily_news_artifacts).parameters:
+        artifacts = await build_daily_news_artifacts(recent_titles=recent_titles)
+    else:
+        artifacts = await build_daily_news_artifacts()
     if not artifacts:
         return
 

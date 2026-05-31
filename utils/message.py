@@ -2,6 +2,7 @@ import ast
 import asyncio
 import re
 import time
+from collections.abc import Awaitable, Callable
 from io import BytesIO
 from types import SimpleNamespace
 from typing import Any, Literal
@@ -30,7 +31,7 @@ image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
 MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
 MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
-MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD = 768
+MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD = 500
 REPLY_CHECK_MIN_TEXT_LENGTH = 8
 REPLY_CHECK_GROUP_COOLDOWN_SECONDS = 120
 REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS = 20 * 60
@@ -218,7 +219,55 @@ async def aclose_http_client() -> None:
     await httpx_client.aclose()
 
 
-async def message_extract(messages: list[dict]) -> tuple[str, list, list, list]:
+MediaItem = bytes | bytearray | Callable[[], Awaitable[bytes | None]]
+
+
+async def _resolve_media_item(item: MediaItem) -> bytes | None:
+    if isinstance(item, bytes):
+        return item
+    if isinstance(item, bytearray):
+        return bytes(item)
+    if callable(item):
+        try:
+            return await item()
+        except Exception as exc:
+            logger.warning("下载媒体失败: %s: %s", type(exc).__name__, exc)
+            return None
+    logger.debug("忽略未知媒体项类型: %s", type(item).__name__)
+    return None
+
+
+async def download_media(
+    image_items: list[MediaItem] | None = None,
+    audio_items: list[MediaItem] | None = None,
+    video_items: list[MediaItem] | None = None,
+) -> tuple[list[bytes], list[bytes], list[bytes]]:
+    """并行解析 message_extract 返回的 lazy 媒体项。
+
+    兼容旧调用方测试桩直接返回 bytes 的情况；真实消息中通常是 async callable。
+    """
+    results: tuple[list[bytes], list[bytes], list[bytes]] = ([], [], [])
+    buckets = (image_items or [], audio_items or [], video_items or [])
+    tasks: list[tuple[int, Awaitable[bytes | None]]] = []
+
+    for bucket_index, bucket in enumerate(buckets):
+        for item in bucket:
+            tasks.append((bucket_index, _resolve_media_item(item)))
+
+    if not tasks:
+        return results
+
+    resolved = await asyncio.gather(*(task for _, task in tasks), return_exceptions=True)
+    for (bucket_index, _task), value in zip(tasks, resolved, strict=True):
+        if isinstance(value, Exception):
+            logger.warning("下载媒体失败: %s: %s", type(value).__name__, value)
+            continue
+        if value:
+            results[bucket_index].append(value)
+    return results
+
+
+async def message_extract(messages: list[dict]) -> tuple[str, list, list, list]:  # noqa: C901
     """提取消息中的文本和媒体内容。
 
     Args:
@@ -261,12 +310,14 @@ async def message_extract(messages: list[dict]) -> tuple[str, list, list, list]:
 
             case "image":
                 if temp_url := msg_data.get("temp_url"):
-                    async def _download_image(url=temp_url, summary=msg_data.get("summary")):
+                    summary = msg_data.get("summary")
+
+                    async def _download_image(url=temp_url, image_summary=summary):
                         try:
                             return (await httpx_client.get(url)).content
                         except Exception as e:
                             logger.warning(f"下载图片失败: {e}")
-                            if summary:
+                            if image_summary:
                                 return None  # caller can handle
                             return None
                     image_downloaders.append(_download_image)

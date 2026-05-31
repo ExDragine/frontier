@@ -17,6 +17,7 @@ from langchain.agents.middleware import (
 )
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.memory import InMemorySaver
 from nonebot import logger
 from pydantic import ValidationError
 
@@ -253,6 +254,7 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
 class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.main_tools
+        self.checkpoint = InMemorySaver()
         self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
         _ensure_dir(self.working_dir)
 
@@ -422,8 +424,8 @@ class FrontierCognitive:
             )
             if profile_context:
                 system_prompt = f"{system_prompt}\n\n{profile_context}"
-        except Exception:
-            pass  # 画像注入失败不影响主流程
+        except Exception as exc:
+            logger.debug("Profile context injection skipped: %s: %s", type(exc).__name__, exc)
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,

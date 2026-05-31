@@ -11,15 +11,14 @@
 
 from __future__ import annotations
 
-import json
+import datetime
 import time
+import zoneinfo
 from dataclasses import dataclass, field
 from typing import Any
 
 from nonebot import get_bot, logger
-from nonebot.adapters.milky.message import MessageSegment
 
-from utils.agents import FrontierCognitive
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
 from utils.message import sanitize_outgoing_text
@@ -174,21 +173,20 @@ class ProactiveEngine:
         if not messages:
             return ProactiveDecision(should_act=False)
 
-        # 找最后一条助手回复时间
         last_assistant_time = 0
-        question_candidates: list[str] = []
+        question_candidates: list[tuple[int, str]] = []
         for msg in messages:
             if msg.role == "assistant":
                 last_assistant_time = max(last_assistant_time, msg.time)
             elif msg.role == "user" and msg.content:
                 # 简单启发式：包含问号或疑问关键词
                 if any(kw in (msg.content or "") for kw in ("?", "？", "怎么", "为什么", "有没有", "谁知道")):
-                    question_candidates.append(msg.content)
+                    question_candidates.append((msg.time, msg.content))
 
-        # 有未回复的问题（问题发生在最后助手回复之后）
+        # 只把最后一次助手回复之后出现的问题视为未回答。
         unanswered = [
-            q for q in question_candidates
-            if last_assistant_time == 0  # 从未回复过
+            content for question_time, content in question_candidates
+            if question_time > last_assistant_time
         ]
         if not unanswered:
             return ProactiveDecision(should_act=False)
@@ -233,7 +231,6 @@ class ProactiveEngine:
     ) -> None:
         """生成并发送主动消息。"""
         prompt = self._build_prompt(scenario, context)
-        cognitive = FrontierCognitive()
         system_prompt = PROACTIVE_SYSTEM_PROMPT.format(name=EnvConfig.BOT_NAME)
 
         from utils.llm_factory import create_llm
@@ -291,9 +288,7 @@ class ProactiveEngine:
 
     def _in_quiet_hours(self) -> bool:
         """深夜静默：23:00-08:00 不出声。"""
-        from datetime import datetime, timezone
-
-        hour = datetime.now(tz=timezone.utc).hour
+        hour = datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Shanghai")).hour
         return hour >= QUIET_HOURS_START or hour < QUIET_HOURS_END
 
     def _can_act(self, group_id: int, scenario: str) -> bool:

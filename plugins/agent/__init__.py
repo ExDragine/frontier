@@ -1,8 +1,7 @@
+import asyncio
 import base64
-import json
 import re
 import time
-import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +18,7 @@ from utils.message import (
     aclose_http_client as message_aclose_http_client,
 )
 from utils.message import (
+    download_media,
     message_check,
     message_extract,
     message_gateway,
@@ -29,6 +29,7 @@ from utils.message import (
 )
 from utils.min_heap import RepeatMessageHeap
 from utils.reply_context import build_reply_context, reply_seq_from_segments
+from utils.staged_artifacts import cleanup_expired_staged_artifacts
 from utils.user_profile import get_profile_manager
 
 require("nonebot_plugin_alconna")
@@ -68,7 +69,7 @@ class AgentRequestContext:
 
 
 
-async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:
+async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
     messages = list(history_messages or [])
     messages += [
         {
@@ -80,7 +81,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
             "content": [
                 {
                     "type": "text",
-                    "text": json.dumps(
+                    "text": str(
                         {
                             "metadata": build_message_metadata(
                                 timestamp_ms=context.msg_time,
@@ -142,8 +143,8 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
                     int(context.user_id), context.group_id, context.text, assistant_text
                 )
             )
-    except Exception:
-        pass  # 画像提取失败不影响主流程
+    except Exception as exc:
+        logger.debug("画像提取调度失败: %s: %s", type(exc).__name__, exc)
 
     artifacts: list[UniMessage] | None = result.get("uni_messages", [])
     if artifacts:
@@ -190,12 +191,34 @@ async def on_shutdown():
             logger.warning(f"关闭 HTTP 客户端失败: {type(exc).__name__}: {exc}")
 
 
+@driver.on_startup
+async def on_startup():
+    if EnvConfig.IMAGE_AUTO_CLEANUP:
+        try:
+            cleaned_images = await messages_db.cleanup_expired_images()
+            if cleaned_images:
+                logger.info("已清理过期图片缓存: %s", cleaned_images)
+        except Exception as exc:
+            logger.warning("清理过期图片缓存失败: %s: %s", type(exc).__name__, exc)
+    try:
+        cleaned_artifacts = cleanup_expired_staged_artifacts()
+        if cleaned_artifacts:
+            logger.info("已清理过期 staged artifacts: %s", cleaned_artifacts)
+    except Exception as exc:
+        logger.warning("清理过期 staged artifacts 失败: %s: %s", type(exc).__name__, exc)
+
+
 @common.handle()
 async def handle_common(event: MessageEvent):  # noqa: C901
     if EnvConfig.AGENT_MODULE_ENABLED is False:
         await common.finish(f"{EnvConfig.BOT_NAME}飞升了,暂时不可用")
 
-    bot = get_bot()
+    try:
+        bot = get_bot()
+    except ValueError:
+        bot = getattr(event, "bot", None)
+        if bot is None:
+            await common.finish()
     user_id = event.get_user_id()
     user_name = event.data.sender.nickname
     event_id = event.data.message_seq
@@ -241,7 +264,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         await common.finish()
 
     # ── Phase 3: 网关通过后才下载媒体 ──
-    images, _audio, videos = await _download_media(image_downloaders, audio_downloaders, video_downloaders)
+    images, _audio, videos = await download_media(image_downloaders, audio_downloaders, video_downloaders)
 
     if images and EnvConfig.IMAGE_ENABLED:
         try:
@@ -286,9 +309,12 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     )
     thread_id = _agent_thread_id(user_id, group_id)
     try:
+        if group_id:
+            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=True)
         agent_queue.job_timeout_seconds = EnvConfig.AGENT_JOB_TIMEOUT_SECONDS
         replied = await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
         if group_id:
+            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=False)
             if not replied:
                 if not group_id:
                     return
@@ -309,32 +335,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="32", is_add=False)
     except AgentQueueFullError:
         logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
+        if group_id:
+            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="351", is_add=False)
         await common.finish("前面还有请求在处理，稍等一下")
-
-
-async def _download_media(
-    image_tasks: list, audio_tasks: list, video_tasks: list
-) -> tuple[list[bytes], list[bytes], list[bytes]]:
-    """并行下载所有媒体，单个下载失败不影响其他。"""
-    images, audio, videos = [], [], []
-
-    async def _download_one(getter, collector):
-        try:
-            data = await getter()
-            if data:
-                collector.append(data)
-        except Exception:
-            pass  # 单个媒体下载失败不阻塞整体
-
-    downloaders = []
-    for getter in image_tasks:
-        downloaders.append(_download_one(getter, images))
-    for getter in audio_tasks:
-        downloaders.append(_download_one(getter, audio))
-    for getter in video_tasks:
-        downloaders.append(_download_one(getter, videos))
-
-    if downloaders:
-        await asyncio.gather(*downloaders, return_exceptions=True)
-
-    return images, audio, videos

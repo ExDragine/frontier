@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 MISSING_GROUP_ID = "缺少群号：请在群聊中使用，或显式传入 group_id。"
 MISSING_USER_ID = "缺少用户号：请显式传入 user_id，或在用户上下文中使用。"
@@ -106,7 +106,7 @@ def resolve_peer(
     return resolve_user_id(config=config)
 
 
-def binary_kwargs_from_uri(uri: str | None, root_dir: str | None = None) -> dict[str, str]:
+def binary_kwargs_from_uri(uri: str | None, root_dir: str | None = None) -> dict[str, str]:  # noqa: C901
     raw = (uri or "").strip()
     if not raw:
         return {}
@@ -116,12 +116,20 @@ def binary_kwargs_from_uri(uri: str | None, root_dir: str | None = None) -> dict
         validate_url(raw)
         return {"url": raw}
     if parsed.scheme == "file":
-        path = parsed.path
+        path = unquote(parsed.path)
         if parsed.netloc and not path:
-            path = parsed.netloc
+            path = unquote(parsed.netloc)
         if not path:
             raise ValueError(f"无效的文件 URI：{uri!r}")
-        return {"path": path}
+        if root_dir is None:
+            return {"path": path}
+        root = Path(root_dir).resolve()
+        candidate = (root / path.lstrip("/")).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            raise ValueError(f"无效的文件 URI：{uri!r}，文件路径不在允许的工作区内") from None
+        return {"path": str(candidate)}
     if parsed.scheme == "base64":
         encoded = raw[len("base64://") :]
         if not encoded:

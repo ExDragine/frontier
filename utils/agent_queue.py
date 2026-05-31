@@ -24,6 +24,7 @@ class _QueuedJob:
 @dataclass(slots=True)
 class _ThreadQueueState:
     queue: asyncio.Queue[_QueuedJob]
+    loop: asyncio.AbstractEventLoop
     worker_task: asyncio.Task | None = None
     last_used: float = field(default_factory=time.monotonic)
 
@@ -46,7 +47,7 @@ class AgentQueueManager:
         key = str(thread_id)
         loop = asyncio.get_running_loop()
         future: asyncio.Future[T] = loop.create_future()
-        state = await self._get_state(key)
+        state = await self._get_state(key, loop)
         state.last_used = time.monotonic()
         try:
             state.queue.put_nowait(_QueuedJob(run=run, future=future))
@@ -56,13 +57,29 @@ class AgentQueueManager:
             state.worker_task = asyncio.create_task(self._worker(key, state))
         return await future
 
-    async def _get_state(self, key: str) -> _ThreadQueueState:
+    async def _get_state(self, key: str, loop: asyncio.AbstractEventLoop) -> _ThreadQueueState:
         async with self._states_lock:
             state = self._states.get(key)
+            if state is not None and state.loop is not loop:
+                if state.worker_task is not None and not state.worker_task.done():
+                    state.worker_task.cancel()
+                self._discard_pending_jobs(state, RuntimeError("Agent queue event loop changed — job discarded"))
+                state = None
             if state is None:
-                state = _ThreadQueueState(queue=asyncio.Queue(maxsize=self.maxsize))
+                state = _ThreadQueueState(queue=asyncio.Queue(maxsize=self.maxsize), loop=loop)
                 self._states[key] = state
             return state
+
+    @staticmethod
+    def _discard_pending_jobs(state: _ThreadQueueState, exc: Exception) -> None:
+        while not state.queue.empty():
+            try:
+                job = state.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if not job.future.done():
+                job.future.set_exception(exc)
+            state.queue.task_done()
 
     async def _worker(self, key: str, state: _ThreadQueueState) -> None:
         while True:
@@ -102,18 +119,8 @@ class AgentQueueManager:
             tasks = [(key, state) for key, state in self._states.items() if state.worker_task is not None]
             self._states.clear()
 
-        # Resolve any pending futures to prevent callers from hanging
         for _key, state in tasks:
-            while not state.queue.empty():
-                try:
-                    job = state.queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
-                if not job.future.done():
-                    job.future.set_exception(
-                        RuntimeError("Agent queue shutting down — job discarded")
-                    )
-                state.queue.task_done()
+            self._discard_pending_jobs(state, RuntimeError("Agent queue shutting down — job discarded"))
 
         # Cancel workers with timeout guard
         worker_tasks = [t for _, state in tasks if (t := state.worker_task) is not None]
