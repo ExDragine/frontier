@@ -204,6 +204,46 @@ def test_message_renders_long_simple_content_as_image_for_any_group():
     assert message_module._message_should_render_as_image("x" * 600) is True
 
 
+def test_extract_message_text_reads_content_block_lists():
+    content = [
+        {"type": "text", "text": "hello"},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,abc"}},
+        {"type": "output_text", "text": "world"},
+    ]
+
+    assert message_module.extract_message_text(content) == "hello\nworld"
+
+
+def test_outgoing_message_content_reads_llm_content_blocks():
+    raw = types.SimpleNamespace(
+        content=[
+            {"type": "text", "text": "hello"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,abc"}},
+        ]
+    )
+
+    assert message_module.outgoing_message_content(raw) == "hello"
+
+
+def test_outgoing_message_content_reads_wrapped_content_blocks():
+    raw = types.SimpleNamespace(content=str({"content": [{"type": "text", "text": "hello"}]}))
+
+    assert message_module.outgoing_message_content(raw) == "hello"
+
+
+def test_message_text_extractors_handle_text_methods():
+    class MessageWithTextMethod:
+        content = [{"type": "text", "text": "content text"}]
+
+        def text(self):
+            return ""
+
+    raw = MessageWithTextMethod()
+
+    assert message_module.extract_message_text(raw) == "content text"
+    assert message_module.outgoing_message_content(raw) == "content text"
+
+
 @pytest.mark.asyncio
 async def test_message_http_client_uses_registry():
     """验证 message 模块的 HTTP 客户端通过注册表获取。"""

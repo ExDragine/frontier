@@ -7,20 +7,19 @@ from io import BytesIO
 from types import SimpleNamespace
 from typing import Any, Literal
 
-from utils.http_client import get_http_client
 from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.exception import ActionFailed
 from PIL import Image
 from pydantic import BaseModel, Field
 
+from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
 from utils.database import MessageDatabase
+from utils.http_client import get_http_client
 from utils.markdown_render import markdown_to_image, markdown_to_text
 from utils.signal_llm import signal_structured
-
-from utils.alconna import UniMessage
 
 httpx_client = get_http_client("message")
 messages_db = MessageDatabase()
@@ -88,6 +87,9 @@ _MERMAID_DIAGRAM_RE = re.compile(
 )
 
 
+_TEXT_CONTENT_BLOCK_TYPES = {"text", "output_text"}
+
+
 class ReplyCheck(BaseModel):
     should_reply: str = Field(
         description="Should or not reply message. If should, reply with true, either reply with false"
@@ -95,21 +97,48 @@ class ReplyCheck(BaseModel):
     confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
 
 
+def _extract_dict_message_text(content: dict) -> str:
+    item_type = content.get("type")
+    if item_type in _TEXT_CONTENT_BLOCK_TYPES or (item_type is None and "text" in content):
+        return str(content.get("text", ""))
+    if "content" in content:
+        return extract_message_text(content.get("content"))
+    if item_type is not None:
+        return ""
+    return str(content or "")
+
+
+def _extract_object_message_text(content: Any) -> str | None:
+    text = getattr(content, "text", None)
+    if callable(text):
+        try:
+            text = text()
+        except TypeError:
+            text = None
+    if text:
+        return extract_message_text(text)
+    if hasattr(content, "content"):
+        return extract_message_text(content.content)
+    return None
+
+
 def extract_message_text(content: Any) -> str:
-    """从消息 content 中提取纯文本（str / list[dict] / 对象）。"""
+    """从消息 content 中提取纯文本（str / content blocks / 对象）。"""
     if isinstance(content, str):
         return content
+    if isinstance(content, dict):
+        return _extract_dict_message_text(content)
     if isinstance(content, list):
         parts = []
         for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                parts.append(str(item.get("text", "")))
+            part = extract_message_text(item)
+            if part:
+                parts.append(part)
         return "\n".join(parts)
     # 尝试对象的 .text / .content 属性
-    if hasattr(content, "text") and (text := getattr(content, "text", None)):
-        return str(text)
-    if hasattr(content, "content"):
-        return extract_message_text(getattr(content, "content"))
+    object_text = _extract_object_message_text(content)
+    if object_text is not None:
+        return object_text
     return str(content or "")
 
 
@@ -415,16 +444,30 @@ async def send_artifacts(artifacts):
 
 def outgoing_message_content(raw: Any) -> str:
     text_attr = getattr(raw, "text", None)
-    content = str(text_attr) if text_attr is not None else getattr(raw, "content", "")
-    if content:
+    if callable(text_attr):
         try:
-            content = ast.literal_eval(content)["content"]
-        except (ValueError, SyntaxError, KeyError) as e:
+            content = text_attr()
+        except TypeError:
+            content = None
+        if not content and hasattr(raw, "content"):
+            content = raw.content
+    elif text_attr:
+        content = text_attr
+    elif hasattr(raw, "content"):
+        content = raw.content
+    else:
+        content = raw
+    if isinstance(content, str) and content:
+        try:
+            parsed = ast.literal_eval(content)
+            if isinstance(parsed, dict) and "content" in parsed:
+                content = parsed["content"]
+        except (ValueError, SyntaxError) as e:
             logger.debug(f"消息内容不是字典字面量，使用原始内容: {type(e).__name__}")
         except Exception as e:
             # 意外错误
             logger.warning(f"解析消息内容时出现意外错误: {type(e).__name__}: {e}")
-    return str(content or "")
+    return extract_message_text(content)
 
 
 async def sanitize_outgoing_text(content: str | None) -> str | None:

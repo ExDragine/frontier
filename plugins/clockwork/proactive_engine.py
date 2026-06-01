@@ -21,7 +21,7 @@ from nonebot import get_bot, logger
 
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
-from utils.message import sanitize_outgoing_text
+from utils.message import extract_message_text, sanitize_outgoing_text
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 配置常量
@@ -246,7 +246,7 @@ class ProactiveEngine:
         result = await llm.ainvoke(
             [("system", system_prompt), ("human", prompt)]
         )
-        text = (result.content if hasattr(result, "content") else str(result)).strip()
+        text = extract_message_text(result).strip()
         if not text:
             return
 
