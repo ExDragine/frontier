@@ -8,10 +8,11 @@ from nonebot import get_bots
 from sqlmodel import Session, func, select
 
 from utils.configs import EnvConfig
-from utils.database import Message, User
+from utils.database import Message, User, get_engine
 
 from ..auth import require_auth
-from ..db import engine
+
+engine = get_engine()
 
 router = APIRouter()
 

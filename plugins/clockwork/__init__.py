@@ -3,6 +3,7 @@ from nonebot import get_driver, logger, require
 from utils.database import get_engine
 
 require("nonebot_plugin_apscheduler")
+require("nonebot_plugin_alconna")
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 from .task_manager import TaskExecutor, TaskManager  # noqa: E402

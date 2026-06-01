@@ -5,9 +5,11 @@ import time
 from signal import SIGINT
 
 from git import Repo
-from nonebot import get_driver, logger, on_command
+from nonebot import get_driver, logger, on_command, require
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.permission import SUPERUSER
+
+require("nonebot_plugin_alconna")
 
 from utils.alconna import Target, UniMessage
 from utils.configs import EnvConfig

@@ -7,8 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from nonebot import get_bot, get_driver, logger, on_message
+from nonebot import get_bot, get_driver, logger, on_message, require
 from nonebot.adapters.milky.event import MessageEvent
+
+require("nonebot_plugin_alconna")
 
 from utils.agent_queue import AgentQueueFullError, AgentQueueManager
 from utils.agents import NO_REPLY_SENTINEL, FrontierCognitive, _agent_thread_id

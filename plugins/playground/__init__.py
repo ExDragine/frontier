@@ -1,8 +1,10 @@
 import time
 
-from nonebot import on_command, on_notice
+from nonebot import on_command, on_notice, require
 from nonebot.adapters.milky.bot import Bot
 from nonebot.adapters.milky.event import FriendNudgeEvent, GroupNudgeEvent, MessageEvent
+
+require("nonebot_plugin_alconna")
 
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig

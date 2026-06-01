@@ -387,6 +387,12 @@ def build_message_metadata(
 
 
 
+class User(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    model: str
+
+
 class Message(SQLModel, table=True):
     time: int = Field(primary_key=True)
     msg_id: int | None = Field(default=None)

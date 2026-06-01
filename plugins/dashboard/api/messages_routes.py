@@ -3,10 +3,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, func, select
 
-from utils.database import Message
+from utils.database import Message, get_engine
 
 from ..auth import require_auth
-from ..db import engine
+
+engine = get_engine()
 
 router = APIRouter()
 
