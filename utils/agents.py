@@ -7,7 +7,7 @@ import uuid
 from typing import Any
 
 from deepagents import create_deep_agent
-from deepagents.backends import CompositeBackend, FilesystemBackend
+from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
 from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import (
     FilesystemFileSearchMiddleware,
@@ -234,7 +234,7 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
     memory_dir = _ensure_dir(os.path.join(working_dir, "memory"))
 
     return CompositeBackend(
-        default=FilesystemBackend(root_dir=workspace_dir, virtual_mode=True),
+        default=LocalShellBackend(root_dir=workspace_dir, virtual_mode=True, inherit_env=True),
         routes={
             f"{SKILLS_BACKEND_PATH}/": FilesystemBackend(root_dir=skills_dir, virtual_mode=True),
             f"{MEMORY_BACKEND_PATH}/": FilesystemBackend(root_dir=memory_dir, virtual_mode=True),
@@ -402,9 +402,7 @@ class FrontierCognitive:
         try:
             from utils.user_profile import get_profile_manager
 
-            profile_context = get_profile_manager().build_context_injection(
-                int(user_id) if user_id else 0, group_id
-            )
+            profile_context = get_profile_manager().build_context_injection(int(user_id) if user_id else 0, group_id)
             if profile_context:
                 system_prompt = f"{system_prompt}\n\n{profile_context}"
         except Exception as exc:
@@ -430,6 +428,7 @@ class FrontierCognitive:
                 "write_file": False,
                 "read_file": False,
                 "edit_file": False,
+                "execute": False,
             },
             backend=backend,
             context_schema=CustomAgentState,

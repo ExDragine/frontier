@@ -28,6 +28,10 @@ class DummyFilesystemBackend:
         self.virtual_mode = kw.get("virtual_mode")
 
 
+class DummyLocalShellBackend(DummyFilesystemBackend):
+    """LocalShellBackend 的测试桩，继承 FilesystemBackend 桩。"""
+
+
 class DummyCompositeBackend:
     def __init__(self, default, routes, **kw):
         self.default = default

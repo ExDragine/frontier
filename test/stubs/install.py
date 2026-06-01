@@ -8,6 +8,7 @@ from .dummies import (
     DummyContext,
     DummyEmbeddings,
     DummyFilesystemBackend,
+    DummyLocalShellBackend,
     DummyModel,
     DummyPersistentClient,
     DummyScheduler,
@@ -40,6 +41,7 @@ def install_all_third_party_stubs():
         "deepagents.backends",
         CompositeBackend=DummyCompositeBackend,
         FilesystemBackend=DummyFilesystemBackend,
+        LocalShellBackend=DummyLocalShellBackend,
     )
     install_stub(
         "langchain.agents",
