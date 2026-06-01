@@ -4,90 +4,36 @@ from typing import Annotated, Literal
 
 from langchain.tools import tool
 from langgraph.prebuilt import InjectedState
-from nonebot import logger, require
+from nonebot import logger
 
+from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.paint_service import PaintRateLimiter
 from utils.paint_service import PaintRateLimitResult as PaintRateLimitResult
+from utils.tool_helpers import (
+    decode_data_url,
+    latest_user_message_content,
+    media_part_url,
+    state_user_id,
+)
 from utils.video_service import MediaReference, VideoGenerationResult, generate_video
-
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 video_rate_limiter = PaintRateLimiter()
 VideoInputType = Literal["text", "image", "video"]
 
 
-def _state_user_id(state: dict | None) -> str:
-    if not isinstance(state, dict):
-        return "tool"
-    user_id = state.get("user_id")
-    if user_id is None and isinstance(state.get("context"), dict):
-        user_id = state["context"].get("user_id")
-    return str(user_id or "tool")
-
-
-def _message_role(message) -> str | None:
-    if isinstance(message, dict):
-        role = message.get("role")
-    else:
-        role = getattr(message, "role", None) or getattr(message, "type", None)
-    return str(role) if role is not None else None
-
-
-def _message_content(message):
-    if isinstance(message, dict):
-        return message.get("content")
-    return getattr(message, "content", None)
-
-
-def _latest_user_message_content(state: dict | None):
-    if not isinstance(state, dict):
-        return None
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return None
-    for message in reversed(messages):
-        if _message_role(message) in {"user", "human"}:
-            return _message_content(message)
-    return None
-
-
-def _decode_data_url(url: str, *, expected_prefix: str) -> MediaReference | None:
-    if not url.startswith(expected_prefix) or "," not in url:
-        return None
-    header, payload = url.split(",", 1)
-    if ";base64" not in header:
-        return None
-    mime_type = header.removeprefix("data:").split(";", 1)[0]
-    try:
-        return MediaReference(data=base64.b64decode(payload, validate=True), mime_type=mime_type)
-    except Exception:
-        return None
-
-
-def _media_part_url(part: dict, key: str) -> str | None:
-    value = part.get(key)
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        url = value.get("url")
-        return url if isinstance(url, str) else None
-    return None
-
-
 def _latest_media_from_state(state: dict | None, *, part_type: str, key: str, expected_prefix: str) -> MediaReference | None:
-    content = _latest_user_message_content(state)
+    content = latest_user_message_content(state)
     if not isinstance(content, list):
         return None
 
     for part in reversed(content):
         if not isinstance(part, dict) or part.get("type") != part_type:
             continue
-        url = _media_part_url(part, key)
+        url = media_part_url(part, key)
         if not url:
             continue
-        if media := _decode_data_url(url, expected_prefix=expected_prefix):
+        if media := decode_data_url(url, expected_prefix=expected_prefix):
             return media
     return None
 
@@ -154,7 +100,7 @@ async def get_video(
         return "视频功能没开", None
 
     rate_limit = video_rate_limiter.check(
-        _state_user_id(state),
+        state_user_id(state),
         now=time.time(),
         max_requests=EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS,
         window_seconds=EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS,

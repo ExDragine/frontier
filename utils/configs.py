@@ -1,10 +1,32 @@
 import os
 import tomllib
+from dataclasses import dataclass, field
 
 import dotenv
 from pydantic import SecretStr
 
 dotenv.load_dotenv()
+
+
+@dataclass
+class ModelConfig:
+    model: str
+    provider: str = ""
+    endpoint: str = ""
+    capabilities: list[str] = field(default_factory=list)
+    use_responses_api: bool = True
+
+
+@dataclass
+class AccessPolicy:
+    whitelist_mode: bool = False
+    whitelist_person_list: list = field(default_factory=list)
+    whitelist_group_list: list = field(default_factory=list)
+    blacklist_person_list: list = field(default_factory=list)
+    blacklist_group_list: list = field(default_factory=list)
+
+
+# ── TOML 解析 ────────────────────────────────────────────────────
 
 
 with open("env.toml", "rb") as f:
@@ -159,3 +181,95 @@ class EnvConfig:
     VECTOR_MEMORY_EMBEDDING_BATCH_SIZE: int = int(vector_memory.get("semantic_embedding_batch_size", 1))
     VECTOR_MEMORY_EMBEDDING_DEVICE: str = str(vector_memory.get("semantic_embedding_device", "cpu")).strip()
     VECTOR_MEMORY_PRELOAD_ON_STARTUP: bool = bool(vector_memory.get("preload_on_startup", True))
+
+    @classmethod
+    def reload(cls, config: dict) -> None:
+        """从 TOML 字典热重载所有运行时配置（启动和 Dashboard 共用）。"""
+        import os as _os
+
+        from pydantic import SecretStr as _SecretStr
+
+        ep = config.get("endpoint", {})
+        key = config.get("key", {})
+        fn = config.get("function", {})
+        msg = config.get("message", {})
+
+        # ── 模型角色 ──
+        _ROLES = ("basic", "signal", "advan")
+        _role_attrs = {
+            "basic": ("BASIC_MODEL", "BASIC_MODEL_PROVIDER", "BASIC_MODEL_ENDPOINT", "BASIC_MODEL_CAPABILITIES"),
+            "signal": ("SIGNAL_MODEL", "SIGNAL_MODEL_PROVIDER", "SIGNAL_MODEL_ENDPOINT", "SIGNAL_MODEL_CAPABILITIES"),
+            "advan": ("ADVAN_MODEL", "ADVAN_MODEL_PROVIDER", "ADVAN_MODEL_ENDPOINT", "ADVAN_MODEL_CAPABILITIES"),
+        }
+        _role_defaults = {
+            "basic": ("", "", "", []),
+            "signal": ("deepseek-v4-flash", "deepseek", "", ["text"]),
+            "advan": ("", "", "", []),
+        }
+        for role in _ROLES:
+            defaults = _role_defaults[role]
+            for i, attr in enumerate(_role_attrs[role]):
+                key_name = attr.split("_", 1)[1].lower()  # e.g., "model", "model_provider", ...
+                setattr(cls, attr, ep.get(f"{role}_{key_name}" if key_name != "model" else f"{role}_model", defaults[i]))
+
+        # ── 其他端点 ──
+        cls.OPENAI_BASE_URL = ep.get("openai_base_url", cls.OPENAI_BASE_URL)
+        cls.PAINT_MODEL = ep.get("paint_model", cls.PAINT_MODEL)
+        cls.PAINT_BASE_URL = ep.get("paint_base_url") or cls.OPENAI_BASE_URL
+        cls.VIDEO_MODEL = ep.get("video_model") or cls.VIDEO_MODEL
+        cls.VIDEO_BASE_URL = ep.get("video_base_url") or cls.VIDEO_BASE_URL
+        cls.LLM_ENDPOINTS = config.get("llm_endpoints", {})
+
+        # ── API 密钥 ──
+        cls.OPENAI_API_KEY = _SecretStr(key.get("openai_api_key", ""))
+        cls.PAINT_API_KEY = _SecretStr(key.get("paint_api_key") or key.get("openai_api_key", ""))
+        cls.VIDEO_API_KEY = _SecretStr(key.get("video_api_key") or _os.getenv("ZENMUX_API_KEY", ""))
+        cls.NASA_API_KEY = _SecretStr(key.get("nasa_api_key", ""))
+        cls.GITHUB_PAT = _SecretStr(key.get("github_pat", ""))
+        cls.GOOGLE_API_KEY = _SecretStr(key.get("google_api_key", ""))
+        cls.ANTHROPIC_API_KEY = _SecretStr(key.get("anthropic_api_key", ""))
+        cls.ANTHROPIC_BASE_URL = key.get("anthropic_base_url", "")
+        cls.DEEPSEEK_API_KEY = _SecretStr(key.get("deepseek_api_key", ""))
+        cls.DEEPSEEK_API_BASE = key.get("deepseek_api_base", "")
+
+        # ── 功能开关 ──
+        cls.AGENT_MODULE_ENABLED = fn.get("agent_module_enabled", cls.AGENT_MODULE_ENABLED)
+        cls.PAINT_MODULE_ENABLED = fn.get("paint_module_enabled", cls.PAINT_MODULE_ENABLED)
+        cls.VIDEO_MODULE_ENABLED = fn.get("video_module_enabled", cls.PAINT_MODULE_ENABLED)
+        cls.AGENT_CAPABILITY = fn.get("agent_capability", cls.AGENT_CAPABILITY)
+
+        # ── 访问控制 ──
+        _POLICIES = ("agent", "paint")
+        _policy_fields = ("WHITELIST_MODE", "WHITELIST_PERSON_LIST", "WHITELIST_GROUP_LIST",
+                          "BLACKLIST_PERSON_LIST", "BLACKLIST_GROUP_LIST")
+        for policy in _POLICIES:
+            for field in _policy_fields:
+                attr = f"{policy.upper()}_{field}"
+                key_name = f"{policy}_{field.lower()}"
+                setattr(cls, attr, fn.get(key_name, getattr(cls, attr)))
+
+        # ── 限流/超时 ──
+        cls.PAINT_RATE_LIMIT_MAX_REQUESTS = int(fn.get("paint_rate_limit_max_requests", cls.PAINT_RATE_LIMIT_MAX_REQUESTS))
+        cls.PAINT_RATE_LIMIT_WINDOW_SECONDS = int(fn.get("paint_rate_limit_window_seconds", cls.PAINT_RATE_LIMIT_WINDOW_SECONDS))
+        cls.VIDEO_RATE_LIMIT_MAX_REQUESTS = int(fn.get("video_rate_limit_max_requests", cls.VIDEO_RATE_LIMIT_MAX_REQUESTS))
+        cls.VIDEO_RATE_LIMIT_WINDOW_SECONDS = int(fn.get("video_rate_limit_window_seconds", cls.VIDEO_RATE_LIMIT_WINDOW_SECONDS))
+        cls.VIDEO_POLL_INTERVAL_SECONDS = int(fn.get("video_poll_interval_seconds", cls.VIDEO_POLL_INTERVAL_SECONDS))
+        cls.VIDEO_POLL_TIMEOUT_SECONDS = int(fn.get("video_poll_timeout_seconds", cls.VIDEO_POLL_TIMEOUT_SECONDS))
+        cls.AGENT_LLM_TIMEOUT_SECONDS = int(fn.get("agent_llm_timeout_seconds", cls.AGENT_LLM_TIMEOUT_SECONDS))
+        cls.AGENT_JOB_TIMEOUT_SECONDS = int(fn.get("agent_job_timeout_seconds", cls.AGENT_JOB_TIMEOUT_SECONDS))
+
+        # ── 群组消息 ──
+        cls.TEST_GROUP_ID = msg.get("test_group_id", cls.TEST_GROUP_ID)
+        cls.ANNOUNCE_GROUP_ID = msg.get("announce_group_id", cls.TEST_GROUP_ID)
+        cls.APOD_GROUP_ID = msg.get("apod_group_id", cls.TEST_GROUP_ID)
+        cls.EARTH_NOW_GROUP_ID = msg.get("earth_now_group_id", cls.TEST_GROUP_ID)
+        cls.NEWS_SUMMARY_GROUP_ID = msg.get("news_summary_group_id", cls.TEST_GROUP_ID)
+        cls.EARTHQUAKE_GROUP_ID = msg.get("earthquake_group_id", cls.TEST_GROUP_ID)
+
+        # ── 杂项 ──
+        cls.QUERY_MESSAGE_NUMBERS = config.get("database", {}).get("query_message_numbers", cls.QUERY_MESSAGE_NUMBERS)
+        cls.AGENT_DEBUG_MODE = config.get("debug", {}).get("agent_debug_mode", cls.AGENT_DEBUG_MODE)
+        dash = config.get("dashboard", {})
+        cls.DASHBOARD_PASSWORD = dash.get("password", "admin")
+        cls.DASHBOARD_JWT_SECRET = dash.get("jwt_secret", "frontier-dashboard-default-secret")
+        cls.DASHBOARD_JWT_EXPIRE_HOURS = int(dash.get("jwt_expire_hours", 24))

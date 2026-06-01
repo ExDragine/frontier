@@ -25,6 +25,29 @@ async def _run_in_thread(func, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
 
 
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def async_session_scope(engine: Engine):
+    """异步 Session 上下文管理器，自动处理线程调度和提交。
+
+    用法:
+        async with async_session_scope(engine) as session:
+            result = session.exec(select(Model).where(...)).all()
+    """
+    session = Session(engine)
+
+    async def _execute_sync(fn, *a, **kw):
+        if _engine_uses_memory_database(engine):
+            return fn(*a, **kw)
+        return await _run_in_thread(fn, *a, **kw)
+
+    yield session
+    await _execute_sync(lambda: (session.commit(), None) if session.is_active else None)
+    await _execute_sync(session.close)
+
+
 def _engine_uses_memory_database(engine: Engine) -> bool:
     return engine.url.get_backend_name() == "sqlite" and _is_memory_database(str(engine.url))
 
@@ -363,11 +386,6 @@ def build_message_metadata(
     }
 
 
-class User(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    name: str
-    model: str
-
 
 class Message(SQLModel, table=True):
     time: int = Field(primary_key=True)
@@ -394,45 +412,6 @@ class MessageImage(SQLModel, table=True):
     file_size: int | None = None
     created_at: int
     expires_at: int
-
-
-class UserDatabase:
-    def __init__(self):
-        self.engine = get_engine()
-        User.metadata.create_all(self.engine)
-
-    async def insert(self, user_id, user_name, custom_model):
-        def _do():
-            with Session(self.engine) as session:
-                user = User(id=user_id, name=user_name, model=custom_model)
-                session.add(user)
-                session.commit()
-        await _run_database(self.engine, _do)
-
-    async def select(self, user_id: int):
-        def _do():
-            with Session(self.engine) as session:
-                return session.get(User, user_id)
-        return await _run_database(self.engine, _do)
-
-    async def update(self, user_id):
-        def _do():
-            with Session(self.engine) as session:
-                user = session.get(User, user_id)
-                if user:
-                    user.name = ""
-                    session.add(user)
-                    session.commit()
-        await _run_database(self.engine, _do)
-
-    async def delete(self, user_id):
-        def _do():
-            with Session(self.engine) as session:
-                user = session.get(User, user_id)
-                if user:
-                    session.delete(user)
-                    session.commit()
-        await _run_database(self.engine, _do)
 
 
 class _MessageImageManager:
@@ -828,10 +807,6 @@ class MessageDatabase:
         return [messages_by_id[message_id] for message_id in ids if message_id in messages_by_id]
 
     def get_vector_index(self):
-        """公共访问器，替代对 _get_vector_index 的私有访问。"""
-        return self._get_vector_index()
-
-    def _get_vector_index(self):
         if self._vector_index is not None:
             return self._vector_index
         global _MESSAGE_VECTOR_INDEX
@@ -868,7 +843,7 @@ class MessageDatabase:
             return
         if EnvConfig.VECTOR_MEMORY_ENABLED and EnvConfig.VECTOR_MEMORY_PRELOAD_ON_STARTUP:
             logger.info("Preloading message vector index")
-            self._get_vector_index()
+            self.get_vector_index()
 
     def _add_message_to_vector_index(self, message: Message) -> None:
         snapshot = Message(
@@ -882,7 +857,7 @@ class MessageDatabase:
         )
 
         def index_message() -> None:
-            vector_index = self._get_vector_index()
+            vector_index = self.get_vector_index()
             if not vector_index or not getattr(vector_index, "available", False):
                 return
             vector_index.add_message(snapshot)
@@ -917,7 +892,7 @@ class MessageDatabase:
     ) -> list[Message]:
         if not content_query:
             return []
-        vector_index = self._get_vector_index()
+        vector_index = self.get_vector_index()
         if not vector_index or not getattr(vector_index, "available", False):
             return []
         vector_results = vector_index.search(

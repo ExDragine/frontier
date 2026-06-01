@@ -1,13 +1,11 @@
-import httpx
 from langchain.tools import tool
-from nonebot import logger, require
+from nonebot import logger
 from pypinyin import lazy_pinyin
 
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
+from utils.alconna import UniMessage
+from utils.http_client import get_http_client
 
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+httpx_client = get_http_client("weather")
 
 _geocode_cache: dict[str, tuple[float, float]] = {}
 
@@ -15,9 +13,6 @@ NASA_WEATHER_URL = "https://mars.nasa.gov/rss/api/?feed=weather&category=msl&fee
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?format=json"
 OPEN_METEO_WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 
-
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()
 
 
 async def geocode(city_name: str) -> tuple[float, float]:

@@ -5,6 +5,10 @@ from nonebot.adapters.milky.event import MessageEvent
 
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
+from utils.http_client import get_http_client
+
+
+_httpx_client = get_http_client("reply_context")
 
 
 def _message_utils():
@@ -70,8 +74,9 @@ async def _fetch_reply_message_from_milky(bot, event: MessageEvent, reply_seq: i
 
 
 async def _download_image_from_url(url: str) -> bytes | None:
+    """下载引用消息中的图片，失败返回 None。"""
     try:
-        return (await _message_utils().httpx_client.get(url)).content
+        return (await _httpx_client.get(url)).content
     except Exception as e:
         logger.warning(f"⚠️ 下载引用图片失败 url={url}: {type(e).__name__}: {e}")
         return None

@@ -8,12 +8,10 @@ from utils.configs import EnvConfig
 
 DEFAULT_BALANCE_URL = "https://api.deepseek.com/user/balance"
 
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+from utils.http_client import get_http_client
 
+httpx_client = get_http_client("deepseek_balance")
 
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()
 
 
 def _api_key_value() -> str:

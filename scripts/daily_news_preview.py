@@ -39,11 +39,10 @@ sys.modules.setdefault("tools", tools_stub)
 
 from plugins.clockwork import task_handlers  # noqa: E402
 from plugins.clockwork.task_handlers import (  # noqa: E402
-    aclose_http_client,
     build_daily_news_artifacts,
     load_daily_news_css,
 )
-from utils.render import html_to_image  # noqa: E402
+from utils.markdown_render import html_to_image  # noqa: E402
 
 
 EXA_MCP_CONFIG = {
@@ -142,7 +141,9 @@ async def _main(args: argparse.Namespace) -> int:
     try:
         return await _run(args)
     finally:
-        await aclose_http_client()
+        from utils.http_client import aclose_all
+
+        await aclose_all()
 
 
 def main() -> int:

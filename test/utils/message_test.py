@@ -205,19 +205,18 @@ def test_message_renders_long_simple_content_as_image_for_any_group():
 
 
 @pytest.mark.asyncio
-async def test_message_http_client_can_be_closed(monkeypatch):
-    closed = False
+async def test_message_http_client_uses_registry():
+    """验证 message 模块的 HTTP 客户端通过注册表获取。"""
+    from utils import http_client as registry
 
-    class DummyClient:
-        async def aclose(self):
-            nonlocal closed
-            closed = True
+    # Clean start
+    registry._clients.clear()
+    registry._aclose_all_called = False
 
-    monkeypatch.setattr(message_module, "httpx_client", DummyClient())
+    assert message_module.httpx_client is not None
+    assert registry.get_http_client("message") is message_module.httpx_client
 
-    await message_module.aclose_http_client()
-
-    assert closed is True
+    await registry.aclose_all()
 
 
 @pytest.mark.asyncio

@@ -1,16 +1,14 @@
 import time
 
-from nonebot import on_command, on_notice, require
+from nonebot import on_command, on_notice
 from nonebot.adapters.milky.bot import Bot
 from nonebot.adapters.milky.event import FriendNudgeEvent, GroupNudgeEvent, MessageEvent
 
+from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.message import download_media, message_extract
 from utils.paint_service import PaintRateLimiter, paint
 from utils.video_service import generate_video
-
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 notice = on_notice(priority=0, block=True)
 paint_entry = on_command("paint", priority=3, block=True, aliases={"画图", "绘图"})

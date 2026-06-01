@@ -4,7 +4,7 @@ import types
 
 import pytest
 
-from utils import render
+from utils import markdown_render as render
 
 
 @pytest.mark.asyncio

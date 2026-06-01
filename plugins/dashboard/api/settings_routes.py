@@ -117,115 +117,12 @@ def _backup_config():
 
 
 def _reload_env_config():
-    """热重载 EnvConfig"""
+    """热重载 EnvConfig — 委托给 configs.py 的统一入口。"""
     from utils.configs import EnvConfig
 
     with open(TOML_PATH, "rb") as f:
         config = tomllib.load(f)
-
-    info = config.get("information", {})
-    ep = config.get("endpoint", {})
-    llm_ep = config.get("llm_endpoints", {})
-    key = config.get("key", {})
-    fn = config.get("function", {})
-    msg = config.get("message", {})
-    db = config.get("database", {})
-    dbg = config.get("debug", {})
-    dash = config.get("dashboard", {})
-
-    EnvConfig.BOT_NAME = info.get("name", EnvConfig.BOT_NAME)
-    EnvConfig.OPENAI_BASE_URL = ep.get("openai_base_url", EnvConfig.OPENAI_BASE_URL)
-    EnvConfig.BASIC_MODEL = ep.get("basic_model", EnvConfig.BASIC_MODEL)
-    EnvConfig.BASIC_MODEL_PROVIDER = ep.get("basic_model_provider", EnvConfig.BASIC_MODEL_PROVIDER)
-    EnvConfig.BASIC_MODEL_ENDPOINT = ep.get("basic_model_endpoint", EnvConfig.BASIC_MODEL_ENDPOINT)
-    EnvConfig.BASIC_MODEL_CAPABILITIES = ep.get("basic_model_capabilities", EnvConfig.BASIC_MODEL_CAPABILITIES)
-    EnvConfig.SIGNAL_MODEL = ep.get("signal_model", EnvConfig.SIGNAL_MODEL)
-    EnvConfig.SIGNAL_MODEL_PROVIDER = ep.get("signal_model_provider", EnvConfig.SIGNAL_MODEL_PROVIDER)
-    EnvConfig.SIGNAL_MODEL_ENDPOINT = ep.get("signal_model_endpoint", EnvConfig.SIGNAL_MODEL_ENDPOINT)
-    EnvConfig.SIGNAL_MODEL_CAPABILITIES = ep.get("signal_model_capabilities", EnvConfig.SIGNAL_MODEL_CAPABILITIES)
-    EnvConfig.ADVAN_MODEL = ep.get("advan_model", EnvConfig.ADVAN_MODEL)
-    EnvConfig.ADVAN_MODEL_PROVIDER = ep.get("advan_model_provider", EnvConfig.ADVAN_MODEL_PROVIDER)
-    EnvConfig.ADVAN_MODEL_ENDPOINT = ep.get("advan_model_endpoint", EnvConfig.ADVAN_MODEL_ENDPOINT)
-    EnvConfig.ADVAN_MODEL_CAPABILITIES = ep.get("advan_model_capabilities", EnvConfig.ADVAN_MODEL_CAPABILITIES)
-    EnvConfig.PAINT_MODEL = ep.get("paint_model", EnvConfig.PAINT_MODEL)
-    EnvConfig.PAINT_BASE_URL = ep.get("paint_base_url") or EnvConfig.OPENAI_BASE_URL
-    EnvConfig.VIDEO_MODEL = ep.get("video_model") or "alibaba/happyhorse-1.0"
-    EnvConfig.VIDEO_BASE_URL = ep.get("video_base_url") or "https://zenmux.ai/api/vertex-ai"
-    EnvConfig.LLM_ENDPOINTS = llm_ep
-
-    from pydantic import SecretStr
-
-    EnvConfig.OPENAI_API_KEY = SecretStr(key.get("openai_api_key", ""))
-    EnvConfig.PAINT_API_KEY = SecretStr(key.get("paint_api_key") or key.get("openai_api_key", ""))
-    EnvConfig.VIDEO_API_KEY = SecretStr(key.get("video_api_key") or os.getenv("ZENMUX_API_KEY", ""))
-    EnvConfig.NASA_API_KEY = SecretStr(key.get("nasa_api_key", ""))
-    EnvConfig.GITHUB_PAT = SecretStr(key.get("github_pat", ""))
-    EnvConfig.GOOGLE_API_KEY = SecretStr(key.get("google_api_key", ""))
-    EnvConfig.ANTHROPIC_API_KEY = SecretStr(key.get("anthropic_api_key", ""))
-    EnvConfig.ANTHROPIC_BASE_URL = key.get("anthropic_base_url", "")
-    EnvConfig.DEEPSEEK_API_KEY = SecretStr(key.get("deepseek_api_key", ""))
-    EnvConfig.DEEPSEEK_API_BASE = key.get("deepseek_api_base", "")
-
-    EnvConfig.AGENT_MODULE_ENABLED = fn.get("agent_module_enabled", EnvConfig.AGENT_MODULE_ENABLED)
-    EnvConfig.PAINT_MODULE_ENABLED = fn.get("paint_module_enabled", EnvConfig.PAINT_MODULE_ENABLED)
-    EnvConfig.VIDEO_MODULE_ENABLED = fn.get("video_module_enabled", EnvConfig.PAINT_MODULE_ENABLED)
-    EnvConfig.AGENT_CAPABILITY = fn.get("agent_capability", EnvConfig.AGENT_CAPABILITY)
-    EnvConfig.AGENT_WHITELIST_MODE = fn.get("agent_whitelist_mode", EnvConfig.AGENT_WHITELIST_MODE)
-    EnvConfig.AGENT_WHITELIST_PERSON_LIST = fn.get(
-        "agent_whitelist_person_list", EnvConfig.AGENT_WHITELIST_PERSON_LIST
-    )
-    EnvConfig.AGENT_WHITELIST_GROUP_LIST = fn.get("agent_whitelist_group_list", EnvConfig.AGENT_WHITELIST_GROUP_LIST)
-    EnvConfig.AGENT_BLACKLIST_PERSON_LIST = fn.get(
-        "agent_blacklist_person_list", EnvConfig.AGENT_BLACKLIST_PERSON_LIST
-    )
-    EnvConfig.AGENT_BLACKLIST_GROUP_LIST = fn.get("agent_blacklist_group_list", EnvConfig.AGENT_BLACKLIST_GROUP_LIST)
-    EnvConfig.PAINT_WHITELIST_MODE = fn.get("paint_whitelist_mode", EnvConfig.PAINT_WHITELIST_MODE)
-    EnvConfig.PAINT_WHITELIST_PERSON_LIST = fn.get(
-        "paint_whitelist_person_list", EnvConfig.PAINT_WHITELIST_PERSON_LIST
-    )
-    EnvConfig.PAINT_WHITELIST_GROUP_LIST = fn.get("paint_whitelist_group_list", EnvConfig.PAINT_WHITELIST_GROUP_LIST)
-    EnvConfig.PAINT_BLACKLIST_PERSON_LIST = fn.get(
-        "paint_blacklist_person_list", EnvConfig.PAINT_BLACKLIST_PERSON_LIST
-    )
-    EnvConfig.PAINT_BLACKLIST_GROUP_LIST = fn.get("paint_blacklist_group_list", EnvConfig.PAINT_BLACKLIST_GROUP_LIST)
-    EnvConfig.PAINT_RATE_LIMIT_MAX_REQUESTS = int(
-        fn.get("paint_rate_limit_max_requests", EnvConfig.PAINT_RATE_LIMIT_MAX_REQUESTS)
-    )
-    EnvConfig.PAINT_RATE_LIMIT_WINDOW_SECONDS = int(
-        fn.get("paint_rate_limit_window_seconds", EnvConfig.PAINT_RATE_LIMIT_WINDOW_SECONDS)
-    )
-    EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS = int(
-        fn.get("video_rate_limit_max_requests", EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS)
-    )
-    EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS = int(
-        fn.get("video_rate_limit_window_seconds", EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS)
-    )
-    EnvConfig.VIDEO_POLL_INTERVAL_SECONDS = int(
-        fn.get("video_poll_interval_seconds", EnvConfig.VIDEO_POLL_INTERVAL_SECONDS)
-    )
-    EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS = int(
-        fn.get("video_poll_timeout_seconds", EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS)
-    )
-    EnvConfig.AGENT_LLM_TIMEOUT_SECONDS = int(
-        fn.get("agent_llm_timeout_seconds", EnvConfig.AGENT_LLM_TIMEOUT_SECONDS)
-    )
-    EnvConfig.AGENT_JOB_TIMEOUT_SECONDS = int(
-        fn.get("agent_job_timeout_seconds", EnvConfig.AGENT_JOB_TIMEOUT_SECONDS)
-    )
-    EnvConfig.AGENT_DEBUG_MODE = dbg.get("agent_debug_mode", EnvConfig.AGENT_DEBUG_MODE)
-
-    EnvConfig.TEST_GROUP_ID = msg.get("test_group_id", EnvConfig.TEST_GROUP_ID)
-    EnvConfig.ANNOUNCE_GROUP_ID = msg.get("announce_group_id", EnvConfig.TEST_GROUP_ID)
-    EnvConfig.APOD_GROUP_ID = msg.get("apod_group_id", EnvConfig.TEST_GROUP_ID)
-    EnvConfig.EARTH_NOW_GROUP_ID = msg.get("earth_now_group_id", EnvConfig.TEST_GROUP_ID)
-    EnvConfig.NEWS_SUMMARY_GROUP_ID = msg.get("news_summary_group_id", EnvConfig.TEST_GROUP_ID)
-    EnvConfig.EARTHQUAKE_GROUP_ID = msg.get("earthquake_group_id", EnvConfig.TEST_GROUP_ID)
-
-    EnvConfig.QUERY_MESSAGE_NUMBERS = db.get("query_message_numbers", EnvConfig.QUERY_MESSAGE_NUMBERS)
-
-    EnvConfig.DASHBOARD_PASSWORD = dash.get("password", "admin")
-    EnvConfig.DASHBOARD_JWT_SECRET = dash.get("jwt_secret", "frontier-dashboard-default-secret")
-    EnvConfig.DASHBOARD_JWT_EXPIRE_HOURS = int(dash.get("jwt_expire_hours", 24))
+    EnvConfig.reload(config)
 
 
 @router.get("/")

@@ -3,7 +3,6 @@ from nonebot import get_driver, logger, require
 from utils.database import get_engine
 
 require("nonebot_plugin_apscheduler")
-require("nonebot_plugin_alconna")
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 from .task_manager import TaskExecutor, TaskManager  # noqa: E402
@@ -73,4 +72,6 @@ async def init_task_system():
 
 @driver.on_shutdown
 async def shutdown_task_system():
-    await task_handlers.aclose_http_client()
+    from utils.http_client import aclose_all
+
+    await aclose_all()

@@ -7,8 +7,8 @@ from io import BytesIO
 from types import SimpleNamespace
 from typing import Any, Literal
 
-import httpx
-from nonebot import logger, require
+from utils.http_client import get_http_client
+from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.exception import ActionFailed
 from PIL import Image
@@ -20,11 +20,9 @@ from utils.database import MessageDatabase
 from utils.markdown_render import markdown_to_image, markdown_to_text
 from utils.signal_llm import signal_structured
 
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
+from utils.alconna import UniMessage
 
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+httpx_client = get_http_client("message")
 messages_db = MessageDatabase()
 text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
@@ -95,6 +93,24 @@ class ReplyCheck(BaseModel):
         description="Should or not reply message. If should, reply with true, either reply with false"
     )
     confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
+
+
+def extract_message_text(content: Any) -> str:
+    """从消息 content 中提取纯文本（str / list[dict] / 对象）。"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                parts.append(str(item.get("text", "")))
+        return "\n".join(parts)
+    # 尝试对象的 .text / .content 属性
+    if hasattr(content, "text") and (text := getattr(content, "text", None)):
+        return str(text)
+    if hasattr(content, "content"):
+        return extract_message_text(getattr(content, "content"))
+    return str(content or "")
 
 
 def _reply_check_content_text(content: Any) -> str:
@@ -214,9 +230,6 @@ async def _reply_check_should_reply(group_id: int, plaintext: str, messages: lis
     reply_check: ReplyCheck = await signal_structured(system_prompt, plain_conv, ReplyCheck)
     return reply_check.should_reply == "true" and reply_check.confidence > 0.5
 
-
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()
 
 
 MediaItem = bytes | bytearray | Callable[[], Awaitable[bytes | None]]

@@ -5,20 +5,15 @@ import time
 from signal import SIGINT
 
 from git import Repo
-from nonebot import get_driver, logger, on_command, require
+from nonebot import get_driver, logger, on_command
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.permission import SUPERUSER
 
-from plugins.toolbox.environment_check import system_check
+from utils.alconna import Target, UniMessage
 from utils.configs import EnvConfig
-from utils.database import MessageDatabase
 from utils.message import (
     message_extract,
 )
-from utils.staged_artifacts import cleanup_expired_staged_artifacts
-
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import Target, UniMessage  # noqa: E402
 
 driver = get_driver()
 updater = on_command("update", priority=1, block=True, aliases={"更新"}, permission=SUPERUSER)
@@ -59,8 +54,6 @@ def clone_skill_creator():
 
 @driver.on_startup
 async def on_startup():
-    messages_db = MessageDatabase()
-    system_check()
     os.makedirs("./cache", exist_ok=True)
     os.makedirs("./sandbox", exist_ok=True)
     if not os.path.exists(".env"):
@@ -70,12 +63,6 @@ async def on_startup():
     if not os.path.exists("mcp.json"):
         shutil.copy("mcp.json.example", "mcp.json")
     clone_skill_creator()
-    if EnvConfig.IMAGE_AUTO_CLEANUP:
-        cleaned = await messages_db.cleanup_expired_images()
-        logger.info(f"🗑️ 清理过期图片 {cleaned} 张")
-    cleaned_artifacts = cleanup_expired_staged_artifacts()
-    if cleaned_artifacts:
-        logger.info(f"🗑️ 清理过期暂存内容 {cleaned_artifacts} 份")
 
 
 @driver.on_bot_connect

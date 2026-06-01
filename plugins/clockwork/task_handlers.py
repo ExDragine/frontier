@@ -8,7 +8,7 @@ import zoneinfo
 from dataclasses import dataclass
 from pathlib import Path
 
-import httpx
+from utils.http_client import get_http_client
 from jinja2 import Environment, FileSystemLoader
 from nonebot import get_bot, logger
 from nonebot_plugin_alconna import Image, Target, Text, UniMessage
@@ -18,14 +18,13 @@ from tools import agent_tools
 from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 from utils.database import EventDatabase
-from utils.render import html_to_image, playwright_render
+from utils.markdown_render import html_to_image, playwright_render
 
 from .task_models import TaskRunResult
 
 # 共享的资源
 event_database = EventDatabase()
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+httpx_client = get_http_client("task_handlers")
 tools = agent_tools.mcp_tools + agent_tools.web_tools
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
@@ -234,9 +233,6 @@ async def build_daily_news_artifacts(
     )
 
 
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()
-
 
 async def github_post_news(**kwargs):
     """GitHub 新闻推送（未启用）"""
@@ -313,7 +309,7 @@ async def eq_cenc(**kwargs):
     content: dict = response.json()
 
     if not content:
-        logger.debug("CENC 没有新的地震")
+        logger.debug("CENC API 返回空数据，跳过")
         return None
 
     # 获取最新的地震数据
@@ -327,7 +323,7 @@ async def eq_cenc(**kwargs):
         else:
             await event_database.update(EVENT_NAME, event_id)
     else:
-        logger.debug("CENC 没有新的地震")
+        logger.debug(f"CENC 地震已处理过 (event_id={event_id})，跳过")
         return
     logger.info(f"检测到{data['HypoCenter']}发生{data['Magnitude']}级地震")
     if int(data["Magnitude"]) < 3:
@@ -371,7 +367,7 @@ async def eq_usgs(**kwargs):
     content: dict = response.json()
 
     if not content or not content.get("features"):
-        logger.debug("USGS 没有新的地震")
+        logger.debug("USGS API 返回空数据或缺少 features，跳过")
         return None
 
     # 获取最新的地震数据
@@ -387,7 +383,7 @@ async def eq_usgs(**kwargs):
         else:
             await event_database.update(EVENT_NAME, event_id)
     else:
-        logger.debug("USGS 没有新的地震")
+        logger.debug(f"USGS 地震已处理过 (event_id={event_id})，跳过")
         return
     logger.debug(f"检测到{properties['place']}发生{properties['mag']}级地震")
     # 准备详细信息

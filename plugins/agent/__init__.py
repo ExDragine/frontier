@@ -7,16 +7,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from nonebot import get_bot, get_driver, logger, on_message, require
+from nonebot import get_bot, get_driver, logger, on_message
 from nonebot.adapters.milky.event import MessageEvent
 
 from utils.agent_queue import AgentQueueFullError, AgentQueueManager
 from utils.agents import NO_REPLY_SENTINEL, FrontierCognitive, _agent_thread_id
+from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
-from utils.message import (
-    aclose_http_client as message_aclose_http_client,
-)
 from utils.message import (
     download_media,
     message_check,
@@ -31,9 +29,6 @@ from utils.min_heap import RepeatMessageHeap
 from utils.reply_context import build_reply_context, reply_seq_from_segments
 from utils.staged_artifacts import cleanup_expired_staged_artifacts
 from utils.user_profile import get_profile_manager
-
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
@@ -173,22 +168,10 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
 
 @driver.on_shutdown
 async def on_shutdown():
-    from tools import heavens_above, rocket, satellite, space_weather, weather
+    from utils.http_client import aclose_all
 
     await agent_queue.aclose()
-    closers = [
-        message_aclose_http_client,
-        heavens_above.aclose_http_client,
-        rocket.aclose_http_client,
-        satellite.aclose_http_client,
-        space_weather.aclose_http_client,
-        weather.aclose_http_client,
-    ]
-    for closer in closers:
-        try:
-            await closer()
-        except Exception as exc:
-            logger.warning(f"关闭 HTTP 客户端失败: {type(exc).__name__}: {exc}")
+    await aclose_all()
 
 
 @driver.on_startup

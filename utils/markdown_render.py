@@ -155,3 +155,114 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
             os.remove(temp_html_path)
         except Exception as e:
             logger.warning("Failed to delete temp file: %s", e)
+
+
+async def html_to_image(html: str, css: str | None = None, width: int = 1000, selector: str = "#render-content"):
+    """将 HTML 渲染为图片，复用持久化浏览器实例。"""
+    import secrets
+
+    trigger_mark = secrets.token_hex(16)
+    cache_file = f"{os.getcwd()}/cache/{trigger_mark}.html"
+    style_block = f"<style>{css}</style>" if css else ""
+    rendered_html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {style_block}
+</head>
+<body>
+    <div class="markdown-body" id="render-content">
+        {html}
+    </div>
+</body>
+</html>
+"""
+
+    with open(cache_file, "w", encoding="utf-8") as f:
+        f.write(rendered_html)
+
+    browser = await _get_browser()
+    page = await browser.new_page(viewport={"width": width, "height": 600})
+    try:
+        await page.goto(f"file://{cache_file}")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(500)
+        height = await page.evaluate("""
+            Math.max(
+                document.body.scrollHeight,
+                document.body.offsetHeight,
+                document.documentElement.clientHeight,
+                document.documentElement.scrollHeight,
+                document.documentElement.offsetHeight
+            )
+        """)
+        await page.set_viewport_size({"width": width, "height": max(int(height), 100)})
+        target = await page.query_selector(selector)
+        image = await target.screenshot(type="png") if target else await page.screenshot(full_page=True, type="png")
+    finally:
+        close_page = getattr(page, "close", None)
+        if close_page is not None:
+            await close_page()
+    os.remove(cache_file)
+    return image
+
+
+async def playwright_render(name: str, packed_args: dict):
+    """使用 Playwright + Jinja2 模板渲染指定类型的内容为图片。"""
+    import re
+    import secrets
+
+    from jinja2 import Environment, FileSystemLoader
+
+    trigger_mark = secrets.token_hex(16)
+    cache_file = f"{os.getcwd()}/cache/{trigger_mark}.html"
+    env = Environment(loader=FileSystemLoader("./templates/"), autoescape=True)
+
+    match name:
+        case "eq_usgs" | "eq_cenc":
+            template = env.get_template("earthquake.html")
+            depth = packed_args.get("depth")
+            if isinstance(depth, str):
+                pattern = re.compile(r"[\d.]+")
+                result = pattern.search(depth)
+                if result:
+                    depth = float(result.group(0))
+                else:
+                    depth = 10.0
+            elif depth is not None:
+                depth = float(depth)
+            else:
+                depth = 10.0
+
+            rendered_html = template.render(
+                title=packed_args["title"],
+                detail=packed_args["detail"],
+                latitude=float(packed_args["latitude"]),
+                longitude=float(packed_args["longitude"]),
+                magnitude=float(packed_args["magnitude"]),
+                depth=depth,
+            )
+        case _:
+            return None
+
+    with open(cache_file, "w", encoding="utf-8") as f:
+        f.write(rendered_html)
+
+    browser = await _get_browser()
+    page = await browser.new_page()
+    try:
+        await page.goto(f"file://{cache_file}")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(3000)
+        bytes_picture = None
+        element_handle = await page.query_selector("id=card")
+        if element_handle is not None:
+            bytes_picture = await element_handle.screenshot()
+    finally:
+        close_page = getattr(page, "close", None)
+        if close_page is not None:
+            await close_page()
+    os.remove(cache_file)
+    if bytes_picture:
+        return bytes_picture

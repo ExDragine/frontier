@@ -1,21 +1,16 @@
 import datetime
 from typing import Literal
 
-import httpx
 from bs4 import BeautifulSoup
 from langchain.tools import tool
-from nonebot import require
 from playwright.async_api import async_playwright
 
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+from utils.http_client import get_http_client
 
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import Image, UniMessage  # noqa: E402
+httpx_client = get_http_client("space_weather")
 
+from utils.alconna import Image, UniMessage
 
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()
 
 
 @tool(response_format="content")

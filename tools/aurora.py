@@ -1,10 +1,9 @@
 import time
 
 from langchain.tools import tool
-from nonebot import logger, require
+from nonebot import logger
 
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
+from utils.alconna import UniMessage
 
 
 @tool(response_format="content_and_artifact")

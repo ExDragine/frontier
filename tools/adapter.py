@@ -2,13 +2,12 @@ from pathlib import Path
 
 from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
-from nonebot import get_bot, require
+from nonebot import get_bot
 from nonebot.adapters.milky.message import MessageSegment
 
 from utils.milky_tools import resolve_group_id, resolve_local_path, validate_url
 
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
+from utils.alconna import UniMessage
 
 
 def _resolve_message_local_path(source: str, workspace_dir: str | None):

@@ -2,8 +2,9 @@ import zoneinfo
 import logging
 from datetime import UTC, datetime, timedelta
 
-from httpx import AsyncClient
 from langchain.tools import tool
+
+from utils.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -11,11 +12,7 @@ logger = logging.getLogger(__name__)
 TLP_LAUNCH_URL = "https://tlpnetwork.com/api/launches"
 
 # 全局 HTTP 客户端复用
-http_client = AsyncClient(timeout=30, http2=True)
-
-
-async def aclose_http_client() -> None:
-    await http_client.aclose()
+http_client = get_http_client("rocket")
 
 
 # 火箭发射

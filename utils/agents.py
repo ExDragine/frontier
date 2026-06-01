@@ -97,21 +97,12 @@ def _filter_messages_for_model_capabilities(messages: list[dict], model: str, en
     return filtered_messages
 
 
-def _message_text_content(message) -> str:
-    text = getattr(message, "text", None)
-    if text:
-        return str(text)
+from utils.message import extract_message_text
 
-    content = getattr(message, "content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        text_parts = []
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "text":
-                text_parts.append(str(part.get("text", "")))
-        return "\n".join(text_parts)
-    return str(content or "")
+
+def _message_text_content(message) -> str:
+    """提取消息文本（兼容旧名称，委托给 extract_message_text）。"""
+    return extract_message_text(message)
 
 
 def _json_document_candidates(text: str, *, prefer_object: bool = False) -> list[str]:
@@ -296,16 +287,8 @@ class FrontierCognitive:
 
     @staticmethod
     def _message_text(message) -> str:
-        content = getattr(message, "content", "")
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            text_parts = []
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    text_parts.append(str(part.get("text", "")))
-            return "\n".join(text_parts)
-        return str(content or "")
+        """提取消息文本（委托给 extract_message_text）。"""
+        return extract_message_text(message)
 
     @staticmethod
     def clean_staged_artifact_handoffs(message):

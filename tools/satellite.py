@@ -1,15 +1,13 @@
 import time
 from typing import Literal
 
-import httpx
 from langchain.tools import tool
-from nonebot import logger, require
+from nonebot import logger
 
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
+from utils.alconna import UniMessage
+from utils.http_client import get_http_client
 
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+httpx_client = get_http_client("satellite")
 
 
 @tool(response_format="content_and_artifact")
@@ -123,6 +121,3 @@ async def get_himawari_satellite_image() -> tuple[str, UniMessage | None]:
         logger.error(f"💥 工具执行异常: get_himawari_satellite_image - {str(e)} (耗时: {end_time - start_time:.2f}s)")
         return f"获取Himawari卫星图像失败: {str(e)}", None
 
-
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()
