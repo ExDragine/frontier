@@ -1,5 +1,6 @@
 # ruff: noqa: S101
 
+import importlib
 import types
 
 import pytest
@@ -252,9 +253,10 @@ async def test_message_http_client_uses_registry():
     # Clean start
     registry._clients.clear()
     registry._aclose_all_called = False
+    reloaded_message = importlib.reload(message_module)
 
-    assert message_module.httpx_client is not None
-    assert registry.get_http_client("message") is message_module.httpx_client
+    assert reloaded_message.httpx_client is not None
+    assert registry.get_http_client("message") is reloaded_message.httpx_client
 
     await registry.aclose_all()
 

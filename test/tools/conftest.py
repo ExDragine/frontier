@@ -1,5 +1,7 @@
 # ruff: noqa: S101
 
+from __future__ import annotations
+
 import contextlib
 import importlib
 import importlib.util
@@ -37,6 +39,10 @@ def _make_alconna_module() -> types.ModuleType:  # noqa: C901
         def __init__(self, url=None, raw=None):
             self.url = url
             self.raw = raw
+
+    class At:
+        def __init__(self, target=None):
+            self.target = target
 
     class Target:
         def __init__(self, id=None):
@@ -87,7 +93,7 @@ def _make_alconna_module() -> types.ModuleType:  # noqa: C901
         def at_all(cls, online: bool = False):
             return cls({"type": "at_all", "online": online})
 
-        def extend(self, other: "UniMessage") -> "UniMessage":
+        def extend(self, other: UniMessage) -> UniMessage:
             """将 other 的段追加到自身，content 升级为列表。"""
             self_seg = self.content if isinstance(self.content, list) else [self.content]
             other_seg = other.content if isinstance(other.content, list) else [other.content]
@@ -97,6 +103,7 @@ def _make_alconna_module() -> types.ModuleType:  # noqa: C901
         async def send(self, *args, **kwargs):
             return None
 
+    alconna.At = At
     alconna.Image = Image
     alconna.Target = Target
     alconna.Text = Text
@@ -223,6 +230,7 @@ def load_tool_module():
         module = importlib.util.module_from_spec(spec)
 
         old_alconna = sys.modules.get("nonebot_plugin_alconna")
+        old_utils_alconna = sys.modules.pop("utils.alconna", None)
         sys.modules["nonebot_plugin_alconna"] = _make_alconna_module()
 
         old_nonebot_require = None
@@ -248,6 +256,10 @@ def load_tool_module():
                 sys.modules.pop("nonebot_plugin_alconna", None)
             else:
                 sys.modules["nonebot_plugin_alconna"] = old_alconna
+            if old_utils_alconna is None:
+                sys.modules.pop("utils.alconna", None)
+            else:
+                sys.modules["utils.alconna"] = old_utils_alconna
 
             if old_nonebot_require is not None and old_plugin_require is not None:
                 with contextlib.suppress(Exception):
