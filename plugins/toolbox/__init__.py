@@ -20,6 +20,7 @@ from utils.message import (
 driver = get_driver()
 updater = on_command("update", priority=1, block=True, aliases={"更新"}, permission=SUPERUSER)
 setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"}, permission=SUPERUSER)
+restart = on_command("restart", priority=3, block=True, aliases={"重启"}, permission=SUPERUSER)
 
 SKILL_CREATOR_URL = "https://gh-proxy.org/https://github.com/anthropics/skills.git"
 SKILL_CREATOR_PATH = os.path.join(".", "cache", "sandbox", "skills", "skill-creator")
@@ -109,3 +110,10 @@ async def handle_setting(event: MessageEvent):
         await UniMessage.text(
             f"当前默认使用的模型为: {EnvConfig.ADVAN_MODEL}\n当前辅助模型为:{EnvConfig.BASIC_MODEL}\n当前绘图模型为:{EnvConfig.PAINT_MODEL}"
         ).send()
+
+
+@restart.handle()
+async def handle_restart(event: MessageEvent):
+    # 重启Windows
+    if os.name == "nt":
+        subprocess.Popen("shutdown /r /t 0", shell=True)
