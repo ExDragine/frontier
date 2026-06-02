@@ -12,6 +12,7 @@ DEFAULT_EMBEDDING_BATCH_SIZE = 1
 DEFAULT_EMBEDDING_DEVICE = "cpu"
 
 logger = logging.getLogger(__name__)
+_SHARED_EMBEDDINGS: dict[tuple[str, str | None, int], Any] = {}
 
 
 @dataclass(slots=True)
@@ -79,6 +80,14 @@ def _default_embeddings_factory(config: MessageVectorIndexConfig):
     )
 
 
+def get_shared_embeddings(config: MessageVectorIndexConfig):
+    """Return the shared embedding model used by memory and other semantic indexes."""
+    key = (config.embedding_model, config.embedding_device, max(1, config.embedding_batch_size))
+    if key not in _SHARED_EMBEDDINGS:
+        _SHARED_EMBEDDINGS[key] = _default_embeddings_factory(config)
+    return _SHARED_EMBEDDINGS[key]
+
+
 def _default_collection_factory(config: MessageVectorIndexConfig):
     import chromadb
 
@@ -101,7 +110,7 @@ class MessageVectorIndex:
         if not config.enabled:
             return
         try:
-            self._embeddings = (embeddings_factory or _default_embeddings_factory)(config)
+            self._embeddings = embeddings_factory(config) if embeddings_factory else get_shared_embeddings(config)
             self._collection = (collection_factory or _default_collection_factory)(config)
             self.available = True
         except Exception as exc:

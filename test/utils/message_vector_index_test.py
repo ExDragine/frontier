@@ -7,6 +7,7 @@ from utils.message_vector_index import (
     MessageVectorIndex,
     MessageVectorIndexConfig,
     build_chroma_where,
+    get_shared_embeddings,
     message_metadata,
 )
 
@@ -79,6 +80,31 @@ def test_vector_config_accepts_batch_size_and_device_overrides():
 
     assert config.embedding_batch_size == 2
     assert config.embedding_device == "cpu"
+
+
+def test_shared_embeddings_reuses_memory_embedding_instance(monkeypatch):
+    from utils import message_vector_index
+
+    calls = []
+
+    def fake_embeddings_factory(config):
+        calls.append(config)
+        return FakeEmbeddings()
+
+    monkeypatch.setattr(message_vector_index, "_SHARED_EMBEDDINGS", {})
+    monkeypatch.setattr(message_vector_index, "_default_embeddings_factory", fake_embeddings_factory)
+    config = MessageVectorIndexConfig(enabled=True, embedding_model="shared-model", embedding_device="cpu")
+
+    first = get_shared_embeddings(config)
+    second = get_shared_embeddings(config)
+    index = MessageVectorIndex(
+        config,
+        collection_factory=lambda _config: FakeCollection(),
+    )
+
+    assert first is second
+    assert index._embeddings is first
+    assert len(calls) == 1
 
 
 def test_message_metadata_normalizes_private_and_group_scope():

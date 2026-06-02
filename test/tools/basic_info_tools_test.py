@@ -239,9 +239,7 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "milky_group": types.SimpleNamespace(set_group_name=FakeBaseTool("set_group_name")),
         "milky_message": types.SimpleNamespace(get_message=FakeBaseTool("get_message")),
         "milky_system": types.SimpleNamespace(get_login_info=FakeBaseTool("get_login_info")),
-        "deepseek_balance": types.SimpleNamespace(
-            get_deepseek_api_balance=FakeBaseTool("get_deepseek_api_balance")
-        ),
+        "deepseek_balance": types.SimpleNamespace(get_deepseek_api_balance=FakeBaseTool("get_deepseek_api_balance")),
         "arxiv": types.SimpleNamespace(get_arxiv_paper_info=FakeBaseTool("get_arxiv_paper_info")),
         "tavily": types.SimpleNamespace(tavily_search=FakeBaseTool("tavily_search")),
         "aurora": types.SimpleNamespace(aurora_live=FakeBaseTool("aurora_live")),
@@ -296,6 +294,28 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "mcp_tool",
         "tavily_search",
         "search_messages",
+        "mystery_tool",
+        "get_arxiv_paper_info",
+        "aurora_live",
+        "get_china_earthquake",
+        "iching_divination",
+    }
+    assert {tool.name for tool in module.agent_tools.core_tools} == {
+        "send_image",
+        "simple_calculator",
+        "upload_group_file",
+        "send_friend_nudge",
+        "set_group_name",
+        "get_message",
+        "get_login_info",
+        "search_messages",
+    }
+    assert {tool.name for tool in module.agent_tools.searchable_tools} == {
+        "get_deepseek_api_balance",
+        "get_paint",
+        "get_video",
+        "mcp_tool",
+        "tavily_search",
         "mystery_tool",
         "get_arxiv_paper_info",
         "aurora_live",

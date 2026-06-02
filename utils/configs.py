@@ -44,6 +44,7 @@ dashboard: dict = config.get("dashboard", {})
 image_memory: dict = config.get("image_memory", {})
 content_check: dict = config.get("content_check", {})
 vector_memory: dict = config.get("vector_memory", config.get("memory", {}))
+tool_search: dict = config.get("tool_search", {})
 
 
 class EnvConfig:
@@ -139,29 +140,29 @@ class EnvConfig:
                 _f.write(generated)
             DASHBOARD_JWT_SECRET = generated
             msg = (
-                f"\n{'='*60}\n"
+                f"\n{'=' * 60}\n"
                 f"  ⚠️  安全警告：Dashboard JWT secret 使用默认值！\n"
                 f"  请在 env.toml 的 [dashboard] 段设置 jwt_secret。\n"
                 f"  已为本次运行生成临时密钥: {generated}\n"
                 f"  将以下内容添加到 env.toml 以避免下次启动再次生成:\n"
                 f"\n"
                 f"  [dashboard]\n"
-                f"  jwt_secret = \"{generated}\"\n"
-                f"{'='*60}\n"
+                f'  jwt_secret = "{generated}"\n'
+                f"{'=' * 60}\n"
             )
             print(msg, file=sys.stderr)
 
-    if DASHBOARD_PASSWORD == "admin":
+    if DASHBOARD_PASSWORD == "admin":  # noqa: S105 - explicit insecure-default warning check
         import sys
 
         msg = (
-            f"\n{'='*60}\n"
-            f"  ⚠️  安全警告：Dashboard 密码使用默认值 \"admin\"！\n"
+            f"\n{'=' * 60}\n"
+            f'  ⚠️  安全警告：Dashboard 密码使用默认值 "admin"！\n'
             f"  请在 env.toml 的 [dashboard] 段设置 password。\n"
             f"  密码应使用 bcrypt 哈希存储。\n"
             f"  生成哈希: python -c 'import bcrypt; print(bcrypt.hashpw(\n"
-            f"      b\"你的密码\", bcrypt.gensalt()).decode())'\n"
-            f"{'='*60}\n"
+            f'      b"你的密码", bcrypt.gensalt()).decode())\'\n'
+            f"{'=' * 60}\n"
         )
         print(msg, file=sys.stderr)
 
@@ -171,16 +172,21 @@ class EnvConfig:
 
     CONTENT_CHECK_ENABLED: bool = content_check.get("enabled", False)
 
-    VECTOR_MEMORY_ENABLED: bool = bool(vector_memory.get("semantic_search_enabled", vector_memory.get("enabled", True)))
+    VECTOR_MEMORY_ENABLED: bool = bool(
+        vector_memory.get("semantic_search_enabled", vector_memory.get("enabled", True))
+    )
     VECTOR_MEMORY_CHROMA_PATH: str = str(vector_memory.get("chroma_path", "cache/chroma"))
     VECTOR_MEMORY_COLLECTION: str = str(vector_memory.get("chroma_collection", "frontier_messages"))
-    VECTOR_MEMORY_EMBEDDING_MODEL: str = str(
-        vector_memory.get("embedding_model", "microsoft/harrier-oss-v1-0.6b")
-    )
+    VECTOR_MEMORY_EMBEDDING_MODEL: str = str(vector_memory.get("embedding_model", "microsoft/harrier-oss-v1-0.6b"))
     VECTOR_MEMORY_SEMANTIC_TOP_K: int = int(vector_memory.get("semantic_top_k", 30))
     VECTOR_MEMORY_EMBEDDING_BATCH_SIZE: int = int(vector_memory.get("semantic_embedding_batch_size", 1))
     VECTOR_MEMORY_EMBEDDING_DEVICE: str = str(vector_memory.get("semantic_embedding_device", "cpu")).strip()
     VECTOR_MEMORY_PRELOAD_ON_STARTUP: bool = bool(vector_memory.get("preload_on_startup", True))
+
+    TOOL_SEARCH_ENABLED: bool = bool(tool_search.get("enabled", False))
+    TOOL_SEARCH_TOP_K: int = int(tool_search.get("top_k", 8))
+    TOOL_SEARCH_EXPANDED_TOP_K: int = int(tool_search.get("expanded_top_k", 20))
+    TOOL_SEARCH_SEMANTIC_ENABLED: bool = bool(tool_search.get("semantic_enabled", True))
 
     @classmethod
     def reload(cls, config: dict) -> None:
@@ -210,7 +216,9 @@ class EnvConfig:
             defaults = _role_defaults[role]
             for i, attr in enumerate(_role_attrs[role]):
                 key_name = attr.split("_", 1)[1].lower()  # e.g., "model", "model_provider", ...
-                setattr(cls, attr, ep.get(f"{role}_{key_name}" if key_name != "model" else f"{role}_model", defaults[i]))
+                setattr(
+                    cls, attr, ep.get(f"{role}_{key_name}" if key_name != "model" else f"{role}_model", defaults[i])
+                )
 
         # ── 其他端点 ──
         cls.OPENAI_BASE_URL = ep.get("openai_base_url", cls.OPENAI_BASE_URL)
@@ -240,19 +248,32 @@ class EnvConfig:
 
         # ── 访问控制 ──
         _POLICIES = ("agent", "paint")
-        _policy_fields = ("WHITELIST_MODE", "WHITELIST_PERSON_LIST", "WHITELIST_GROUP_LIST",
-                          "BLACKLIST_PERSON_LIST", "BLACKLIST_GROUP_LIST")
+        _policy_fields = (
+            "WHITELIST_MODE",
+            "WHITELIST_PERSON_LIST",
+            "WHITELIST_GROUP_LIST",
+            "BLACKLIST_PERSON_LIST",
+            "BLACKLIST_GROUP_LIST",
+        )
         for policy in _POLICIES:
-            for field in _policy_fields:
-                attr = f"{policy.upper()}_{field}"
-                key_name = f"{policy}_{field.lower()}"
+            for policy_field in _policy_fields:
+                attr = f"{policy.upper()}_{policy_field}"
+                key_name = f"{policy}_{policy_field.lower()}"
                 setattr(cls, attr, fn.get(key_name, getattr(cls, attr)))
 
         # ── 限流/超时 ──
-        cls.PAINT_RATE_LIMIT_MAX_REQUESTS = int(fn.get("paint_rate_limit_max_requests", cls.PAINT_RATE_LIMIT_MAX_REQUESTS))
-        cls.PAINT_RATE_LIMIT_WINDOW_SECONDS = int(fn.get("paint_rate_limit_window_seconds", cls.PAINT_RATE_LIMIT_WINDOW_SECONDS))
-        cls.VIDEO_RATE_LIMIT_MAX_REQUESTS = int(fn.get("video_rate_limit_max_requests", cls.VIDEO_RATE_LIMIT_MAX_REQUESTS))
-        cls.VIDEO_RATE_LIMIT_WINDOW_SECONDS = int(fn.get("video_rate_limit_window_seconds", cls.VIDEO_RATE_LIMIT_WINDOW_SECONDS))
+        cls.PAINT_RATE_LIMIT_MAX_REQUESTS = int(
+            fn.get("paint_rate_limit_max_requests", cls.PAINT_RATE_LIMIT_MAX_REQUESTS)
+        )
+        cls.PAINT_RATE_LIMIT_WINDOW_SECONDS = int(
+            fn.get("paint_rate_limit_window_seconds", cls.PAINT_RATE_LIMIT_WINDOW_SECONDS)
+        )
+        cls.VIDEO_RATE_LIMIT_MAX_REQUESTS = int(
+            fn.get("video_rate_limit_max_requests", cls.VIDEO_RATE_LIMIT_MAX_REQUESTS)
+        )
+        cls.VIDEO_RATE_LIMIT_WINDOW_SECONDS = int(
+            fn.get("video_rate_limit_window_seconds", cls.VIDEO_RATE_LIMIT_WINDOW_SECONDS)
+        )
         cls.VIDEO_POLL_INTERVAL_SECONDS = int(fn.get("video_poll_interval_seconds", cls.VIDEO_POLL_INTERVAL_SECONDS))
         cls.VIDEO_POLL_TIMEOUT_SECONDS = int(fn.get("video_poll_timeout_seconds", cls.VIDEO_POLL_TIMEOUT_SECONDS))
         cls.AGENT_LLM_TIMEOUT_SECONDS = int(fn.get("agent_llm_timeout_seconds", cls.AGENT_LLM_TIMEOUT_SECONDS))
@@ -273,3 +294,9 @@ class EnvConfig:
         cls.DASHBOARD_PASSWORD = dash.get("password", "admin")
         cls.DASHBOARD_JWT_SECRET = dash.get("jwt_secret", "frontier-dashboard-default-secret")
         cls.DASHBOARD_JWT_EXPIRE_HOURS = int(dash.get("jwt_expire_hours", 24))
+
+        tool_search = config.get("tool_search", {})
+        cls.TOOL_SEARCH_ENABLED = bool(tool_search.get("enabled", False))
+        cls.TOOL_SEARCH_TOP_K = int(tool_search.get("top_k", 8))
+        cls.TOOL_SEARCH_EXPANDED_TOP_K = int(tool_search.get("expanded_top_k", 20))
+        cls.TOOL_SEARCH_SEMANTIC_ENABLED = bool(tool_search.get("semantic_enabled", True))

@@ -89,9 +89,7 @@ async def test_extract_uni_messages_loads_staged_artifact_from_final_text(monkey
 
     result = await agents.FrontierCognitive.extract_uni_messages(response)
 
-    assert [artifact.content for artifact in result] == [
-        {"type": "image", "url": None, "path": None, "raw": b"img"}
-    ]
+    assert [artifact.content for artifact in result] == [{"type": "image", "url": None, "path": None, "raw": b"img"}]
 
 
 @pytest.mark.asyncio
@@ -142,6 +140,10 @@ def test_env_config_responses_api_defaults():
 
     assert EnvConfig.BASIC_MODEL_USE_RESPONSES_API is True
     assert EnvConfig.ADVAN_MODEL_USE_RESPONSES_API is True
+    assert EnvConfig.TOOL_SEARCH_ENABLED is False
+    assert EnvConfig.TOOL_SEARCH_TOP_K == 8
+    assert EnvConfig.TOOL_SEARCH_EXPANDED_TOP_K == 20
+    assert EnvConfig.TOOL_SEARCH_SEMANTIC_ENABLED is True
 
 
 def test_build_user_content_omits_images_when_model_lacks_vision():
@@ -181,11 +183,47 @@ def test_filter_messages_for_text_only_model_removes_image_parts(monkeypatch):
 def test_frontier_cognitive_uses_main_tools(monkeypatch):
     monkeypatch.setattr(agents.agent_tools, "all_tools", ["all-tool"], raising=False)
     monkeypatch.setattr(agents.agent_tools, "main_tools", ["main-tool"], raising=False)
+    monkeypatch.setattr(agents.EnvConfig, "TOOL_SEARCH_ENABLED", False, raising=False)
 
     frontier = agents.FrontierCognitive()
 
     assert frontier.tools == ["main-tool"]
     assert not hasattr(frontier, "subagents")
+
+
+def test_frontier_cognitive_uses_core_tools_when_tool_search_enabled(monkeypatch):
+    captured = {}
+
+    class FakeToolSearchConfig:
+        @classmethod
+        def from_env(cls):
+            captured["config_from_env"] = True
+            return "tool-search-config"
+
+    class FakeToolSearchIndex:
+        def __init__(self, tools, *, metadata_by_name=None, config=None):
+            captured["index_tools"] = tools
+            captured["metadata_by_name"] = metadata_by_name
+            captured["index_config"] = config
+
+    monkeypatch.setattr(agents.agent_tools, "main_tools", ["main-tool"], raising=False)
+    monkeypatch.setattr(agents.agent_tools, "core_tools", ["core-tool"], raising=False)
+    monkeypatch.setattr(agents.agent_tools, "searchable_tools", ["dynamic-tool"], raising=False)
+    monkeypatch.setattr(agents.agent_tools, "tool_metadata", {"dynamic-tool": {"group": "research"}}, raising=False)
+    monkeypatch.setattr(agents.EnvConfig, "TOOL_SEARCH_ENABLED", True, raising=False)
+    monkeypatch.setattr(agents, "ToolSearchConfig", FakeToolSearchConfig)
+    monkeypatch.setattr(agents, "ToolSearchIndex", FakeToolSearchIndex)
+
+    frontier = agents.FrontierCognitive()
+
+    assert frontier.tools == ["core-tool"]
+    assert captured == {
+        "config_from_env": True,
+        "index_tools": ["dynamic-tool"],
+        "metadata_by_name": {"dynamic-tool": {"group": "research"}},
+        "index_config": "tool-search-config",
+    }
+    assert isinstance(frontier.tool_search_index, FakeToolSearchIndex)
 
 
 def test_frontier_cognitive_uses_in_memory_checkpoint(monkeypatch):
@@ -305,11 +343,7 @@ async def test_assistant_agent_parses_structured_response_from_ai_json_text(monk
 
     class DummyAgent:
         async def ainvoke(self, _payload):
-            return {
-                "messages": [
-                    types.SimpleNamespace(type="ai", text='{"title": "日报", "count": 2}', content="")
-                ]
-            }
+            return {"messages": [types.SimpleNamespace(type="ai", text='{"title": "日报", "count": 2}', content="")]}
 
     monkeypatch.setattr(agents, "create_agent", lambda **_kwargs: DummyAgent())
     monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
@@ -436,6 +470,48 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert (tmp_path / "sandbox" / "skills").is_dir()
     assert (tmp_path / "sandbox" / "memory").is_dir()
     assert captured["config"]["configurable"]["workspace_dir"] == str(tmp_path / "sandbox" / "workspaces" / "123")
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_adds_dynamic_tool_search_middleware_when_enabled(monkeypatch, tmp_path):
+    import types
+
+    from utils import agents
+
+    captured = {}
+
+    class DummyAgent:
+        async def ainvoke(self, payload, config=None):
+            return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]}
+
+    class FakeDynamicToolSearchMiddleware:
+        def __init__(self, index):
+            self.index = index
+
+    def fake_create_deep_agent(**kwargs):
+        captured.update(kwargs)
+        return DummyAgent()
+
+    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(agents, "DynamicToolSearchMiddleware", FakeDynamicToolSearchMiddleware)
+
+    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier.tools = ["core-tool"]
+    frontier.tool_search_index = "dynamic-index"
+    frontier.working_dir = str(tmp_path / "sandbox")
+
+    await frontier.chat_agent(
+        messages=[{"role": "user", "content": "hi"}],
+        user_id="u1",
+        user_name="test",
+        group_id=123,
+    )
+
+    assert captured["tools"] == ["core-tool"]
+    assert isinstance(captured["middleware"][0], FakeDynamicToolSearchMiddleware)
+    assert captured["middleware"][0].index == "dynamic-index"
 
 
 @pytest.mark.asyncio

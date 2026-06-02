@@ -24,7 +24,9 @@ from pydantic import ValidationError
 from tools import agent_tools
 from utils.configs import EnvConfig
 from utils.llm_factory import create_llm, model_supports
+from utils.message import extract_message_text
 from utils.staged_artifacts import extract_staged_artifact_ids, load_staged_artifact, strip_staged_artifact_handoffs
+from utils.tool_search import DynamicToolSearchMiddleware, ToolSearchConfig, ToolSearchIndex
 
 UniMessage = None
 
@@ -95,9 +97,6 @@ def _filter_messages_for_model_capabilities(messages: list[dict], model: str, en
         else:
             filtered_messages.append(message)
     return filtered_messages
-
-
-from utils.message import extract_message_text
 
 
 def _message_text_content(message) -> str:
@@ -244,7 +243,15 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
 
 class FrontierCognitive:
     def __init__(self):
-        self.tools = agent_tools.main_tools
+        if EnvConfig.TOOL_SEARCH_ENABLED:
+            self.tools = agent_tools.core_tools
+            self.tool_search_index = ToolSearchIndex(
+                agent_tools.searchable_tools,
+                metadata_by_name=agent_tools.tool_metadata,
+                config=ToolSearchConfig.from_env(),
+            )
+        else:
+            self.tools = agent_tools.main_tools
         self.checkpoint = InMemorySaver()
         self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
         _ensure_dir(self.working_dir)
@@ -407,12 +414,11 @@ class FrontierCognitive:
                 system_prompt = f"{system_prompt}\n\n{profile_context}"
         except Exception as exc:
             logger.debug("Profile context injection skipped: %s: %s", type(exc).__name__, exc)
-        agent = create_deep_agent(
-            name=EnvConfig.BOT_NAME,
-            model=model,
-            system_prompt=system_prompt,
-            tools=self.tools,
-            middleware=[
+        middleware = []
+        if tool_search_index := getattr(self, "tool_search_index", None):
+            middleware.append(DynamicToolSearchMiddleware(tool_search_index))
+        middleware.extend(
+            [
                 PIIMiddleware(
                     "api_key",
                     detector=r"sk-[a-zA-Z0-9]{32}",
@@ -421,7 +427,14 @@ class FrontierCognitive:
                 ToolRetryMiddleware(),
                 ModelRetryMiddleware(),
                 FilesystemFileSearchMiddleware(root_path=workspace_dir),
-            ],
+            ]
+        )
+        agent = create_deep_agent(
+            name=EnvConfig.BOT_NAME,
+            model=model,
+            system_prompt=system_prompt,
+            tools=self.tools,
+            middleware=middleware,
             skills=[SKILLS_BACKEND_PATH],
             memory=[MEMORY_FILE_PATH],
             interrupt_on={
