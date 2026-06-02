@@ -306,7 +306,7 @@ class DynamicToolSearchMiddleware(AgentMiddleware):
     def __init__(self, index: ToolSearchIndex):
         self.index = index
 
-    def wrap_model_call(self, request, handler):
+    def _model_request_with_dynamic_tools(self, request):
         query = build_tool_search_query(getattr(request, "messages", []), state=getattr(request, "state", None))
         selected = self.index.search(query) or self.index.search(query, expanded=True)
         tools = list(getattr(request, "tools", []) or [])
@@ -316,19 +316,33 @@ class DynamicToolSearchMiddleware(AgentMiddleware):
             if name and name not in seen:
                 tools.append(result.tool)
                 seen.add(name)
-        return handler(request.override(tools=tools))
+        return request.override(tools=tools)
 
-    def wrap_tool_call(self, request, handler):
+    def _tool_request_or_error(self, request):
         tool_call = getattr(request, "tool_call", {}) or {}
         name = tool_call.get("name") if isinstance(tool_call, dict) else getattr(tool_call, "name", "")
         resolved_tool = self.index.get_tool(str(name)) if name else None
         if resolved_tool is not None:
-            return handler(request.override(tool=resolved_tool))
+            return request.override(tool=resolved_tool), None
         if getattr(request, "tool", None) is not None:
-            return handler(request)
+            return request, None
 
         tool_call_id = tool_call.get("id", "") if isinstance(tool_call, dict) else getattr(tool_call, "id", "")
-        return ToolMessage(content=f"动态工具检索未找到可执行工具：{name}", tool_call_id=str(tool_call_id))
+        return None, ToolMessage(content=f"动态工具检索未找到可执行工具：{name}", tool_call_id=str(tool_call_id))
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._model_request_with_dynamic_tools(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._model_request_with_dynamic_tools(request))
+
+    def wrap_tool_call(self, request, handler):
+        resolved_request, error = self._tool_request_or_error(request)
+        return error if error is not None else handler(resolved_request)
+
+    async def awrap_tool_call(self, request, handler):
+        resolved_request, error = self._tool_request_or_error(request)
+        return error if error is not None else await handler(resolved_request)
 
 
 def build_tool_search_query(messages: list[Any], *, state: Any | None = None, max_messages: int = 6) -> str:

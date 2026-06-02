@@ -2,6 +2,8 @@
 
 import types
 
+import pytest
+
 
 class DummyTool:
     def __init__(self, name: str, description: str = "", args: dict | None = None):
@@ -128,6 +130,50 @@ def test_dynamic_middleware_injects_and_executes_runtime_tool():
         return request.tool.name
 
     assert middleware.wrap_tool_call(ToolRequest(), tool_handler) == "get_arxiv_paper_info"
+
+
+@pytest.mark.asyncio
+async def test_dynamic_middleware_supports_async_model_and_tool_calls():
+    from utils.tool_search import DynamicToolSearchMiddleware, ToolMetadata, ToolSearchConfig, ToolSearchIndex
+
+    core_tool = DummyTool("simple_calculator", "calculate expression")
+    dynamic_tool = DummyTool("get_arxiv_paper_info", "Search arXiv papers by query")
+    index = ToolSearchIndex(
+        [ToolMetadata(tool=dynamic_tool, module="arxiv", group="research")],
+        config=ToolSearchConfig(semantic_enabled=False, top_k=1),
+    )
+    middleware = DynamicToolSearchMiddleware(index)
+
+    class ModelRequest:
+        messages = [types.SimpleNamespace(content="请搜索 arxiv 论文")]
+        tools = [core_tool]
+
+        def override(self, **kwargs):
+            clone = types.SimpleNamespace(**self.__dict__)
+            clone.messages = self.messages
+            clone.tools = kwargs.get("tools", self.tools)
+            return clone
+
+    captured = {}
+
+    async def model_handler(request):
+        captured["tools"] = request.tools
+        return "model-result"
+
+    assert await middleware.awrap_model_call(ModelRequest(), model_handler) == "model-result"
+    assert [tool.name for tool in captured["tools"]] == ["simple_calculator", "get_arxiv_paper_info"]
+
+    class ToolRequest:
+        tool_call = {"id": "call-1", "name": "get_arxiv_paper_info"}
+        tool = None
+
+        def override(self, **kwargs):
+            return types.SimpleNamespace(tool_call=self.tool_call, tool=kwargs.get("tool", self.tool))
+
+    async def tool_handler(request):
+        return request.tool.name
+
+    assert await middleware.awrap_tool_call(ToolRequest(), tool_handler) == "get_arxiv_paper_info"
 
 
 def test_dynamic_middleware_returns_controlled_error_for_unknown_tool_call():
