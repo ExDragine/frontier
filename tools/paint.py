@@ -1,4 +1,3 @@
-import base64
 import time
 from typing import Annotated, Literal
 
@@ -10,33 +9,10 @@ from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.paint_service import PaintRateLimiter, paint
 from utils.paint_service import PaintRateLimitResult as PaintRateLimitResult
-from utils.tool_helpers import (
-    decode_data_url,
-    latest_user_message_content,
-    media_part_url,
-    state_user_id,
-)
+from utils.tool_helpers import ToolStateView
 
 PaintMode = Literal["generate", "edit"]
 paint_rate_limiter = PaintRateLimiter()
-
-
-def _reference_images_from_state(state: dict | None) -> list[bytes]:
-    content = latest_user_message_content(state)
-    if not isinstance(content, list):
-        return []
-
-    images: list[bytes] = []
-    for part in content:
-        if not isinstance(part, dict) or part.get("type") != "image_url":
-            continue
-        url = media_part_url(part, "image_url")
-        if not url:
-            continue
-        ref = decode_data_url(url, expected_prefix="data:image/")
-        if ref:
-            images.append(ref.data)
-    return images
 
 
 @tool(response_format="content_and_artifact")
@@ -60,8 +36,9 @@ async def get_paint(
     if EnvConfig.PAINT_MODULE_ENABLED is False:
         return "绘画功能未启用", None
 
+    state_view = ToolStateView(state)
     rate_limit = paint_rate_limiter.check(
-        state_user_id(state),
+        state_view.user_id,
         now=time.time(),
         max_requests=EnvConfig.PAINT_RATE_LIMIT_MAX_REQUESTS,
         window_seconds=EnvConfig.PAINT_RATE_LIMIT_WINDOW_SECONDS,
@@ -69,7 +46,11 @@ async def get_paint(
     if not rate_limit.allowed:
         return f"画得太快了，{rate_limit.retry_after_seconds} 秒后再试吧", None
 
-    reference_images = _reference_images_from_state(state) if mode == "edit" else []
+    reference_images = (
+        [media.data for media in state_view.iter_media("image_url", "image_url", "data:image/")]
+        if mode == "edit"
+        else []
+    )
     if mode == "edit" and not reference_images:
         return "没有可编辑的图片，请在当前消息中附带图片或回复引用一张图片", None
 

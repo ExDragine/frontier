@@ -1,98 +1,96 @@
-"""工具共享辅助函数 — paint.py 和 video.py 共用。
-
-提取自 paint/video 中完全重复的状态/消息解析逻辑。
-"""
+"""Shared helpers for media-capable tools."""
 
 from __future__ import annotations
 
 import base64
+import binascii
+import time
+from collections.abc import Iterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any
+
+from nonebot import logger
 
 from utils.video_service import MediaReference
 
 
-def state_user_id(state: dict | None) -> str:
-    """从 Agent state 中提取当前用户 ID。"""
-    if not isinstance(state, dict):
-        return "tool"
-    user_id = state.get("user_id")
-    if user_id is None and isinstance(state.get("context"), dict):
-        user_id = state["context"].get("user_id")
-    return str(user_id or "tool")
+@dataclass(slots=True)
+class ToolStateView:
+    state: dict | None
 
+    @property
+    def user_id(self) -> str:
+        if not isinstance(self.state, dict):
+            return "tool"
+        user_id = self.state.get("user_id")
+        if user_id is None and isinstance(self.state.get("context"), dict):
+            user_id = self.state["context"].get("user_id")
+        return str(user_id or "tool")
 
-def message_role(message: Any) -> str | None:
-    """提取消息的 role 字段。"""
-    if isinstance(message, dict):
-        role = message.get("role")
-    else:
-        role = getattr(message, "role", None) or getattr(message, "type", None)
-    return str(role) if role is not None else None
-
-
-def message_content(message: Any) -> Any:
-    """提取消息的 content 字段。"""
-    if isinstance(message, dict):
-        return message.get("content")
-    return getattr(message, "content", None)
-
-
-def latest_user_message_content(state: dict | None) -> Any:
-    """从 state 的消息历史中获取最近一条用户消息的 content。"""
-    if not isinstance(state, dict):
-        return None
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return None
-    for message in reversed(messages):
-        if message_role(message) in {"user", "human"}:
-            return message_content(message)
-    return None
-
-
-def media_part_url(part: dict, key: str) -> str | None:
-    """从消息 part 字典中提取媒体 URL（image_url / video_url 等）。"""
-    value = part.get(key)
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        url = value.get("url")
-        return url if isinstance(url, str) else None
-    return None
-
-
-def decode_data_url(url: str, *, expected_prefix: str) -> MediaReference | None:
-    """解码 data: URL（base64 编码的媒体数据）。"""
-    if not url.startswith(expected_prefix) or "," not in url:
-        return None
-    header, payload = url.split(",", 1)
-    if ";base64" not in header:
-        return None
-    mime_type = header.removeprefix("data:").split(";", 1)[0]
-    try:
-        return MediaReference(data=base64.b64decode(payload, validate=True), mime_type=mime_type)
-    except Exception:
+    @property
+    def latest_user_content(self) -> Any:
+        if not isinstance(self.state, dict) or not isinstance(self.state.get("messages"), list):
+            return None
+        for message in reversed(self.state["messages"]):
+            if isinstance(message, dict):
+                role = message.get("role")
+                content = message.get("content")
+            else:
+                role = getattr(message, "role", None) or getattr(message, "type", None)
+                content = getattr(message, "content", None)
+            if role in {"user", "human"}:
+                return content
         return None
 
+    def latest_binary(self, key: str, mime_type: str) -> MediaReference | None:
+        if not isinstance(self.state, dict) or not isinstance(self.state.get(key), list):
+            return None
+        for item in reversed(self.state[key]):
+            if isinstance(item, bytes):
+                return MediaReference(data=item, mime_type=mime_type)
+        return None
 
-# ── 工具计时 ────────────────────────────────────────────────────
+    def iter_media(
+        self, part_type: str, key: str, expected_prefix: str, *, reverse: bool = False
+    ) -> Iterator[MediaReference]:
+        content = self.latest_user_content
+        if not isinstance(content, list):
+            return
+        parts = reversed(content) if reverse else content
+        for part in parts:
+            if not isinstance(part, dict) or part.get("type") != part_type:
+                continue
 
-import time as _time
-from contextlib import asynccontextmanager as _asynccontextmanager
-from nonebot import logger as _logger
+            value = part.get(key)
+            if isinstance(value, dict):
+                value = value.get("url")
+            if not isinstance(value, str) or not value.startswith(expected_prefix) or "," not in value:
+                continue
+
+            header, payload = value.split(",", 1)
+            if ";base64" not in header:
+                continue
+            try:
+                yield MediaReference(
+                    data=base64.b64decode(payload, validate=True),
+                    mime_type=header.removeprefix("data:").split(";", 1)[0],
+                )
+            except binascii.Error, ValueError:
+                continue
 
 
-@_asynccontextmanager
+@asynccontextmanager
 async def tool_timer(name: str, params: dict | None = None):
-    """异步上下文管理器：统一记录工具调用的开始/结束时间和日志。"""
-    start = _time.time()
+    """统一记录工具调用的开始/结束时间和日志。"""
+    start = time.time()
     params_str = f", 参数: {params}" if params else ""
-    _logger.info(f"🛠️ 调用工具: {name}{params_str}")
+    logger.info(f"🛠️ 调用工具: {name}{params_str}")
     try:
         yield
-        elapsed = _time.time() - start
-        _logger.info(f"✅ 工具执行成功: {name} (耗时: {elapsed:.2f}s)")
+        elapsed = time.time() - start
+        logger.info(f"✅ 工具执行成功: {name} (耗时: {elapsed:.2f}s)")
     except Exception:
-        elapsed = _time.time() - start
-        _logger.warning(f"⚠️ 工具执行失败: {name} (耗时: {elapsed:.2f}s)")
+        elapsed = time.time() - start
+        logger.warning(f"⚠️ 工具执行失败: {name} (耗时: {elapsed:.2f}s)")
         raise
