@@ -175,9 +175,9 @@ class EnvConfig:
     VECTOR_MEMORY_ENABLED: bool = bool(
         vector_memory.get("semantic_search_enabled", vector_memory.get("enabled", True))
     )
-    VECTOR_MEMORY_CHROMA_PATH: str = str(vector_memory.get("chroma_path", "cache/chroma"))
+    VECTOR_MEMORY_CHROMA_PATH: str = str(vector_memory.get("chroma_path", "cache/chroma_message"))
     VECTOR_MEMORY_COLLECTION: str = str(vector_memory.get("chroma_collection", "frontier_messages"))
-    VECTOR_MEMORY_EMBEDDING_MODEL: str = str(vector_memory.get("embedding_model", "microsoft/harrier-oss-v1-0.6b"))
+    VECTOR_MEMORY_EMBEDDING_MODEL: str = str(vector_memory.get("embedding_model", "intfloat/multilingual-e5-small"))
     VECTOR_MEMORY_SEMANTIC_TOP_K: int = int(vector_memory.get("semantic_top_k", 30))
     VECTOR_MEMORY_EMBEDDING_BATCH_SIZE: int = int(vector_memory.get("semantic_embedding_batch_size", 1))
     VECTOR_MEMORY_EMBEDDING_DEVICE: str = str(vector_memory.get("semantic_embedding_device", "cpu")).strip()

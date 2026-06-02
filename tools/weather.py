@@ -14,7 +14,6 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?format=json"
 OPEN_METEO_WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 
 
-
 async def geocode(city_name: str) -> tuple[float, float]:
     """返回 (latitude, longitude)，未找到抛出 ValueError"""
     if city_name in _geocode_cache:
@@ -123,13 +122,15 @@ async def get_wind_map(name: str) -> tuple[str, UniMessage | None]:
     获取风切变或涡旋图像
 
     Args:
-        name (str): 图像名称，字符串类型
+        name (str): 图像名称，字符串类型，只有风切图和涡旋图两种选择
 
     Returns:
         tuple[str, UniMessage | None]: 返回构建好的消息串
     """
     url = {
-        "wind_shear": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmssht.GIF",
-        "vorticity": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmsvor.GIF",
+        "风切图": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmssht.GIF",
+        "涡旋图": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmsvor.GIF",
     }
+    if name not in url:
+        return "❌ 图像名称无效", None
     return "获取成功", UniMessage.image(url=url[name])
