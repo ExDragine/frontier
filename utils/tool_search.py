@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import re
@@ -67,6 +68,7 @@ class ToolSearchConfig:
     embedding_model: str = "microsoft/harrier-oss-v1-0.6b"
     embedding_device: str | None = "cpu"
     embedding_batch_size: int = 1
+    persist_path: str = "cache/chroma_tools"
 
     @classmethod
     def from_env(cls) -> ToolSearchConfig:
@@ -87,6 +89,7 @@ class ToolSearchConfig:
 
         return MessageVectorIndexConfig(
             enabled=True,
+            persist_path=self.persist_path,
             embedding_model=self.embedding_model,
             embedding_batch_size=max(1, self.embedding_batch_size),
             embedding_device=self.embedding_device,
@@ -190,6 +193,7 @@ class ToolSearchIndex:
             for token, count in Counter(token for tokens in self._tokens for token in set(tokens)).items()
         }
         self._embeddings = embeddings
+        self._chroma_collection = None
         self._document_embeddings: list[list[float]] = []
         self.semantic_available = False
         self._init_semantic_index()
@@ -244,13 +248,30 @@ class ToolSearchIndex:
         return scores
 
     def _init_semantic_index(self) -> None:
+        """初始化语义检索索引。
+
+        优先使用 ChromaDB 将工具文档 embedding 持久化到磁盘，避免全量向量常驻内存。
+        若 ChromaDB 不可用或使用了自定义 embeddings，则退回到内存模式。
+        """
         if not self.config.semantic_enabled or not self._documents:
             return
         try:
-            if self._embeddings is None:
+            shared_embeddings = self._embeddings is None
+            if shared_embeddings:
                 from utils.message_vector_index import get_shared_embeddings
 
                 self._embeddings = get_shared_embeddings(self.config.to_vector_config())
+
+            if shared_embeddings:
+                try:
+                    import chromadb
+
+                    self._init_chroma_collection()
+                    return
+                except (ImportError, Exception):
+                    pass  # chromadb 未安装或初始化失败，退回内存模式
+
+            # 内存模式（chromadb 不可用或使用自定义 embeddings 时的回退）
             self._document_embeddings = self._embeddings.embed_documents(self._documents)
             self.semantic_available = True
         except Exception as exc:
@@ -258,7 +279,41 @@ class ToolSearchIndex:
             self._document_embeddings = []
             logger.warning("Tool semantic search unavailable; falling back to BM25: %s", exc)
 
+    def _init_chroma_collection(self) -> None:
+        import chromadb
+
+        collection_name = "frontier_tools"
+        fingerprint = hashlib.md5(
+            f"{self.config.embedding_model}|{'|'.join(self._documents)}".encode()
+        ).hexdigest()
+
+        client = chromadb.PersistentClient(path=self.config.persist_path)
+        try:
+            existing = client.get_collection(collection_name)
+            if existing.metadata and existing.metadata.get("fingerprint") == fingerprint:
+                self._chroma_collection = existing
+                self.semantic_available = True
+                return
+            client.delete_collection(collection_name)
+        except Exception:
+            pass
+
+        collection = client.create_collection(
+            collection_name,
+            metadata={"hnsw:space": "cosine", "fingerprint": fingerprint},
+        )
+        ids = [str(i) for i in range(len(self._documents))]
+        embeddings = self._embeddings.embed_documents(self._documents)
+        collection.add(ids=ids, documents=self._documents, embeddings=embeddings)
+        self._chroma_collection = collection
+        self.semantic_available = True
+
     def _vector_scores(self, query: str) -> list[float]:
+        """计算 query 与每个工具文档的向量相似度。
+
+        优先从 ChromaDB 持久化集合查询（向量存储在磁盘），ChromDB 不可用时
+        退回到内存模式的余弦相似度计算。
+        """
         try:
             query_embedding = self._embeddings.embed_query(query)
         except Exception as exc:
@@ -266,6 +321,26 @@ class ToolSearchIndex:
             logger.warning("Tool semantic query failed; falling back to BM25: %s", exc)
             return [0.0] * len(self._metadata)
 
+        # ChromaDB 模式：查询持久化集合，距离转换为相似度
+        if self._chroma_collection is not None:
+            try:
+                result = self._chroma_collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=len(self._metadata),
+                )
+                ids = result.get("ids", [[]])[0]
+                distances = result.get("distances", [[]])[0]
+                id_to_similarity: dict[int, float] = {}
+                for i, doc_id in enumerate(ids):
+                    # cosine distance ∈ [0, 2]，转换为 similarity ∈ [0, 1]
+                    id_to_similarity[int(doc_id)] = max(0.0, 1.0 - float(distances[i]))
+                return [id_to_similarity.get(i, 0.0) for i in range(len(self._metadata))]
+            except Exception as exc:
+                self.semantic_available = False
+                logger.warning("Tool ChromaDB query failed; falling back to BM25: %s", exc)
+                return [0.0] * len(self._metadata)
+
+        # 内存模式：手动余弦相似度（chromadb 不可用时的回退）
         scores = []
         for embedding in self._document_embeddings:
             length = min(len(query_embedding), len(embedding))
