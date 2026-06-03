@@ -38,6 +38,7 @@ dependencies = [
   "langchain-google-genai",
   "langchain-anthropic",
   "langchain-deepseek",
+  "langchain-quickjs",
 ]
 
 [[tool.uv.index]]
