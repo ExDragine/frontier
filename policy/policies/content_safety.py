@@ -40,6 +40,7 @@ async def _ensure_image_detector():
 
 class ContentSafetyPolicy(BasePolicy):
     name = "content_safety"
+    severity = "safety"
 
     def configure(self, config: dict) -> None:
         super().configure(config)
