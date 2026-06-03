@@ -60,12 +60,12 @@ class ContentSafetyPolicy(BasePolicy):
         text_model = self.config.get("text_model", _DEFAULT_TEXT_MODEL)
         image_model = self.config.get("image_model", _DEFAULT_IMAGE_MODEL)
 
-        if snapshot.text:
+        if snapshot.text and self.config.get("text_enabled", True):
             decision = await self._evaluate_input_text(snapshot.text, text_model)
             if decision is not None:
                 return decision
 
-        if snapshot.images:
+        if snapshot.images and self.config.get("image_enabled", True):
             decision = await self._evaluate_input_images(snapshot.images, image_model)
             if decision is not None:
                 return decision
@@ -131,6 +131,8 @@ class ContentSafetyPolicy(BasePolicy):
     async def _evaluate_output(self, snapshot: OutputSnapshot) -> Decision:
         if not snapshot.text:
             return Decision.allow("empty_output")
+        if not self.config.get("text_enabled", True):
+            return Decision.allow("output_text_check_disabled")
 
         text_model = self.config.get("text_model", _DEFAULT_TEXT_MODEL)
         try:

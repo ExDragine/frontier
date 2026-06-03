@@ -198,3 +198,33 @@ async def test_output_model_error_raises_by_default():
         policy.configure({"direction": "output"})
         with pytest.raises(RuntimeError, match="model unavailable"):
             await policy.evaluate(_output_snap("hello"))
+
+
+@pytest.mark.asyncio
+async def test_input_text_check_disabled_skips_text_detector():
+    with patch("utils.context_check.TextCheck", FakeFailingTextDetector):
+        policy = ContentSafetyPolicy()
+        policy.configure({"direction": "input", "text_enabled": False})
+        decision = await policy.evaluate(_input_snap(text="hello"))
+        assert decision.verdict == Verdict.ALLOW
+        assert decision.reason == "input_safe"
+
+
+@pytest.mark.asyncio
+async def test_input_image_check_disabled_skips_image_detector():
+    with patch("utils.context_check.ImageCheck", FakeFailingImageDetector):
+        policy = ContentSafetyPolicy()
+        policy.configure({"direction": "input", "image_enabled": False})
+        decision = await policy.evaluate(_input_snap(text="", images=[lambda: _VALID_PNG]))
+        assert decision.verdict == Verdict.ALLOW
+        assert decision.reason == "input_safe"
+
+
+@pytest.mark.asyncio
+async def test_output_text_check_disabled_skips_text_detector():
+    with patch("utils.context_check.TextCheck", FakeFailingTextDetector):
+        policy = ContentSafetyPolicy()
+        policy.configure({"direction": "output", "text_enabled": False})
+        decision = await policy.evaluate(_output_snap("hello"))
+        assert decision.verdict == Verdict.ALLOW
+        assert decision.reason == "output_text_check_disabled"
