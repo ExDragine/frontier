@@ -498,7 +498,7 @@ async def test_chat_agent_adds_dynamic_tool_search_middleware_when_enabled(monke
     monkeypatch.setattr(agents, "DynamicToolSearchMiddleware", FakeDynamicToolSearchMiddleware)
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
-    frontier.tools = ["core-tool"]
+    frontier.tools = [types.SimpleNamespace(name="core-tool")]
     frontier.tool_search_index = "dynamic-index"
     frontier.working_dir = str(tmp_path / "sandbox")
 
@@ -509,7 +509,7 @@ async def test_chat_agent_adds_dynamic_tool_search_middleware_when_enabled(monke
         group_id=123,
     )
 
-    assert captured["tools"] == ["core-tool"]
+    assert captured["tools"] == [types.SimpleNamespace(name="core-tool")]
     assert isinstance(captured["middleware"][0], FakeDynamicToolSearchMiddleware)
     assert captured["middleware"][0].index == "dynamic-index"
 

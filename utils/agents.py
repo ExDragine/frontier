@@ -442,7 +442,7 @@ class FrontierCognitive:
         rubric_text = self._load_rubric()
 
         # ── 提取 PTC 工具名列表 ──
-        ptc_tool_names = [tool.name if hasattr(tool, "name") else str(tool) for tool in self.tools] if self.tools else []
+        ptc_tool_names = [tool.name for tool in self.tools] if self.tools else []
         middleware = []
         if tool_search_index := getattr(self, "tool_search_index", None):
             middleware.append(DynamicToolSearchMiddleware(tool_search_index))
