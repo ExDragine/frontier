@@ -36,7 +36,7 @@ def install_all_third_party_stubs():
     install_stub("chromadb", PersistentClient=DummyPersistentClient)
     install_stub("uuid_utils", uuid7=lambda: "uuid")
     install_stub("langchain_huggingface", HuggingFaceEmbeddings=DummyEmbeddings)
-    install_stub("deepagents", create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}))
+    install_stub("deepagents", create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}), RubricMiddleware=type("RubricMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}))
     install_stub(
         "deepagents.backends",
         CompositeBackend=DummyCompositeBackend,
@@ -77,8 +77,8 @@ def install_all_third_party_stubs():
     install_stub("langchain_community.document_loaders", BiliBiliLoader=object)
     install_stub("langchain_core.documents", Document=object)
 
-    install_stub(
-        "tools.agent_tools",
+    install_stub("langchain_quickjs", CodeInterpreterMiddleware=type("CodeInterpreterMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}))
+    install_stub("tools.agent_tools",
         all_tools=[],
         main_tools=[],
         core_tools=[],
