@@ -26,15 +26,15 @@ class Decision:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def allow(cls, reason: str = "ok") -> "Decision":
-        return cls(verdict=Verdict.ALLOW, reason=reason)
+    def allow(cls, reason: str = "ok", *, metadata: dict[str, Any] | None = None) -> "Decision":
+        return cls(verdict=Verdict.ALLOW, reason=reason, metadata=metadata or {})
 
     @classmethod
-    def deny(cls, reason: str, *, message: str) -> "Decision":
+    def deny(cls, reason: str, *, message: str, metadata: dict[str, Any] | None = None) -> "Decision":
         if not message:
             raise ValueError("deny decision must carry a non-empty message")
-        return cls(verdict=Verdict.DENY, reason=reason, message=message)
+        return cls(verdict=Verdict.DENY, reason=reason, message=message, metadata=metadata or {})
 
     @classmethod
-    def warn(cls, reason: str, *, message: str = "") -> "Decision":
-        return cls(verdict=Verdict.WARN, reason=reason, message=message)
+    def warn(cls, reason: str, *, message: str = "", metadata: dict[str, Any] | None = None) -> "Decision":
+        return cls(verdict=Verdict.WARN, reason=reason, message=message, metadata=metadata or {})
