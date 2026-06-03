@@ -19,14 +19,14 @@ from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
 from utils.message import (
     download_media,
-    message_check,
     message_extract,
-    message_gateway,
     outgoing_message_content,
-    sanitize_outgoing_text,
     send_artifacts,
     send_messages,
 )
+from policy import engine as policy_engine
+from policy.decisions import Verdict
+from policy.snapshots import InputSnapshot, OutputSnapshot
 from utils.min_heap import RepeatMessageHeap
 from utils.reply_context import build_reply_context, reply_seq_from_segments
 from utils.staged_artifacts import cleanup_expired_staged_artifacts
@@ -149,9 +149,15 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
 
     if response["messages"] and isinstance(response["messages"], list):
         response_content = outgoing_message_content(response["messages"][-1])
-        sanitized_response = await sanitize_outgoing_text(response_content)
-        if sanitized_response != response_content:
-            response["messages"][-1] = SimpleNamespace(text=sanitized_response)
+        output_snapshot = OutputSnapshot(
+            user_id=context.user_id,
+            group_id=context.group_id,
+            text=response_content,
+            agent_response_raw=str(getattr(response["messages"][-1], "text", "") or ""),
+        )
+        output_decision = await policy_engine.intervene("output", output_snapshot)
+        if output_decision.verdict == Verdict.DENY:
+            response["messages"][-1] = SimpleNamespace(text=output_decision.message)
         await messages_db.insert(
             time=int(time.time() * 1000),
             msg_id=None,
@@ -218,65 +224,85 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             text += quote_text
     if video_downloaders:
         text = f"{text}\n{' '.join('[视频]' for _ in video_downloaders)}".strip()
-    if not text:
-        if not event.is_tome():
-            await common.finish()
-        else:
-            text = ""
+    if not text and not event.is_tome():
+        await common.finish()
 
     msg_time = int(time.time() * 1000)
 
-    # ── Phase 2: 存储消息文本 + 快速网关检查 ──
+    # ── Phase 2: 存储消息文本 ──
     await messages_db.insert(
-        time=msg_time,
-        msg_id=event_id,
-        user_id=int(user_id),
-        group_id=group_id,
+        time=msg_time, msg_id=event_id, user_id=int(user_id), group_id=group_id,
         user_name=user_name,
         role="user" if user_id != str(event.self_id) else "assistant",
         content=text,
     )
 
     messages = await messages_db.prepare_message(
-        int(user_id),
-        group_id,
-        query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
-        before_time=msg_time,
+        int(user_id), group_id, query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS, before_time=msg_time,
     )
 
-    if not await message_gateway(event, messages):
-        await common.finish()
+    # ── Phase 3: 策略引擎 — input 介入点 ──
+    bot_name_prefixes = next(
+        (b.config.get("bot_name_prefixes", [])
+         for point_name, chain in policy_engine._policies.items()
+         if point_name == "input"
+         for binding, _policy in chain
+         if binding.policy == "access_control"),
+        [EnvConfig.BOT_NAME],
+    )
 
-    # ── Phase 3: 网关通过后才下载媒体 ──
+    input_snapshot = InputSnapshot(
+        user_id=user_id,
+        group_id=group_id,
+        chat_type="group" if group_id else "private",
+        text=text,
+        images=[],  # 延迟下载在策略通过后由 download_media 处理
+        is_at_bot=event.is_tome(),
+        is_bot_name_prefix=any(text.strip().startswith(p) for p in bot_name_prefixes),
+        raw_message=event.dict() if hasattr(event, "dict") else {},
+    )
+
+    input_decision = await policy_engine.intervene("input", input_snapshot)
+
+    if input_decision.verdict == Verdict.DENY:
+        if input_decision.metadata.get("reaction") and group_id:
+            await bot.send_group_message_reaction(
+                group_id=group_id, message_seq=event_id,
+                reaction=str(input_decision.metadata["reaction"]), is_add=True,
+            )
+        await common.finish(input_decision.message)
+
+    # ── Phase 4: 网关通过后下载媒体 + 图片安全检查 ──
     images, _audio, videos = await download_media(image_downloaders, audio_downloaders, video_downloaders)
 
     if images and EnvConfig.IMAGE_ENABLED:
         try:
             await messages_db.insert_images(msg_time=msg_time, user_id=int(user_id), group_id=group_id, images=images)
         except Exception as e:
-            logger.warning(f"⚠️ 图片保存失败（不影响主流程）: {e}")
+            logger.warning("⚠️ 图片保存失败（不影响主流程）: %s", e)
 
-    # ── Phase 4: 内容安全 + Agent 处理 ──
-    if EnvConfig.CONTENT_CHECK_ENABLED:
-        risk_check = await message_check(text, images)
-    else:
-        risk_check = "Safe"
-    match risk_check:
-        case "Safe":
-            if group_id:
+    # 附带图片的二次安全检查（延迟加载 image loaders）
+    delayed_loaders = [lambda img=img: img for img in images]
+    if delayed_loaders:
+        image_safety = await policy_engine.intervene("input", InputSnapshot(
+            user_id=user_id, group_id=group_id, chat_type="group" if group_id else "private",
+            text="", images=delayed_loaders,
+        ))
+        if image_safety.verdict == Verdict.DENY:
+            if image_safety.metadata.get("reaction") and group_id:
                 await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="32", is_add=True
+                    group_id=group_id, message_seq=event_id,
+                    reaction=str(image_safety.metadata["reaction"]), is_add=True,
                 )
-        case "Controversial":
-            if group_id:
-                await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="212", is_add=True
-                )
-        case "Unsafe":
-            if group_id:
-                await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="26", is_add=True
-                )
+            await common.finish(image_safety.message)
+
+    # warn verdict 的处理：添加 reaction
+    if input_decision.verdict == Verdict.WARN and input_decision.metadata.get("reaction"):
+        if group_id:
+            await bot.send_group_message_reaction(
+                group_id=group_id, message_seq=event_id,
+                reaction=str(input_decision.metadata["reaction"]), is_add=True,
+            )
 
     context = AgentRequestContext(
         bot=bot,
@@ -299,19 +325,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             if not replied:
                 if not group_id:
                     return
-                match risk_check:
-                    case "Safe":
-                        await bot.send_group_message_reaction(
-                            group_id=group_id, message_seq=event_id, reaction="32", is_add=False
-                        )
-                    case "Controversial":
-                        await bot.send_group_message_reaction(
-                            group_id=group_id, message_seq=event_id, reaction="212", is_add=False
-                        )
-                    case "Unsafe":
-                        await bot.send_group_message_reaction(
-                            group_id=group_id, message_seq=event_id, reaction="26", is_add=False
-                        )
                 await common.finish()
             await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="32", is_add=False)
     except AgentQueueFullError:
