@@ -135,6 +135,25 @@ def test_clean_staged_artifact_handoffs_from_ai_message():
     assert cleaned.content == "完成"
 
 
+def test_frontier_rubric_revision_prompt_treats_feedback_as_internal():
+    prompt = agents.FrontierRubricMiddleware._revision_prompt(
+        {
+            "explanation": "上一版回复在解释自身问题。",
+            "criteria": [
+                {"name": "直接回答", "passed": False, "gap": "重新回答原始用户问题"},
+                {"name": "格式", "passed": True},
+            ],
+        }
+    )
+
+    assert "内部质检反馈，不是用户消息" in prompt
+    assert "原始最新 is_current: true 用户消息" in prompt
+    assert "不要解释评分结果" in prompt
+    assert "_NO_REPLY_" in prompt
+    assert "直接回答: 重新回答原始用户问题" in prompt
+    assert "格式" not in prompt
+
+
 def test_env_config_responses_api_defaults():
     from utils.configs import EnvConfig
 
@@ -512,6 +531,39 @@ async def test_chat_agent_adds_dynamic_tool_search_middleware_when_enabled(monke
     assert captured["tools"] == [types.SimpleNamespace(name="core-tool")]
     assert isinstance(captured["middleware"][0], FakeDynamicToolSearchMiddleware)
     assert captured["middleware"][0].index == "dynamic-index"
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_uses_frontier_rubric_middleware(monkeypatch, tmp_path):
+    from utils import agents
+
+    captured = {}
+
+    class DummyAgent:
+        async def ainvoke(self, payload, config=None):
+            return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]}
+
+    def fake_create_deep_agent(**kwargs):
+        captured.update(kwargs)
+        return DummyAgent()
+
+    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(agents.FrontierCognitive, "_load_rubric", staticmethod(lambda: "rubric"))
+
+    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier.tools = []
+    frontier.working_dir = str(tmp_path / "sandbox")
+
+    await frontier.chat_agent(
+        messages=[{"role": "user", "content": "hi"}],
+        user_id="u1",
+        user_name="test",
+        group_id=123,
+    )
+
+    assert any(isinstance(middleware, agents.FrontierRubricMiddleware) for middleware in captured["middleware"])
 
 
 @pytest.mark.asyncio

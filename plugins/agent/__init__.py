@@ -313,7 +313,12 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                             group_id=group_id, message_seq=event_id, reaction="26", is_add=False
                         )
                 await common.finish()
-            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="32", is_add=False)
+            try:
+                await bot.send_group_message_reaction(
+                    group_id=group_id, message_seq=event_id, reaction="32", is_add=False
+                )
+            except Exception as e:
+                logger.warning(f"❌ 发送群消息反应失败 用户{user_id} 群{group_id}: {e}")
     except AgentQueueFullError:
         logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
         await common.finish("前面还有请求在处理，稍等一下")
