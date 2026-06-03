@@ -3,19 +3,14 @@ import asyncio
 import re
 import time
 from collections.abc import Awaitable, Callable
-from io import BytesIO
-from types import SimpleNamespace
-from typing import Any, Literal
+from typing import Any
 
 from nonebot import logger
-from nonebot.adapters.milky.event import MessageEvent
 from nonebot.exception import ActionFailed
-from PIL import Image
 from pydantic import BaseModel, Field
 
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
-from utils.context_check import ImageCheck, TextCheck
 from utils.database import MessageDatabase
 from utils.http_client import get_http_client
 from utils.markdown_render import markdown_to_image, markdown_to_text
@@ -23,9 +18,6 @@ from utils.signal_llm import signal_structured
 
 httpx_client = get_http_client("message")
 messages_db = MessageDatabase()
-text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
-image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
-OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
 MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
 MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
 MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD = 500
@@ -203,24 +195,6 @@ def _looks_like_reply_check_candidate(text: str, *, active_group: bool) -> bool:
     if len(compact_text) < REPLY_CHECK_MIN_TEXT_LENGTH:
         return False
     return any(keyword in compact_text for keyword in REPLY_CHECK_QUESTION_KEYWORDS)
-
-
-def _message_gateway_user_id(event: MessageEvent) -> int | str:
-    user_id_raw = event.get_user_id()
-    try:
-        return int(user_id_raw)
-    except ValueError:
-        return user_id_raw
-
-
-def _message_gateway_blocked_by_access_policy(group_id: int, user_id: int | str) -> bool:
-    if group_id != 0 and EnvConfig.AGENT_WHITELIST_MODE and group_id not in EnvConfig.AGENT_WHITELIST_GROUP_LIST:
-        return True
-    if group_id in EnvConfig.AGENT_BLACKLIST_GROUP_LIST:
-        return True
-    if EnvConfig.AGENT_WHITELIST_MODE and user_id not in EnvConfig.AGENT_WHITELIST_PERSON_LIST:
-        return True
-    return user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST
 
 
 async def _reply_check_group_is_active(group_id: int, now_ms: int) -> bool:
@@ -470,28 +444,6 @@ def outgoing_message_content(raw: Any) -> str:
     return extract_message_text(content)
 
 
-async def sanitize_outgoing_text(content: str | None) -> str | None:
-    if not content or not EnvConfig.CONTENT_CHECK_ENABLED:
-        return content
-    if text_det is None:
-        logger.warning("CONTENT_CHECK_ENABLED is True but text detector is None; allowing outgoing text")
-        return content
-
-    safe_label, categories = await text_det.predict(content)
-    if safe_label == "Unsafe":
-        logger.warning(f"⚠️ 模型输出命中文本风险审核，已拦截: {categories}")
-        return OUTPUT_RISK_BLOCKED_MESSAGE
-    return content
-
-
-async def sanitize_outgoing_message(raw: Any) -> Any:
-    content = outgoing_message_content(raw)
-    sanitized = await sanitize_outgoing_text(content)
-    if sanitized == content:
-        return raw
-    return SimpleNamespace(text=sanitized)
-
-
 async def _markdown_to_image_with_retry(content: str) -> bytes | None:
     last_error: Exception | None = None
     for attempt in range(1, MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS + 1):
@@ -553,36 +505,3 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
             await messages.send()
         except ActionFailed as e:
             logger.error(f"图片消息发送失败: {e}")
-
-
-async def message_gateway(event: MessageEvent, messages: list):
-    group_id = event.data.group.group_id if event.data.group else 0
-    user_id = _message_gateway_user_id(event)
-    if _message_gateway_blocked_by_access_policy(group_id, user_id):
-        return False
-    if event.is_tome() or event.to_me:
-        return True
-    plaintext = event.get_plaintext().strip()
-    if plaintext.startswith(EnvConfig.BOT_NAME):
-        return True
-    if group_id in EnvConfig.TEST_GROUP_ID:
-        return await _reply_check_should_reply(group_id, plaintext, messages)
-    return False
-
-
-async def message_check(text: str | None, images: list | None) -> Literal["Safe", "Controversial", "Unsafe"]:
-    if not EnvConfig.CONTENT_CHECK_ENABLED:
-        return "Safe"
-    if text_det is None or image_det is None:
-        logger.warning("CONTENT_CHECK_ENABLED is True but detectors are None; returning Safe")
-        return "Safe"
-    if text:
-        safe_label, categories = await text_det.predict(text)
-        return safe_label
-    if images:
-        for image in images:
-            image = Image.open(BytesIO(image))
-            det_result = await image_det.predict(image)
-            if det_result == "nsfw":
-                return "Unsafe"
-    return "Safe"

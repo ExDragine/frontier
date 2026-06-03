@@ -42,7 +42,6 @@ database: dict = config.get("database", {})
 debug: dict = config.get("debug", {})
 dashboard: dict = config.get("dashboard", {})
 image_memory: dict = config.get("image_memory", {})
-content_check: dict = config.get("content_check", {})
 vector_memory: dict = config.get("vector_memory", config.get("memory", {}))
 tool_search: dict = config.get("tool_search", {})
 
@@ -87,11 +86,6 @@ class EnvConfig:
     LLM_ENDPOINTS: dict = llm_endpoints
 
     AGENT_CAPABILITY = function_list["agent_capability"]
-    AGENT_WHITELIST_MODE: bool = function_list["agent_whitelist_mode"]
-    AGENT_WHITELIST_PERSON_LIST: list = function_list["agent_whitelist_person_list"]
-    AGENT_WHITELIST_GROUP_LIST: list = function_list["agent_whitelist_group_list"]
-    AGENT_BLACKLIST_PERSON_LIST: list = function_list["agent_blacklist_person_list"]
-    AGENT_BLACKLIST_GROUP_LIST: list = function_list["agent_blacklist_group_list"]
     PAINT_WHITELIST_MODE: bool = function_list["paint_whitelist_mode"]
     PAINT_WHITELIST_PERSON_LIST: list = function_list["paint_whitelist_person_list"]
     PAINT_WHITELIST_GROUP_LIST: list = function_list["paint_whitelist_group_list"]
@@ -170,8 +164,6 @@ class EnvConfig:
     IMAGE_TTL_DAYS: int = int(image_memory.get("ttl_days", 30))
     IMAGE_AUTO_CLEANUP: bool = image_memory.get("auto_cleanup", True)
 
-    CONTENT_CHECK_ENABLED: bool = content_check.get("enabled", False)
-
     VECTOR_MEMORY_ENABLED: bool = bool(
         vector_memory.get("semantic_search_enabled", vector_memory.get("enabled", True))
     )
@@ -247,7 +239,7 @@ class EnvConfig:
         cls.AGENT_CAPABILITY = fn.get("agent_capability", cls.AGENT_CAPABILITY)
 
         # ── 访问控制 ──
-        _POLICIES = ("agent", "paint")
+        _POLICIES = ("paint",)
         _policy_fields = (
             "WHITELIST_MODE",
             "WHITELIST_PERSON_LIST",
