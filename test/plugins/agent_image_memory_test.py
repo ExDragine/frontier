@@ -11,6 +11,22 @@ from nonebot.adapters.milky.model.message import IncomingMessage
 from nonebug import App
 
 
+from policy.decisions import Decision
+
+class FakePolicyEngine:
+    _policies: dict = {}
+
+    async def intervene(self, _point, _snapshot):
+        return Decision.allow("test_fake")
+
+
+class DenyPolicyEngine:
+    _policies: dict = {}
+
+    async def intervene(self, _point, _snapshot):
+        return Decision.deny("test_block", message="blocked")
+
+
 async def _noop(*_args, **_kwargs):
     return None
 
@@ -50,9 +66,6 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
     async def fake_message_extract(_segments):
         return "hi", [b"image-bytes"], [], [b"video-bytes"]
 
-    async def fake_message_gateway(_event, _messages):
-        return True
-
     async def fake_send_messages(*_args, **_kwargs):
         return None
 
@@ -66,14 +79,13 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "policy_engine", FakePolicyEngine())
     monkeypatch.setattr(agent, "send_messages", fake_send_messages)
     monkeypatch.setattr(agent, "send_artifacts", fake_send_artifacts)
     monkeypatch.setattr(agent, "schedule_image_summary_write", fake_schedule_summary, raising=False)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -169,7 +181,6 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -319,7 +330,6 @@ async def test_agent_fetches_missing_quoted_image_from_milky(monkeypatch):  # no
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -387,7 +397,6 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     monkeypatch.setattr(agent, "send_messages", _noop)
     monkeypatch.setattr(agent, "send_artifacts", _noop)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     context = agent.AgentRequestContext(
         bot=None,
@@ -562,26 +571,17 @@ async def test_gateway_approved_message_routes_directly_to_agent(monkeypatch):  
     async def fake_message_extract(_segments):
         return "这个算法怎么优化", [], [], []
 
-    async def fake_message_gateway(_event, _messages):
-        return True
-
-    async def fake_sanitize(text):
-        sanitized_messages.append(text)
-        return text
-
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
-    monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
+    monkeypatch.setattr(agent, "policy_engine", FakePolicyEngine())
     monkeypatch.setattr(agent, "send_messages", _noop)
     monkeypatch.setattr(agent, "send_artifacts", _noop)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -662,18 +662,14 @@ async def test_gateway_approved_weather_request_routes_directly_to_agent(monkeyp
     async def fake_message_extract(_segments):
         return "帮我查一下今天北京天气", [], [], []
 
-    async def fake_message_gateway(_event, _messages):
-        return True
-
     monkeypatch.setattr(agent, "agent_queue", DummyQueue())
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "policy_engine", FakePolicyEngine())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -757,9 +753,6 @@ async def test_agent_no_reply_clears_reactions_without_completion_reaction(monke
     async def fake_message_extract(_segments):
         return "哈哈哈哈", [], [], []
 
-    async def fake_message_gateway(_event, _messages):
-        return True
-
     async def fake_send_messages(*_args, **_kwargs):
         calls["sent"] += 1
 
@@ -769,12 +762,11 @@ async def test_agent_no_reply_clears_reactions_without_completion_reaction(monke
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "policy_engine", FakePolicyEngine())
     monkeypatch.setattr(agent, "send_messages", fake_send_messages)
     monkeypatch.setattr(agent, "send_artifacts", _noop)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -885,16 +877,11 @@ async def test_process_agent_request_sanitizes_final_response(monkeypatch):
         async def chat_agent(self, *_args, **_kwargs):
             return {"response": {"messages": [types.SimpleNamespace(text="unsafe final")]}, "uni_messages": []}
 
-    async def fake_sanitize(text):
-        captured["checked"] = text
-        return "这段回复被拦住了"
-
     async def fake_send_messages(_group_id, _message_id, response):
         captured["sent"] = response["messages"][-1].text
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
     monkeypatch.setattr(agent, "send_messages", fake_send_messages)
     monkeypatch.setattr(agent, "send_artifacts", _noop)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
@@ -941,10 +928,6 @@ async def test_process_agent_request_suppresses_exact_no_reply_sentinel(monkeypa
                 "uni_messages": [object()],
             }
 
-    async def fake_sanitize(_text):
-        calls["sanitized"] += 1
-        return "should not sanitize"
-
     async def fake_send_messages(*_args, **_kwargs):
         calls["sent"] += 1
 
@@ -953,7 +936,6 @@ async def test_process_agent_request_suppresses_exact_no_reply_sentinel(monkeypa
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
     monkeypatch.setattr(agent, "send_messages", fake_send_messages)
     monkeypatch.setattr(agent, "send_artifacts", fake_send_artifacts)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
@@ -1113,9 +1095,6 @@ async def test_gateway_approved_greeting_routes_to_agent_queue(monkeypatch):  # 
     async def fake_message_extract(_segments):
         return "早", [], [], []
 
-    async def fake_message_gateway(_event, _messages):
-        return True
-
     class DummyUniMessage:
         def __init__(self, content):
             self.content = content
@@ -1132,10 +1111,9 @@ async def test_gateway_approved_greeting_routes_to_agent_queue(monkeypatch):  # 
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "policy_engine", DenyPolicyEngine())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -1202,8 +1180,11 @@ async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # n
     async def fake_message_extract(_segments):
         return "早", [], [], []
 
-    async def fake_message_gateway(_event, _messages):
-        return False
+    class DenyPolicyEngine:
+        _policies: dict = {}
+
+        async def intervene(self, _point, _snapshot):
+            return Decision.deny("test_block", message="blocked")
 
     sent_messages = []
 
@@ -1223,10 +1204,9 @@ async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # n
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "policy_engine", DenyPolicyEngine())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -1293,18 +1273,14 @@ async def test_gateway_approved_closing_message_routes_to_agent_queue(monkeypatc
     async def fake_message_extract(_segments):
         return "谢谢", [], [], []
 
-    async def fake_message_gateway(_event, _messages):
-        return True
-
     monkeypatch.setattr(agent, "agent_queue", DummyQueue())
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "policy_engine", FakePolicyEngine())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",
@@ -1370,18 +1346,14 @@ async def test_gateway_approved_private_chat_routes_to_agent_without_group_react
     async def fake_message_extract(_segments):
         return "谢谢", [], [], []
 
-    async def fake_message_gateway(_event, _messages):
-        return True
-
     monkeypatch.setattr(agent, "agent_queue", DummyQueue())
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "policy_engine", FakePolicyEngine())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="friend",
@@ -1465,17 +1437,13 @@ async def test_agent_finishes_when_thread_queue_is_full(monkeypatch):  # noqa: C
     async def fake_message_extract(_segments):
         return "hi", [], [], []
 
-    async def fake_message_gateway(_event, _messages):
-        return True
-
     monkeypatch.setattr(agent, "agent_queue", FullQueue())
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "policy_engine", FakePolicyEngine())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     incoming = IncomingMessage(
         message_scene="group",

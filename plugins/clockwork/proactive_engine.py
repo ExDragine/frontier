@@ -21,7 +21,10 @@ from nonebot import get_bot, logger
 
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
-from utils.message import extract_message_text, sanitize_outgoing_text
+from policy import engine as policy_engine
+from policy.decisions import Verdict
+from policy.snapshots import OutputSnapshot
+from utils.message import extract_message_text
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 配置常量
@@ -250,7 +253,14 @@ class ProactiveEngine:
         if not text:
             return
 
-        text = await sanitize_outgoing_text(text)
+        output_decision = await policy_engine.intervene("output", OutputSnapshot(
+            user_id="system",
+            group_id=group_id,
+            text=text,
+        ))
+        if output_decision.verdict == Verdict.DENY:
+            return
+        text = output_decision.message if output_decision.verdict == Verdict.WARN else text
         if not text:
             return
 

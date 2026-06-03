@@ -243,7 +243,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
 
     # ── Phase 3: 策略引擎 — input 介入点 ──
     bot_name_prefixes = next(
-        (b.config.get("bot_name_prefixes", [])
+        (binding.config.get("bot_name_prefixes", [])
          for point_name, chain in policy_engine._policies.items()
          if point_name == "input"
          for binding, _policy in chain
