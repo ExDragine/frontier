@@ -33,8 +33,9 @@ intervention_points:
       config:
         direction: input
         severity: safety
-        text_model: Qwen3Guard-Gen-0.6B
+        text_model: Qwen/Qwen3Guard-Gen-0.6B
         image_model: Falconsai/nsfw_image_detection
+        on_model_error: allow
         unsafe_reaction: 26
         controversial_reaction: 212
         safe_reaction: 32
@@ -45,6 +46,7 @@ intervention_points:
       config:
         direction: output
         severity: safety
-        text_model: Qwen3Guard-Gen-0.6B
+        text_model: Qwen/Qwen3Guard-Gen-0.6B
+        on_model_error: allow
         block_message: "⚠️ 内容被安全策略拦截"
       default_decision: allow

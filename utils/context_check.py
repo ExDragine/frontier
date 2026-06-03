@@ -12,9 +12,9 @@ from transformers import (
 
 
 class ImageCheck:
-    def __init__(self) -> None:
-        self.model = AutoModelForImageClassification.from_pretrained("Falconsai/nsfw_image_detection")
-        self.processor = ViTImageProcessor.from_pretrained("Falconsai/nsfw_image_detection")
+    def __init__(self, model_name: str = "Falconsai/nsfw_image_detection") -> None:
+        self.model = AutoModelForImageClassification.from_pretrained(model_name)
+        self.processor = ViTImageProcessor.from_pretrained(model_name)
         self.model.eval()
         quantize_(self.model, Int8WeightOnlyConfig(version=2))
 

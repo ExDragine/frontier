@@ -13,7 +13,7 @@ _VALID_PNG = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x
 
 
 def _input_snap(**overrides) -> InputSnapshot:
-    defaults = dict(user_id="u1", group_id=1, chat_type="group", text="hi")
+    defaults = {"user_id": "u1", "group_id": 1, "chat_type": "group", "text": "hi"}
     defaults.update(overrides)
     return InputSnapshot(**defaults)
 
@@ -48,8 +48,13 @@ class FakeControversialDetector:
         return "Controversial", ["Politically Sensitive Topics"]
 
 
+class FakeFailingTextDetector:
+    def __init__(self, model_name: str = ""):
+        raise RuntimeError("model unavailable")
+
+
 class FakeImageDetector:
-    def __init__(self):
+    def __init__(self, model_name: str = ""):
         pass
 
     async def predict(self, img):
@@ -57,11 +62,16 @@ class FakeImageDetector:
 
 
 class FakeNsfwImageDetector:
-    def __init__(self):
+    def __init__(self, model_name: str = ""):
         pass
 
     async def predict(self, img):
         return "nsfw"
+
+
+class FakeFailingImageDetector:
+    def __init__(self, model_name: str = ""):
+        raise RuntimeError("image model unavailable")
 
 
 # ── Reset module-level detectors between tests ──
@@ -157,3 +167,34 @@ async def test_output_empty_text_passes():
     policy.configure({"direction": "output"})
     decision = await policy.evaluate(_output_snap(""))
     assert decision.verdict == Verdict.ALLOW
+
+
+@pytest.mark.asyncio
+async def test_input_model_error_allows_when_configured():
+    with patch("utils.context_check.TextCheck", FakeFailingTextDetector):
+        policy = ContentSafetyPolicy()
+        policy.configure({"direction": "input", "on_model_error": "allow"})
+        decision = await policy.evaluate(_input_snap(text="hello"))
+        assert decision.verdict == Verdict.ALLOW
+        assert decision.reason == "content_safety_model_unavailable"
+        assert decision.metadata["stage"] == "text_input"
+
+
+@pytest.mark.asyncio
+async def test_input_image_model_error_allows_when_configured():
+    with patch("utils.context_check.ImageCheck", FakeFailingImageDetector):
+        policy = ContentSafetyPolicy()
+        policy.configure({"direction": "input", "on_model_error": "allow"})
+        decision = await policy.evaluate(_input_snap(text="", images=[lambda: _VALID_PNG]))
+        assert decision.verdict == Verdict.ALLOW
+        assert decision.reason == "content_safety_model_unavailable"
+        assert decision.metadata["stage"] == "image_init"
+
+
+@pytest.mark.asyncio
+async def test_output_model_error_raises_by_default():
+    with patch("utils.context_check.TextCheck", FakeFailingTextDetector):
+        policy = ContentSafetyPolicy()
+        policy.configure({"direction": "output"})
+        with pytest.raises(RuntimeError, match="model unavailable"):
+            await policy.evaluate(_output_snap("hello"))
