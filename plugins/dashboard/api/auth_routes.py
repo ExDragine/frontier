@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from ..auth import check_rate_limit, create_token, require_auth, verify_password
 
 router = APIRouter()
+AUTH_DEPENDENCY = Depends(require_auth)
 
 # Cookie 安全配置
 COOKIE_NAME = "frontier_token"
@@ -63,7 +64,7 @@ async def login(request: Request, body: LoginRequest):
 
 
 @router.get("/me")
-async def get_current_user(user: dict = Depends(require_auth)):
+async def get_current_user(user: dict = AUTH_DEPENDENCY):
     """获取当前登录用户信息。"""
     return user
 

@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 import time
 
 from nonebot import on_command, on_notice, require

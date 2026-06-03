@@ -42,6 +42,7 @@ database: dict = config.get("database", {})
 debug: dict = config.get("debug", {})
 dashboard: dict = config.get("dashboard", {})
 image_memory: dict = config.get("image_memory", {})
+content_check: dict = config.get("content_check", {})
 vector_memory: dict = config.get("vector_memory", config.get("memory", {}))
 tool_search: dict = config.get("tool_search", {})
 
@@ -86,6 +87,11 @@ class EnvConfig:
     LLM_ENDPOINTS: dict = llm_endpoints
 
     AGENT_CAPABILITY = function_list["agent_capability"]
+    AGENT_WHITELIST_MODE: bool = function_list["agent_whitelist_mode"]
+    AGENT_WHITELIST_PERSON_LIST: list = function_list["agent_whitelist_person_list"]
+    AGENT_WHITELIST_GROUP_LIST: list = function_list["agent_whitelist_group_list"]
+    AGENT_BLACKLIST_PERSON_LIST: list = function_list["agent_blacklist_person_list"]
+    AGENT_BLACKLIST_GROUP_LIST: list = function_list["agent_blacklist_group_list"]
     PAINT_WHITELIST_MODE: bool = function_list["paint_whitelist_mode"]
     PAINT_WHITELIST_PERSON_LIST: list = function_list["paint_whitelist_person_list"]
     PAINT_WHITELIST_GROUP_LIST: list = function_list["paint_whitelist_group_list"]
@@ -164,6 +170,8 @@ class EnvConfig:
     IMAGE_TTL_DAYS: int = int(image_memory.get("ttl_days", 30))
     IMAGE_AUTO_CLEANUP: bool = image_memory.get("auto_cleanup", True)
 
+    CONTENT_CHECK_ENABLED: bool = content_check.get("enabled", False)
+
     VECTOR_MEMORY_ENABLED: bool = bool(
         vector_memory.get("semantic_search_enabled", vector_memory.get("enabled", True))
     )
@@ -239,7 +247,7 @@ class EnvConfig:
         cls.AGENT_CAPABILITY = fn.get("agent_capability", cls.AGENT_CAPABILITY)
 
         # ── 访问控制 ──
-        _POLICIES = ("paint",)
+        _POLICIES = ("agent", "paint")
         _policy_fields = (
             "WHITELIST_MODE",
             "WHITELIST_PERSON_LIST",
@@ -254,22 +262,17 @@ class EnvConfig:
                 setattr(cls, attr, fn.get(key_name, getattr(cls, attr)))
 
         # ── 限流/超时 ──
-        cls.PAINT_RATE_LIMIT_MAX_REQUESTS = int(
-            fn.get("paint_rate_limit_max_requests", cls.PAINT_RATE_LIMIT_MAX_REQUESTS)
-        )
-        cls.PAINT_RATE_LIMIT_WINDOW_SECONDS = int(
-            fn.get("paint_rate_limit_window_seconds", cls.PAINT_RATE_LIMIT_WINDOW_SECONDS)
-        )
-        cls.VIDEO_RATE_LIMIT_MAX_REQUESTS = int(
-            fn.get("video_rate_limit_max_requests", cls.VIDEO_RATE_LIMIT_MAX_REQUESTS)
-        )
-        cls.VIDEO_RATE_LIMIT_WINDOW_SECONDS = int(
-            fn.get("video_rate_limit_window_seconds", cls.VIDEO_RATE_LIMIT_WINDOW_SECONDS)
-        )
-        cls.VIDEO_POLL_INTERVAL_SECONDS = int(fn.get("video_poll_interval_seconds", cls.VIDEO_POLL_INTERVAL_SECONDS))
-        cls.VIDEO_POLL_TIMEOUT_SECONDS = int(fn.get("video_poll_timeout_seconds", cls.VIDEO_POLL_TIMEOUT_SECONDS))
-        cls.AGENT_LLM_TIMEOUT_SECONDS = int(fn.get("agent_llm_timeout_seconds", cls.AGENT_LLM_TIMEOUT_SECONDS))
-        cls.AGENT_JOB_TIMEOUT_SECONDS = int(fn.get("agent_job_timeout_seconds", cls.AGENT_JOB_TIMEOUT_SECONDS))
+        for attr, key_name in (
+            ("PAINT_RATE_LIMIT_MAX_REQUESTS", "paint_rate_limit_max_requests"),
+            ("PAINT_RATE_LIMIT_WINDOW_SECONDS", "paint_rate_limit_window_seconds"),
+            ("VIDEO_RATE_LIMIT_MAX_REQUESTS", "video_rate_limit_max_requests"),
+            ("VIDEO_RATE_LIMIT_WINDOW_SECONDS", "video_rate_limit_window_seconds"),
+            ("VIDEO_POLL_INTERVAL_SECONDS", "video_poll_interval_seconds"),
+            ("VIDEO_POLL_TIMEOUT_SECONDS", "video_poll_timeout_seconds"),
+            ("AGENT_LLM_TIMEOUT_SECONDS", "agent_llm_timeout_seconds"),
+            ("AGENT_JOB_TIMEOUT_SECONDS", "agent_job_timeout_seconds"),
+        ):
+            setattr(cls, attr, int(fn.get(key_name, getattr(cls, attr))))
 
         # ── 群组消息 ──
         cls.TEST_GROUP_ID = msg.get("test_group_id", cls.TEST_GROUP_ID)
@@ -287,8 +290,37 @@ class EnvConfig:
         cls.DASHBOARD_JWT_SECRET = dash.get("jwt_secret", "frontier-dashboard-default-secret")
         cls.DASHBOARD_JWT_EXPIRE_HOURS = int(dash.get("jwt_expire_hours", 24))
 
+        image_memory = config.get("image_memory", {})
+        cls.IMAGE_ENABLED = bool(image_memory.get("enabled", cls.IMAGE_ENABLED))
+        cls.IMAGE_TTL_DAYS = int(image_memory.get("ttl_days", cls.IMAGE_TTL_DAYS))
+        cls.IMAGE_AUTO_CLEANUP = bool(image_memory.get("auto_cleanup", cls.IMAGE_AUTO_CLEANUP))
+
+        cls.CONTENT_CHECK_ENABLED = bool(config.get("content_check", {}).get("enabled", cls.CONTENT_CHECK_ENABLED))
+
+        vector_memory = config.get("vector_memory", config.get("memory", {}))
+        cls.VECTOR_MEMORY_ENABLED = bool(
+            vector_memory.get("semantic_search_enabled", vector_memory.get("enabled", cls.VECTOR_MEMORY_ENABLED))
+        )
+        cls.VECTOR_MEMORY_CHROMA_PATH = str(vector_memory.get("chroma_path", cls.VECTOR_MEMORY_CHROMA_PATH))
+        cls.VECTOR_MEMORY_COLLECTION = str(vector_memory.get("chroma_collection", cls.VECTOR_MEMORY_COLLECTION))
+        cls.VECTOR_MEMORY_EMBEDDING_MODEL = str(
+            vector_memory.get("embedding_model", cls.VECTOR_MEMORY_EMBEDDING_MODEL)
+        )
+        cls.VECTOR_MEMORY_SEMANTIC_TOP_K = int(vector_memory.get("semantic_top_k", cls.VECTOR_MEMORY_SEMANTIC_TOP_K))
+        cls.VECTOR_MEMORY_EMBEDDING_BATCH_SIZE = int(
+            vector_memory.get("semantic_embedding_batch_size", cls.VECTOR_MEMORY_EMBEDDING_BATCH_SIZE)
+        )
+        cls.VECTOR_MEMORY_EMBEDDING_DEVICE = str(
+            vector_memory.get("semantic_embedding_device", cls.VECTOR_MEMORY_EMBEDDING_DEVICE)
+        ).strip()
+        cls.VECTOR_MEMORY_PRELOAD_ON_STARTUP = bool(
+            vector_memory.get("preload_on_startup", cls.VECTOR_MEMORY_PRELOAD_ON_STARTUP)
+        )
+
         tool_search = config.get("tool_search", {})
-        cls.TOOL_SEARCH_ENABLED = bool(tool_search.get("enabled", False))
-        cls.TOOL_SEARCH_TOP_K = int(tool_search.get("top_k", 8))
-        cls.TOOL_SEARCH_EXPANDED_TOP_K = int(tool_search.get("expanded_top_k", 20))
-        cls.TOOL_SEARCH_SEMANTIC_ENABLED = bool(tool_search.get("semantic_enabled", True))
+        cls.TOOL_SEARCH_ENABLED = bool(tool_search.get("enabled", cls.TOOL_SEARCH_ENABLED))
+        cls.TOOL_SEARCH_TOP_K = int(tool_search.get("top_k", cls.TOOL_SEARCH_TOP_K))
+        cls.TOOL_SEARCH_EXPANDED_TOP_K = int(tool_search.get("expanded_top_k", cls.TOOL_SEARCH_EXPANDED_TOP_K))
+        cls.TOOL_SEARCH_SEMANTIC_ENABLED = bool(
+            tool_search.get("semantic_enabled", cls.TOOL_SEARCH_SEMANTIC_ENABLED)
+        )

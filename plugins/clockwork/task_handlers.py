@@ -8,7 +8,7 @@ import zoneinfo
 from dataclasses import dataclass
 from pathlib import Path
 
-from utils.http_client import get_http_client
+import httpx
 from jinja2 import Environment, FileSystemLoader
 from nonebot import get_bot, logger
 from nonebot_plugin_alconna import Image, Target, Text, UniMessage
@@ -18,6 +18,7 @@ from tools import agent_tools
 from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 from utils.database import EventDatabase
+from utils.http_client import get_http_client
 from utils.markdown_render import html_to_image, playwright_render
 
 from .task_models import TaskRunResult

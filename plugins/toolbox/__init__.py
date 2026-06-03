@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 import os
 import shutil
 import subprocess
@@ -35,9 +37,13 @@ def clone_skill_creator():
 
     logger.info("正在克隆 skill-creator...")
     temp_dir = os.path.join(os.path.abspath("cache/sandbox"), ".skills-temp")
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        logger.error("未找到 git，无法克隆 skill-creator")
+        return
     try:
-        subprocess.run(
-            ["git", "clone", "--depth", "1", SKILL_CREATOR_URL, temp_dir],
+        subprocess.run(  # noqa: S603
+            [git_executable, "clone", "--depth", "1", SKILL_CREATOR_URL, temp_dir],
             check=True,
             capture_output=True,
             text=True,
@@ -116,4 +122,5 @@ async def handle_setting(event: MessageEvent):
 async def handle_restart(event: MessageEvent):
     # 重启Windows
     if os.name == "nt":
-        subprocess.Popen("shutdown /r /t 0", shell=True)
+        shutdown_executable = shutil.which("shutdown") or "shutdown"
+        subprocess.Popen([shutdown_executable, "/r", "/t", "0"])  # noqa: S603

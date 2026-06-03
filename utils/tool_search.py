@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import logging
 import math
 import re
@@ -262,14 +263,12 @@ class ToolSearchIndex:
 
                 self._embeddings = get_shared_embeddings(self.config.to_vector_config())
 
-            if shared_embeddings:
+            if shared_embeddings and importlib.util.find_spec("chromadb") is not None:
                 try:
-                    import chromadb
-
                     self._init_chroma_collection()
                     return
-                except (ImportError, Exception):
-                    pass  # chromadb 未安装或初始化失败，退回内存模式
+                except Exception as exc:
+                    logger.debug("ChromaDB tool search index unavailable; falling back to memory: %s", exc)
 
             # 内存模式（chromadb 不可用或使用自定义 embeddings 时的回退）
             self._document_embeddings = self._embeddings.embed_documents(self._documents)
@@ -283,7 +282,7 @@ class ToolSearchIndex:
         import chromadb
 
         collection_name = "frontier_tools"
-        fingerprint = hashlib.md5(
+        fingerprint = hashlib.sha256(
             f"{self.config.embedding_model}|{'|'.join(self._documents)}".encode()
         ).hexdigest()
 
@@ -295,8 +294,8 @@ class ToolSearchIndex:
                 self.semantic_available = True
                 return
             client.delete_collection(collection_name)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Could not reuse existing ChromaDB tool collection: %s", exc)
 
         collection = client.create_collection(
             collection_name,

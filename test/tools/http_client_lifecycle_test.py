@@ -41,10 +41,10 @@ async def test_http_client_aclose_all_unifies_lifecycle():
     assert client_a is registry.get_http_client("test_a")
     assert client_b is registry.get_http_client("test_b")
 
-    closed = registry.aclose_all()
+    closed = await registry.aclose_all()
     assert "test_a" in closed
     assert "test_b" in closed
     assert len(registry._clients) == 0
 
     # Second call is no-op
-    assert registry.aclose_all() == []
+    assert await registry.aclose_all() == []

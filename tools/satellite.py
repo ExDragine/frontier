@@ -90,13 +90,12 @@ async def get_fy4b_geos_cloud_map(
     if fn2url is None:
         return None
     try:
-        async with httpx.AsyncClient(timeout=30.0, http2=True) as client:
-            response = await client.get(fn2url)
-            response.raise_for_status()
-            video_bytes: bytes = response.content
-            if video_bytes:
-                return "成功获取FY4B卫星全地球视角云图视频", UniMessage.video(raw=video_bytes)
-    except httpx.HTTPError:
+        response = await httpx_client.get(fn2url)
+        response.raise_for_status()
+        video_bytes: bytes = response.content
+        if video_bytes:
+            return "成功获取FY4B卫星全地球视角云图视频", UniMessage.video(raw=video_bytes)
+    except Exception:
         return "获取FY4B卫星全地球视角云图视频失败", None
 
 
@@ -120,4 +119,3 @@ async def get_himawari_satellite_image() -> tuple[str, UniMessage | None]:
         end_time = time.time()
         logger.error(f"💥 工具执行异常: get_himawari_satellite_image - {str(e)} (耗时: {end_time - start_time:.2f}s)")
         return f"获取Himawari卫星图像失败: {str(e)}", None
-

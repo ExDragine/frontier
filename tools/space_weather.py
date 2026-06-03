@@ -5,12 +5,10 @@ from bs4 import BeautifulSoup
 from langchain.tools import tool
 from playwright.async_api import async_playwright
 
+from utils.alconna import Image, UniMessage
 from utils.http_client import get_http_client
 
 httpx_client = get_http_client("space_weather")
-
-from utils.alconna import Image, UniMessage
-
 
 
 @tool(response_format="content")
@@ -29,9 +27,8 @@ async def solar_flare():
     url = "https://api.nasa.gov/DONKI/FLR"
     params = {"startDate": before_str, "endDate": today_str, "api_key": "DEMO_KEY"}
     noticed: list[str] = []
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        flare_data = response.json()
+    response = await httpx_client.get(url, params=params)
+    flare_data = response.json()
     for event in flare_data:
         if event["classType"][:1] == "X":
             message = (

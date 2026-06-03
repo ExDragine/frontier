@@ -1,14 +1,12 @@
 from urllib.parse import urlparse, urlunparse
 
-import httpx
 from langchain.tools import tool
 from nonebot import logger
 
 from utils.configs import EnvConfig
+from utils.http_client import get_http_client
 
 DEFAULT_BALANCE_URL = "https://api.deepseek.com/user/balance"
-
-from utils.http_client import get_http_client
 
 httpx_client = get_http_client("deepseek_balance")
 

@@ -5,9 +5,8 @@ from langchain_core.runnables import RunnableConfig
 from nonebot import get_bot
 from nonebot.adapters.milky.message import MessageSegment
 
-from utils.milky_tools import resolve_group_id, resolve_local_path, validate_url
-
 from utils.alconna import UniMessage
+from utils.milky_tools import resolve_group_id, resolve_local_path, validate_url
 
 
 def _resolve_message_local_path(source: str, workspace_dir: str | None):

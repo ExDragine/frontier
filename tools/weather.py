@@ -129,7 +129,9 @@ async def get_wind_map(name: str) -> tuple[str, UniMessage | None]:
     """
     url = {
         "风切图": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmssht.GIF",
+        "wind_shear": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmssht.GIF",
         "涡旋图": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmsvor.GIF",
+        "vorticity": "https://tropic.ssec.wisc.edu/real-time/westpac/winds/wgmsvor.GIF",
     }
     if name not in url:
         return "❌ 图像名称无效", None

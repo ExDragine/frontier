@@ -29,6 +29,11 @@ github_pat = "gh"
 agent_module_enabled = true
 paint_module_enabled = true
 agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
 paint_whitelist_mode = false
 paint_whitelist_person_list = []
 paint_whitelist_group_list = []
@@ -58,6 +63,7 @@ jwt_secret = "secret"
     assert not hasattr(configs.EnvConfig, "RAW_MESSAGE_GROUP_ID")
     assert isinstance(configs.EnvConfig.OPENAI_API_KEY, SecretStr)
     assert configs.EnvConfig.ANNOUNCE_GROUP_ID == configs.EnvConfig.TEST_GROUP_ID
+    assert configs.EnvConfig.CONTENT_CHECK_ENABLED is False
     assert isinstance(configs.EnvConfig.GOOGLE_API_KEY, SecretStr)
     assert isinstance(configs.EnvConfig.ANTHROPIC_API_KEY, SecretStr)
     assert configs.EnvConfig.ANTHROPIC_BASE_URL == ""
@@ -110,6 +116,11 @@ anthropic_base_url = "https://anthropic.example.com"
 agent_module_enabled = true
 paint_module_enabled = true
 agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
 paint_whitelist_mode = false
 paint_whitelist_person_list = []
 paint_whitelist_group_list = []
@@ -136,6 +147,95 @@ jwt_secret = "secret"
     importlib.reload(configs)
 
     assert configs.EnvConfig.ANTHROPIC_BASE_URL == "https://anthropic.example.com"
+
+
+def test_env_config_reload_updates_runtime_sections(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    env_path = tmp_path / "env.toml"
+    env_path.write_text(
+        """
+[information]
+name = "Bot"
+
+[endpoint]
+openai_base_url = "https://example.com"
+basic_model = "basic"
+advan_model = "advan"
+paint_model = "paint"
+
+[key]
+openai_api_key = "sk"
+nasa_api_key = "nasa"
+github_pat = "gh"
+
+[function]
+agent_module_enabled = true
+paint_module_enabled = true
+agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
+paint_whitelist_mode = false
+paint_whitelist_person_list = []
+paint_whitelist_group_list = []
+paint_blacklist_person_list = []
+paint_blacklist_group_list = []
+
+[message]
+test_group_id = []
+
+[database]
+query_message_numbers = 3
+
+[debug]
+agent_debug_mode = false
+
+[dashboard]
+password = "admin"
+jwt_secret = "secret"
+""",
+        encoding="utf-8",
+    )
+
+    configs = importlib.import_module("utils.configs")
+    importlib.reload(configs)
+
+    configs.EnvConfig.reload(
+        {
+            "image_memory": {"enabled": False, "ttl_days": 9, "auto_cleanup": False},
+            "content_check": {"enabled": True},
+            "vector_memory": {
+                "semantic_search_enabled": False,
+                "chroma_path": "cache/custom-chroma",
+                "chroma_collection": "custom_messages",
+                "embedding_model": "custom-embed",
+                "semantic_top_k": 12,
+                "semantic_embedding_batch_size": 4,
+                "semantic_embedding_device": " cuda ",
+                "preload_on_startup": False,
+            },
+            "tool_search": {"enabled": True, "top_k": 3, "expanded_top_k": 7, "semantic_enabled": False},
+        }
+    )
+
+    assert configs.EnvConfig.IMAGE_ENABLED is False
+    assert configs.EnvConfig.IMAGE_TTL_DAYS == 9
+    assert configs.EnvConfig.IMAGE_AUTO_CLEANUP is False
+    assert configs.EnvConfig.CONTENT_CHECK_ENABLED is True
+    assert configs.EnvConfig.VECTOR_MEMORY_ENABLED is False
+    assert configs.EnvConfig.VECTOR_MEMORY_CHROMA_PATH == "cache/custom-chroma"
+    assert configs.EnvConfig.VECTOR_MEMORY_COLLECTION == "custom_messages"
+    assert configs.EnvConfig.VECTOR_MEMORY_EMBEDDING_MODEL == "custom-embed"
+    assert configs.EnvConfig.VECTOR_MEMORY_SEMANTIC_TOP_K == 12
+    assert configs.EnvConfig.VECTOR_MEMORY_EMBEDDING_BATCH_SIZE == 4
+    assert configs.EnvConfig.VECTOR_MEMORY_EMBEDDING_DEVICE == "cuda"
+    assert configs.EnvConfig.VECTOR_MEMORY_PRELOAD_ON_STARTUP is False
+    assert configs.EnvConfig.TOOL_SEARCH_ENABLED is True
+    assert configs.EnvConfig.TOOL_SEARCH_TOP_K == 3
+    assert configs.EnvConfig.TOOL_SEARCH_EXPANDED_TOP_K == 7
+    assert configs.EnvConfig.TOOL_SEARCH_SEMANTIC_ENABLED is False
 
 
 def test_env_config_llm_endpoint_profiles(tmp_path, monkeypatch):
@@ -191,6 +291,11 @@ github_pat = "gh"
 agent_module_enabled = true
 paint_module_enabled = true
 agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
 paint_whitelist_mode = false
 paint_whitelist_person_list = []
 paint_whitelist_group_list = []
@@ -259,6 +364,11 @@ github_pat = "gh"
 agent_module_enabled = true
 paint_module_enabled = true
 agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
 paint_whitelist_mode = false
 paint_whitelist_person_list = []
 paint_whitelist_group_list = []
@@ -311,6 +421,11 @@ github_pat = "gh"
 agent_module_enabled = true
 paint_module_enabled = true
 agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
 paint_whitelist_mode = false
 paint_whitelist_person_list = []
 paint_whitelist_group_list = []
@@ -365,6 +480,11 @@ github_pat = "gh"
 agent_module_enabled = true
 paint_module_enabled = true
 agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
 paint_whitelist_mode = false
 paint_whitelist_person_list = []
 paint_whitelist_group_list = []
@@ -421,6 +541,11 @@ agent_module_enabled = true
 paint_module_enabled = true
 video_module_enabled = false
 agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
 paint_whitelist_mode = false
 paint_whitelist_person_list = []
 paint_whitelist_group_list = []

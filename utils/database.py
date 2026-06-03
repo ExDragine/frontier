@@ -6,6 +6,7 @@ import logging
 import os
 import time
 import zoneinfo
+from contextlib import asynccontextmanager
 from functools import lru_cache
 
 from sqlalchemy import Engine, event, inspect, text
@@ -23,9 +24,6 @@ logger = logging.getLogger(__name__)
 async def _run_in_thread(func, *args, **kwargs):
     """将同步数据库操作放入线程池执行，避免阻塞 asyncio 事件循环。"""
     return await asyncio.to_thread(func, *args, **kwargs)
-
-
-from contextlib import asynccontextmanager
 
 
 @asynccontextmanager

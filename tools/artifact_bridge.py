@@ -1,9 +1,8 @@
 from langchain.tools import tool
 from nonebot import logger
 
-from utils.staged_artifacts import load_staged_artifact
-
 from utils.alconna import UniMessage
+from utils.staged_artifacts import load_staged_artifact
 
 
 @tool(response_format="content_and_artifact")

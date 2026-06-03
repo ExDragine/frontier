@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, func, select
 
@@ -10,19 +8,20 @@ from ..auth import require_auth
 engine = get_engine()
 
 router = APIRouter()
+AUTH_DEPENDENCY = Depends(require_auth)
 
 
 @router.get("/")
 async def list_messages(
-    group_id: Optional[int] = None,
-    user_id: Optional[int] = None,
-    role: Optional[str] = None,
-    search: Optional[str] = None,
+    group_id: int | None = None,
+    user_id: int | None = None,
+    role: str | None = None,
+    search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    start_time: Optional[int] = None,
-    end_time: Optional[int] = None,
-    user: dict = Depends(require_auth),
+    start_time: int | None = None,
+    end_time: int | None = None,
+    user: dict = AUTH_DEPENDENCY,
 ):
     """分页查询消息列表"""
     with Session(engine) as session:
@@ -74,7 +73,7 @@ async def list_messages(
 
 
 @router.get("/groups")
-async def list_groups(user: dict = Depends(require_auth)):
+async def list_groups(user: dict = AUTH_DEPENDENCY):
     """获取所有群组及其消息数量"""
     with Session(engine) as session:
         statement = (
@@ -89,7 +88,7 @@ async def list_groups(user: dict = Depends(require_auth)):
 
 
 @router.get("/users")
-async def list_users(user: dict = Depends(require_auth)):
+async def list_users(user: dict = AUTH_DEPENDENCY):
     """获取所有用户及其消息数量"""
     with Session(engine) as session:
         statement = (

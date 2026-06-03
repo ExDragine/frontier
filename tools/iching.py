@@ -675,7 +675,7 @@ async def iching_divination(
 
 
 @tool(response_format="content")
-async def list_iching_hexagrams(filter_type: str = "all") -> str:
+async def list_iching_hexagrams(filter_type: str = "all") -> str:  # noqa: C901
     """列出周易64卦的信息
 
     Args:
@@ -726,7 +726,7 @@ async def list_iching_hexagrams(filter_type: str = "all") -> str:
             for element, items in elements.items():
                 if items:
                     result += f"🔸 {element}行 ({len(items)}卦)\n"
-                    for h, detail in items:
+                    for h, _detail in items:
                         result += f"   {h['symbol']} {h['number']}.{h['name']}\n"
                     result += "\n"
 

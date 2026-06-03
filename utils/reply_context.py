@@ -7,7 +7,6 @@ from utils.configs import EnvConfig
 from utils.database import MessageDatabase
 from utils.http_client import get_http_client
 
-
 _httpx_client = get_http_client("reply_context")
 
 
@@ -42,10 +41,6 @@ def _sender_name_from_milky_message(message) -> str:
     return str(message.sender_id)
 
 
-def _role_label(role: str) -> str:
-    return "助手" if role == "assistant" else "用户"
-
-
 def _format_quote(role: str, name: str | None, text: str, image_count: int, missing_images: int) -> str:
     content_parts = []
     if text.strip():
@@ -55,7 +50,8 @@ def _format_quote(role: str, name: str | None, text: str, image_count: int, miss
     if missing_images:
         content_parts.append(" ".join("[引用消息包含图片，但图片已失效]" for _ in range(missing_images)))
     content = "\n".join(content_parts) if content_parts else "[空消息]"
-    return f"\n\n[引用消息]\n{_role_label(role)}({name or '未知'}): {content}"
+    role_label = "助手" if role == "assistant" else "用户"
+    return f"\n\n[引用消息]\n{role_label}({name or '未知'}): {content}"
 
 
 async def _fetch_reply_message_from_milky(bot, event: MessageEvent, reply_seq: int):

@@ -1,7 +1,6 @@
 import secrets
 import time
 from collections import defaultdict
-from typing import Optional
 
 import bcrypt
 import jwt
@@ -11,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from utils.configs import EnvConfig
 
 security = HTTPBearer(auto_error=False)
+SECURITY_DEPENDENCY = Depends(security)
 
 # 登录限流：记录每个 IP 的登录尝试
 _login_attempts = defaultdict(list)
@@ -33,10 +33,10 @@ def verify_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, EnvConfig.DASHBOARD_JWT_SECRET, algorithms=["HS256"])
         return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token 已过期")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="无效的 Token")
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status_code=401, detail="Token 已过期") from exc
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="无效的 Token") from exc
 
 
 def verify_password(password: str) -> bool:
@@ -53,7 +53,7 @@ def verify_password(password: str) -> bool:
 
 async def require_auth(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = SECURITY_DEPENDENCY,
 ) -> dict:
     """FastAPI 依赖：从 Authorization header 或 HttpOnly cookie 中提取 JWT token。
 

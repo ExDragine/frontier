@@ -15,16 +15,10 @@ async def test_solar_flare(load_tool_module, monkeypatch):
             ]
 
     class DummyClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
         async def get(self, *_args, **_kwargs):
             return DummyResp()
 
-    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda *args, **kwargs: DummyClient())
+    monkeypatch.setattr(mod, "httpx_client", DummyClient())
     result = await mod.solar_flare()
     assert "耀斑类型:X2.0" in result
 

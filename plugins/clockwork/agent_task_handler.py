@@ -10,10 +10,7 @@ from nonebot_plugin_alconna import Target, UniMessage
 from utils.agents import FrontierCognitive
 from utils.configs import EnvConfig
 from utils.database import build_message_metadata
-from policy import engine as policy_engine
-from policy.decisions import Verdict
-from policy.snapshots import OutputSnapshot
-from utils.message import extract_message_text, outgoing_message_content
+from utils.message import outgoing_message_content, sanitize_outgoing_text
 
 from .task_models import TaskRunResult
 
@@ -99,15 +96,7 @@ async def run_agent_task(job_id: str = "", **kwargs) -> TaskRunResult:
     if response_messages:
         output_summary = outgoing_message_content(response_messages[-1]).strip()
 
-    final_text = output_summary
-    if output_summary:
-        output_decision = await policy_engine.intervene("output", OutputSnapshot(
-            user_id=owner_user_id,
-            group_id=group_id,
-            text=output_summary,
-        ))
-        if output_decision.verdict == Verdict.DENY:
-            final_text = output_decision.message
+    final_text = await sanitize_outgoing_text(output_summary)
     if metadata.delivery_mode == "final" and final_text:
         await _send_final_text(metadata, target, final_text, mention_user_id)
         messages_sent += 1

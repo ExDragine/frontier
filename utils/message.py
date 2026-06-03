@@ -3,14 +3,19 @@ import asyncio
 import re
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from io import BytesIO
+from types import SimpleNamespace
+from typing import Any, Literal
 
 from nonebot import logger
+from nonebot.adapters.milky.event import MessageEvent
 from nonebot.exception import ActionFailed
+from PIL import Image
 from pydantic import BaseModel, Field
 
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
+from utils.context_check import ImageCheck, TextCheck
 from utils.database import MessageDatabase
 from utils.http_client import get_http_client
 from utils.markdown_render import markdown_to_image, markdown_to_text
@@ -18,6 +23,9 @@ from utils.signal_llm import signal_structured
 
 httpx_client = get_http_client("message")
 messages_db = MessageDatabase()
+text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
+image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
+OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
 MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
 MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
 MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD = 500
@@ -89,18 +97,20 @@ class ReplyCheck(BaseModel):
     confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
 
 
-def _extract_dict_message_text(content: dict) -> str:
-    item_type = content.get("type")
-    if item_type in _TEXT_CONTENT_BLOCK_TYPES or (item_type is None and "text" in content):
-        return str(content.get("text", ""))
-    if "content" in content:
-        return extract_message_text(content.get("content"))
-    if item_type is not None:
-        return ""
-    return str(content or "")
+def extract_message_text(content: Any) -> str:
+    """从消息 content 中提取纯文本（str / content blocks / 对象）。"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        item_type = content.get("type")
+        if item_type in _TEXT_CONTENT_BLOCK_TYPES or (item_type is None and "text" in content):
+            return str(content.get("text", ""))
+        if "content" in content:
+            return extract_message_text(content.get("content"))
+        return "" if item_type is not None else str(content or "")
+    if isinstance(content, list):
+        return "\n".join(part for item in content if (part := extract_message_text(item)))
 
-
-def _extract_object_message_text(content: Any) -> str | None:
     text = getattr(content, "text", None)
     if callable(text):
         try:
@@ -111,26 +121,6 @@ def _extract_object_message_text(content: Any) -> str | None:
         return extract_message_text(text)
     if hasattr(content, "content"):
         return extract_message_text(content.content)
-    return None
-
-
-def extract_message_text(content: Any) -> str:
-    """从消息 content 中提取纯文本（str / content blocks / 对象）。"""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, dict):
-        return _extract_dict_message_text(content)
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            part = extract_message_text(item)
-            if part:
-                parts.append(part)
-        return "\n".join(parts)
-    # 尝试对象的 .text / .content 属性
-    object_text = _extract_object_message_text(content)
-    if object_text is not None:
-        return object_text
     return str(content or "")
 
 
@@ -197,6 +187,24 @@ def _looks_like_reply_check_candidate(text: str, *, active_group: bool) -> bool:
     return any(keyword in compact_text for keyword in REPLY_CHECK_QUESTION_KEYWORDS)
 
 
+def _message_gateway_user_id(event: MessageEvent) -> int | str:
+    user_id_raw = event.get_user_id()
+    try:
+        return int(user_id_raw)
+    except ValueError:
+        return user_id_raw
+
+
+def _message_gateway_blocked_by_access_policy(group_id: int, user_id: int | str) -> bool:
+    if group_id != 0 and EnvConfig.AGENT_WHITELIST_MODE and group_id not in EnvConfig.AGENT_WHITELIST_GROUP_LIST:
+        return True
+    if group_id in EnvConfig.AGENT_BLACKLIST_GROUP_LIST:
+        return True
+    if EnvConfig.AGENT_WHITELIST_MODE and user_id not in EnvConfig.AGENT_WHITELIST_PERSON_LIST:
+        return True
+    return user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST
+
+
 async def _reply_check_group_is_active(group_id: int, now_ms: int) -> bool:
     since_time = now_ms - REPLY_CHECK_ACTIVE_GROUP_WINDOW_SECONDS * 1000
     message_count = await messages_db.count_group_messages_since(group_id=group_id, since_time=since_time)
@@ -236,6 +244,17 @@ async def _reply_check_should_reply(group_id: int, plaintext: str, messages: lis
 
 
 MediaItem = bytes | bytearray | Callable[[], Awaitable[bytes | None]]
+
+
+def _media_downloader(url: str, label: str) -> Callable[[], Awaitable[bytes | None]]:
+    async def _download() -> bytes | None:
+        try:
+            return (await httpx_client.get(url)).content
+        except Exception as exc:
+            logger.warning("下载%s失败: %s", label, exc)
+            return None
+
+    return _download
 
 
 async def _resolve_media_item(item: MediaItem) -> bytes | None:
@@ -283,7 +302,9 @@ async def download_media(
     return results
 
 
-async def message_extract(messages: list[dict]) -> tuple[str, list, list, list]:  # noqa: C901
+async def message_extract(  # noqa: C901
+    messages: list[dict],
+) -> tuple[str, list[MediaItem], list[MediaItem], list[MediaItem]]:
     """提取消息中的文本和媒体内容。
 
     Args:
@@ -294,8 +315,10 @@ async def message_extract(messages: list[dict]) -> tuple[str, list, list, list]:
         媒体项是 async callable，调用后返回 bytes 或 None。
         调用方应在网关通过后再下载媒体，避免浪费带宽。
     """
-    text_parts = []
-    image_downloaders, audio_downloaders, video_downloaders = [], [], []
+    text_parts: list[str] = []
+    image_downloaders: list[MediaItem] = []
+    audio_downloaders: list[MediaItem] = []
+    video_downloaders: list[MediaItem] = []
 
     for message in messages:
         msg_type = message.get("type")
@@ -326,42 +349,20 @@ async def message_extract(messages: list[dict]) -> tuple[str, list, list, list]:
 
             case "image":
                 if temp_url := msg_data.get("temp_url"):
-                    summary = msg_data.get("summary")
-
-                    async def _download_image(url=temp_url, image_summary=summary):
-                        try:
-                            return (await httpx_client.get(url)).content
-                        except Exception as e:
-                            logger.warning(f"下载图片失败: {e}")
-                            if image_summary:
-                                return None  # caller can handle
-                            return None
-                    image_downloaders.append(_download_image)
+                    image_downloaders.append(_media_downloader(temp_url, "图片"))
                 elif summary := msg_data.get("summary"):
                     text_parts.append(f"[图片:{summary}]")
 
             case "record":
                 if temp_url := msg_data.get("temp_url"):
-                    async def _download_audio(url=temp_url):
-                        try:
-                            return (await httpx_client.get(url)).content
-                        except Exception as e:
-                            logger.warning(f"下载语音失败: {e}")
-                            return None
-                    audio_downloaders.append(_download_audio)
+                    audio_downloaders.append(_media_downloader(temp_url, "语音"))
                 else:
                     duration = msg_data.get("duration", 0)
                     text_parts.append(f"[语音:{duration}秒]")
 
             case "video":
                 if temp_url := msg_data.get("temp_url"):
-                    async def _download_video(url=temp_url):
-                        try:
-                            return (await httpx_client.get(url)).content
-                        except Exception as e:
-                            logger.warning(f"下载视频失败: {e}")
-                            return None
-                    video_downloaders.append(_download_video)
+                    video_downloaders.append(_media_downloader(temp_url, "视频"))
                 else:
                     duration = msg_data.get("duration", 0)
                     text_parts.append(f"[视频:{duration}秒]")
@@ -444,6 +445,28 @@ def outgoing_message_content(raw: Any) -> str:
     return extract_message_text(content)
 
 
+async def sanitize_outgoing_text(content: str | None) -> str | None:
+    if not content or not EnvConfig.CONTENT_CHECK_ENABLED:
+        return content
+    if text_det is None:
+        logger.warning("CONTENT_CHECK_ENABLED is True but text detector is None; allowing outgoing text")
+        return content
+
+    safe_label, categories = await text_det.predict(content)
+    if safe_label == "Unsafe":
+        logger.warning(f"⚠️ 模型输出命中文本风险审核，已拦截: {categories}")
+        return OUTPUT_RISK_BLOCKED_MESSAGE
+    return content
+
+
+async def sanitize_outgoing_message(raw: Any) -> Any:
+    content = outgoing_message_content(raw)
+    sanitized = await sanitize_outgoing_text(content)
+    if sanitized == content:
+        return raw
+    return SimpleNamespace(text=sanitized)
+
+
 async def _markdown_to_image_with_retry(content: str) -> bytes | None:
     last_error: Exception | None = None
     for attempt in range(1, MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS + 1):
@@ -505,3 +528,36 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
             await messages.send()
         except ActionFailed as e:
             logger.error(f"图片消息发送失败: {e}")
+
+
+async def message_gateway(event: MessageEvent, messages: list) -> bool:
+    group_id = event.data.group.group_id if event.data.group else 0
+    user_id = _message_gateway_user_id(event)
+    if _message_gateway_blocked_by_access_policy(group_id, user_id):
+        return False
+    if event.is_tome() or event.to_me:
+        return True
+    plaintext = event.get_plaintext().strip()
+    if plaintext.startswith(EnvConfig.BOT_NAME):
+        return True
+    if group_id in EnvConfig.TEST_GROUP_ID:
+        return await _reply_check_should_reply(group_id, plaintext, messages)
+    return False
+
+
+async def message_check(text: str | None, images: list[bytes] | None) -> Literal["Safe", "Controversial", "Unsafe"]:
+    if not EnvConfig.CONTENT_CHECK_ENABLED:
+        return "Safe"
+    if text_det is None or image_det is None:
+        logger.warning("CONTENT_CHECK_ENABLED is True but detectors are None; returning Safe")
+        return "Safe"
+    if text:
+        safe_label, categories = await text_det.predict(text)
+        return safe_label
+    if images:
+        for image in images:
+            image = Image.open(BytesIO(image))
+            det_result = await image_det.predict(image)
+            if det_result == "nsfw":
+                return "Unsafe"
+    return "Safe"

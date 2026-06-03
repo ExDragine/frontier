@@ -20,43 +20,6 @@ clockwork_pkg = types.ModuleType("plugins.clockwork")
 clockwork_pkg.__path__ = [str(PACKAGE_ROOT / "clockwork")]
 sys.modules.setdefault("plugins.clockwork", clockwork_pkg)
 
-# Pre-seed content_safety module detectors with mocks before policy engine loads,
-# so real torch models are never instantiated during tests.
-import policy.policies.content_safety as _cs_module
-
-
-class _FakeTextDetector:
-    def __init__(self, model_name: str = ""):
-        pass
-
-    async def predict(self, text: str):
-        return "Safe", []
-
-
-_cs_module._text_detector = _FakeTextDetector()
-_cs_module._image_detector = _FakeTextDetector()
-
-
-@pytest.fixture(autouse=True)
-def _reset_cs_mocks():
-    """Restore mock detectors after each test to prevent pollution."""
-    _cs_module._text_detector = _FakeTextDetector()
-    _cs_module._image_detector = _FakeTextDetector()
-    yield
-    _cs_module._text_detector = _FakeTextDetector()
-    _cs_module._image_detector = _FakeTextDetector()
-
-
-task_manager_module = importlib.import_module("plugins.clockwork.task_manager")
-
-plugins_pkg = types.ModuleType("plugins")
-plugins_pkg.__path__ = [str(PACKAGE_ROOT)]
-sys.modules.setdefault("plugins", plugins_pkg)
-
-clockwork_pkg = types.ModuleType("plugins.clockwork")
-clockwork_pkg.__path__ = [str(PACKAGE_ROOT / "clockwork")]
-sys.modules.setdefault("plugins.clockwork", clockwork_pkg)
-
 task_manager_module = importlib.import_module("plugins.clockwork.task_manager")
 task_models_module = importlib.import_module("plugins.clockwork.task_models")
 agent_task_handler_module = importlib.import_module("plugins.clockwork.agent_task_handler")

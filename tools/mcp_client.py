@@ -84,10 +84,10 @@ def _check_mcp_json_file_permissions(path: str) -> None:
                 "⚠️  mcp.json 文件权限不安全 (%s)，建议设为 0600 或 0644（仅 owner 可写）",
                 oct(mode & 0o777),
             )
-    except FileNotFoundError:
-        raise FileNotFoundError(f"mcp.json 文件不存在: {path}")
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"mcp.json 文件不存在: {path}") from exc
     except OSError as exc:
-        raise OSError(f"无法读取 mcp.json: {exc}")
+        raise OSError(f"无法读取 mcp.json: {exc}") from exc
 
 
 def _load_and_validate(config_path: str = "mcp.json") -> dict:
