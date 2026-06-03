@@ -1,7 +1,9 @@
 """介入点快照数据类。"""
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Any
+
+from collections.abc import Callable
 
 
 @dataclass
@@ -15,7 +17,7 @@ class InputSnapshot:
     images: list[Callable[[], bytes | None]] = field(default_factory=list)
     is_at_bot: bool = False
     is_bot_name_prefix: bool = False
-    raw_message: dict = field(default_factory=dict)
+    raw_message: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

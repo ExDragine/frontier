@@ -1,8 +1,10 @@
-# ruff: noqa: S101
-
 from pathlib import Path
 
 import pytest
+
+from policy.base import BasePolicy
+from policy.decisions import Decision
+from policy.snapshots import InputSnapshot, OutputSnapshot
 
 
 @pytest.fixture
@@ -56,10 +58,6 @@ def manifesto_file(tmp_path: Path, sample_manifesto_yaml: str) -> Path:
 
 
 # ── 测试桩策略 ──
-
-from policy.base import BasePolicy
-from policy.decisions import Decision
-from policy.snapshots import InputSnapshot, OutputSnapshot
 
 
 class AlwaysAllowPolicy(BasePolicy):
