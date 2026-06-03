@@ -80,6 +80,9 @@ class PolicyEngine:
                 return decision
 
         default = bindings[-1][0].default_decision
+        if default not in ("allow", "deny"):
+            logger.warning("Invalid default_decision %r, falling back to deny", default)
+            return Decision.deny("invalid_default_decision", message="策略配置异常，请求被拦截")
         if default == "deny":
             return Decision.deny("default_deny", message="请求被默认策略拦截")
         return Decision.allow("chain_exhausted_default_allow")

@@ -1,7 +1,7 @@
 """YAML manifesto 解析与校验。"""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ValidationError
@@ -18,7 +18,7 @@ class PolicyDefinition(BaseModel):
 class PolicyBinding(BaseModel):
     policy: str
     config: dict[str, Any] = {}
-    default_decision: str = "allow"
+    default_decision: Literal["allow", "deny"] = "allow"
 
 
 class ManifestoMetadata(BaseModel):
