@@ -77,7 +77,6 @@ async def run_agent_task(job_id: str = "", **kwargs) -> TaskRunResult:
         f"ScheduledTask:{job_id}",
         EnvConfig.AGENT_CAPABILITY,
         group_id=group_id,
-        query_text=metadata.prompt,
         thread_id_override=f"scheduled-task:{job_id}",
     )
     if not isinstance(result, dict) or "response" not in result:
