@@ -539,7 +539,7 @@ async def message_gateway(event: MessageEvent, messages: list) -> bool:
     plaintext = event.get_plaintext().strip()
     if plaintext.startswith(EnvConfig.BOT_NAME):
         return True
-    if group_id in EnvConfig.TEST_GROUP_ID:
+    if group_id != 0:
         return await _reply_check_should_reply(group_id, plaintext, messages)
     return False
 

@@ -106,12 +106,11 @@ class EnvConfig:
     AGENT_LLM_TIMEOUT_SECONDS: int = int(function_list.get("agent_llm_timeout_seconds", 900))
     AGENT_JOB_TIMEOUT_SECONDS: int = int(function_list.get("agent_job_timeout_seconds", 3600))
 
-    TEST_GROUP_ID: list = message["test_group_id"]
-    ANNOUNCE_GROUP_ID: list = message.get("announce_group_id", TEST_GROUP_ID)
-    APOD_GROUP_ID: list = message.get("apod_group_id", TEST_GROUP_ID)
-    EARTH_NOW_GROUP_ID: list = message.get("earth_now_group_id", TEST_GROUP_ID)
-    NEWS_SUMMARY_GROUP_ID: list = message.get("news_summary_group_id", TEST_GROUP_ID)
-    EARTHQUAKE_GROUP_ID: list = message.get("earthquake_group_id", TEST_GROUP_ID)
+    ANNOUNCE_GROUP_ID: list = message.get("announce_group_id", [])
+    APOD_GROUP_ID: list = message.get("apod_group_id", [])
+    EARTH_NOW_GROUP_ID: list = message.get("earth_now_group_id", [])
+    NEWS_SUMMARY_GROUP_ID: list = message.get("news_summary_group_id", [])
+    EARTHQUAKE_GROUP_ID: list = message.get("earthquake_group_id", [])
 
     QUERY_MESSAGE_NUMBERS: int = database["query_message_numbers"]
 
@@ -275,12 +274,11 @@ class EnvConfig:
             setattr(cls, attr, int(fn.get(key_name, getattr(cls, attr))))
 
         # ── 群组消息 ──
-        cls.TEST_GROUP_ID = msg.get("test_group_id", cls.TEST_GROUP_ID)
-        cls.ANNOUNCE_GROUP_ID = msg.get("announce_group_id", cls.TEST_GROUP_ID)
-        cls.APOD_GROUP_ID = msg.get("apod_group_id", cls.TEST_GROUP_ID)
-        cls.EARTH_NOW_GROUP_ID = msg.get("earth_now_group_id", cls.TEST_GROUP_ID)
-        cls.NEWS_SUMMARY_GROUP_ID = msg.get("news_summary_group_id", cls.TEST_GROUP_ID)
-        cls.EARTHQUAKE_GROUP_ID = msg.get("earthquake_group_id", cls.TEST_GROUP_ID)
+        cls.ANNOUNCE_GROUP_ID = msg.get("announce_group_id", [])
+        cls.APOD_GROUP_ID = msg.get("apod_group_id", [])
+        cls.EARTH_NOW_GROUP_ID = msg.get("earth_now_group_id", [])
+        cls.NEWS_SUMMARY_GROUP_ID = msg.get("news_summary_group_id", [])
+        cls.EARTHQUAKE_GROUP_ID = msg.get("earthquake_group_id", [])
 
         # ── 杂项 ──
         cls.QUERY_MESSAGE_NUMBERS = config.get("database", {}).get("query_message_numbers", cls.QUERY_MESSAGE_NUMBERS)
@@ -321,6 +319,4 @@ class EnvConfig:
         cls.TOOL_SEARCH_ENABLED = bool(tool_search.get("enabled", cls.TOOL_SEARCH_ENABLED))
         cls.TOOL_SEARCH_TOP_K = int(tool_search.get("top_k", cls.TOOL_SEARCH_TOP_K))
         cls.TOOL_SEARCH_EXPANDED_TOP_K = int(tool_search.get("expanded_top_k", cls.TOOL_SEARCH_EXPANDED_TOP_K))
-        cls.TOOL_SEARCH_SEMANTIC_ENABLED = bool(
-            tool_search.get("semantic_enabled", cls.TOOL_SEARCH_SEMANTIC_ENABLED)
-        )
+        cls.TOOL_SEARCH_SEMANTIC_ENABLED = bool(tool_search.get("semantic_enabled", cls.TOOL_SEARCH_SEMANTIC_ENABLED))
