@@ -20,6 +20,8 @@ SQLITE_BUSY_TIMEOUT_MS = 5000
 SQLITE_CACHE_SIZE_KIB = 65536
 SQLITE_MMAP_SIZE_BYTES = 256 * 1024 * 1024
 MESSAGE_FTS_MIN_QUERY_LENGTH = 3
+MESSAGE_SOURCE_TYPE_NORMAL = "message"
+MESSAGE_SOURCE_TYPE_FORWARD_NODE = "forward_node"
 logger = logging.getLogger(__name__)
 
 
@@ -118,6 +120,7 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_message_user_group_time ON message (user_id, group_id, time DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_message_group_role_time ON message (group_id, role, time DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_message_group_msg_id_time ON message (group_id, msg_id, time DESC)",
+                "CREATE INDEX IF NOT EXISTS ix_message_source_parent ON message (source_type, parent_msg_time)",
                 (
                     "CREATE INDEX IF NOT EXISTS ix_message_private_user_time "
                     "ON message (user_id, time DESC) WHERE group_id IS NULL"
@@ -155,6 +158,27 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
         for statement in statements:
             conn.execute(text(statement))
         conn.execute(text("PRAGMA optimize"))
+
+
+def ensure_message_schema(engine: Engine) -> None:
+    if "message" not in set(inspect(engine).get_table_names()):
+        return
+    columns = {column["name"] for column in inspect(engine).get_columns("message")}
+    column_migrations = [
+        ("raw_segments_json", "ALTER TABLE message ADD COLUMN raw_segments_json TEXT"),
+        ("normalized_version", "ALTER TABLE message ADD COLUMN normalized_version INTEGER NOT NULL DEFAULT 0"),
+        ("normalized_status", "ALTER TABLE message ADD COLUMN normalized_status TEXT NOT NULL DEFAULT 'legacy'"),
+        ("source_type", "ALTER TABLE message ADD COLUMN source_type TEXT NOT NULL DEFAULT 'message'"),
+        ("parent_msg_id", "ALTER TABLE message ADD COLUMN parent_msg_id INTEGER"),
+        ("parent_msg_time", "ALTER TABLE message ADD COLUMN parent_msg_time INTEGER"),
+        ("parent_forward_id", "ALTER TABLE message ADD COLUMN parent_forward_id TEXT"),
+    ]
+    statements = [statement for column, statement in column_migrations if column not in columns]
+    if not statements:
+        return
+    with engine.begin() as conn:
+        for statement in statements:
+            conn.execute(text(statement))
 
 
 def _table_exists(conn, table_name: str) -> bool:
@@ -398,6 +422,13 @@ class Message(SQLModel, table=True):
     user_name: str | None
     role: str
     content: str
+    raw_segments_json: str | None = None
+    normalized_version: int = 0
+    normalized_status: str = "legacy"
+    source_type: str = MESSAGE_SOURCE_TYPE_NORMAL
+    parent_msg_id: int | None = None
+    parent_msg_time: int | None = None
+    parent_forward_id: str | None = None
 
 
 class TimeStamp(SQLModel, table=True):
@@ -648,6 +679,7 @@ class MessageDatabase:
         self._vector_index = None
         self._attachments = _MessageAttachmentManager(self.engine)
         Message.metadata.create_all(self.engine)
+        ensure_message_schema(self.engine)
         MessageAttachment.metadata.create_all(self.engine)
         ensure_database_performance_indexes(self.engine)
         ensure_message_fts(self.engine)
@@ -662,6 +694,13 @@ class MessageDatabase:
         user_name: str | None,
         role: str,
         content: str,
+        raw_segments_json: str | None = None,
+        normalized_version: int = 0,
+        normalized_status: str = "legacy",
+        source_type: str = MESSAGE_SOURCE_TYPE_NORMAL,
+        parent_msg_id: int | None = None,
+        parent_msg_time: int | None = None,
+        parent_forward_id: str | None = None,
     ):
         def _do():
             with Session(self.engine) as session:
@@ -673,6 +712,13 @@ class MessageDatabase:
                     user_name=user_name,
                     role=role,
                     content=content,
+                    raw_segments_json=raw_segments_json,
+                    normalized_version=normalized_version,
+                    normalized_status=normalized_status,
+                    source_type=source_type,
+                    parent_msg_id=parent_msg_id,
+                    parent_msg_time=parent_msg_time,
+                    parent_forward_id=parent_forward_id,
                 )
                 session.add(message)
                 session.commit()
@@ -695,6 +741,7 @@ class MessageDatabase:
                     statement = select(Message).where(Message.user_id == user_id)
                 else:
                     return None
+                statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
                 if before_time is not None:
                     statement = statement.where(Message.time < before_time)
                 statement = statement.order_by(desc(Message.time)).limit(query_numbers)
@@ -707,6 +754,7 @@ class MessageDatabase:
         def _do():
             with Session(self.engine) as session:
                 statement = select(Message).where(Message.msg_id == msg_id)
+                statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
                 if group_id is None:
                     statement = statement.where(Message.group_id.is_(None))  # type: ignore
                 else:
@@ -715,6 +763,82 @@ class MessageDatabase:
                 return session.exec(statement).first()
 
         return await _run_database(self.engine, _do)
+
+    async def update_message_normalization(
+        self,
+        *,
+        time: int,
+        content: str,
+        raw_segments_json: str | None,
+        normalized_version: int,
+        normalized_status: str,
+    ) -> None:
+        def _do():
+            with Session(self.engine) as session:
+                message = session.get(Message, time)
+                if message is None:
+                    return
+                message.content = content
+                if raw_segments_json is not None:
+                    message.raw_segments_json = raw_segments_json
+                message.normalized_version = normalized_version
+                message.normalized_status = normalized_status
+                session.add(message)
+                session.commit()
+                self._add_message_to_vector_index(message)
+
+        await _run_database(self.engine, _do)
+
+    @staticmethod
+    def _derived_message_time(parent_msg_time: int, ordinal: int) -> int:
+        return -(abs(parent_msg_time) * 1000 + ordinal + 1)
+
+    async def replace_derived_messages(
+        self,
+        *,
+        parent_msg_time: int,
+        parent_msg_id: int | None,
+        user_id: int,
+        group_id: int | None,
+        role: str,
+        derived_messages: list,
+        normalized_version: int,
+    ) -> None:
+        def _do():
+            with Session(self.engine) as session:
+                existing = session.exec(
+                    select(Message).where(Message.parent_msg_time == parent_msg_time).where(
+                        Message.source_type != MESSAGE_SOURCE_TYPE_NORMAL
+                    )
+                ).all()
+                for message in existing:
+                    session.delete(message)
+
+                inserted: list[Message] = []
+                for ordinal, item in enumerate(derived_messages):
+                    message = Message(
+                        time=self._derived_message_time(parent_msg_time, ordinal),
+                        msg_id=None,
+                        user_id=user_id,
+                        group_id=group_id,
+                        user_name=getattr(item, "sender_name", None),
+                        role=role,
+                        content=getattr(item, "content", ""),
+                        raw_segments_json=getattr(item, "raw_segments_json", None),
+                        normalized_version=normalized_version,
+                        normalized_status="complete",
+                        source_type=MESSAGE_SOURCE_TYPE_FORWARD_NODE,
+                        parent_msg_id=parent_msg_id,
+                        parent_msg_time=parent_msg_time,
+                        parent_forward_id=getattr(item, "forward_id", None),
+                    )
+                    session.add(message)
+                    inserted.append(message)
+                session.commit()
+                for message in inserted:
+                    self._add_message_to_vector_index(message)
+
+        await _run_database(self.engine, _do)
 
     async def prepare_message(  # noqa: C901
         self,
@@ -823,6 +947,7 @@ class MessageDatabase:
         def _do():  # noqa: C901
             with Session(self.engine) as session:
                 statement = select(Message).where(Message.time >= start_time).where(Message.time <= end_time)
+                statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
                 if group_id is not None:
                     statement = statement.where(Message.group_id == group_id)
                     if user_id is not None:
@@ -841,6 +966,7 @@ class MessageDatabase:
                     select(func.count())
                     .select_from(Message)
                     .where(Message.group_id == group_id)
+                    .where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
                     .where(Message.time >= since_time)
                 )
                 return int(session.exec(statement).one())
@@ -854,6 +980,7 @@ class MessageDatabase:
                     select(Message.time)
                     .where(Message.group_id == group_id)
                     .where(Message.role == role)
+                    .where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
                     .order_by(desc(Message.time))
                     .limit(1)
                 )
@@ -926,6 +1053,7 @@ class MessageDatabase:
                 (:scope = 'group' AND m.group_id = :group_id)
                 OR (:scope = 'private' AND m.user_id = :user_id AND m.group_id IS NULL)
               )
+              AND m.source_type = 'message'
               AND (:target_user_id_enabled = 0 OR m.user_id = :target_user_id)
               AND (:target_user_name IS NULL OR m.user_name LIKE :target_user_name ESCAPE '\\')
               AND (:msg_id IS NULL OR m.msg_id = :msg_id)
@@ -946,6 +1074,7 @@ class MessageDatabase:
                 (:scope = 'group' AND m.group_id = :group_id)
                 OR (:scope = 'private' AND m.user_id = :user_id AND m.group_id IS NULL)
               )
+              AND m.source_type = 'message'
               AND (:target_user_id_enabled = 0 OR m.user_id = :target_user_id)
               AND (:target_user_name IS NULL OR m.user_name LIKE :target_user_name ESCAPE '\\')
               AND (:msg_id IS NULL OR m.msg_id = :msg_id)
@@ -1005,6 +1134,9 @@ class MessageDatabase:
             self.get_vector_index()
 
     def _add_message_to_vector_index(self, message: Message) -> None:
+        if message.source_type != MESSAGE_SOURCE_TYPE_NORMAL:
+            return
+
         snapshot = Message(
             time=message.time,
             msg_id=message.msg_id,
@@ -1013,6 +1145,10 @@ class MessageDatabase:
             user_name=message.user_name,
             role=message.role,
             content=message.content,
+            raw_segments_json=message.raw_segments_json,
+            normalized_version=message.normalized_version,
+            normalized_status=message.normalized_status,
+            source_type=message.source_type,
         )
 
         def index_message() -> None:
@@ -1034,7 +1170,11 @@ class MessageDatabase:
     def _messages_by_ids(self, session: Session, ids: list[int]) -> list[Message]:
         if not ids:
             return []
-        messages = session.exec(select(Message).where(col(Message.time).in_(ids))).all()
+        messages = session.exec(
+            select(Message)
+            .where(col(Message.time).in_(ids))
+            .where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+        ).all()
         messages_by_id = {message.time: message for message in messages}
         return [messages_by_id[message_id] for message_id in ids if message_id in messages_by_id]
 
@@ -1147,7 +1287,7 @@ class MessageDatabase:
                         ]
                     return keyword_results
 
-                statement = select(Message)
+                statement = select(Message).where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
                 if group_id is None:
                     if user_id is None:
                         return []

@@ -29,6 +29,7 @@ from utils.message import (
     send_artifacts,
     send_messages,
 )
+from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments
 from utils.reply_context import build_reply_context, reply_seq_from_segments
 from utils.staged_artifacts import cleanup_expired_staged_artifacts
 from utils.user_profile import get_profile_manager
@@ -209,13 +210,16 @@ async def handle_common(event: MessageEvent):  # noqa: C901
 
     # ── Phase 1: 快速提取文本（不下载媒体）──
     text, image_downloaders, audio_downloaders, video_downloaders = await message_extract(event.data.segments)
+    normalized_message = await normalize_segments(bot, event.data.segments)
+    if normalized_message.content:
+        text = normalized_message.content
 
     quoted_images: list[bytes] = []
     if reply_seq := reply_seq_from_segments(event.data.segments):
         quote_text, quoted_images = await build_reply_context(bot, event, reply_seq, group_id, messages_db)
         if quote_text:
             text += quote_text
-    if video_downloaders:
+    if video_downloaders and "[视频" not in text:
         text = f"{text}\n{' '.join('[视频]' for _ in video_downloaders)}".strip()
     if not text:
         if not event.is_tome():
@@ -234,7 +238,20 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         user_name=user_name,
         role="user" if user_id != str(event.self_id) else "assistant",
         content=text,
+        raw_segments_json=normalized_message.raw_segments_json,
+        normalized_version=normalized_message.normalized_version,
+        normalized_status=normalized_message.status,
     )
+    if normalized_message.derived_messages:
+        await messages_db.replace_derived_messages(
+            parent_msg_time=msg_time,
+            parent_msg_id=event_id,
+            user_id=int(user_id),
+            group_id=group_id,
+            role="user" if user_id != str(event.self_id) else "assistant",
+            derived_messages=normalized_message.derived_messages,
+            normalized_version=NORMALIZED_VERSION,
+        )
 
     messages = await messages_db.prepare_message(
         int(user_id),

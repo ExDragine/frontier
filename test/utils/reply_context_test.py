@@ -8,6 +8,7 @@ from sqlmodel import create_engine
 
 from utils import database as db_module
 from utils.database import Message, MessageAttachment, MessageDatabase
+from utils.message_normalizer import NORMALIZED_VERSION, segments_to_raw_json
 from utils.reply_context import build_reply_context
 
 
@@ -21,6 +22,9 @@ async def test_build_reply_context_expands_forwarded_messages_into_message_db():
 
         async def insert(self, **kwargs):
             inserted.update(kwargs)
+
+        async def replace_derived_messages(self, **kwargs):
+            inserted["derived_messages"] = kwargs["derived_messages"]
 
         async def insert_images(self, **_kwargs):
             raise AssertionError("forward text expansion should not create image files")
@@ -95,6 +99,7 @@ async def test_build_reply_context_expands_forwarded_messages_into_message_db():
     assert "Dana: 内层消息" in quote_text
     assert inserted["content"].count("内层消息") == 1
     assert inserted["content"] in quote_text
+    assert len(inserted["derived_messages"]) == 3
 
 
 @pytest.mark.asyncio
@@ -147,3 +152,63 @@ async def test_build_reply_context_loads_quoted_images_from_attachments(monkeypa
     assert images == [b"quoted-image"]
     assert "用户(Alice): 看图" in quote_text
     assert "[图片]" in quote_text
+
+
+@pytest.mark.asyncio
+async def test_build_reply_context_rebuilds_stale_forward_quote_from_raw_segments(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    engine = create_engine("sqlite://")
+    monkeypatch.setattr(db_module, "DATABASE_FILE", "sqlite://")
+    database = MessageDatabase()
+    database.engine = engine
+    Message.metadata.create_all(engine)
+
+    await database.insert(
+        time=500,
+        msg_id=900,
+        user_id=111,
+        group_id=123,
+        user_name="Alice",
+        role="user",
+        content="[合并转发:旧标题 - 旧摘要]",
+        raw_segments_json=segments_to_raw_json(
+            [
+                {
+                    "type": "forward",
+                    "data": {"forward_id": "outer", "title": "新标题", "summary": "1条"},
+                }
+            ]
+        ),
+        normalized_version=0,
+        normalized_status="complete",
+    )
+
+    class DummyBot:
+        async def get_forwarded_messages(self, forward_id):
+            assert forward_id == "outer"
+            return [
+                types.SimpleNamespace(
+                    sender_name="Bob",
+                    time=1714521600,
+                    segments=[{"type": "text", "data": {"text": "完整内容"}}],
+                )
+            ]
+
+        async def get_message(self, **_kwargs):
+            raise AssertionError("raw_segments_json should be enough to rebuild")
+
+    event = types.SimpleNamespace(
+        self_id="1",
+        reply=None,
+        data=types.SimpleNamespace(message_scene="group", peer_id=123),
+    )
+
+    quote_text, images = await build_reply_context(DummyBot(), event, 900, 123, database)
+    stored = await database.select_by_msg_id(msg_id=900, group_id=123)
+
+    assert images == []
+    assert "Bob: 完整内容" in quote_text
+    assert "旧摘要" not in quote_text
+    assert stored is not None
+    assert stored.normalized_version == NORMALIZED_VERSION
+    assert "Bob: 完整内容" in stored.content

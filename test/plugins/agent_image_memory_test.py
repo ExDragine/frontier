@@ -114,6 +114,221 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
 
 
 @pytest.mark.asyncio
+async def test_agent_stores_expanded_forward_message_and_derived_nodes(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {}
+
+    class DummyMessagesDb:
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "user":
+                captured["insert"] = kwargs
+
+        async def replace_derived_messages(self, **kwargs):
+            captured["derived"] = kwargs
+
+        async def insert_images(self, **_kwargs):
+            return []
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+    class DummyCognitive:
+        async def chat_agent(self, messages, *_args, **kwargs):
+            captured["messages"] = messages
+            return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+        async def get_forwarded_messages(self, forward_id):
+            if forward_id == "outer":
+                return [
+                    types.SimpleNamespace(
+                        sender_name="Alice",
+                        time=1714521600,
+                        segments=[{"type": "text", "data": {"text": "第一条"}}],
+                    ),
+                    types.SimpleNamespace(
+                        sender_name="Carol",
+                        time=1714521601,
+                        segments=[
+                            {
+                                "type": "forward",
+                                "data": {"forward_id": "inner", "title": "内层", "summary": "1条"},
+                            }
+                        ],
+                    ),
+                ]
+            if forward_id == "inner":
+                return [
+                    types.SimpleNamespace(
+                        sender_name="Dana",
+                        time=1714521602,
+                        segments=[{"type": "text", "data": {"text": "第二层"}}],
+                    )
+                ]
+            raise AssertionError(f"unexpected forward_id={forward_id}")
+
+    async def fake_message_gateway(_event, _messages):
+        return True
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "send_messages", _noop)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=1,
+        sender_id=456,
+        time=0,
+        segments=[
+            {
+                "type": "forward",
+                "data": {"forward_id": "outer", "title": "聊天记录", "summary": "2条"},
+            }
+        ],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert "Alice: 第一条" in captured["insert"]["content"]
+    assert "Dana: 第二层" in captured["insert"]["content"]
+    assert captured["insert"]["normalized_version"] == agent.NORMALIZED_VERSION
+    assert captured["insert"]["normalized_status"] == "complete"
+    assert captured["insert"]["raw_segments_json"]
+    assert len(captured["derived"]["derived_messages"]) == 3
+    current_text = captured["messages"][-1]["content"][0]["text"]
+    assert "Dana: 第二层" in current_text
+
+
+@pytest.mark.asyncio
+async def test_agent_does_not_duplicate_normalized_video_marker(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {}
+
+    class DummyMessagesDb:
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "user":
+                captured["stored_content"] = kwargs["content"]
+
+        async def insert_images(self, **_kwargs):
+            return []
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+    class DummyCognitive:
+        async def chat_agent(self, messages, *_args, **kwargs):
+            captured["messages"] = messages
+            captured["video_inputs"] = kwargs.get("video_inputs")
+            return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+    async def fake_message_gateway(_event, _messages):
+        return True
+
+    async def fake_download_media(_image_downloaders, _audio_downloaders, video_downloaders):
+        assert len(video_downloaders) == 1
+        return [], [], [b"video-bytes"]
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "download_media", fake_download_media)
+    monkeypatch.setattr(agent, "send_messages", _noop)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=1,
+        sender_id=456,
+        time=0,
+        segments=[
+            {
+                "type": "video",
+                "data": {
+                    "temp_url": "https://example.com/video.mp4",
+                    "duration": 12,
+                },
+            }
+        ],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert captured["stored_content"] == "[视频:12秒]"
+    current_text = captured["messages"][-1]["content"][0]["text"]
+    assert current_text.count("[视频") == 1
+    assert captured["video_inputs"] == [b"video-bytes"]
+
+
+@pytest.mark.asyncio
 async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch):  # noqa: C901
     import nonebot
 

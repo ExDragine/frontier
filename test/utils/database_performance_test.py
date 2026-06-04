@@ -34,6 +34,7 @@ def test_message_database_creates_query_shaped_indexes(tmp_path: Path, monkeypat
     assert "ix_message_user_group_time" in index_names
     assert "ix_message_group_role_time" in index_names
     assert "ix_message_group_msg_id_time" in index_names
+    assert "ix_message_source_parent" in index_names
     assert "ix_message_private_user_time" in index_names
     assert "ix_messageattachment_msg_time" in attachment_index_names
     assert "ix_messageattachment_expires_at" in attachment_index_names

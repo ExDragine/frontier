@@ -4,10 +4,19 @@ import json
 from pathlib import Path
 
 import pytest
+from sqlalchemy import inspect, text
 from sqlmodel import create_engine
 
 from utils import database as db_module
-from utils.database import Message, MessageAttachment, MessageDatabase, TimeStamp
+from utils.database import (
+    MESSAGE_SOURCE_TYPE_FORWARD_NODE,
+    MESSAGE_SOURCE_TYPE_NORMAL,
+    Message,
+    MessageAttachment,
+    MessageDatabase,
+    TimeStamp,
+)
+from utils.message_normalizer import NORMALIZED_VERSION, DerivedMessage
 
 
 @pytest.fixture
@@ -15,6 +24,51 @@ def memory_engine(monkeypatch):
     engine = create_engine("sqlite://")
     monkeypatch.setattr(db_module, "DATABASE_FILE", "sqlite://")
     return engine
+
+
+def test_ensure_message_schema_adds_normalization_columns(memory_engine):
+    with memory_engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE message (
+                    time INTEGER NOT NULL PRIMARY KEY,
+                    msg_id INTEGER,
+                    user_id INTEGER NOT NULL,
+                    group_id INTEGER,
+                    user_name VARCHAR,
+                    role VARCHAR NOT NULL,
+                    content VARCHAR NOT NULL
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO message (time, msg_id, user_id, group_id, user_name, role, content)
+                VALUES (1000, 10, 1, 123, 'Alice', 'user', 'legacy')
+                """
+            )
+        )
+
+    db_module.ensure_message_schema(memory_engine)
+
+    columns = {column["name"] for column in inspect(memory_engine).get_columns("message")}
+    assert {
+        "raw_segments_json",
+        "normalized_version",
+        "normalized_status",
+        "source_type",
+        "parent_msg_id",
+        "parent_msg_time",
+        "parent_forward_id",
+    }.issubset(columns)
+    with memory_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT normalized_version, normalized_status, source_type FROM message WHERE time = 1000")
+        ).one()
+    assert row == (0, "legacy", MESSAGE_SOURCE_TYPE_NORMAL)
 
 
 @pytest.mark.asyncio
@@ -210,6 +264,137 @@ async def test_select_by_msg_id_returns_message_from_same_group(monkeypatch, mem
 
     assert result is not None
     assert result.content == "quoted message"
+
+
+@pytest.mark.asyncio
+async def test_prepare_message_excludes_forward_node_derived_records(monkeypatch, memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+
+    await database.insert(
+        1000,
+        10,
+        1,
+        123,
+        "Alice",
+        "user",
+        "parent\n[合并转发]\nBob: derived content",
+        normalized_version=NORMALIZED_VERSION,
+        normalized_status="complete",
+    )
+    await database.replace_derived_messages(
+        parent_msg_time=1000,
+        parent_msg_id=10,
+        user_id=1,
+        group_id=123,
+        role="user",
+        derived_messages=[
+            DerivedMessage(
+                sender_name="Bob",
+                content="derived content",
+                raw_segments_json="[]",
+                forward_id="fwd-1",
+            )
+        ],
+        normalized_version=NORMALIZED_VERSION,
+    )
+    await database.insert(2000, 11, 1, 123, "Alice", "user", "current")
+
+    selected = await database.select(group_id=123, query_numbers=10)
+    prepared = await database.prepare_message(user_id=1, group_id=123, query_numbers=10, before_time=2000)
+    search_results = await database.search_messages(group_id=123, user_id=1, content_query="derived content", limit=10)
+
+    assert all(message.source_type != MESSAGE_SOURCE_TYPE_FORWARD_NODE for message in selected)
+    assert all(message.source_type == MESSAGE_SOURCE_TYPE_NORMAL for message in search_results)
+    assert [message.msg_id for message in search_results] == [10]
+    assert len(prepared) == 1
+    assert "derived content" in prepared[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_ignores_forward_node_derived_records(monkeypatch, memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+
+    await database.insert(
+        1000,
+        10,
+        1,
+        123,
+        "Alice",
+        "user",
+        "parent content with nested forward detail",
+        normalized_version=NORMALIZED_VERSION,
+        normalized_status="complete",
+    )
+    await database.replace_derived_messages(
+        parent_msg_time=1000,
+        parent_msg_id=10,
+        user_id=1,
+        group_id=123,
+        role="user",
+        derived_messages=[
+            DerivedMessage(
+                sender_name="Bob",
+                content="nested forward detail",
+                raw_segments_json="[]",
+                forward_id="fwd-1",
+            )
+        ],
+        normalized_version=NORMALIZED_VERSION,
+    )
+
+    class FakeVectorIndex:
+        available = True
+
+        def search(self, **_kwargs):
+            return [(-1_000_001, 0.01), (1000, 0.2)]
+
+    database._vector_index = FakeVectorIndex()
+
+    results = await database.search_messages(
+        group_id=123,
+        user_id=1,
+        content_query="nested detail",
+        mode="semantic",
+        limit=10,
+    )
+
+    assert [message.time for message in results] == [1000]
+
+
+def test_add_message_to_vector_index_skips_forward_node_records(memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    indexed: list[int] = []
+
+    class FakeVectorIndex:
+        available = True
+
+        def add_message(self, message):
+            indexed.append(message.time)
+
+    database._vector_index = FakeVectorIndex()
+
+    database._add_message_to_vector_index(
+        Message(
+            time=-1,
+            msg_id=None,
+            user_id=1,
+            group_id=123,
+            user_name="Bob",
+            role="user",
+            content="derived",
+            source_type=MESSAGE_SOURCE_TYPE_FORWARD_NODE,
+        )
+    )
+    database._add_message_to_vector_index(
+        Message(time=1000, msg_id=10, user_id=1, group_id=123, user_name="Alice", role="user", content="normal")
+    )
+
+    assert indexed == [1000]
 
 
 @pytest.mark.asyncio

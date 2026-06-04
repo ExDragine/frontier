@@ -1,11 +1,13 @@
 import importlib
+import json
 
 from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
 
 from utils.configs import EnvConfig
-from utils.database import MessageDatabase
+from utils.database import MESSAGE_SOURCE_TYPE_NORMAL, MessageDatabase
 from utils.http_client import get_http_client
+from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments, segments_to_raw_json
 
 _httpx_client = get_http_client("reply_context")
 FORWARD_CONTEXT_MAX_DEPTH = 3
@@ -182,7 +184,63 @@ async def _extract_milky_message_content(bot, message) -> tuple[str, list[bytes]
     return await _extract_segments_content(bot, message.segments)
 
 
-async def build_reply_context(
+def _quoted_needs_normalization_rebuild(quoted) -> bool:
+    status = getattr(quoted, "normalized_status", "legacy")
+    if getattr(quoted, "normalized_version", 0) >= NORMALIZED_VERSION and status == "complete":
+        return False
+    if getattr(quoted, "raw_segments_json", None):
+        return True
+    content = getattr(quoted, "content", "") or ""
+    if "[合并转发:" in content or "[合并转发]" in content:
+        return True
+    return status not in ("complete", "legacy")
+
+
+async def _rebuild_quoted_normalization(bot, event: MessageEvent, quoted, reply_seq: int, messages_db: MessageDatabase):
+    raw_segments_json = getattr(quoted, "raw_segments_json", None)
+    segments = None
+    if raw_segments_json:
+        try:
+            loaded = json.loads(raw_segments_json)
+            if isinstance(loaded, list):
+                segments = loaded
+        except json.JSONDecodeError:
+            segments = None
+
+    milky_message = None
+    if segments is None:
+        milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
+        if not milky_message:
+            return quoted
+        segments = milky_message.segments
+        raw_segments_json = segments_to_raw_json(segments)
+
+    normalized = await normalize_segments(bot, segments)
+    await messages_db.update_message_normalization(
+        time=quoted.time,
+        content=normalized.content,
+        raw_segments_json=raw_segments_json,
+        normalized_version=normalized.normalized_version,
+        normalized_status=normalized.status,
+    )
+    await messages_db.replace_derived_messages(
+        parent_msg_time=quoted.time,
+        parent_msg_id=quoted.msg_id,
+        user_id=quoted.user_id,
+        group_id=quoted.group_id,
+        role=quoted.role,
+        derived_messages=normalized.derived_messages,
+        normalized_version=NORMALIZED_VERSION,
+    )
+    quoted.content = normalized.content
+    quoted.raw_segments_json = raw_segments_json
+    quoted.normalized_version = normalized.normalized_version
+    quoted.normalized_status = normalized.status
+    quoted.source_type = MESSAGE_SOURCE_TYPE_NORMAL
+    return quoted
+
+
+async def build_reply_context(  # noqa: C901
     bot,
     event: MessageEvent,
     reply_seq: int,
@@ -191,6 +249,8 @@ async def build_reply_context(
 ) -> tuple[str, list[bytes]]:
     quoted = await messages_db.select_by_msg_id(msg_id=reply_seq, group_id=group_id)
     if quoted:
+        if _quoted_needs_normalization_rebuild(quoted):
+            quoted = await _rebuild_quoted_normalization(bot, event, quoted, reply_seq, messages_db)
         image_records = await messages_db.select_image_attachments_by_msg_time(quoted.time)
         local_images, missing_images = messages_db.load_attachment_files(image_records)
         fetched_images: list[bytes] = []
@@ -219,7 +279,9 @@ async def build_reply_context(
     if not milky_message:
         return "", []
 
-    quoted_text, images, missing_images = await _extract_milky_message_content(bot, milky_message)
+    normalized = await normalize_segments(bot, milky_message.segments)
+    quoted_text = normalized.content
+    _image_text, images, missing_images = await _extract_milky_message_content(bot, milky_message)
     role = "assistant" if str(milky_message.sender_id) == str(event.self_id) else "user"
     name = _sender_name_from_milky_message(milky_message)
     quoted_time = milky_message.time * 1000 if milky_message.time < 10_000_000_000 else milky_message.time
@@ -232,7 +294,20 @@ async def build_reply_context(
             user_name=name,
             role=role,
             content=quoted_text,
+            raw_segments_json=normalized.raw_segments_json,
+            normalized_version=normalized.normalized_version,
+            normalized_status=normalized.status,
         )
+        if normalized.derived_messages:
+            await messages_db.replace_derived_messages(
+                parent_msg_time=quoted_time,
+                parent_msg_id=milky_message.message_seq,
+                user_id=int(milky_message.sender_id),
+                group_id=group_id,
+                role=role,
+                derived_messages=normalized.derived_messages,
+                normalized_version=NORMALIZED_VERSION,
+            )
     except Exception as e:
         logger.warning(f"⚠️ 写入引用消息记录失败 message_seq={reply_seq}: {type(e).__name__}: {e}")
     if images and EnvConfig.IMAGE_ENABLED:
