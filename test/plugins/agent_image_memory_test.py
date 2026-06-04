@@ -220,6 +220,100 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
 
 
 @pytest.mark.asyncio
+async def test_rejected_group_file_message_stages_file_before_gateway(monkeypatch, tmp_path):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {"agent_calls": 0}
+
+    class DummyMessagesDb:
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "user":
+                captured["stored_content"] = kwargs["content"]
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+    class DummyCognitive:
+        working_dir = str(tmp_path / "sandbox")
+
+        async def chat_agent(self, *_args, **_kwargs):
+            captured["agent_calls"] += 1
+            return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
+
+    class DummyBot:
+        pass
+
+    async def fake_message_gateway(_event, _messages):
+        return False
+
+    async def fake_stage_message_files(_bot, file_items, **kwargs):
+        captured["file_items"] = file_items
+        captured["memory_dir"] = kwargs["memory_dir"]
+        return [
+            types.SimpleNamespace(
+                file_name="Clear icon cache.bat",
+                file_size=1175,
+                virtual_path="/memory/1035400922/files/Clear icon cache.bat",
+            )
+        ]
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "stage_message_files", fake_stage_message_files)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=1035400922,
+        message_seq=73686,
+        sender_id=1530518186,
+        time=0,
+        segments=[
+            {
+                "type": "file",
+                "data": {
+                    "file_id": "/dbd89abd-f51a-4160-b8bd-8f10cc27c585",
+                    "file_name": "Clear icon cache.bat",
+                    "file_size": 1175,
+                },
+            }
+        ],
+        friend=None,
+        group=Group(group_id=1035400922, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=1530518186,
+            nickname="u",
+            sex="unknown",
+            group_id=1035400922,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=False, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert captured["file_items"][0].file_id == "/dbd89abd-f51a-4160-b8bd-8f10cc27c585"
+    assert captured["memory_dir"] == tmp_path / "sandbox" / "memory" / "1035400922"
+    assert "/memory/1035400922/files/Clear icon cache.bat" in captured["stored_content"]
+    assert captured["agent_calls"] == 0
+
+
+@pytest.mark.asyncio
 async def test_agent_stores_expanded_forward_message_and_derived_nodes(monkeypatch):  # noqa: C901
     import nonebot
 

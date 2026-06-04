@@ -297,12 +297,13 @@ def extract_message_files(messages: list[dict]) -> list[MessageFileItem]:
         if message.get("type") != "file":
             continue
         msg_data = message.get("data", {})
+        file_hash = msg_data.get("file_hash")
         files.append(
             MessageFileItem(
                 file_id=str(file_id) if (file_id := msg_data.get("file_id")) else None,
                 file_name=str(msg_data.get("file_name") or "file"),
                 file_size=_int_or_zero(msg_data.get("file_size")),
-                file_hash=str(file_hash) if (file_hash := msg_data.get("file_hash")) else None,
+                file_hash=str(file_hash) if file_hash is not None else None,
                 url=_first_file_url(msg_data),
             )
         )
@@ -323,8 +324,8 @@ async def _message_file_download_url(
     try:
         if group_id is not None:
             return await bot.get_group_file_download_url(group_id=int(group_id), file_id=file_item.file_id)
-        if not file_item.file_hash:
-            logger.warning("私聊文件缺少 file_hash，无法获取下载链接: %s", file_item.file_name)
+        if file_item.file_hash is None:
+            logger.warning(f"私聊文件缺少 file_hash 字段，无法获取下载链接: {file_item.file_name}")
             return None
         return await bot.get_private_file_download_url(
             user_id=int(user_id),
@@ -332,7 +333,7 @@ async def _message_file_download_url(
             file_hash=file_item.file_hash,
         )
     except Exception as exc:
-        logger.warning("获取文件下载链接失败 %s: %s: %s", file_item.file_name, type(exc).__name__, exc)
+        logger.warning(f"获取文件下载链接失败 {file_item.file_name}: {type(exc).__name__}: {exc}")
         return None
 
 
@@ -344,7 +345,7 @@ async def _download_file_bytes(url: str, file_name: str) -> bytes | None:
             raise_for_status()
         return response.content
     except Exception as exc:
-        logger.warning("下载文件失败 %s: %s: %s", file_name, type(exc).__name__, exc)
+        logger.warning(f"下载文件失败 {file_name}: {type(exc).__name__}: {exc}")
         return None
 
 
@@ -386,7 +387,7 @@ async def stage_message_files(
     for file_item in file_items:
         url = await _message_file_download_url(bot, file_item, user_id=user_id, group_id=group_id)
         if not url:
-            logger.warning("文件缺少可下载链接，无法注入工作区: %s", file_item.file_name)
+            logger.warning(f"文件缺少可下载链接，无法注入工作区: {file_item.file_name}")
             continue
         file_bytes = await _download_file_bytes(url, file_item.file_name)
         if file_bytes is None:

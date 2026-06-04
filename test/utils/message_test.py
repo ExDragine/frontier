@@ -197,6 +197,45 @@ async def test_stage_message_files_downloads_group_file_to_memory_files(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_stage_message_files_passes_empty_private_file_hash(monkeypatch, tmp_path):
+    calls = []
+
+    class DummyBot:
+        async def get_private_file_download_url(self, **kwargs):
+            calls.append(("get_private_file_download_url", kwargs))
+            return "https://example.com/private.txt"
+
+    async def fake_get(url):
+        calls.append(("get", url))
+        return DummyResponse(b"private-file")
+
+    monkeypatch.setattr(message_module.httpx_client, "get", fake_get)
+
+    staged = await message_module.stage_message_files(
+        DummyBot(),
+        [
+            message_module.MessageFileItem(
+                file_id="file-1",
+                file_name="private.txt",
+                file_size=12,
+                file_hash="",
+            )
+        ],
+        memory_dir=tmp_path,
+        workspace_key="456",
+        user_id="456",
+        group_id=None,
+    )
+
+    assert staged[0].virtual_path == "/memory/456/files/private.txt"
+    assert staged[0].local_path.read_bytes() == b"private-file"
+    assert calls == [
+        ("get_private_file_download_url", {"user_id": 456, "file_id": "file-1", "file_hash": ""}),
+        ("get", "https://example.com/private.txt"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_send_messages_fallback_to_text(monkeypatch):
     monkeypatch.setattr(message_module, "UniMessage", DummyUniMessage)
 

@@ -242,8 +242,18 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             text = ""
 
     msg_time = int(time.time() * 1000)
+    staged_files = await stage_message_files(
+        bot,
+        file_items,
+        memory_dir=_agent_memory_dir(user_id, group_id),
+        workspace_key=_agent_workspace_key(user_id, group_id),
+        user_id=user_id,
+        group_id=group_id,
+    )
+    if staged_file_text := format_staged_message_files(staged_files):
+        text = f"{text}\n{staged_file_text}".strip()
 
-    # ── Phase 2: 存储消息文本 + 快速网关检查 ──
+    # ── Phase 2: 存储消息文本/文件路径 + 快速网关检查 ──
     await messages_db.insert(
         time=msg_time,
         msg_id=event_id,
@@ -277,18 +287,8 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     if not await message_gateway(event, messages):
         await common.finish()
 
-    # ── Phase 3: 网关通过后才下载媒体和文件 ──
+    # ── Phase 3: 网关通过后才下载图片/音频/视频 ──
     images, _audio, videos = await download_media(image_downloaders, audio_downloaders, video_downloaders)
-    staged_files = await stage_message_files(
-        bot,
-        file_items,
-        memory_dir=_agent_memory_dir(user_id, group_id),
-        workspace_key=_agent_workspace_key(user_id, group_id),
-        user_id=user_id,
-        group_id=group_id,
-    )
-    if staged_file_text := format_staged_message_files(staged_files):
-        text = f"{text}\n{staged_file_text}".strip()
 
     if images and EnvConfig.IMAGE_ENABLED:
         try:
