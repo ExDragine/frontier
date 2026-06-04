@@ -6,7 +6,7 @@ import time
 import uuid
 from typing import Any
 
-from deepagents import RubricMiddleware, create_deep_agent
+from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
 from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import (
@@ -211,38 +211,6 @@ class CustomAgentState(AgentState):
     video_inputs: list[bytes]
 
 
-class FrontierRubricMiddleware(RubricMiddleware):
-    @staticmethod
-    def _revision_prompt(evaluation: Any) -> str:
-        lines = [
-            "这是内部质检反馈，不是用户消息。",
-            "请基于原始最新 is_current: true 用户消息重新生成最终回复。",
-            "不要解释评分结果，不要分析上一版回答的问题，不要提及 rubric、grader、质检或修改过程。",
-            f"最终只输出要发给用户的内容；如果应静默，只输出 {NO_REPLY_SENTINEL}。",
-        ]
-
-        explanation = str(evaluation.get("explanation") or "").strip()
-        if explanation:
-            lines.extend(["", f"内部反馈：{explanation}"])
-
-        failing_criteria = [
-            criterion for criterion in evaluation.get("criteria", []) or [] if not criterion.get("passed")
-        ]
-        if failing_criteria:
-            lines.extend(["", "需要修正的点："])
-            for criterion in failing_criteria:
-                name = str(criterion.get("name") or "").strip()
-                gap = str(criterion.get("gap") or "").strip()
-                if name and gap:
-                    lines.append(f"- {name}: {gap}")
-                elif gap:
-                    lines.append(f"- {gap}")
-                elif name:
-                    lines.append(f"- {name}")
-
-        return "\n".join(lines)
-
-
 def _agent_thread_id(user_id: str, group_id: int | None) -> uuid.UUID:
     scope = f"group:{group_id}:user:{user_id}" if group_id is not None else f"dm:{user_id}"
     return uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=scope)
@@ -309,29 +277,6 @@ class FrontierCognitive:
         except KeyError as e:
             logger.error(f"❌ system prompt 模板变量缺失: {e}")
             return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: 模板变量缺失]"
-
-    @staticmethod
-    def _load_rubric():
-        """加载并合并所有 rubric 评分标准文件。"""
-        rubric_dir = os.path.join(os.getcwd(), "prompts")
-        rubric_files = [
-            "rubric_chat_quality.md",
-            "rubric_technical.md",
-            "rubric_compliance.md",
-        ]
-        parts = []
-        for filename in rubric_files:
-            filepath = os.path.join(rubric_dir, filename)
-            try:
-                with open(filepath, encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        parts.append(content)
-            except FileNotFoundError:
-                logger.warning(f"Rubric 文件未找到，跳过: {filename}")
-            except Exception as exc:
-                logger.warning(f"Rubric 文件读取失败: {filename} ({type(exc).__name__}: {exc})")
-        return "\n\n".join(parts) if parts else ""
 
     @staticmethod
     def _uni_message_cls():
@@ -467,9 +412,6 @@ class FrontierCognitive:
                 system_prompt = f"{system_prompt}\n\n{profile_context}"
         except Exception as exc:
             logger.debug("Profile context injection skipped: %s: %s", type(exc).__name__, exc)
-        # ── 加载 rubric 评分标准 ──
-        rubric_text = self._load_rubric()
-
         # ── 提取 PTC 工具名列表 ──
         ptc_tool_names: list = [tool.name for tool in self.tools] if self.tools else []
         middleware: list = []
@@ -486,9 +428,6 @@ class FrontierCognitive:
                 ModelRetryMiddleware(),
                 FilesystemFileSearchMiddleware(root_path=workspace_dir),
                 CodeInterpreterMiddleware(ptc=ptc_tool_names),
-                FrontierRubricMiddleware(
-                    model=model,
-                ),
             ]
         )
         agent = create_deep_agent(
@@ -526,7 +465,6 @@ class FrontierCognitive:
                 "group_id": group_id,
                 "image_inputs": image_inputs or [],
                 "video_inputs": video_inputs or [],
-                "rubric": rubric_text,
             }
             response = await agent.ainvoke(
                 input=input_data,
