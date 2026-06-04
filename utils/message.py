@@ -3,7 +3,9 @@ import asyncio
 import re
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal
 
@@ -243,6 +245,24 @@ async def _reply_check_should_reply(group_id: int, plaintext: str, messages: lis
 
 
 MediaItem = bytes | bytearray | Callable[[], Awaitable[bytes | None]]
+FILE_URL_FIELDS = ("temp_url", "url", "download_url", "download_uri")
+
+
+@dataclass(frozen=True, slots=True)
+class MessageFileItem:
+    file_id: str | None
+    file_name: str
+    file_size: int
+    file_hash: str | None = None
+    url: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StagedMessageFile:
+    file_name: str
+    file_size: int
+    virtual_path: str
+    local_path: Path
 
 
 def _media_downloader(url: str, label: str) -> Callable[[], Awaitable[bytes | None]]:
@@ -254,6 +274,147 @@ def _media_downloader(url: str, label: str) -> Callable[[], Awaitable[bytes | No
             return None
 
     return _download
+
+
+def _first_file_url(data: dict) -> str | None:
+    for field in FILE_URL_FIELDS:
+        value = data.get(field)
+        if value:
+            return str(value)
+    return None
+
+
+def _int_or_zero(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def extract_message_files(messages: list[dict]) -> list[MessageFileItem]:
+    files: list[MessageFileItem] = []
+    for message in messages:
+        if message.get("type") != "file":
+            continue
+        msg_data = message.get("data", {})
+        files.append(
+            MessageFileItem(
+                file_id=str(file_id) if (file_id := msg_data.get("file_id")) else None,
+                file_name=str(msg_data.get("file_name") or "file"),
+                file_size=_int_or_zero(msg_data.get("file_size")),
+                file_hash=str(file_hash) if (file_hash := msg_data.get("file_hash")) else None,
+                url=_first_file_url(msg_data),
+            )
+        )
+    return files
+
+
+async def _message_file_download_url(
+    bot,
+    file_item: MessageFileItem,
+    *,
+    user_id: str | int,
+    group_id: int | None,
+) -> str | None:
+    if file_item.url:
+        return file_item.url
+    if not file_item.file_id:
+        return None
+    try:
+        if group_id is not None:
+            return await bot.get_group_file_download_url(group_id=int(group_id), file_id=file_item.file_id)
+        if not file_item.file_hash:
+            logger.warning("私聊文件缺少 file_hash，无法获取下载链接: %s", file_item.file_name)
+            return None
+        return await bot.get_private_file_download_url(
+            user_id=int(user_id),
+            file_id=file_item.file_id,
+            file_hash=file_item.file_hash,
+        )
+    except Exception as exc:
+        logger.warning("获取文件下载链接失败 %s: %s: %s", file_item.file_name, type(exc).__name__, exc)
+        return None
+
+
+async def _download_file_bytes(url: str, file_name: str) -> bytes | None:
+    try:
+        response = await httpx_client.get(url)
+        raise_for_status = getattr(response, "raise_for_status", None)
+        if callable(raise_for_status):
+            raise_for_status()
+        return response.content
+    except Exception as exc:
+        logger.warning("下载文件失败 %s: %s: %s", file_name, type(exc).__name__, exc)
+        return None
+
+
+def _safe_attachment_file_name(file_name: str) -> str:
+    safe_name = Path(str(file_name).replace("\\", "/")).name.strip()
+    return safe_name or "file"
+
+
+def _unique_attachment_path(directory: Path, file_name: str) -> Path:
+    original = Path(file_name)
+    stem = original.stem or "file"
+    suffix = original.suffix
+    candidate = directory / file_name
+    counter = 2
+    while candidate.exists():
+        candidate = directory / f"{stem}-{counter}{suffix}"
+        counter += 1
+    return candidate
+
+
+async def stage_message_files(
+    bot,
+    file_items: list[MessageFileItem],
+    *,
+    memory_dir: str | Path,
+    workspace_key: str,
+    user_id: str | int,
+    group_id: int | None,
+    message_seq: int | str,
+) -> list[StagedMessageFile]:
+    """Download incoming file segments into the agent memory files directory."""
+    if not file_items:
+        return []
+
+    memory_path = Path(memory_dir)
+    attachment_dir = memory_path / "files" / "attachments" / str(message_seq)
+    attachment_dir.mkdir(parents=True, exist_ok=True)
+    staged_files: list[StagedMessageFile] = []
+
+    for file_item in file_items:
+        url = await _message_file_download_url(bot, file_item, user_id=user_id, group_id=group_id)
+        if not url:
+            logger.warning("文件缺少可下载链接，无法注入工作区: %s", file_item.file_name)
+            continue
+        file_bytes = await _download_file_bytes(url, file_item.file_name)
+        if file_bytes is None:
+            continue
+
+        safe_name = _safe_attachment_file_name(file_item.file_name)
+        target_path = _unique_attachment_path(attachment_dir, safe_name)
+        target_path.write_bytes(file_bytes)
+        virtual_path = f"/memory/{workspace_key}/{target_path.relative_to(memory_path).as_posix()}"
+        staged_files.append(
+            StagedMessageFile(
+                file_name=target_path.name,
+                file_size=file_item.file_size,
+                virtual_path=virtual_path,
+                local_path=target_path,
+            )
+        )
+
+    return staged_files
+
+
+def format_staged_message_files(staged_files: list[StagedMessageFile]) -> str:
+    lines = []
+    for staged_file in staged_files:
+        size_label = f" ({staged_file.file_size}字节)" if staged_file.file_size else ""
+        lines.append(f"[文件:{staged_file.file_name}{size_label}，已保存到工作区 {staged_file.virtual_path}]")
+    return "\n".join(lines)
 
 
 async def _resolve_media_item(item: MediaItem) -> bytes | None:

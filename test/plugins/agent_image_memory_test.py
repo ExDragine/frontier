@@ -114,6 +114,112 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
 
 
 @pytest.mark.asyncio
+async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {}
+
+    class DummyMessagesDb:
+        async def insert(self, **_kwargs):
+            return None
+
+        async def insert_images(self, **_kwargs):
+            return []
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+    class DummyCognitive:
+        working_dir = str(tmp_path / "sandbox")
+
+        async def chat_agent(self, messages, *_args, **_kwargs):
+            captured["messages"] = messages
+            return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+    async def fake_message_gateway(_event, _messages):
+        return True
+
+    async def fake_stage_message_files(_bot, file_items, **kwargs):
+        captured["file_items"] = file_items
+        captured["memory_dir"] = kwargs["memory_dir"]
+        captured["workspace_key"] = kwargs["workspace_key"]
+        return [
+            types.SimpleNamespace(
+                file_name="report.txt",
+                file_size=4,
+                virtual_path="/memory/123/files/attachments/1/report.txt",
+            )
+        ]
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "stage_message_files", fake_stage_message_files)
+    monkeypatch.setattr(agent, "send_messages", _noop)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=1,
+        sender_id=456,
+        time=0,
+        segments=[
+            {
+                "type": "file",
+                "data": {
+                    "file_id": "file-1",
+                    "file_name": "report.txt",
+                    "file_size": 4,
+                    "file_hash": None,
+                },
+            }
+        ],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert captured["file_items"][0].file_id == "file-1"
+    assert captured["memory_dir"] == tmp_path / "sandbox" / "memory" / "123"
+    assert captured["workspace_key"] == "123"
+    current_text = captured["messages"][-1]["content"][0]["text"]
+    payload = ast.literal_eval(current_text)
+    assert "/memory/123/files/attachments/1/report.txt" in payload["content"]
+
+
+@pytest.mark.asyncio
 async def test_agent_stores_expanded_forward_message_and_derived_nodes(monkeypatch):  # noqa: C901
     import nonebot
 

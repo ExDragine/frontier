@@ -130,6 +130,73 @@ async def test_message_extract(monkeypatch):
     assert video
 
 
+def test_extract_message_files():
+    segments = [
+        {"type": "text", "data": {"text": "hi"}},
+        {
+            "type": "file",
+            "data": {
+                "file_id": "file-1",
+                "file_name": "a.txt",
+                "file_size": 10,
+                "file_hash": "hash-1",
+            },
+        },
+    ]
+
+    files = message_module.extract_message_files(segments)
+
+    assert files == [
+        message_module.MessageFileItem(
+            file_id="file-1",
+            file_name="a.txt",
+            file_size=10,
+            file_hash="hash-1",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stage_message_files_downloads_group_file_to_memory_files(monkeypatch, tmp_path):
+    calls = []
+
+    class DummyBot:
+        async def get_group_file_download_url(self, **kwargs):
+            calls.append(("get_group_file_download_url", kwargs))
+            return "https://example.com/a.txt"
+
+    async def fake_get(url):
+        calls.append(("get", url))
+        return DummyResponse(b"file-bytes")
+
+    monkeypatch.setattr(message_module.httpx_client, "get", fake_get)
+
+    staged = await message_module.stage_message_files(
+        DummyBot(),
+        [
+            message_module.MessageFileItem(
+                file_id="file-1",
+                file_name="../a.txt",
+                file_size=10,
+            )
+        ],
+        memory_dir=tmp_path,
+        workspace_key="123",
+        user_id="456",
+        group_id=123,
+        message_seq=9,
+    )
+
+    assert len(staged) == 1
+    assert staged[0].file_name == "a.txt"
+    assert staged[0].virtual_path == "/memory/123/files/attachments/9/a.txt"
+    assert staged[0].local_path.read_bytes() == b"file-bytes"
+    assert calls == [
+        ("get_group_file_download_url", {"group_id": 123, "file_id": "file-1"}),
+        ("get", "https://example.com/a.txt"),
+    ]
+
+
 @pytest.mark.asyncio
 async def test_send_messages_fallback_to_text(monkeypatch):
     monkeypatch.setattr(message_module, "UniMessage", DummyUniMessage)

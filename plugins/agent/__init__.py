@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
 from utils.message import (
     download_media,
+    extract_message_files,
+    format_staged_message_files,
     message_check,
     message_extract,
     message_gateway,
@@ -28,6 +31,7 @@ from utils.message import (
     sanitize_outgoing_text,
     send_artifacts,
     send_messages,
+    stage_message_files,
 )
 from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments
 from utils.reply_context import build_reply_context, reply_seq_from_segments
@@ -64,6 +68,15 @@ class AgentRequestContext:
     quoted_images: list[bytes]
     images: list[bytes]
     videos: list[bytes]
+
+
+def _agent_workspace_key(user_id: str, group_id: int | None) -> str:
+    return str(group_id) if group_id is not None else str(user_id)
+
+
+def _agent_memory_dir(user_id: str, group_id: int | None) -> Path:
+    working_dir = Path(getattr(f_cognitive, "working_dir", os.path.join(os.getcwd(), "cache", "sandbox")))
+    return working_dir / "memory" / _agent_workspace_key(user_id, group_id)
 
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
@@ -210,6 +223,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
 
     # ── Phase 1: 快速提取文本（不下载媒体）──
     text, image_downloaders, audio_downloaders, video_downloaders = await message_extract(event.data.segments)
+    file_items = extract_message_files(event.data.segments)
     normalized_message = await normalize_segments(bot, event.data.segments)
     if normalized_message.content:
         text = normalized_message.content
@@ -263,8 +277,19 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     if not await message_gateway(event, messages):
         await common.finish()
 
-    # ── Phase 3: 网关通过后才下载媒体 ──
+    # ── Phase 3: 网关通过后才下载媒体和文件 ──
     images, _audio, videos = await download_media(image_downloaders, audio_downloaders, video_downloaders)
+    staged_files = await stage_message_files(
+        bot,
+        file_items,
+        memory_dir=_agent_memory_dir(user_id, group_id),
+        workspace_key=_agent_workspace_key(user_id, group_id),
+        user_id=user_id,
+        group_id=group_id,
+        message_seq=event_id,
+    )
+    if staged_file_text := format_staged_message_files(staged_files):
+        text = f"{text}\n{staged_file_text}".strip()
 
     if images and EnvConfig.IMAGE_ENABLED:
         try:
