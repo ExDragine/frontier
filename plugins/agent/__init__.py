@@ -107,7 +107,6 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         context.user_name,
         capability,
         group_id=context.group_id,
-        query_text=context.text,
         image_inputs=context.quoted_images + context.images,
         video_inputs=context.videos,
     )

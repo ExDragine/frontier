@@ -242,7 +242,6 @@ async def _reply_check_should_reply(group_id: int, plaintext: str, messages: lis
     return reply_check.should_reply == "true" and reply_check.confidence > 0.5
 
 
-
 MediaItem = bytes | bytearray | Callable[[], Awaitable[bytes | None]]
 
 
@@ -297,7 +296,7 @@ async def download_media(
         if isinstance(value, Exception):
             logger.warning("下载媒体失败: %s: %s", type(value).__name__, value)
             continue
-        if value:
+        if value and isinstance(value, bytes):
             results[bucket_index].append(value)
     return results
 
