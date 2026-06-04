@@ -373,15 +373,14 @@ async def stage_message_files(
     workspace_key: str,
     user_id: str | int,
     group_id: int | None,
-    message_seq: int | str,
 ) -> list[StagedMessageFile]:
     """Download incoming file segments into the agent memory files directory."""
     if not file_items:
         return []
 
     memory_path = Path(memory_dir)
-    attachment_dir = memory_path / "files" / "attachments" / str(message_seq)
-    attachment_dir.mkdir(parents=True, exist_ok=True)
+    files_dir = memory_path / "files"
+    files_dir.mkdir(parents=True, exist_ok=True)
     staged_files: list[StagedMessageFile] = []
 
     for file_item in file_items:
@@ -394,7 +393,7 @@ async def stage_message_files(
             continue
 
         safe_name = _safe_attachment_file_name(file_item.file_name)
-        target_path = _unique_attachment_path(attachment_dir, safe_name)
+        target_path = _unique_attachment_path(files_dir, safe_name)
         target_path.write_bytes(file_bytes)
         virtual_path = f"/memory/{workspace_key}/{target_path.relative_to(memory_path).as_posix()}"
         staged_files.append(

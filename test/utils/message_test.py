@@ -184,12 +184,11 @@ async def test_stage_message_files_downloads_group_file_to_memory_files(monkeypa
         workspace_key="123",
         user_id="456",
         group_id=123,
-        message_seq=9,
     )
 
     assert len(staged) == 1
     assert staged[0].file_name == "a.txt"
-    assert staged[0].virtual_path == "/memory/123/files/attachments/9/a.txt"
+    assert staged[0].virtual_path == "/memory/123/files/a.txt"
     assert staged[0].local_path.read_bytes() == b"file-bytes"
     assert calls == [
         ("get_group_file_download_url", {"group_id": 123, "file_id": "file-1"}),

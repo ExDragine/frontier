@@ -286,7 +286,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         workspace_key=_agent_workspace_key(user_id, group_id),
         user_id=user_id,
         group_id=group_id,
-        message_seq=event_id,
     )
     if staged_file_text := format_staged_message_files(staged_files):
         text = f"{text}\n{staged_file_text}".strip()

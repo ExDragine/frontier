@@ -154,7 +154,7 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
             types.SimpleNamespace(
                 file_name="report.txt",
                 file_size=4,
-                virtual_path="/memory/123/files/attachments/1/report.txt",
+                virtual_path="/memory/123/files/report.txt",
             )
         ]
 
@@ -216,7 +216,7 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
     assert captured["workspace_key"] == "123"
     current_text = captured["messages"][-1]["content"][0]["text"]
     payload = ast.literal_eval(current_text)
-    assert "/memory/123/files/attachments/1/report.txt" in payload["content"]
+    assert "/memory/123/files/report.txt" in payload["content"]
 
 
 @pytest.mark.asyncio
