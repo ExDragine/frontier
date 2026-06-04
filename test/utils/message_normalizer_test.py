@@ -10,7 +10,7 @@ from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments, seg
 @pytest.mark.asyncio
 async def test_normalize_segments_expands_nested_forward_and_returns_derived_nodes():
     class DummyBot:
-        async def get_forwarded_messages(self, forward_id):
+        async def get_forwarded_messages(self, *, forward_id):
             if forward_id == "outer":
                 return [
                     types.SimpleNamespace(

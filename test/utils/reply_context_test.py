@@ -49,7 +49,7 @@ async def test_build_reply_context_expands_forwarded_messages_into_message_db():
                 friend=None,
             )
 
-        async def get_forwarded_messages(self, forward_id):
+        async def get_forwarded_messages(self, *, forward_id):
             if forward_id == "outer":
                 return [
                     types.SimpleNamespace(
@@ -184,7 +184,7 @@ async def test_build_reply_context_rebuilds_stale_forward_quote_from_raw_segment
     )
 
     class DummyBot:
-        async def get_forwarded_messages(self, forward_id):
+        async def get_forwarded_messages(self, *, forward_id):
             assert forward_id == "outer"
             return [
                 types.SimpleNamespace(

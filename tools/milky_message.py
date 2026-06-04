@@ -110,7 +110,7 @@ async def get_resource_temp_url(resource_id: str) -> str:
     Args:
         resource_id: 资源 ID
     """
-    return await get_bot().get_resource_temp_url(resource_id)
+    return await get_bot().get_resource_temp_url(resource_id=resource_id)
 
 
 @tool(response_format="content")
@@ -119,7 +119,7 @@ async def get_forwarded_messages(forward_id: str) -> str:
     Args:
         forward_id: 合并转发 ID
     """
-    messages = await get_bot().get_forwarded_messages(forward_id)
+    messages = await get_bot().get_forwarded_messages(forward_id=forward_id)
     return format_forwarded_messages(messages)
 
 

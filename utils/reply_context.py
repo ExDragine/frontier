@@ -121,7 +121,7 @@ async def _extract_forward_segment_content(bot, segment: dict, depth: int) -> tu
         return f"{marker}\n[合并转发展开已达到深度限制]", [], 0
 
     try:
-        nodes = await bot.get_forwarded_messages(forward_id)
+        nodes = await bot.get_forwarded_messages(forward_id=forward_id)
     except Exception as e:
         logger.warning(f"⚠️ 拉取合并转发失败 forward_id={forward_id}: {type(e).__name__}: {e}")
         return f"{marker}\n[合并转发内容拉取失败]", [], 0

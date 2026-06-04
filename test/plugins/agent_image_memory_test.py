@@ -145,7 +145,7 @@ async def test_agent_stores_expanded_forward_message_and_derived_nodes(monkeypat
         async def send_group_message_reaction(self, **_kwargs):
             return None
 
-        async def get_forwarded_messages(self, forward_id):
+        async def get_forwarded_messages(self, *, forward_id):
             if forward_id == "outer":
                 return [
                     types.SimpleNamespace(
@@ -514,7 +514,7 @@ async def test_agent_fetches_missing_quoted_image_from_milky(monkeypatch):  # no
                 ),
             )
 
-        async def get_resource_temp_url(self, resource_id):
+        async def get_resource_temp_url(self, *, resource_id):
             assert resource_id == "resource-1"
             return "https://fresh.example/image.jpg"
 
