@@ -54,20 +54,6 @@ async def init_task_system():
     # 4. 同步群组配置到 EnvConfig
     await task_manager.initialize()
 
-    # 5. 注册主动智能引擎（每 10 分钟评估一次）
-    from .proactive_engine import ProactiveEngine
-
-    proactive = ProactiveEngine()
-    scheduler.add_job(
-        func=proactive.evaluate_all_groups,
-        trigger="interval",
-        id="proactive_engine",
-        minutes=10,
-        misfire_grace_time=120,
-        replace_existing=True,
-    )
-    logger.info("主动智能引擎已注册（每 10 分钟评估一次）")
-
     logger.info("定时任务管理系统初始化完成！")
 
 

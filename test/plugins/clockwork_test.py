@@ -479,36 +479,3 @@ async def test_agent_task_final_group_delivery_mentions_owner(monkeypatch):
     assert [segment.type for segment in calls[0]["message"]] == ["mention", "text"]
     assert calls[0]["message"][0].data == {"user_id": 456}
     assert calls[0]["message"][1].data == {"text": " 该喝水了"}
-
-
-@pytest.mark.asyncio
-async def test_proactive_message_accepts_llm_content_blocks(monkeypatch):
-    proactive_engine_module = importlib.import_module("plugins.clockwork.proactive_engine")
-    sent = []
-
-    class DummyLLM:
-        async def ainvoke(self, *_args, **_kwargs):
-            return types.SimpleNamespace(
-                content=[
-                    {"type": "text", "text": "刚才大家聊得挺热闹。"},
-                    {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,abc"}},
-                ]
-            )
-
-    class DummyBot:
-        async def send_group_message(self, **kwargs):
-            sent.append(kwargs)
-
-    import utils.llm_factory as llm_factory_module
-
-    monkeypatch.setattr(llm_factory_module, "create_llm", lambda **_kwargs: DummyLLM())
-    monkeypatch.setattr(proactive_engine_module, "get_bot", lambda: DummyBot(), raising=False)
-
-    engine = proactive_engine_module.ProactiveEngine(db=types.SimpleNamespace())
-    await engine._execute_proactive_message(
-        123,
-        "group_summary",
-        {"group_id": 123, "inactive_minutes": 120, "message_count": 25, "unique_speakers": 5},
-    )
-
-    assert sent == [{"group_id": 123, "message": "刚才大家聊得挺热闹。"}]
