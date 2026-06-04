@@ -405,7 +405,7 @@ class FrontierCognitive:
                 PIIMiddleware(
                     "api_key",
                     detector=r"sk-[a-zA-Z0-9]{32}",
-                    strategy="block",
+                    strategy="mask",
                 ),
                 ToolRetryMiddleware(),
                 ModelRetryMiddleware(),
