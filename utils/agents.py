@@ -22,7 +22,7 @@ from nonebot import logger
 from pydantic import ValidationError
 
 from tools import agent_tools
-from utils.configs import EnvConfig
+from utils.configs import EnvConfig, information
 from utils.llm_factory import create_llm, model_supports
 from utils.message import extract_message_text
 from utils.staged_artifacts import extract_staged_artifact_ids, load_staged_artifact, strip_staged_artifact_handoffs
@@ -148,13 +148,6 @@ async def assistant_agent(
     temperature: float | None = None,
     model_kwargs: dict | None = None,
 ) -> Any:
-    if not system_prompt:
-        try:
-            with open("prompts/system_prompt.md", encoding="utf-8") as f:
-                system_prompt = f.read()
-        except FileNotFoundError:
-            logger.warning("❌ 未找到 system prompt 文件: prompts/system_prompt.md")
-            system_prompt = "You are a helpful assistant."
     route = _configured_model_route(use_model)
     llm_kwargs: dict[str, Any] = {
         "model": use_model,
@@ -257,26 +250,16 @@ class FrontierCognitive:
 
     @staticmethod
     def load_system_prompt():
-        """从外部文件加载 system prompt"""
-        try:
-            with open("prompts/system_prompt.md", encoding="utf-8") as f:
-                system_prompt = f.read()
-                system_prompt = system_prompt.format(
-                    name=EnvConfig.BOT_NAME,
-                )
-                return system_prompt
-        except FileNotFoundError:
-            logger.error("❌ 未找到 system prompt 文件: prompts/system_prompt.md")
-            return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: system prompt文件缺失]"
-        except PermissionError as e:
-            logger.error(f"❌ 无权限读取 system prompt 文件: {e}")
-            return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: 无读取权限]"
-        except UnicodeDecodeError as e:
-            logger.error(f"❌ system prompt 文件编码错误: {e}")
-            return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: 文件编码无效]"
-        except KeyError as e:
-            logger.error(f"❌ system prompt 模板变量缺失: {e}")
-            return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: 模板变量缺失]"
+        """从 env.toml 加载 system prompt"""
+        toml_prompt: str = information.get("system_prompt", "").strip()
+        if toml_prompt:
+            try:
+                return toml_prompt.format(name=EnvConfig.BOT_NAME)
+            except KeyError as e:
+                logger.error(f"❌ system prompt 模板变量缺失: {e}")
+                return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: 模板变量缺失]"
+        logger.error("❌ env.toml 中未配置 information.system_prompt")
+        return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: system prompt未配置]"
 
     @staticmethod
     def _uni_message_cls():

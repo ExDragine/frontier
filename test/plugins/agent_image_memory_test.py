@@ -502,7 +502,7 @@ def test_system_prompt_describes_chat_metadata_and_tool_scope(monkeypatch):
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
     from plugins import agent
 
-    prompt = (agent.PROJECT_ROOT / "prompts" / "system_prompt.md").read_text(encoding="utf-8")
+    prompt = (agent.PROJECT_ROOT / "prompts" / "AGENTS.md").read_text(encoding="utf-8")
 
     assert "`chat_type`" in prompt
     assert "`group_id`" in prompt

@@ -11,15 +11,6 @@ from utils import agents
 
 @pytest.mark.asyncio
 async def test_assistant_agent_model_selection(monkeypatch):
-    original_open = builtins.open
-
-    def fake_open(path, *args, **kwargs):
-        if str(path).endswith("system_prompt.md"):
-            raise FileNotFoundError()
-        return original_open(path, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "open", fake_open)
-
     class DummyAgent:
         async def ainvoke(self, payload):
             return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok")]}
@@ -38,15 +29,9 @@ async def test_assistant_agent_model_selection(monkeypatch):
     assert result == "ok"
 
 
-def test_frontier_load_system_prompt_missing(monkeypatch):
-    original_open = builtins.open
-
-    def fake_open(path, *args, **kwargs):
-        if str(path).endswith("system_prompt.md"):
-            raise FileNotFoundError()
-        return original_open(path, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "open", fake_open)
+def test_frontier_load_system_prompt_missing():
+    """测试 env.toml 未配置 system_prompt 时返回错误提示"""
+    # 测试 fixture 的 env.toml 没有 system_prompt，应返回配置错误
     prompt = agents.FrontierCognitive.load_system_prompt()
     assert "配置错误" in prompt
 
@@ -247,19 +232,9 @@ def test_frontier_cognitive_uses_core_tools_when_tool_search_enabled(monkeypatch
 
 @pytest.mark.asyncio
 async def test_assistant_agent_uses_basic_model_config(monkeypatch):
-    import builtins
     import types
 
     from utils import agents
-
-    original_open = builtins.open
-
-    def fake_open(path, *args, **kwargs):
-        if str(path).endswith("system_prompt.md"):
-            raise FileNotFoundError()
-        return original_open(path, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "open", fake_open)
 
     captured = {}
 
@@ -300,19 +275,9 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_assistant_agent_uses_signal_model_config(monkeypatch):
-    import builtins
     import types
 
     from utils import agents
-
-    original_open = builtins.open
-
-    def fake_open(path, *args, **kwargs):
-        if str(path).endswith("system_prompt.md"):
-            raise FileNotFoundError()
-        return original_open(path, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "open", fake_open)
 
     captured = {}
 
@@ -592,7 +557,7 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
 
 @pytest.mark.asyncio
 async def test_chat_agent_uses_base_system_prompt_without_no_reply_append(monkeypatch, tmp_path):
-    """No-reply instructions are now part of system_prompt.md; no conditional append."""
+    """No-reply instructions are now part of system_prompt (env.toml); no conditional append."""
     import types
 
     from utils import agents
