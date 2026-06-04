@@ -127,7 +127,7 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
         statements.extend(
             [
                 (
-                    'DELETE FROM messageimage WHERE id NOT IN '
+                    "DELETE FROM messageimage WHERE id NOT IN "
                     '(SELECT max(id) FROM messageimage GROUP BY msg_time, "index")'
                 ),
                 'CREATE UNIQUE INDEX IF NOT EXISTS ux_messageimage_msg_time_index ON messageimage (msg_time, "index")',
@@ -187,7 +187,9 @@ def get_database_diagnostics(engine: Engine | None = None) -> dict[str, object]:
         for table_name in sorted(table_names):
             table_diagnostics[table_name] = {
                 "row_count": _safe_table_count(conn, table_name),
-                "indexes": sorted(index["name"] for index in inspector.get_indexes(table_name)),
+                "indexes": sorted(
+                    index["name"] for index in inspector.get_indexes(table_name) if index["name"] is not None
+                ),
             }
 
         for fts_table in ["message_fts"]:
@@ -384,7 +386,6 @@ def build_message_metadata(
     }
 
 
-
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str
@@ -460,6 +461,7 @@ class _MessageImageManager:
                     paths.append(file_path)
                 session.commit()
             return paths
+
         return await _run_database(self.engine, _do)
 
     async def cleanup_expired_images(self) -> int:
@@ -476,6 +478,7 @@ class _MessageImageManager:
                     cleaned += 1
                 session.commit()
             return cleaned
+
         return await _run_database(self.engine, _do)
 
     @staticmethod
@@ -527,6 +530,7 @@ class MessageDatabase:
                 session.add(message)
                 session.commit()
                 self._add_message_to_vector_index(message)
+
         await _run_database(self.engine, _do)
 
     async def select(
@@ -549,6 +553,7 @@ class MessageDatabase:
                 statement = statement.order_by(desc(Message.time)).limit(query_numbers)
                 results = session.exec(statement)
                 return results.all()
+
         return await _run_database(self.engine, _do)
 
     async def select_by_msg_id(self, *, msg_id: int, group_id: int | None) -> Message | None:
@@ -561,13 +566,17 @@ class MessageDatabase:
                     statement = statement.where(Message.group_id == group_id)
                 statement = statement.order_by(desc(Message.time)).limit(1)
                 return session.exec(statement).first()
+
         return await _run_database(self.engine, _do)
 
     async def select_images_by_msg_time(self, msg_time: int) -> list[MessageImage]:
         def _do():
             with Session(self.engine) as session:
-                statement = select(MessageImage).where(MessageImage.msg_time == msg_time).order_by(MessageImage.index)
+                statement = (
+                    select(MessageImage).where(MessageImage.msg_time == msg_time).order_by(col(MessageImage.index))
+                )
                 return session.exec(statement).all()
+
         return await _run_database(self.engine, _do)
 
     def load_image_files(self, image_records: list[MessageImage]) -> tuple[list[bytes], int]:
@@ -677,8 +686,9 @@ class MessageDatabase:
                         statement = statement.where(Message.user_id == user_id)
                 elif user_id is not None:
                     statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
-                statement = statement.order_by(Message.time).limit(limit)
+                statement = statement.order_by(col(Message.time)).limit(limit)
                 return session.exec(statement).all()
+
         return await _run_database(self.engine, _do)
 
     async def count_group_messages_since(self, *, group_id: int, since_time: int) -> int:
@@ -691,6 +701,7 @@ class MessageDatabase:
                     .where(Message.time >= since_time)
                 )
                 return int(session.exec(statement).one())
+
         return await _run_database(self.engine, _do)
 
     async def latest_group_role_message_time(self, *, group_id: int, role: str) -> int | None:
@@ -704,6 +715,7 @@ class MessageDatabase:
                     .limit(1)
                 )
                 return session.exec(statement).first()
+
         return await _run_database(self.engine, _do)
 
     @staticmethod
@@ -864,7 +876,10 @@ class MessageDatabase:
             vector_index = self.get_vector_index()
             if not vector_index or not getattr(vector_index, "available", False):
                 return
-            vector_index.add_message(snapshot)
+            add_message = getattr(vector_index, "add_message", None)
+            if not callable(add_message):
+                return
+            add_message(snapshot)
 
         try:
             loop = asyncio.get_running_loop()
@@ -899,7 +914,10 @@ class MessageDatabase:
         vector_index = self.get_vector_index()
         if not vector_index or not getattr(vector_index, "available", False):
             return []
-        vector_results = vector_index.search(
+        search_fn = getattr(vector_index, "search", None)
+        if not callable(search_fn):
+            return []
+        vector_results = search_fn(
             query=content_query,
             group_id=group_id,
             user_id=user_id,
@@ -999,7 +1017,9 @@ class MessageDatabase:
                         statement = statement.where(Message.user_id == target_user_id)
 
                 if content_query:
-                    statement = statement.where(col(Message.content).like(self._like_pattern(content_query), escape="\\"))
+                    statement = statement.where(
+                        col(Message.content).like(self._like_pattern(content_query), escape="\\")
+                    )
                 if target_user_name:
                     statement = statement.where(
                         col(Message.user_name).like(self._like_pattern(target_user_name), escape="\\")
@@ -1013,6 +1033,7 @@ class MessageDatabase:
 
                 statement = statement.order_by(desc(Message.time)).limit(max(1, min(limit, 500)))
                 return session.exec(statement).all()
+
         return await _run_database(self.engine, _do)
 
     @staticmethod
@@ -1042,6 +1063,7 @@ class EventDatabase:
                 target = TimeStamp(name=name, id=id)
                 session.add(target)
                 session.commit()
+
         await _run_database(self.engine, _do)
 
     async def delete(self, name):
@@ -1051,6 +1073,7 @@ class EventDatabase:
                 if target:
                     session.delete(target)
                     session.commit()
+
         await _run_database(self.engine, _do)
 
     async def update(self, name, id):
@@ -1061,6 +1084,7 @@ class EventDatabase:
                     target.id = id
                     session.add(target)
                     session.commit()
+
         await _run_database(self.engine, _do)
 
     async def select(self, name):
@@ -1069,4 +1093,5 @@ class EventDatabase:
                 target = session.get(TimeStamp, name)
                 if target:
                     return target.id
+
         return await _run_database(self.engine, _do)

@@ -18,7 +18,6 @@ from langchain.agents.middleware import (
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_quickjs import CodeInterpreterMiddleware
-from langgraph.checkpoint.memory import InMemorySaver
 from nonebot import logger
 from pydantic import ValidationError
 
@@ -34,7 +33,6 @@ UniMessage = None
 VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 SKILLS_BACKEND_PATH = "/skills"
 MEMORY_BACKEND_PATH = "/memory"
-MEMORY_FILE_PATH = "/memory/AGENTS.md"
 NO_REPLY_SENTINEL = "_NO_REPLY_"
 
 
@@ -100,11 +98,6 @@ def _filter_messages_for_model_capabilities(messages: list[dict], model: str, en
     return filtered_messages
 
 
-def _message_text_content(message) -> str:
-    """提取消息文本（兼容旧名称，委托给 extract_message_text）。"""
-    return extract_message_text(message)
-
-
 def _json_document_candidates(text: str, *, prefer_object: bool = False) -> list[str]:
     fenced_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
     if fenced_match:
@@ -127,7 +120,7 @@ def _parse_structured_response_from_messages(messages: list, response_format):
     for message in reversed(messages):
         if getattr(message, "type", None) != "ai":
             continue
-        text = _message_text_content(message).strip()
+        text = extract_message_text(message).strip()
         if not text:
             continue
         if hasattr(response_format, "model_validate_json"):
@@ -220,7 +213,7 @@ class CustomAgentState(AgentState):
 
 class FrontierRubricMiddleware(RubricMiddleware):
     @staticmethod
-    def _revision_prompt(evaluation: dict[str, Any]) -> str:
+    def _revision_prompt(evaluation: Any) -> str:
         lines = [
             "这是内部质检反馈，不是用户消息。",
             "请基于原始最新 is_current: true 用户消息重新生成最终回复。",
@@ -263,7 +256,15 @@ def _ensure_dir(path: str) -> str:
 def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBackend:
     workspace_dir = _ensure_dir(os.path.join(working_dir, "workspaces", workspace_key))
     skills_dir = _ensure_dir(os.path.join(working_dir, "skills"))
-    memory_dir = _ensure_dir(os.path.join(working_dir, "memory"))
+    memory_dir = _ensure_dir(os.path.join(working_dir, f"memory/{workspace_key}"))
+    try:
+        with (
+            open("prompts/AGENTS.md", encoding="utf-8") as src,
+            open(os.path.join(memory_dir, "AGENTS.md"), "w", encoding="utf-8") as dst,
+        ):
+            dst.write(src.read())
+    except FileNotFoundError:
+        open(os.path.join(memory_dir, "AGENTS.md"), "w", encoding="utf-8").close()
 
     return CompositeBackend(
         default=LocalShellBackend(root_dir=workspace_dir, virtual_mode=True, inherit_env=True),
@@ -285,9 +286,6 @@ class FrontierCognitive:
             )
         else:
             self.tools = agent_tools.main_tools
-        self.checkpoint = InMemorySaver()
-        self.working_dir = os.path.join(os.getcwd(), "cache", "sandbox")
-        _ensure_dir(self.working_dir)
 
     @staticmethod
     def load_system_prompt():
@@ -429,7 +427,6 @@ class FrontierCognitive:
         user_name,
         capability: str = "none",
         group_id: int | None = None,
-        query_text: str = "",
         image_inputs: list[bytes] | None = None,
         video_inputs: list[bytes] | None = None,
         thread_id_override: uuid.UUID | str | None = None,
@@ -475,7 +472,7 @@ class FrontierCognitive:
 
         # ── 提取 PTC 工具名列表 ──
         ptc_tool_names: list = [tool.name for tool in self.tools] if self.tools else []
-        middleware = []
+        middleware: list = []
         if tool_search_index := getattr(self, "tool_search_index", None):
             middleware.append(DynamicToolSearchMiddleware(tool_search_index))
         middleware.extend(
@@ -501,7 +498,7 @@ class FrontierCognitive:
             tools=self.tools,
             middleware=middleware,
             skills=[SKILLS_BACKEND_PATH],
-            memory=[MEMORY_FILE_PATH],
+            memory=[f"/memory/{workspace_key}/AGENTS.md"],
             interrupt_on={
                 "write_file": False,
                 "read_file": False,
@@ -523,20 +520,21 @@ class FrontierCognitive:
             }
         }
         try:
+            input_data: Any = {
+                "messages": messages,
+                "user_id": user_id,
+                "group_id": group_id,
+                "image_inputs": image_inputs or [],
+                "video_inputs": video_inputs or [],
+                "rubric": rubric_text,
+            }
             response = await agent.ainvoke(
-                {
-                    "messages": messages,
-                    "user_id": user_id,
-                    "group_id": group_id,
-                    "image_inputs": image_inputs or [],
-                    "video_inputs": video_inputs or [],
-                    "rubric": rubric_text,
-                },
+                input=input_data,
                 config=config,
             )
         except Exception as e:
             # 其他意外错误，记录详细信息
-            logger.error(f"❌ Agent执行出现意外错误 用户{user_id}: {type(e).__name__}: {e}")
+            logger.error(f"❌ Agent执行出现意外错误 用户{user_id}: {type(e).__name__}")
             logger.exception("完整错误堆栈:")
             return {
                 "response": {"messages": [AIMessage("💥 服务暂时不可用，请稍后重试。")]},

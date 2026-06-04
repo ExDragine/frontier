@@ -245,18 +245,6 @@ def test_frontier_cognitive_uses_core_tools_when_tool_search_enabled(monkeypatch
     assert isinstance(frontier.tool_search_index, FakeToolSearchIndex)
 
 
-def test_frontier_cognitive_uses_in_memory_checkpoint(monkeypatch):
-    class DummyInMemorySaver:
-        pass
-
-    monkeypatch.setattr(agents, "InMemorySaver", DummyInMemorySaver)
-
-    frontier = agents.FrontierCognitive()
-
-    assert isinstance(frontier.checkpoint, DummyInMemorySaver)
-    assert not hasattr(frontier, "_checkpoint_db_path")
-
-
 @pytest.mark.asyncio
 async def test_assistant_agent_uses_basic_model_config(monkeypatch):
     import builtins
@@ -412,7 +400,6 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
-    frontier.checkpoint = None
     frontier.backend = None
 
     await frontier.chat_agent(
@@ -465,7 +452,6 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
-    frontier.checkpoint = None
     frontier.working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -482,9 +468,9 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert backend.default.root_dir == str(tmp_path / "sandbox" / "workspaces" / "123")
     assert set(backend.routes) == {"/skills/", "/memory/"}
     assert backend.routes["/skills/"].root_dir == str(tmp_path / "sandbox" / "skills")
-    assert backend.routes["/memory/"].root_dir == str(tmp_path / "sandbox" / "memory")
+    assert backend.routes["/memory/"].root_dir == str(tmp_path / "sandbox" / "memory" / "123")
     assert captured["skills"] == ["/skills"]
-    assert captured["memory"] == ["/memory/AGENTS.md"]
+    assert captured["memory"] == ["/memory/123/AGENTS.md"]
     assert (tmp_path / "sandbox" / "workspaces" / "123").is_dir()
     assert (tmp_path / "sandbox" / "skills").is_dir()
     assert (tmp_path / "sandbox" / "memory").is_dir()
@@ -590,7 +576,6 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
-    frontier.checkpoint = None
     frontier.working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -682,7 +667,6 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
     frontier.subagents = []
-    frontier.checkpoint = None
     frontier.backend = None
 
     await frontier.chat_agent(
