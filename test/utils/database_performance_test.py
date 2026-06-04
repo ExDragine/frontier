@@ -4,11 +4,10 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import inspect, text
-from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, select
 
 from utils import database as db_module
-from utils.database import Message, MessageDatabase, MessageImage
+from utils.database import Message, MessageAttachment, MessageDatabase
 
 
 def test_get_engine_configures_sqlite_for_concurrent_bot_workload(tmp_path: Path):
@@ -29,15 +28,16 @@ def test_message_database_creates_query_shaped_indexes(tmp_path: Path, monkeypat
     database = MessageDatabase()
 
     index_names = {index["name"] for index in inspect(database.engine).get_indexes("message")}
-    image_index_names = {index["name"] for index in inspect(database.engine).get_indexes("messageimage")}
+    attachment_index_names = {index["name"] for index in inspect(database.engine).get_indexes("messageattachment")}
 
     assert "ix_message_group_time" in index_names
     assert "ix_message_user_group_time" in index_names
     assert "ix_message_group_role_time" in index_names
     assert "ix_message_group_msg_id_time" in index_names
     assert "ix_message_private_user_time" in index_names
-    assert "ix_messageimage_msg_time_index" in image_index_names
-    assert "ix_messageimage_expires_at" in image_index_names
+    assert "ix_messageattachment_msg_time" in attachment_index_names
+    assert "ix_messageattachment_expires_at" in attachment_index_names
+    assert "ix_messageattachment_scope" in attachment_index_names
 
 
 @pytest.mark.asyncio
@@ -86,18 +86,23 @@ def test_recent_group_query_avoids_temp_sort(tmp_path: Path, monkeypatch):
     assert "USE TEMP B-TREE" not in plan
 
 
-def test_image_cleanup_query_uses_expires_at_index(tmp_path: Path, monkeypatch):
+def test_attachment_cleanup_query_uses_expires_at_index(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
     database = MessageDatabase()
 
     with Session(database.engine) as session:
         session.add(
-            MessageImage(
+            MessageAttachment(
                 msg_time=1,
+                msg_id=1,
                 user_id=1,
                 group_id=None,
-                index=0,
-                file_path="cache/images/1/1_0.jpg",
+                workspace_key="1",
+                kind="image",
+                source_type="message",
+                file_name="1_0.jpg",
+                physical_path="cache/sandbox/memory/1/files/images/1_0.jpg",
+                virtual_path="/memory/1/files/images/1_0.jpg",
                 file_size=10,
                 created_at=1,
                 expires_at=10,
@@ -109,50 +114,27 @@ def test_image_cleanup_query_uses_expires_at_index(tmp_path: Path, monkeypatch):
         plan = "\n".join(
             row[3]
             for row in conn.execute(
-                text("EXPLAIN QUERY PLAN SELECT * FROM messageimage WHERE expires_at < :now"),
+                text("EXPLAIN QUERY PLAN SELECT * FROM messageattachment WHERE expires_at < :now"),
                 {"now": 100},
             )
         )
 
-    assert "ix_messageimage_expires_at" in plan
+    assert "ix_messageattachment_expires_at" in plan
 
 
-def test_message_image_unique_index_keeps_one_row_per_message_image(tmp_path: Path, monkeypatch):
+@pytest.mark.asyncio
+async def test_insert_images_keeps_one_attachment_per_image_path(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
+    monkeypatch.chdir(tmp_path)
     database = MessageDatabase()
 
-    with Session(database.engine) as session:
-        session.add(
-            MessageImage(
-                msg_time=1,
-                user_id=1,
-                group_id=None,
-                index=0,
-                file_path="old.jpg",
-                file_size=3,
-                created_at=1,
-                expires_at=10,
-            )
-        )
-        session.add(
-            MessageImage(
-                msg_time=1,
-                user_id=1,
-                group_id=None,
-                index=0,
-                file_path="new.jpg",
-                file_size=4,
-                created_at=2,
-                expires_at=20,
-            )
-        )
-        with pytest.raises(IntegrityError):
-            session.commit()
-        session.rollback()
+    await database.insert_images(1, 1, None, [b"old"])
+    await database.insert_images(1, 1, None, [b"new"])
 
     with Session(database.engine) as session:
-        count = session.exec(select(MessageImage)).all()
-    assert count == []
+        attachments = session.exec(select(MessageAttachment)).all()
+    assert len(attachments) == 1
+    assert attachments[0].file_size == len(b"new")
 
 
 def test_message_database_creates_fts_table_and_triggers_when_supported(tmp_path: Path, monkeypatch):

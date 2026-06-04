@@ -1,12 +1,13 @@
 # ruff: noqa: S101
 
 import json
+from pathlib import Path
 
 import pytest
 from sqlmodel import create_engine
 
 from utils import database as db_module
-from utils.database import Message, MessageDatabase, MessageImage, TimeStamp
+from utils.database import Message, MessageAttachment, MessageDatabase, TimeStamp
 
 
 @pytest.fixture
@@ -21,7 +22,6 @@ async def test_message_database_select_and_prepare(monkeypatch, memory_engine):
     database = MessageDatabase()
     database.engine = memory_engine
     Message.metadata.create_all(memory_engine)
-    MessageImage.metadata.create_all(memory_engine)
 
     await database.insert(1, 101, 1, None, "u1", "user", "hello")
     await database.insert(2, 102, 1, None, "u1", "user", "world")
@@ -45,7 +45,7 @@ async def test_prepare_message_injects_all_available_images_without_window_limit
     database = MessageDatabase()
     database.engine = memory_engine
     Message.metadata.create_all(memory_engine)
-    MessageImage.metadata.create_all(memory_engine)
+    MessageAttachment.metadata.create_all(memory_engine)
 
     for msg_time in range(1, 13):
         await database.insert(msg_time, 100 + msg_time, 1, None, "u1", "user", f"history-{msg_time}")
@@ -65,11 +65,101 @@ async def test_prepare_message_injects_all_available_images_without_window_limit
 
 
 @pytest.mark.asyncio
+async def test_prepare_message_injects_images_from_message_attachments(monkeypatch, memory_engine, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+    MessageAttachment.metadata.create_all(memory_engine)
+
+    image_path = Path("cache/sandbox/memory/1/files/images/1000_0.jpg")
+    (tmp_path / image_path).parent.mkdir(parents=True)
+    (tmp_path / image_path).write_bytes(b"attachment-image")
+    await database.insert(1000, 101, 1, None, "u1", "user", "history")
+    await database.insert_attachment(
+        msg_time=1000,
+        msg_id=101,
+        user_id=1,
+        group_id=None,
+        kind="image",
+        physical_path=str(image_path),
+        virtual_path="/memory/1/files/images/1000_0.jpg",
+        file_name="1000_0.jpg",
+        file_size=len(b"attachment-image"),
+        expires_at=9_999_999_999_999,
+    )
+    await database.insert(2000, 102, 1, None, "u1", "user", "current")
+
+    prepared = await database.prepare_message(user_id=1, query_numbers=10, before_time=2000)
+
+    assert isinstance(prepared[0]["content"], list)
+    assert prepared[0]["content"][0]["type"] == "text"
+    image_parts = [part for part in prepared[0]["content"] if part.get("type") == "image_url"]
+    assert len(image_parts) == 1
+
+
+@pytest.mark.asyncio
+async def test_insert_images_records_memory_file_attachment(monkeypatch, memory_engine, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+    MessageAttachment.metadata.create_all(memory_engine)
+
+    paths = await database.insert_images(1000, 7, 123, [b"image-bytes"])
+
+    expected_path = Path("cache/sandbox/memory/123/files/images/1000_0.jpg")
+    assert paths == [str(expected_path)]
+    assert (tmp_path / expected_path).read_bytes() == b"image-bytes"
+
+    attachments = await database.select_attachments_by_msg_time(1000)
+    assert len(attachments) == 1
+    attachment = attachments[0]
+    assert attachment.kind == "image"
+    assert attachment.physical_path == str(expected_path)
+    assert attachment.virtual_path == "/memory/123/files/images/1000_0.jpg"
+    assert attachment.file_size == len(b"image-bytes")
+
+
+@pytest.mark.asyncio
+async def test_cleanup_expired_attachments_deletes_only_db_tracked_files(monkeypatch, memory_engine, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    database = MessageDatabase()
+    database.engine = memory_engine
+    MessageAttachment.metadata.create_all(memory_engine)
+
+    tracked = Path("cache/sandbox/memory/123/files/images/expired.jpg")
+    untracked = Path("cache/sandbox/memory/123/files/images/keep.jpg")
+    (tmp_path / tracked).parent.mkdir(parents=True)
+    (tmp_path / tracked).write_bytes(b"old")
+    (tmp_path / untracked).write_bytes(b"keep")
+
+    await database.insert_attachment(
+        msg_time=1000,
+        msg_id=50,
+        user_id=7,
+        group_id=123,
+        kind="image",
+        physical_path=str(tracked),
+        virtual_path="/memory/123/files/images/expired.jpg",
+        file_name="expired.jpg",
+        file_size=3,
+        expires_at=1,
+    )
+
+    deleted = await database.cleanup_expired_attachments(now_ms=2)
+
+    assert deleted == 1
+    assert not (tmp_path / tracked).exists()
+    assert (tmp_path / untracked).exists()
+    assert await database.select_attachments_by_msg_time(1000) == []
+
+
+@pytest.mark.asyncio
 async def test_prepare_message_before_time_excludes_current_and_later_group_messages(monkeypatch, memory_engine):
     database = MessageDatabase()
     database.engine = memory_engine
     Message.metadata.create_all(memory_engine)
-    MessageImage.metadata.create_all(memory_engine)
 
     await database.insert(1000, 201, 10, 123, "Old", "user", "old message")
     await database.insert(2000, 202, 10, 123, "Alice", "user", "alice current")
@@ -88,7 +178,6 @@ async def test_prepare_message_includes_chat_scope_metadata(monkeypatch, memory_
     database = MessageDatabase()
     database.engine = memory_engine
     Message.metadata.create_all(memory_engine)
-    MessageImage.metadata.create_all(memory_engine)
 
     await database.insert(1000, 201, 10, 123, "Alice", "user", "group old")
     await database.insert(2000, 202, 10, 123, "Alice", "user", "group current")

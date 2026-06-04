@@ -178,11 +178,11 @@ async def on_shutdown():
 async def on_startup():
     if EnvConfig.IMAGE_AUTO_CLEANUP:
         try:
-            cleaned_images = await messages_db.cleanup_expired_images()
-            if cleaned_images:
-                logger.info("已清理过期图片缓存: %s", cleaned_images)
+            cleaned_attachments = await messages_db.cleanup_expired_attachments()
+            if cleaned_attachments:
+                logger.info("已清理过期消息附件: %s", cleaned_attachments)
         except Exception as exc:
-            logger.warning("清理过期图片缓存失败: %s: %s", type(exc).__name__, exc)
+            logger.warning("清理过期消息附件失败: %s: %s", type(exc).__name__, exc)
     try:
         cleaned_artifacts = cleanup_expired_staged_artifacts()
         if cleaned_artifacts:

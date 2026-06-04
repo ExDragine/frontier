@@ -8,6 +8,8 @@ from utils.database import MessageDatabase
 from utils.http_client import get_http_client
 
 _httpx_client = get_http_client("reply_context")
+FORWARD_CONTEXT_MAX_DEPTH = 3
+FORWARD_CONTEXT_MAX_NODES = 80
 
 
 def _message_utils():
@@ -99,18 +101,85 @@ async def _download_milky_image(bot, segment: dict) -> bytes | None:
     return await _download_image_from_url(resource_url)
 
 
-async def _extract_milky_message_content(bot, message) -> tuple[str, list[bytes], int]:
-    image_segments = [segment for segment in message.segments if segment.get("type") == "image"]
-    text_segments = [segment for segment in message.segments if segment.get("type") != "image"]
-    text, *_ = await _message_utils().message_extract(text_segments)
-    images = []
+def _forward_marker(data: dict) -> str:
+    title = data.get("title", "")
+    summary = data.get("summary", "")
+    if title or summary:
+        return f"[合并转发:{title} - {summary}]"
+    return "[合并转发]"
+
+
+async def _extract_forward_segment_content(bot, segment: dict, depth: int) -> tuple[str, list[bytes], int]:
+    data = segment.get("data", {})
+    marker = _forward_marker(data)
+    forward_id = data.get("forward_id")
+    if not forward_id:
+        return marker, [], 0
+    if depth >= FORWARD_CONTEXT_MAX_DEPTH:
+        return f"{marker}\n[合并转发展开已达到深度限制]", [], 0
+
+    try:
+        nodes = await bot.get_forwarded_messages(forward_id)
+    except Exception as e:
+        logger.warning(f"⚠️ 拉取合并转发失败 forward_id={forward_id}: {type(e).__name__}: {e}")
+        return f"{marker}\n[合并转发内容拉取失败]", [], 0
+
+    lines = [marker]
+    images: list[bytes] = []
     missing_images = 0
-    for segment in image_segments:
-        if image := await _download_milky_image(bot, segment):
-            images.append(image)
-        else:
-            missing_images += 1
-    return text, images, missing_images
+    for node in list(nodes)[:FORWARD_CONTEXT_MAX_NODES]:
+        node_text, node_images, node_missing = await _extract_segments_content(
+            bot,
+            getattr(node, "segments", []),
+            depth=depth + 1,
+        )
+        images.extend(node_images)
+        missing_images += node_missing
+        sender_name = getattr(node, "sender_name", None) or "未知"
+        content = node_text.strip() or "[空消息]"
+        lines.append(f"{sender_name}: {content}")
+    if len(nodes) > FORWARD_CONTEXT_MAX_NODES:
+        lines.append(f"[合并转发还有 {len(nodes) - FORWARD_CONTEXT_MAX_NODES} 条，已省略]")
+    return "\n".join(lines), images, missing_images
+
+
+async def _extract_segments_content(bot, segments: list[dict], *, depth: int = 0) -> tuple[str, list[bytes], int]:
+    text_parts: list[str] = []
+    images: list[bytes] = []
+    missing_images = 0
+
+    for segment in segments:
+        segment_type = segment.get("type")
+        if segment_type == "image":
+            if image := await _download_milky_image(bot, segment):
+                images.append(image)
+            else:
+                missing_images += 1
+            continue
+        if segment_type == "forward":
+            forward_text, forward_images, forward_missing = await _extract_forward_segment_content(bot, segment, depth)
+            text_parts.append(forward_text)
+            images.extend(forward_images)
+            missing_images += forward_missing
+            continue
+        if segment_type == "record":
+            duration = segment.get("data", {}).get("duration", 0)
+            text_parts.append(f"[语音:{duration}秒]")
+            continue
+        if segment_type == "video":
+            duration = segment.get("data", {}).get("duration", 0)
+            text_parts.append(f"[视频:{duration}秒]")
+            continue
+
+        text, *_ = await _message_utils().message_extract([segment])
+        if text:
+            text_parts.append(text)
+
+    return "\n".join(part for part in text_parts if part), images, missing_images
+
+
+async def _extract_milky_message_content(bot, message) -> tuple[str, list[bytes], int]:
+    return await _extract_segments_content(bot, message.segments)
 
 
 async def build_reply_context(
@@ -122,8 +191,8 @@ async def build_reply_context(
 ) -> tuple[str, list[bytes]]:
     quoted = await messages_db.select_by_msg_id(msg_id=reply_seq, group_id=group_id)
     if quoted:
-        image_records = await messages_db.select_images_by_msg_time(quoted.time)
-        local_images, missing_images = messages_db.load_image_files(image_records)
+        image_records = await messages_db.select_image_attachments_by_msg_time(quoted.time)
+        local_images, missing_images = messages_db.load_attachment_files(image_records)
         fetched_images: list[bytes] = []
         if missing_images:
             milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)

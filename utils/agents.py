@@ -231,7 +231,7 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
         default=LocalShellBackend(root_dir=workspace_dir, virtual_mode=True, inherit_env=True),
         routes={
             f"{SKILLS_BACKEND_PATH}/": FilesystemBackend(root_dir=skills_dir, virtual_mode=True),
-            f"{MEMORY_BACKEND_PATH}/": FilesystemBackend(root_dir=memory_dir, virtual_mode=True),
+            f"{MEMORY_BACKEND_PATH}/{workspace_key}/": FilesystemBackend(root_dir=memory_dir, virtual_mode=True),
         },
     )
 

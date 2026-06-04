@@ -1,9 +1,11 @@
 import asyncio
 import base64
 import datetime
+import hashlib
 import json
 import logging
 import os
+import posixpath
 import time
 import zoneinfo
 from contextlib import asynccontextmanager
@@ -123,16 +125,12 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
             ]
         )
 
-    if "messageimage" in table_names:
+    if "messageattachment" in table_names:
         statements.extend(
             [
-                (
-                    "DELETE FROM messageimage WHERE id NOT IN "
-                    '(SELECT max(id) FROM messageimage GROUP BY msg_time, "index")'
-                ),
-                'CREATE UNIQUE INDEX IF NOT EXISTS ux_messageimage_msg_time_index ON messageimage (msg_time, "index")',
-                'CREATE INDEX IF NOT EXISTS ix_messageimage_msg_time_index ON messageimage (msg_time, "index")',
-                "CREATE INDEX IF NOT EXISTS ix_messageimage_expires_at ON messageimage (expires_at)",
+                "CREATE INDEX IF NOT EXISTS ix_messageattachment_msg_time ON messageattachment (msg_time)",
+                "CREATE INDEX IF NOT EXISTS ix_messageattachment_expires_at ON messageattachment (expires_at)",
+                "CREATE INDEX IF NOT EXISTS ix_messageattachment_scope ON messageattachment (workspace_key, kind)",
             ]
         )
 
@@ -407,23 +405,123 @@ class TimeStamp(SQLModel, table=True):
     id: str | None
 
 
-class MessageImage(SQLModel, table=True):
+class MessageAttachment(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     msg_time: int = Field(index=True)
+    msg_id: int | None = Field(default=None, index=True)
     user_id: int = Field(index=True)
-    group_id: int | None = None
-    index: int = 0
-    file_path: str
+    group_id: int | None = Field(default=None, index=True)
+    workspace_key: str = Field(index=True)
+    kind: str = Field(index=True)
+    source_type: str = "message"
+    file_name: str
+    mime_type: str | None = None
     file_size: int | None = None
+    sha256: str | None = None
+    physical_path: str
+    virtual_path: str
     created_at: int
     expires_at: int
+    metadata_json: str = "{}"
 
 
-class _MessageImageManager:
-    """图片管理：存储、清理和加载消息图片。"""
+def _message_workspace_key(user_id: int, group_id: int | None) -> str:
+    return str(group_id) if group_id is not None else str(user_id)
+
+
+def _attachment_paths(user_id: int, group_id: int | None, *parts: str) -> tuple[str, str]:
+    workspace_key = _message_workspace_key(user_id, group_id)
+    physical_path = os.path.join("cache", "sandbox", "memory", workspace_key, "files", *parts)
+    virtual_path = posixpath.join("/memory", workspace_key, "files", *parts)
+    return physical_path, virtual_path
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _prune_empty_attachment_dirs(path: str) -> None:
+    root = os.path.abspath(os.path.join(os.getcwd(), "cache", "sandbox", "memory"))
+    current = os.path.abspath(os.path.dirname(path))
+    while current.startswith(root) and current != root:
+        try:
+            os.rmdir(current)
+        except OSError:
+            break
+        current = os.path.dirname(current)
+
+
+class _MessageAttachmentManager:
+    """通用附件索引：记录、查询和按 DB 清理文件。"""
 
     def __init__(self, engine):
         self.engine = engine
+
+    async def insert_attachment(
+        self,
+        *,
+        msg_time: int,
+        msg_id: int | None,
+        user_id: int,
+        group_id: int | None,
+        kind: str,
+        physical_path: str,
+        virtual_path: str,
+        file_name: str,
+        file_size: int | None,
+        expires_at: int,
+        source_type: str = "message",
+        mime_type: str | None = None,
+        sha256: str | None = None,
+        metadata_json: str = "{}",
+    ) -> MessageAttachment:
+        def _do():
+            workspace_key = _message_workspace_key(user_id, group_id)
+            now_ms = int(time.time() * 1000)
+            with Session(self.engine) as session:
+                attachment = session.exec(
+                    select(MessageAttachment).where(MessageAttachment.physical_path == physical_path).limit(1)
+                ).first()
+                if attachment is None:
+                    attachment = MessageAttachment(
+                        msg_time=msg_time,
+                        msg_id=msg_id,
+                        user_id=user_id,
+                        group_id=group_id,
+                        workspace_key=workspace_key,
+                        kind=kind,
+                        source_type=source_type,
+                        file_name=file_name,
+                        mime_type=mime_type,
+                        file_size=file_size,
+                        sha256=sha256,
+                        physical_path=physical_path,
+                        virtual_path=virtual_path,
+                        created_at=now_ms,
+                        expires_at=expires_at,
+                        metadata_json=metadata_json,
+                    )
+                else:
+                    attachment.msg_time = msg_time
+                    attachment.msg_id = msg_id
+                    attachment.user_id = user_id
+                    attachment.group_id = group_id
+                    attachment.workspace_key = workspace_key
+                    attachment.kind = kind
+                    attachment.source_type = source_type
+                    attachment.file_name = file_name
+                    attachment.mime_type = mime_type
+                    attachment.file_size = file_size
+                    attachment.sha256 = sha256
+                    attachment.virtual_path = virtual_path
+                    attachment.expires_at = expires_at
+                    attachment.metadata_json = metadata_json
+                session.add(attachment)
+                session.commit()
+                session.refresh(attachment)
+                return attachment
+
+        return await _run_database(self.engine, _do)
 
     async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
         def _do():
@@ -431,49 +529,111 @@ class _MessageImageManager:
 
             now_ms = int(time.time() * 1000)
             expires_ms = now_ms + EnvConfig.IMAGE_TTL_DAYS * 86400 * 1000
-            dir_path = os.path.join(os.getcwd(), "cache", "images", str(user_id))
-            os.makedirs(dir_path, exist_ok=True)
+            workspace_key = _message_workspace_key(user_id, group_id)
             paths = []
             with Session(self.engine) as session:
                 for i, image_bytes in enumerate(images):
-                    file_path = os.path.join("cache", "images", str(user_id), f"{msg_time}_{i}.jpg")
-                    with open(os.path.join(os.getcwd(), file_path), "wb") as f:
+                    file_name = f"{msg_time}_{i}.jpg"
+                    file_path, virtual_path = _attachment_paths(user_id, group_id, "images", file_name)
+                    full_path = os.path.join(os.getcwd(), file_path)
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(full_path, "wb") as f:
                         f.write(image_bytes)
-                    record = session.exec(
-                        select(MessageImage).where(MessageImage.msg_time == msg_time).where(MessageImage.index == i)
+
+                    attachment = session.exec(
+                        select(MessageAttachment).where(MessageAttachment.physical_path == file_path).limit(1)
                     ).first()
-                    if record:
-                        record.file_path = file_path
-                        record.file_size = len(image_bytes)
-                        record.expires_at = expires_ms
-                    else:
-                        record = MessageImage(
+                    if attachment is None:
+                        attachment = MessageAttachment(
                             msg_time=msg_time,
+                            msg_id=None,
                             user_id=user_id,
                             group_id=group_id,
-                            index=i,
-                            file_path=file_path,
+                            workspace_key=workspace_key,
+                            kind="image",
+                            source_type="message",
+                            file_name=file_name,
+                            mime_type="image/jpeg",
                             file_size=len(image_bytes),
+                            sha256=_sha256_bytes(image_bytes),
+                            physical_path=file_path,
+                            virtual_path=virtual_path,
                             created_at=now_ms,
                             expires_at=expires_ms,
                         )
-                    session.add(record)
+                    else:
+                        attachment.msg_time = msg_time
+                        attachment.msg_id = None
+                        attachment.user_id = user_id
+                        attachment.group_id = group_id
+                        attachment.workspace_key = workspace_key
+                        attachment.kind = "image"
+                        attachment.source_type = "message"
+                        attachment.file_name = file_name
+                        attachment.mime_type = "image/jpeg"
+                        attachment.file_size = len(image_bytes)
+                        attachment.sha256 = _sha256_bytes(image_bytes)
+                        attachment.virtual_path = virtual_path
+                        attachment.expires_at = expires_ms
+                    session.add(attachment)
                     paths.append(file_path)
                 session.commit()
             return paths
 
         return await _run_database(self.engine, _do)
 
-    async def cleanup_expired_images(self) -> int:
+    async def select_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
         def _do():
-            now_ms = int(time.time() * 1000)
+            with Session(self.engine) as session:
+                statement = (
+                    select(MessageAttachment)
+                    .where(MessageAttachment.msg_time == msg_time)
+                    .order_by(col(MessageAttachment.id))
+                )
+                return session.exec(statement).all()
+
+        return await _run_database(self.engine, _do)
+
+    async def select_by_msg_times(self, msg_times: list[int], *, kind: str | None = None) -> dict[int, list[MessageAttachment]]:
+        def _do():
+            attachments_by_time: dict[int, list[MessageAttachment]] = {}
+            if not msg_times:
+                return attachments_by_time
+            with Session(self.engine) as session:
+                statement = select(MessageAttachment).where(col(MessageAttachment.msg_time).in_(msg_times))
+                if kind is not None:
+                    statement = statement.where(MessageAttachment.kind == kind)
+                statement = statement.order_by(col(MessageAttachment.msg_time), col(MessageAttachment.file_name))
+                for attachment in session.exec(statement).all():
+                    attachments_by_time.setdefault(attachment.msg_time, []).append(attachment)
+            return attachments_by_time
+
+        return await _run_database(self.engine, _do)
+
+    @staticmethod
+    def load_files(records: list[MessageAttachment]) -> tuple[list[bytes], int]:
+        files: list[bytes] = []
+        missing = 0
+        for record in sorted(records, key=lambda item: item.file_name):
+            full_path = os.path.join(os.getcwd(), record.physical_path)
+            if os.path.exists(full_path):
+                with open(full_path, "rb") as f:
+                    files.append(f.read())
+            else:
+                missing += 1
+        return files, missing
+
+    async def cleanup_expired_attachments(self, now_ms: int | None = None) -> int:
+        def _do():
+            cutoff = int(time.time() * 1000) if now_ms is None else now_ms
             cleaned = 0
             with Session(self.engine) as session:
-                expired = session.exec(select(MessageImage).where(MessageImage.expires_at < now_ms)).all()
+                expired = session.exec(select(MessageAttachment).where(MessageAttachment.expires_at < cutoff)).all()
                 for record in expired:
-                    full_path = os.path.join(os.getcwd(), record.file_path)
+                    full_path = os.path.join(os.getcwd(), record.physical_path)
                     if os.path.exists(full_path):
                         os.remove(full_path)
+                        _prune_empty_attachment_dirs(full_path)
                     session.delete(record)
                     cleaned += 1
                 session.commit()
@@ -481,27 +641,14 @@ class _MessageImageManager:
 
         return await _run_database(self.engine, _do)
 
-    @staticmethod
-    def load_image_files(image_records: list[MessageImage]) -> tuple[list[bytes], int]:
-        file_images: list[bytes] = []
-        missing_images = 0
-        for img in sorted(image_records, key=lambda x: x.index):
-            full_path = os.path.join(os.getcwd(), img.file_path)
-            if os.path.exists(full_path):
-                with open(full_path, "rb") as f:
-                    file_images.append(f.read())
-            else:
-                missing_images += 1
-        return file_images, missing_images
-
 
 class MessageDatabase:
     def __init__(self):
         self.engine = get_engine()
         self._vector_index = None
-        self._images = _MessageImageManager(self.engine)
+        self._attachments = _MessageAttachmentManager(self.engine)
         Message.metadata.create_all(self.engine)
-        MessageImage.metadata.create_all(self.engine)
+        MessageAttachment.metadata.create_all(self.engine)
         ensure_database_performance_indexes(self.engine)
         ensure_message_fts(self.engine)
         self._preload_vector_index_if_configured()
@@ -569,19 +716,6 @@ class MessageDatabase:
 
         return await _run_database(self.engine, _do)
 
-    async def select_images_by_msg_time(self, msg_time: int) -> list[MessageImage]:
-        def _do():
-            with Session(self.engine) as session:
-                statement = (
-                    select(MessageImage).where(MessageImage.msg_time == msg_time).order_by(col(MessageImage.index))
-                )
-                return session.exec(statement).all()
-
-        return await _run_database(self.engine, _do)
-
-    def load_image_files(self, image_records: list[MessageImage]) -> tuple[list[bytes], int]:
-        return self._images.load_image_files(image_records)
-
     async def prepare_message(  # noqa: C901
         self,
         user_id: int | None = None,
@@ -606,15 +740,8 @@ class MessageDatabase:
 
         all_msg_times = [m.time for m in messages]
 
-        def _load_images():
-            images_by_time: dict[int, list[MessageImage]] = {}
-            with Session(self.engine) as session:
-                stmt = select(MessageImage).where(col(MessageImage.msg_time).in_(all_msg_times))
-                for img in session.exec(stmt).all():
-                    images_by_time.setdefault(img.msg_time, []).append(img)
-            return images_by_time
-
-        images_by_time = await _run_database(self.engine, _load_images)
+        self._attachments.engine = self.engine
+        images_by_time = await self._attachments.select_by_msg_times(all_msg_times, kind="image")
 
         for message in messages:
             msg_images = images_by_time.get(message.time, [])
@@ -622,7 +749,7 @@ class MessageDatabase:
             file_images: list[bytes] = []
 
             if msg_images:
-                file_images, missing_images = self._images.load_image_files(msg_images)
+                file_images, missing_images = self._attachments.load_files(msg_images)
                 if missing_images:
                     content_text += "\n" + " ".join("[图片]" for _ in range(missing_images))
 
@@ -662,12 +789,28 @@ class MessageDatabase:
         return messages_seq
 
     async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
-        self._images.engine = self.engine
-        return await self._images.insert_images(msg_time, user_id, group_id, images)
+        self._attachments.engine = self.engine
+        return await self._attachments.insert_images(msg_time, user_id, group_id, images)
 
-    async def cleanup_expired_images(self) -> int:
-        self._images.engine = self.engine
-        return await self._images.cleanup_expired_images()
+    async def insert_attachment(self, **kwargs) -> MessageAttachment:
+        self._attachments.engine = self.engine
+        return await self._attachments.insert_attachment(**kwargs)
+
+    async def select_image_attachments_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
+        self._attachments.engine = self.engine
+        attachments = await self._attachments.select_by_msg_time(msg_time)
+        return [attachment for attachment in attachments if attachment.kind == "image"]
+
+    def load_attachment_files(self, records: list[MessageAttachment]) -> tuple[list[bytes], int]:
+        return self._attachments.load_files(records)
+
+    async def select_attachments_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
+        self._attachments.engine = self.engine
+        return await self._attachments.select_by_msg_time(msg_time)
+
+    async def cleanup_expired_attachments(self, now_ms: int | None = None) -> int:
+        self._attachments.engine = self.engine
+        return await self._attachments.cleanup_expired_attachments(now_ms=now_ms)
 
     async def select_by_time_range(
         self,

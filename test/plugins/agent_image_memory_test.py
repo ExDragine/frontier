@@ -146,10 +146,10 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
                 content="原始消息内容",
             )
 
-        async def select_images_by_msg_time(self, _msg_time):
+        async def select_image_attachments_by_msg_time(self, _msg_time):
             return []
 
-        def load_image_files(self, _records):
+        def load_attachment_files(self, _records):
             return [], 0
 
     class DummyCognitive:
@@ -246,10 +246,10 @@ async def test_agent_fetches_missing_quoted_image_from_milky(monkeypatch):  # no
                 content="",
             )
 
-        async def select_images_by_msg_time(self, _msg_time):
-            return [types.SimpleNamespace(id=1, index=0, file_path="cache/images/111/500_0.jpg")]
+        async def select_image_attachments_by_msg_time(self, _msg_time):
+            return [types.SimpleNamespace(id=1, file_name="500_0.jpg", physical_path="cache/images/111/500_0.jpg")]
 
-        def load_image_files(self, _records):
+        def load_attachment_files(self, _records):
             return [], 1
 
     class DummyCognitive:
@@ -1419,8 +1419,8 @@ async def test_agent_startup_only_cleans_cached_files(monkeypatch):
     calls = []
 
     class DummyMessagesDb:
-        async def cleanup_expired_images(self):
-            calls.append("images")
+        async def cleanup_expired_attachments(self):
+            calls.append("attachments")
             return 0
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
@@ -1429,7 +1429,7 @@ async def test_agent_startup_only_cleans_cached_files(monkeypatch):
 
     await agent.on_startup()
 
-    assert calls == ["images"]
+    assert calls == ["attachments"]
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,5 @@
 # ruff: noqa: S101
 
-import builtins
 import os
 import types
 
@@ -402,8 +401,8 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     captured = {}
 
     class DummyAgent:
-        async def ainvoke(self, payload, config=None):
-            captured["payload"] = payload
+        async def ainvoke(self, input=None, config=None):
+            captured["payload"] = input
             captured["config"] = config
             return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]}
 
@@ -431,9 +430,9 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert isinstance(backend, agents.CompositeBackend)
     assert backend.default.virtual_mode is True
     assert backend.default.root_dir == str(tmp_path / "sandbox" / "workspaces" / "123")
-    assert set(backend.routes) == {"/skills/", "/memory/"}
+    assert set(backend.routes) == {"/skills/", "/memory/123/"}
     assert backend.routes["/skills/"].root_dir == str(tmp_path / "sandbox" / "skills")
-    assert backend.routes["/memory/"].root_dir == str(tmp_path / "sandbox" / "memory" / "123")
+    assert backend.routes["/memory/123/"].root_dir == str(tmp_path / "sandbox" / "memory" / "123")
     assert captured["skills"] == ["/skills"]
     assert captured["memory"] == ["/memory/123/AGENTS.md"]
     assert (tmp_path / "sandbox" / "workspaces" / "123").is_dir()
