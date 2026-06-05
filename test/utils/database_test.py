@@ -11,6 +11,8 @@ from utils import database as db_module
 from utils.database import (
     MESSAGE_SOURCE_TYPE_FORWARD_NODE,
     MESSAGE_SOURCE_TYPE_NORMAL,
+    GroupSettings,
+    GroupSettingsManager,
     Message,
     MessageAttachment,
     MessageDatabase,
@@ -466,3 +468,72 @@ async def test_event_database_ops(monkeypatch, memory_engine):
     assert await database.select("event") == "2"
     await database.delete("event")
     assert await database.select("event") is None
+
+
+# ── GroupSettingsManager 测试 ────────────────────────────────
+
+
+class TestGroupSettingsManager:
+    def test_get_returns_empty_list_when_no_settings(self, memory_engine):
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        assert manager.get(123, "wake_word") == []
+
+    def test_set_and_get_single_wake_word(self, memory_engine):
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        manager.set(123, "wake_word", "小天")
+        assert manager.get(123, "wake_word") == ["小天"]
+
+    def test_set_multiple_wake_words(self, memory_engine):
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        manager.set(123, "wake_word", "小天")
+        manager.set(123, "wake_word", "小助手")
+        words = manager.get(123, "wake_word")
+        assert sorted(words) == ["小助手", "小天"]
+
+    def test_different_groups_have_different_settings(self, memory_engine):
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        manager.set(111, "wake_word", "群A")
+        manager.set(222, "wake_word", "群B")
+        assert manager.get(111, "wake_word") == ["群A"]
+        assert manager.get(222, "wake_word") == ["群B"]
+
+    def test_different_keys_are_independent(self, memory_engine):
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        manager.set(123, "wake_word", "小天")
+        manager.set(123, "model", "gpt-4")
+        assert manager.get(123, "wake_word") == ["小天"]
+        assert manager.get(123, "model") == ["gpt-4"]
+
+    def test_remove_existing_word(self, memory_engine):
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        manager.set(123, "wake_word", "小天")
+        manager.set(123, "wake_word", "小助手")
+        assert manager.remove(123, "wake_word", "小天") is True
+        assert manager.get(123, "wake_word") == ["小助手"]
+
+    def test_remove_nonexistent_word_returns_false(self, memory_engine):
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        assert manager.remove(123, "wake_word", "不存在") is False
+
+    def test_clear_removes_all_for_key(self, memory_engine):
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        manager.set(123, "wake_word", "小天")
+        manager.set(123, "wake_word", "小助手")
+        manager.set(123, "model", "gpt-4")
+        count = manager.clear(123, "wake_word")
+        assert count == 2
+        assert manager.get(123, "wake_word") == []
+        assert manager.get(123, "model") == ["gpt-4"]  # 不影响其他 key
+
+    def test_clear_empty_returns_zero(self, memory_engine):
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        assert manager.clear(123, "wake_word") == 0

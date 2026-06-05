@@ -698,11 +698,22 @@ async def message_gateway(event: MessageEvent, messages: list) -> bool:
     if event.is_tome() or event.to_me:
         return True
     plaintext = event.get_plaintext().strip()
-    if plaintext.startswith(EnvConfig.BOT_NAME):
+    wake_words = _get_wake_words(group_id)
+    if any(plaintext.startswith(w) for w in wake_words):
         return True
     if group_id != 0:
         return await _reply_check_should_reply(group_id, plaintext, messages)
     return False
+
+
+def _get_wake_words(group_id: int) -> list[str]:
+    """获取群级别的唤醒词列表。数据库中有自定义唤醒词时返回，否则 fallback 到 BOT_NAME。"""
+    from utils.database import GroupSettingsManager, get_engine
+
+    if group_id == 0:
+        return [EnvConfig.BOT_NAME]
+    words = GroupSettingsManager(get_engine()).get(group_id, "wake_word")
+    return words if words else [EnvConfig.BOT_NAME]
 
 
 async def message_check(text: str | None, images: list[bytes] | None) -> Literal["Safe", "Controversial", "Unsafe"]:

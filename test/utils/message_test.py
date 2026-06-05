@@ -676,3 +676,39 @@ async def test_sanitize_outgoing_text_allows_controversial_output(monkeypatch):
     result = await message_module.sanitize_outgoing_text("borderline model output")
 
     assert result == "borderline model output"
+
+
+# ── _get_wake_words 测试 ────────────────────────────────────
+
+
+class TestGetWakeWords:
+    def test_returns_bot_name_when_no_custom_words(self, monkeypatch):
+        from utils.database import get_engine
+
+        monkeypatch.setattr(message_module, "get_engine", get_engine)
+        monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "小李子")
+        words = message_module._get_wake_words(99999)
+        assert words == ["小李子"]
+
+    def test_returns_custom_words_from_database(self, monkeypatch, memory_engine):
+        from utils.database import GroupSettings, GroupSettingsManager
+
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        manager.set(456, "wake_word", "小天")
+        manager.set(456, "wake_word", "助手")
+
+        # 让 _get_wake_words 使用 memory_engine
+        monkeypatch.setattr(
+            message_module, "get_engine",
+            lambda url=None: memory_engine
+        )
+        monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "小李子")
+
+        words = message_module._get_wake_words(456)
+        assert sorted(words) == ["助手", "小天"]
+
+    def test_returns_bot_name_for_dm(self, monkeypatch):
+        monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "小李子")
+        words = message_module._get_wake_words(0)
+        assert words == ["小李子"]

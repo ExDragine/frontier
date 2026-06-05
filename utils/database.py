@@ -151,6 +151,13 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
             ]
         )
 
+    if "group_settings" in table_names:
+        statements.extend(
+            [
+                "CREATE INDEX IF NOT EXISTS ix_group_settings_group_key ON group_settings (group_id, key)",
+            ]
+        )
+
     if not statements:
         return
 
@@ -456,6 +463,15 @@ class MessageAttachment(SQLModel, table=True):
     metadata_json: str = "{}"
 
 
+class GroupSettings(SQLModel, table=True):
+    __tablename__ = "group_settings"
+    id: int | None = Field(default=None, primary_key=True)
+    group_id: int = Field(index=True)
+    key: str = Field(index=True)
+    value: str
+    updated_at: int
+
+
 def _message_workspace_key(user_id: int, group_id: int | None) -> str:
     return str(group_id) if group_id is not None else str(user_id)
 
@@ -673,6 +689,76 @@ class _MessageAttachmentManager:
         return await _run_database(self.engine, _do)
 
 
+class GroupSettingsManager:
+    """群级别 key-value 设置管理器。同一 key 允许多行（支持多唤醒词等）。"""
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    def get(self, group_id: int, key: str) -> list[str]:
+        def _do():
+            with Session(self.engine) as session:
+                rows = session.exec(
+                    select(GroupSettings).where(
+                        GroupSettings.group_id == group_id,
+                        GroupSettings.key == key,
+                    )
+                ).all()
+                return [row.value for row in rows]
+
+        return _do()
+
+    def set(self, group_id: int, key: str, value: str) -> None:
+        def _do():
+            now_ms = int(time.time() * 1000)
+            with Session(self.engine) as session:
+                row = GroupSettings(
+                    group_id=group_id,
+                    key=key,
+                    value=value,
+                    updated_at=now_ms,
+                )
+                session.add(row)
+                session.commit()
+
+        _do()
+
+    def remove(self, group_id: int, key: str, value: str) -> bool:
+        def _do():
+            with Session(self.engine) as session:
+                row = session.exec(
+                    select(GroupSettings).where(
+                        GroupSettings.group_id == group_id,
+                        GroupSettings.key == key,
+                        GroupSettings.value == value,
+                    )
+                ).first()
+                if row is None:
+                    return False
+                session.delete(row)
+                session.commit()
+                return True
+
+        return _do()
+
+    def clear(self, group_id: int, key: str) -> int:
+        def _do():
+            with Session(self.engine) as session:
+                rows = session.exec(
+                    select(GroupSettings).where(
+                        GroupSettings.group_id == group_id,
+                        GroupSettings.key == key,
+                    )
+                ).all()
+                count = len(rows)
+                for row in rows:
+                    session.delete(row)
+                session.commit()
+                return count
+
+        return _do()
+
+
 class MessageDatabase:
     def __init__(self):
         self.engine = get_engine()
@@ -681,6 +767,7 @@ class MessageDatabase:
         Message.metadata.create_all(self.engine)
         ensure_message_schema(self.engine)
         MessageAttachment.metadata.create_all(self.engine)
+        GroupSettings.metadata.create_all(self.engine)
         ensure_database_performance_indexes(self.engine)
         ensure_message_fts(self.engine)
         self._preload_vector_index_if_configured()
@@ -927,6 +1014,9 @@ class MessageDatabase:
 
     def load_attachment_files(self, records: list[MessageAttachment]) -> tuple[list[bytes], int]:
         return self._attachments.load_files(records)
+
+    def group_settings(self) -> GroupSettingsManager:
+        return GroupSettingsManager(self.engine)
 
     async def select_attachments_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
         self._attachments.engine = self.engine
