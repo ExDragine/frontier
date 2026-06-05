@@ -793,6 +793,7 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     class DummyCognitive:
         async def chat_agent(self, messages, *_args, **_kwargs):
             captured["messages"] = messages
+            captured["kwargs"] = _kwargs
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
@@ -804,7 +805,13 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
 
     context = agent.AgentRequestContext(
         bot=None,
-        event=types.SimpleNamespace(self_id="1"),
+        event=types.SimpleNamespace(
+            self_id="1",
+            get_plaintext=lambda: "hi",
+            data=types.SimpleNamespace(
+                group_member=types.SimpleNamespace(role="admin") if group_id is not None else None,
+            ),
+        ),
         user_id="456",
         user_name="Bob",
         event_id=1,
@@ -824,6 +831,7 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     assert payload["metadata"]["group_id"] == group_id
     assert payload["metadata"]["user_id"] == "456"
     assert payload["is_current"] is True
+    assert captured["kwargs"]["group_member_role"] == ("admin" if group_id is not None else None)
 
 
 @pytest.mark.asyncio

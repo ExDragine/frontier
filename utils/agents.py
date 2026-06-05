@@ -377,6 +377,7 @@ class FrontierCognitive:
         video_inputs: list[bytes] | None = None,
         thread_id_override: uuid.UUID | str | None = None,
         wake_word: str | None = None,
+        group_member_role: str | None = None,
     ):
         model_kwargs: dict = {
             "model": EnvConfig.ADVAN_MODEL,
@@ -456,6 +457,7 @@ class FrontierCognitive:
                 "thread_id": thread_id,
                 "user_id": user_id,
                 "group_id": group_id,
+                "group_member_role": group_member_role,
                 "workspace_dir": workspace_dir,
             }
         }

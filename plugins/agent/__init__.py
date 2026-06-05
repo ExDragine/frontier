@@ -21,13 +21,13 @@ from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
 from utils.message import (
+    _get_wake_words,
     download_media,
     extract_message_files,
     format_staged_message_files,
     message_check,
     message_extract,
     message_gateway,
-    _get_wake_words,
     outgoing_message_content,
     sanitize_outgoing_text,
     send_artifacts,
@@ -78,6 +78,14 @@ def _agent_workspace_key(user_id: str, group_id: int | None) -> str:
 def _agent_memory_dir(user_id: str, group_id: int | None) -> Path:
     working_dir = Path(getattr(f_cognitive, "working_dir", os.path.join(os.getcwd(), "cache", "sandbox")))
     return working_dir / "memory" / _agent_workspace_key(user_id, group_id)
+
+
+def _group_member_role(event: MessageEvent) -> str | None:
+    member = getattr(getattr(event, "data", None), "group_member", None)
+    role = getattr(member, "role", None)
+    if role in (None, ""):
+        return None
+    return str(role)
 
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
@@ -136,6 +144,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         image_inputs=context.quoted_images + context.images,
         video_inputs=context.videos,
         wake_word=triggered_wake or None,
+        group_member_role=_group_member_role(context.event),
     )
 
     if not isinstance(result, dict) or "response" not in result:

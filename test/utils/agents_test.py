@@ -423,6 +423,7 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
         user_id="u1",
         user_name="test",
         group_id=123,
+        group_member_role="owner",
     )
 
     backend = captured["backend"]
@@ -439,6 +440,7 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert (tmp_path / "sandbox" / "skills").is_dir()
     assert (tmp_path / "sandbox" / "memory").is_dir()
     assert captured["config"]["configurable"]["workspace_dir"] == str(tmp_path / "sandbox" / "workspaces" / "123")
+    assert captured["config"]["configurable"]["group_member_role"] == "owner"
 
 
 @pytest.mark.asyncio
