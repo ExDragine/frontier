@@ -250,17 +250,34 @@ class FrontierCognitive:
             self.tools = agent_tools.main_tools
 
     @staticmethod
-    def load_system_prompt():
-        """从 env.toml 加载 system prompt"""
+    def load_system_prompt(group_id: int | None = None, wake_word: str | None = None):
+        """从 env.toml 加载 system prompt，注入当前触发的名称。
+
+        {name}: 优先使用当前触发的唤醒词，其次群自定义，最后 fallback BOT_NAME。
+        """
         toml_prompt: str = information.get("system_prompt", "").strip()
-        if toml_prompt:
+        if not toml_prompt:
+            logger.error("❌ env.toml 中未配置 information.system_prompt")
+            return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: system prompt未配置]"
+
+        name = EnvConfig.BOT_NAME
+        if wake_word:
+            name = wake_word
+        elif group_id is not None:
             try:
-                return toml_prompt.format(name=EnvConfig.BOT_NAME)
-            except KeyError as e:
-                logger.error(f"❌ system prompt 模板变量缺失: {e}")
-                return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: 模板变量缺失]"
-        logger.error("❌ env.toml 中未配置 information.system_prompt")
-        return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: system prompt未配置]"
+                from utils.database import GroupSettingsManager, get_engine
+
+                words = GroupSettingsManager(get_engine()).get(group_id, "wake_word")
+                if words:
+                    name = words[0]
+            except Exception as exc:
+                logger.debug("Wake word injection skipped: %s: %s", type(exc).__name__, exc)
+
+        try:
+            return toml_prompt.format(name=name)
+        except KeyError as e:
+            logger.error(f"❌ system prompt 模板变量缺失: {e}")
+            return f"You are {name}, a helpful assistant. [配置错误: 模板变量缺失]"
 
     @staticmethod
     def _uni_message_cls():
@@ -359,6 +376,7 @@ class FrontierCognitive:
         image_inputs: list[bytes] | None = None,
         video_inputs: list[bytes] | None = None,
         thread_id_override: uuid.UUID | str | None = None,
+        wake_word: str | None = None,
     ):
         model_kwargs: dict = {
             "model": EnvConfig.ADVAN_MODEL,
@@ -385,8 +403,7 @@ class FrontierCognitive:
         workspace_key = str(group_id) if group_id is not None else str(user_id)
         backend = _build_agent_backend(working_dir, workspace_key)
         workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
-        system_prompt = self.load_system_prompt()
-
+        system_prompt = self.load_system_prompt(group_id, wake_word)
         # ── 注入长期用户画像到 system prompt ──
         try:
             from utils.user_profile import get_profile_manager

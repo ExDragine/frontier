@@ -27,6 +27,7 @@ from utils.message import (
     message_check,
     message_extract,
     message_gateway,
+    _get_wake_words,
     outgoing_message_content,
     sanitize_outgoing_text,
     send_artifacts,
@@ -115,6 +116,17 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         },
     ]
     capability = EnvConfig.AGENT_CAPABILITY
+
+    # 提取当前消息触发的唤醒词
+    plaintext = context.event.get_plaintext().strip()
+    triggered_wake = ""
+    if context.group_id:
+        wake_words = _get_wake_words(context.group_id)
+        for w in wake_words:
+            if plaintext.startswith(w):
+                triggered_wake = w
+                break
+
     result = await f_cognitive.chat_agent(
         messages,
         context.user_id,
@@ -123,6 +135,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         group_id=context.group_id,
         image_inputs=context.quoted_images + context.images,
         video_inputs=context.videos,
+        wake_word=triggered_wake or None,
     )
 
     if not isinstance(result, dict) or "response" not in result:
