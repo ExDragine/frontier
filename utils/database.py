@@ -462,8 +462,8 @@ def _message_workspace_key(user_id: int, group_id: int | None) -> str:
 
 def _attachment_paths(user_id: int, group_id: int | None, *parts: str) -> tuple[str, str]:
     workspace_key = _message_workspace_key(user_id, group_id)
-    physical_path = os.path.join("cache", "sandbox", "memory", workspace_key, "files", *parts)
-    virtual_path = posixpath.join("/memory", workspace_key, "files", *parts)
+    physical_path = os.path.join("cache", "sandbox", "memory", workspace_key, *parts)
+    virtual_path = posixpath.join("/memory", workspace_key, *parts)
     return physical_path, virtual_path
 
 

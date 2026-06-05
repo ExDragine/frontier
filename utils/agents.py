@@ -218,14 +218,15 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
     workspace_dir = _ensure_dir(os.path.join(working_dir, "workspaces", workspace_key))
     skills_dir = _ensure_dir(os.path.join(working_dir, "skills"))
     memory_dir = _ensure_dir(os.path.join(working_dir, f"memory/{workspace_key}"))
-    try:
-        with (
-            open("prompts/AGENTS.md", encoding="utf-8") as src,
-            open(os.path.join(memory_dir, "AGENTS.md"), "w", encoding="utf-8") as dst,
-        ):
-            dst.write(src.read())
-    except FileNotFoundError:
-        open(os.path.join(memory_dir, "AGENTS.md"), "w", encoding="utf-8").close()
+    agents_md = os.path.join(memory_dir, "AGENTS.md")
+    if not os.path.exists(agents_md):
+        try:
+            with open("prompts/AGENTS.md", encoding="utf-8") as src:
+                content = src.read()
+        except FileNotFoundError:
+            content = ""
+        with open(agents_md, "w", encoding="utf-8") as dst:
+            dst.write(content)
 
     return CompositeBackend(
         default=LocalShellBackend(root_dir=workspace_dir, virtual_mode=True, inherit_env=True),

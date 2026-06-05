@@ -126,7 +126,7 @@ async def test_prepare_message_injects_images_from_message_attachments(monkeypat
     Message.metadata.create_all(memory_engine)
     MessageAttachment.metadata.create_all(memory_engine)
 
-    image_path = Path("cache/sandbox/memory/1/files/images/1000_0.jpg")
+    image_path = Path("cache/sandbox/memory/1/images/1000_0.jpg")
     (tmp_path / image_path).parent.mkdir(parents=True)
     (tmp_path / image_path).write_bytes(b"attachment-image")
     await database.insert(1000, 101, 1, None, "u1", "user", "history")
@@ -137,7 +137,7 @@ async def test_prepare_message_injects_images_from_message_attachments(monkeypat
         group_id=None,
         kind="image",
         physical_path=str(image_path),
-        virtual_path="/memory/1/files/images/1000_0.jpg",
+        virtual_path="/memory/1/images/1000_0.jpg",
         file_name="1000_0.jpg",
         file_size=len(b"attachment-image"),
         expires_at=9_999_999_999_999,
@@ -162,7 +162,7 @@ async def test_insert_images_records_memory_file_attachment(monkeypatch, memory_
 
     paths = await database.insert_images(1000, 7, 123, [b"image-bytes"])
 
-    expected_path = Path("cache/sandbox/memory/123/files/images/1000_0.jpg")
+    expected_path = Path("cache/sandbox/memory/123/images/1000_0.jpg")
     assert paths == [str(expected_path)]
     assert (tmp_path / expected_path).read_bytes() == b"image-bytes"
 
@@ -171,7 +171,7 @@ async def test_insert_images_records_memory_file_attachment(monkeypatch, memory_
     attachment = attachments[0]
     assert attachment.kind == "image"
     assert attachment.physical_path == str(expected_path)
-    assert attachment.virtual_path == "/memory/123/files/images/1000_0.jpg"
+    assert attachment.virtual_path == "/memory/123/images/1000_0.jpg"
     assert attachment.file_size == len(b"image-bytes")
 
 
@@ -182,8 +182,8 @@ async def test_cleanup_expired_attachments_deletes_only_db_tracked_files(monkeyp
     database.engine = memory_engine
     MessageAttachment.metadata.create_all(memory_engine)
 
-    tracked = Path("cache/sandbox/memory/123/files/images/expired.jpg")
-    untracked = Path("cache/sandbox/memory/123/files/images/keep.jpg")
+    tracked = Path("cache/sandbox/memory/123/images/expired.jpg")
+    untracked = Path("cache/sandbox/memory/123/images/keep.jpg")
     (tmp_path / tracked).parent.mkdir(parents=True)
     (tmp_path / tracked).write_bytes(b"old")
     (tmp_path / untracked).write_bytes(b"keep")
@@ -195,7 +195,7 @@ async def test_cleanup_expired_attachments_deletes_only_db_tracked_files(monkeyp
         group_id=123,
         kind="image",
         physical_path=str(tracked),
-        virtual_path="/memory/123/files/images/expired.jpg",
+        virtual_path="/memory/123/images/expired.jpg",
         file_name="expired.jpg",
         file_size=3,
         expires_at=1,

@@ -112,7 +112,7 @@ async def test_build_reply_context_loads_quoted_images_from_attachments(monkeypa
     Message.metadata.create_all(engine)
     MessageAttachment.metadata.create_all(engine)
 
-    image_path = Path("cache/sandbox/memory/123/files/images/500_0.jpg")
+    image_path = Path("cache/sandbox/memory/123/images/500_0.jpg")
     (tmp_path / image_path).parent.mkdir(parents=True)
     (tmp_path / image_path).write_bytes(b"quoted-image")
     await database.insert(
@@ -131,7 +131,7 @@ async def test_build_reply_context_loads_quoted_images_from_attachments(monkeypa
         group_id=123,
         kind="image",
         physical_path=str(image_path),
-        virtual_path="/memory/123/files/images/500_0.jpg",
+        virtual_path="/memory/123/images/500_0.jpg",
         file_name="500_0.jpg",
         file_size=len(b"quoted-image"),
         expires_at=9_999_999_999_999,
