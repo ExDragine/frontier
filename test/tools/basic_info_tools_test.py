@@ -300,28 +300,6 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_china_earthquake",
         "iching_divination",
     }
-    assert {tool.name for tool in module.agent_tools.core_tools} == {
-        "send_image",
-        "simple_calculator",
-        "upload_group_file",
-        "send_friend_nudge",
-        "set_group_name",
-        "get_message",
-        "get_login_info",
-        "search_messages",
-    }
-    assert {tool.name for tool in module.agent_tools.searchable_tools} == {
-        "get_deepseek_api_balance",
-        "get_paint",
-        "get_video",
-        "mcp_tool",
-        "tavily_search",
-        "mystery_tool",
-        "get_arxiv_paper_info",
-        "aurora_live",
-        "get_china_earthquake",
-        "iching_divination",
-    }
     assert {tool.name for tool in groups["research"]} == {"get_arxiv_paper_info", "tavily_search"}
     assert {tool.name for tool in groups["astro"]} == {"aurora_live"}
     assert {tool.name for tool in groups["earth"]} == {"get_china_earthquake"}

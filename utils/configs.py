@@ -44,7 +44,7 @@ dashboard: dict = config.get("dashboard", {})
 image_memory: dict = config.get("image_memory", {})
 content_check: dict = config.get("content_check", {})
 vector_memory: dict = config.get("vector_memory", config.get("memory", {}))
-tool_search: dict = config.get("tool_search", {})
+
 
 
 class EnvConfig:
@@ -182,11 +182,6 @@ class EnvConfig:
     VECTOR_MEMORY_EMBEDDING_DEVICE: str = str(vector_memory.get("semantic_embedding_device", "cpu")).strip()
     VECTOR_MEMORY_PRELOAD_ON_STARTUP: bool = bool(vector_memory.get("preload_on_startup", True))
 
-    TOOL_SEARCH_ENABLED: bool = bool(tool_search.get("enabled", False))
-    TOOL_SEARCH_TOP_K: int = int(tool_search.get("top_k", 8))
-    TOOL_SEARCH_EXPANDED_TOP_K: int = int(tool_search.get("expanded_top_k", 20))
-    TOOL_SEARCH_SEMANTIC_ENABLED: bool = bool(tool_search.get("semantic_enabled", True))
-
     @classmethod
     def reload(cls, config: dict) -> None:
         """从 TOML 字典热重载所有运行时配置（启动和 Dashboard 共用）。"""
@@ -315,8 +310,4 @@ class EnvConfig:
             vector_memory.get("preload_on_startup", cls.VECTOR_MEMORY_PRELOAD_ON_STARTUP)
         )
 
-        tool_search = config.get("tool_search", {})
-        cls.TOOL_SEARCH_ENABLED = bool(tool_search.get("enabled", cls.TOOL_SEARCH_ENABLED))
-        cls.TOOL_SEARCH_TOP_K = int(tool_search.get("top_k", cls.TOOL_SEARCH_TOP_K))
-        cls.TOOL_SEARCH_EXPANDED_TOP_K = int(tool_search.get("expanded_top_k", cls.TOOL_SEARCH_EXPANDED_TOP_K))
-        cls.TOOL_SEARCH_SEMANTIC_ENABLED = bool(tool_search.get("semantic_enabled", cls.TOOL_SEARCH_SEMANTIC_ENABLED))
+

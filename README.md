@@ -7,14 +7,14 @@
 ```
 消息 → message_gateway（门控）→ FrontierCognitive Deep Agent → 工具调用 → 回复生成
          │                        │
-         ├─ 访问控制（黑白名单）     ├─ NO_REPLY_SENTINEL（自主沉默）
+         ├─ 访问控制（黑白名单）
          ├─ @提及 / 机器人名触发    ├─ 文件系统后端（代码执行/数据分析）
          ├─ reply_check 规则匹配    └─ 多工具调用（33 个工具）
          └─ Signal LLM 辅助决策
 ```
 
 - **消息门控**：基于访问控制、@提及、关键词匹配和 Signal LLM 辅助决策，判断是否触发 Agent 回复
-- **Deep Agent**：基于 LangGraph `deepagents`，具备文件系统后端、技能加载和长期记忆，可自主决定是否回复（`NO_REPLY_SENTINEL` 机制）
+- **Deep Agent**：基于 LangGraph `deepagents`，具备文件系统后端、技能加载和长期记忆
 - **内容安全**：文本 + 图片审核，Safe/Controversial/Unsafe 三级分级，通过表情反应标识
 - **多模型路由**：[`llm_factory.py`](utils/llm_factory.py) 根据模型名自动识别 provider（OpenAI / Google Gemini / Anthropic Claude / DeepSeek）
 

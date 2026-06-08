@@ -81,8 +81,6 @@ def install_all_third_party_stubs():
     install_stub("tools.agent_tools",
         all_tools=[],
         main_tools=[],
-        core_tools=[],
-        searchable_tools=[],
         web_tools=[],
         mcp_tools=[],
         tool_metadata={},

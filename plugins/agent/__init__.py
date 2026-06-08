@@ -3,7 +3,6 @@
 import asyncio
 import base64
 import os
-import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +15,7 @@ from nonebot.adapters.milky.event import MessageEvent
 require("nonebot_plugin_alconna")
 
 from utils.agent_queue import AgentQueueFullError, AgentQueueManager
-from utils.agents import NO_REPLY_SENTINEL, FrontierCognitive, _agent_thread_id
+from utils.agents import FrontierCognitive, _agent_thread_id
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
@@ -51,9 +50,6 @@ agent_queue = AgentQueueManager(
     job_timeout_seconds=EnvConfig.AGENT_JOB_TIMEOUT_SECONDS,
 )
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-AGENT_NO_REPLY_SENTINEL = NO_REPLY_SENTINEL
-# 匹配原始回复文本中的哨兵：独立文本或 JSON 字符串值
-_AGENT_NO_REPLY_RE = re.compile(rf'^\s*{re.escape(NO_REPLY_SENTINEL)}\s*$|"{re.escape(NO_REPLY_SENTINEL)}"')
 
 
 @dataclass(slots=True)
@@ -158,12 +154,6 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
 
     if result.get("error"):
         logger.warning("Agent returned error response: %s", result["error"])
-
-    if response["messages"] and isinstance(response["messages"], list):
-        raw_text = str(getattr(response["messages"][-1], "text", "") or "")
-        if _AGENT_NO_REPLY_RE.search(raw_text):
-            logger.info("Agent chose not to reply to the latest message.")
-            return False
 
     # ── 异步画像提取（不阻塞回复）──
     try:
@@ -356,25 +346,8 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     thread_id = _agent_thread_id(user_id, group_id)
     try:
         agent_queue.job_timeout_seconds = EnvConfig.AGENT_JOB_TIMEOUT_SECONDS
-        replied = await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
+        await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
         if group_id:
-            if not replied:
-                if not group_id:
-                    return
-                match risk_check:
-                    case "Safe":
-                        await bot.send_group_message_reaction(
-                            group_id=group_id, message_seq=event_id, reaction="32", is_add=False
-                        )
-                    case "Controversial":
-                        await bot.send_group_message_reaction(
-                            group_id=group_id, message_seq=event_id, reaction="212", is_add=False
-                        )
-                    case "Unsafe":
-                        await bot.send_group_message_reaction(
-                            group_id=group_id, message_seq=event_id, reaction="26", is_add=False
-                        )
-                await common.finish()
             try:
                 await bot.send_group_message_reaction(
                     group_id=group_id, message_seq=event_id, reaction="32", is_add=False

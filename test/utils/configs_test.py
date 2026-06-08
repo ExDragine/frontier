@@ -216,7 +216,6 @@ jwt_secret = "secret"
                 "semantic_embedding_device": " cuda ",
                 "preload_on_startup": False,
             },
-            "tool_search": {"enabled": True, "top_k": 3, "expanded_top_k": 7, "semantic_enabled": False},
         }
     )
 
@@ -232,11 +231,6 @@ jwt_secret = "secret"
     assert configs.EnvConfig.VECTOR_MEMORY_EMBEDDING_BATCH_SIZE == 4
     assert configs.EnvConfig.VECTOR_MEMORY_EMBEDDING_DEVICE == "cuda"
     assert configs.EnvConfig.VECTOR_MEMORY_PRELOAD_ON_STARTUP is False
-    assert configs.EnvConfig.TOOL_SEARCH_ENABLED is True
-    assert configs.EnvConfig.TOOL_SEARCH_TOP_K == 3
-    assert configs.EnvConfig.TOOL_SEARCH_EXPANDED_TOP_K == 7
-    assert configs.EnvConfig.TOOL_SEARCH_SEMANTIC_ENABLED is False
-
 
 def test_env_config_llm_endpoint_profiles(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)

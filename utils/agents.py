@@ -26,14 +26,12 @@ from utils.configs import EnvConfig, information
 from utils.llm_factory import create_llm, model_supports
 from utils.message import extract_message_text
 from utils.staged_artifacts import extract_staged_artifact_ids, load_staged_artifact, strip_staged_artifact_handoffs
-from utils.tool_search import DynamicToolSearchMiddleware, ToolSearchConfig, ToolSearchIndex
 
 UniMessage = None
 
 VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 SKILLS_BACKEND_PATH = "/skills"
 MEMORY_BACKEND_PATH = "/memory"
-NO_REPLY_SENTINEL = "_NO_REPLY_"
 
 
 def _configured_model_route(model: str) -> dict[str, str]:
@@ -239,15 +237,7 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
 
 class FrontierCognitive:
     def __init__(self):
-        if EnvConfig.TOOL_SEARCH_ENABLED:
-            self.tools = agent_tools.core_tools
-            self.tool_search_index = ToolSearchIndex(
-                agent_tools.searchable_tools,
-                metadata_by_name=agent_tools.tool_metadata,
-                config=ToolSearchConfig.from_env(),
-            )
-        else:
-            self.tools = agent_tools.main_tools
+        self.tools = agent_tools.main_tools
 
     @staticmethod
     def load_system_prompt(group_id: int | None = None, wake_word: str | None = None):
@@ -417,8 +407,6 @@ class FrontierCognitive:
         # ── 提取 PTC 工具名列表 ──
         ptc_tool_names: list = [tool.name for tool in self.tools] if self.tools else []
         middleware: list = []
-        if tool_search_index := getattr(self, "tool_search_index", None):
-            middleware.append(DynamicToolSearchMiddleware(tool_search_index))
         middleware.extend(
             [
                 PIIMiddleware(

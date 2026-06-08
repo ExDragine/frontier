@@ -15,19 +15,6 @@ _WEB_TOOL_MODULES = {"tavily"}
 _SUBAGENT_GROUPS = ("research", "astro", "earth", "media", "memory", "divination", "external")
 _ALL_TOOL_GROUPS = ("main", *_SUBAGENT_GROUPS)
 
-_CORE_TOOL_MODULES = {
-    "adapter",
-    "calculator",
-    "milky_file",
-    "milky_friend",
-    "milky_group",
-    "milky_message",
-    "milky_system",
-    "memory",
-    "reminder",
-    "scheduled_task",
-}
-
 _TOOL_MODULE_GROUPS = {
     "adapter": "main",
     "calculator": "main",
@@ -63,8 +50,6 @@ def _discover_tools() -> tuple[
     list[BaseTool],
     list[BaseTool],
     dict[str, list[BaseTool]],
-    list[BaseTool],
-    list[BaseTool],
     dict[str, dict[str, str]],
 ]:
     """扫描 tools 包，收集所有被 @tool 装饰的函数。"""
@@ -72,8 +57,6 @@ def _discover_tools() -> tuple[
     local_tools: list[BaseTool] = []
     web_tools: list[BaseTool] = []
     grouped_tools: dict[str, list[BaseTool]] = {group: [] for group in _ALL_TOOL_GROUPS}
-    core_tools: list[BaseTool] = []
-    searchable_tools: list[BaseTool] = []
     tool_metadata: dict[str, dict[str, str]] = {}
 
     for mod_info in pkgutil.iter_modules([str(tools_dir)]):
@@ -86,14 +69,10 @@ def _discover_tools() -> tuple[
         grouped_tools[group].extend(found)
         for tool_obj in found:
             tool_metadata[tool_obj.name] = {"module": mod_info.name, "group": group}
-        if mod_info.name in _CORE_TOOL_MODULES:
-            core_tools.extend(found)
-        else:
-            searchable_tools.extend(found)
         if mod_info.name in _WEB_TOOL_MODULES:
             web_tools.extend(found)
 
-    return local_tools, web_tools, grouped_tools, core_tools, searchable_tools, tool_metadata
+    return local_tools, web_tools, grouped_tools, tool_metadata
 
 
 class ModuleTools:
@@ -103,8 +82,6 @@ class ModuleTools:
             self.local_tools,
             self.web_tools,
             self.subagent_tools,
-            self._core_tools,
-            self._searchable_tools,
             self.tool_metadata,
         ) = _discover_tools()
         # MCP 工具延迟加载，在 mcp_tools property 首次访问时才执行 asyncio.run()
@@ -121,11 +98,7 @@ class ModuleTools:
             self._mcp_tools = mcp_get_tools()
             self.subagent_tools["external"].extend(self._mcp_tools)
             self.subagent_tools["main"].extend(self._mcp_tools)
-            searchable_names = {tool_obj.name for tool_obj in self._searchable_tools}
             for tool_obj in self._mcp_tools:
-                if tool_obj.name not in searchable_names:
-                    self._searchable_tools.append(tool_obj)
-                    searchable_names.add(tool_obj.name)
                 self.tool_metadata[tool_obj.name] = {"module": "mcp", "group": "external"}
         return self._mcp_tools
 
@@ -133,15 +106,6 @@ class ModuleTools:
     def main_tools(self):
         _ = self.mcp_tools  # 确保 MCP 工具已加载
         return self.subagent_tools["main"]
-
-    @property
-    def core_tools(self):
-        return self._core_tools
-
-    @property
-    def searchable_tools(self):
-        _ = self.mcp_tools  # 动态检索覆盖 MCP 工具，但不常驻注入
-        return self._searchable_tools
 
     @property
     def all_tools(self):
