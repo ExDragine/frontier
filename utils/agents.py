@@ -396,15 +396,15 @@ class FrontierCognitive:
         backend = _build_agent_backend(working_dir, workspace_key)
         workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
         system_prompt = self.load_system_prompt(group_id, wake_word)
-        # ── 注入长期用户画像到 system prompt ──
+        # ── 注入 V3 长期记忆到 system prompt ──
         try:
-            from utils.user_profile import get_profile_manager
+            from utils.memory_v3 import get_memory_manager
 
-            profile_context = get_profile_manager().build_context_injection(int(user_id) if user_id else 0, group_id)
-            if profile_context:
-                system_prompt = f"{system_prompt}\n\n{profile_context}"
+            v3_context = get_memory_manager().build_context_injection(int(user_id) if user_id else 0, group_id)
+            if v3_context:
+                system_prompt = f"{system_prompt}\n\n{v3_context}"
         except Exception as exc:
-            logger.debug("Profile context injection skipped: %s: %s", type(exc).__name__, exc)
+            logger.debug("V3 memory context injection skipped: %s: %s", type(exc).__name__, exc)
         # ── 提取 PTC 工具名列表 ──
         ptc_tool_names: list = [tool.name for tool in self.tools] if self.tools else []
         middleware: list = []

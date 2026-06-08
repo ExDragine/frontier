@@ -54,6 +54,16 @@ async def init_task_system():
     # 4. 同步群组配置到 EnvConfig
     await task_manager.initialize()
 
+    # 5. 注册 V3 Dreaming 记忆整理（每天凌晨 4:00）
+    try:
+        from utils.dreaming_pipeline import build_dreaming_task_config
+
+        dreaming_config = build_dreaming_task_config(engine)
+        await task_manager.register_task(**dreaming_config)
+        logger.info("V3 Dreaming 记忆整理已注册（cron: 4:00 Asia/Shanghai）")
+    except Exception as exc:
+        logger.error(f"注册 Dreaming 任务失败: {exc}")
+
     logger.info("定时任务管理系统初始化完成！")
 
 

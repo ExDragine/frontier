@@ -35,7 +35,7 @@ from utils.message import (
 from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments
 from utils.reply_context import build_reply_context, reply_seq_from_segments
 from utils.staged_artifacts import cleanup_expired_staged_artifacts
-from utils.user_profile import get_profile_manager
+from utils.memory_v3 import get_memory_manager
 
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
@@ -149,17 +149,17 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
     if result.get("error"):
         logger.warning("Agent returned error response: %s", result["error"])
 
-    # ── 异步画像提取（不阻塞回复）──
+    # ── V3 异步记忆提取（不阻塞回复）──
     try:
         assistant_text = outgoing_message_content(response["messages"][-1]) if response.get("messages") else ""
         if assistant_text and context.text:
             asyncio.create_task(
-                get_profile_manager().maybe_extract_from_interaction(
+                get_memory_manager().extract_from_conversation(
                     int(context.user_id), context.group_id, context.text, assistant_text
                 )
             )
     except Exception as exc:
-        logger.debug("画像提取调度失败: %s: %s", type(exc).__name__, exc)
+        logger.debug("V3 记忆提取调度失败: %s: %s", type(exc).__name__, exc)
 
     artifacts: list[UniMessage] | None = result.get("uni_messages", [])
     if artifacts:
