@@ -4,8 +4,6 @@
 shutdown 时调用 aclose_all() 统一关闭所有客户端。
 """
 
-from __future__ import annotations
-
 import httpx
 from nonebot import logger
 

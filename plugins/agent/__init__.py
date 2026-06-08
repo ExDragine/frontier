@@ -6,9 +6,9 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
+from langchain.messages import AIMessage
 from nonebot import get_bot, get_driver, logger, on_message, require
 from nonebot.adapters.milky.event import MessageEvent
 
@@ -18,6 +18,7 @@ from utils.agents import FrontierCognitive, _agent_thread_id, run_serialized
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
+from utils.memory_v3 import get_memory_manager
 from utils.message import (
     _get_wake_words,
     download_media,
@@ -35,7 +36,6 @@ from utils.message import (
 from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments
 from utils.reply_context import build_reply_context, reply_seq_from_segments
 from utils.staged_artifacts import cleanup_expired_staged_artifacts
-from utils.memory_v3 import get_memory_manager
 
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
@@ -170,7 +170,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         response_content = outgoing_message_content(response["messages"][-1])
         sanitized_response = await sanitize_outgoing_text(response_content)
         if sanitized_response != response_content:
-            response["messages"][-1] = SimpleNamespace(text=sanitized_response)
+            response["messages"][-1] = AIMessage(content=sanitized_response)
         await messages_db.insert(
             time=int(time.time() * 1000),
             msg_id=None,

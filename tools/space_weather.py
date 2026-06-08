@@ -2,7 +2,7 @@ import datetime
 from typing import Literal
 
 from bs4 import BeautifulSoup
-from langchain.tools import tool
+from langchain_core.tools import tool
 from playwright.async_api import async_playwright
 
 from utils.alconna import Image, UniMessage

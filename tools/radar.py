@@ -1,7 +1,7 @@
 import time
 from typing import Any
 
-from langchain.tools import tool
+from langchain_core.tools import tool
 from nonebot import logger
 from playwright.async_api import async_playwright
 

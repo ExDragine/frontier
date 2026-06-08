@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from langchain.tools import tool
+from langchain_core.tools import tool
 from nonebot import logger
 
 # 周易数据文件路径

@@ -2,7 +2,7 @@ import logging
 import zoneinfo
 from datetime import UTC, datetime, timedelta
 
-from langchain.tools import tool
+from langchain_core.tools import tool
 
 from utils.http_client import get_http_client
 

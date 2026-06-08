@@ -1,10 +1,10 @@
 import asyncio
-import concurrent.futures
 import json
 import logging
 import os
 import re
 import stat
+import threading
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -111,11 +111,51 @@ tools_description = _load_and_validate()
 client = MultiServerMCPClient(tools_description)
 
 
+_mcp_tools = None
+_mcp_tools_lock = threading.Lock()
+_mcp_tools_loop: asyncio.AbstractEventLoop | None = None
+_mcp_tools_ready = threading.Event()
+_mcp_tools_thread: threading.Thread | None = None
+
+
+def _run_mcp_loop():
+    """在守护线程中运行专用事件循环，供同步获取 MCP 工具列表。"""
+    global _mcp_tools_loop
+    _mcp_tools_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_mcp_tools_loop)
+    _mcp_tools_ready.set()
+    _mcp_tools_loop.run_forever()
+
+
+def _ensure_mcp_loop_running():
+    global _mcp_tools_thread
+    if _mcp_tools_thread is None:
+        _mcp_tools_thread = threading.Thread(target=_run_mcp_loop, name="mcp-event-loop", daemon=True)
+        _mcp_tools_thread.start()
+        _mcp_tools_ready.wait(timeout=5)
+
+
 def mcp_get_tools():
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(client.get_tools())
-    # 运行中的事件循环：在单独线程中执行避免冲突
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, client.get_tools()).result()
+    """同步获取 MCP 工具列表，可安全地从同步或异步上下文中调用。"""
+    global _mcp_tools
+    if _mcp_tools is not None:
+        return _mcp_tools
+
+    with _mcp_tools_lock:
+        if _mcp_tools is not None:
+            return _mcp_tools
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # 不在异步上下文中，直接用 asyncio.run()
+            _mcp_tools = asyncio.run(client.get_tools())
+            return _mcp_tools
+
+        # 运行中的事件循环：用守护线程的专用 loop 避免冲突
+        _ensure_mcp_loop_running()
+        if _mcp_tools_loop is None:
+            raise RuntimeError("MCP event loop 启动超时")
+        future = asyncio.run_coroutine_threadsafe(client.get_tools(), _mcp_tools_loop)
+        _mcp_tools = future.result(timeout=30)
+        return _mcp_tools

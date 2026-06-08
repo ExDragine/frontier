@@ -1,7 +1,7 @@
 from typing import Any, Literal
 
-from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 from nonebot import get_bot
 
 from utils.milky_tools import binary_kwargs_from_uri, dump_model, resolve_group_id, truncate_text

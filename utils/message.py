@@ -6,9 +6,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Literal
 
+from langchain.messages import AIMessage
 from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.exception import ActionFailed
@@ -579,14 +579,7 @@ async def send_artifacts(artifacts):
 
 def outgoing_message_content(raw: Any) -> str:
     text_attr = getattr(raw, "text", None)
-    if callable(text_attr):
-        try:
-            content = text_attr()
-        except TypeError:
-            content = None
-        if not content and hasattr(raw, "content"):
-            content = raw.content
-    elif text_attr:
+    if text_attr is not None and not callable(text_attr):
         content = text_attr
     elif hasattr(raw, "content"):
         content = raw.content
@@ -624,7 +617,7 @@ async def sanitize_outgoing_message(raw: Any) -> Any:
     sanitized = await sanitize_outgoing_text(content)
     if sanitized == content:
         return raw
-    return SimpleNamespace(text=sanitized)
+    return AIMessage(content=sanitized)
 
 
 async def _markdown_to_image_with_retry(content: str) -> bytes | None:

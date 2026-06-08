@@ -1,7 +1,7 @@
 import time
 from typing import Annotated, Literal
 
-from langchain.tools import tool
+from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from nonebot import logger
 

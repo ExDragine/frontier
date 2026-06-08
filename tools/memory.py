@@ -1,8 +1,8 @@
 import datetime
 import zoneinfo
 
-from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 from nonebot import logger
 
 from utils.configs import EnvConfig

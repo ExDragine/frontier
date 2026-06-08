@@ -1,6 +1,6 @@
 from urllib.parse import urlparse, urlunparse
 
-from langchain.tools import tool
+from langchain_core.tools import tool
 from nonebot import logger
 
 from utils.configs import EnvConfig

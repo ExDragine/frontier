@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 from nonebot import get_bot
 
 from utils.milky_tools import binary_kwargs_from_uri, format_files_info, resolve_group_id, resolve_user_id

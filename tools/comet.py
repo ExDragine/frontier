@@ -1,4 +1,4 @@
-from langchain.tools import tool
+from langchain_core.tools import tool
 from nonebot import logger
 
 from utils.http_client import get_http_client

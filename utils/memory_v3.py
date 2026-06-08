@@ -19,11 +19,8 @@ V3 结构化记忆系统 — 带时效性、置信度、版本追踪和语义去
   DreamingPipeline (clockwork cron 4:00) → 批量后台整理
 """
 
-from __future__ import annotations
-
 import time
-from datetime import datetime, timezone
-from enum import Enum
+from enum import StrEnum
 
 from nonebot import logger
 from sqlmodel import JSON, Column, Field, Session, SQLModel, select
@@ -35,7 +32,7 @@ from sqlmodel import JSON, Column, Field, Session, SQLModel, select
 # ── 枚举定义 ──────────────────────────────────────────────────────
 
 
-class FactCategory(str, Enum):
+class FactCategory(StrEnum):
     """记忆分类 — 不同类型有不同的生命周期策略。"""
 
     PERSONAL_INFO = "personal_info"      # 姓名、年龄、职业、地点
@@ -46,7 +43,7 @@ class FactCategory(str, Enum):
     RELATIONSHIP = "relationship"        # 用户之间的关系
 
 
-class FactStatus(str, Enum):
+class FactStatus(StrEnum):
     """事实状态 — 追踪生命周期的核心枚举。"""
 
     ACTIVE = "active"           # 当前有效
@@ -56,7 +53,7 @@ class FactStatus(str, Enum):
     PENDING = "pending"         # 待验证（低置信度，等待更多证据确认）
 
 
-class SourceType(str, Enum):
+class SourceType(StrEnum):
     """记忆来源 — 影响初始置信度。"""
 
     EXPLICIT = "explicit"          # 用户明确陈述「我是素食者」
@@ -65,7 +62,7 @@ class SourceType(str, Enum):
     INFERRED = "inferred"          # LLM 从多轮对话中推断
 
 
-class TemporalNature(str, Enum):
+class TemporalNature(StrEnum):
     """时间性质 — 决定 valid_until 的生成策略。"""
 
     PERMANENT = "permanent"       # 永久（姓名、生日）

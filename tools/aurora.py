@@ -1,6 +1,6 @@
 import time
 
-from langchain.tools import tool
+from langchain_core.tools import tool
 from nonebot import logger
 
 from utils.alconna import UniMessage

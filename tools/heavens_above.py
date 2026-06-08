@@ -1,4 +1,4 @@
-from langchain.tools import tool
+from langchain_core.tools import tool
 
 from utils.alconna import UniMessage
 from utils.http_client import get_http_client

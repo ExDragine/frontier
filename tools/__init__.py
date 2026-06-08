@@ -2,7 +2,7 @@ import importlib
 import pkgutil
 from pathlib import Path
 
-from langchain.tools import BaseTool
+from langchain_core.tools import BaseTool
 
 from .mcp_client import mcp_get_tools
 

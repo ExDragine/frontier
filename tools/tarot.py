@@ -5,7 +5,7 @@ import random
 import secrets
 from pathlib import Path
 
-from langchain.tools import tool
+from langchain_core.tools import tool
 from nonebot import logger
 
 # 塔罗牌数据文件路径
