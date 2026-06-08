@@ -43,7 +43,6 @@ debug: dict = config.get("debug", {})
 dashboard: dict = config.get("dashboard", {})
 image_memory: dict = config.get("image_memory", {})
 content_check: dict = config.get("content_check", {})
-vector_memory: dict = config.get("vector_memory", config.get("memory", {}))
 
 
 
@@ -171,16 +170,6 @@ class EnvConfig:
 
     CONTENT_CHECK_ENABLED: bool = content_check.get("enabled", False)
 
-    VECTOR_MEMORY_ENABLED: bool = bool(
-        vector_memory.get("semantic_search_enabled", vector_memory.get("enabled", True))
-    )
-    VECTOR_MEMORY_CHROMA_PATH: str = str(vector_memory.get("chroma_path", "cache/chroma_message"))
-    VECTOR_MEMORY_COLLECTION: str = str(vector_memory.get("chroma_collection", "frontier_messages"))
-    VECTOR_MEMORY_EMBEDDING_MODEL: str = str(vector_memory.get("embedding_model", "intfloat/multilingual-e5-small"))
-    VECTOR_MEMORY_SEMANTIC_TOP_K: int = int(vector_memory.get("semantic_top_k", 30))
-    VECTOR_MEMORY_EMBEDDING_BATCH_SIZE: int = int(vector_memory.get("semantic_embedding_batch_size", 1))
-    VECTOR_MEMORY_EMBEDDING_DEVICE: str = str(vector_memory.get("semantic_embedding_device", "cpu")).strip()
-    VECTOR_MEMORY_PRELOAD_ON_STARTUP: bool = bool(vector_memory.get("preload_on_startup", True))
 
     @classmethod
     def reload(cls, config: dict) -> None:
@@ -290,24 +279,5 @@ class EnvConfig:
 
         cls.CONTENT_CHECK_ENABLED = bool(config.get("content_check", {}).get("enabled", cls.CONTENT_CHECK_ENABLED))
 
-        vector_memory = config.get("vector_memory", config.get("memory", {}))
-        cls.VECTOR_MEMORY_ENABLED = bool(
-            vector_memory.get("semantic_search_enabled", vector_memory.get("enabled", cls.VECTOR_MEMORY_ENABLED))
-        )
-        cls.VECTOR_MEMORY_CHROMA_PATH = str(vector_memory.get("chroma_path", cls.VECTOR_MEMORY_CHROMA_PATH))
-        cls.VECTOR_MEMORY_COLLECTION = str(vector_memory.get("chroma_collection", cls.VECTOR_MEMORY_COLLECTION))
-        cls.VECTOR_MEMORY_EMBEDDING_MODEL = str(
-            vector_memory.get("embedding_model", cls.VECTOR_MEMORY_EMBEDDING_MODEL)
-        )
-        cls.VECTOR_MEMORY_SEMANTIC_TOP_K = int(vector_memory.get("semantic_top_k", cls.VECTOR_MEMORY_SEMANTIC_TOP_K))
-        cls.VECTOR_MEMORY_EMBEDDING_BATCH_SIZE = int(
-            vector_memory.get("semantic_embedding_batch_size", cls.VECTOR_MEMORY_EMBEDDING_BATCH_SIZE)
-        )
-        cls.VECTOR_MEMORY_EMBEDDING_DEVICE = str(
-            vector_memory.get("semantic_embedding_device", cls.VECTOR_MEMORY_EMBEDDING_DEVICE)
-        ).strip()
-        cls.VECTOR_MEMORY_PRELOAD_ON_STARTUP = bool(
-            vector_memory.get("preload_on_startup", cls.VECTOR_MEMORY_PRELOAD_ON_STARTUP)
-        )
 
 

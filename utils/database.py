@@ -60,7 +60,6 @@ async def _run_database(engine: Engine, func, *args, **kwargs):
     return await _run_in_thread(func, *args, **kwargs)
 
 
-_MESSAGE_VECTOR_INDEX = None
 
 
 def _is_memory_database(database_url: str) -> bool:
@@ -762,7 +761,6 @@ class GroupSettingsManager:
 class MessageDatabase:
     def __init__(self):
         self.engine = get_engine()
-        self._vector_index = None
         self._attachments = _MessageAttachmentManager(self.engine)
         Message.metadata.create_all(self.engine)
         ensure_message_schema(self.engine)
@@ -770,7 +768,6 @@ class MessageDatabase:
         GroupSettings.metadata.create_all(self.engine)
         ensure_database_performance_indexes(self.engine)
         ensure_message_fts(self.engine)
-        self._preload_vector_index_if_configured()
 
     async def insert(
         self,
@@ -809,7 +806,6 @@ class MessageDatabase:
                 )
                 session.add(message)
                 session.commit()
-                self._add_message_to_vector_index(message)
 
         await _run_database(self.engine, _do)
 
@@ -872,7 +868,6 @@ class MessageDatabase:
                 message.normalized_status = normalized_status
                 session.add(message)
                 session.commit()
-                self._add_message_to_vector_index(message)
 
         await _run_database(self.engine, _do)
 
@@ -923,8 +918,7 @@ class MessageDatabase:
                     inserted.append(message)
                 session.commit()
                 for message in inserted:
-                    self._add_message_to_vector_index(message)
-
+    
         await _run_database(self.engine, _do)
 
     async def prepare_message(  # noqa: C901
@@ -1184,132 +1178,6 @@ class MessageDatabase:
         messages_by_id = {message.time: message for message in messages}
         return [messages_by_id[message_id] for message_id in ids if message_id in messages_by_id]
 
-    def get_vector_index(self):
-        if self._vector_index is not None:
-            return self._vector_index
-        global _MESSAGE_VECTOR_INDEX
-        if _MESSAGE_VECTOR_INDEX is not None:
-            self._vector_index = _MESSAGE_VECTOR_INDEX
-            return self._vector_index
-        try:
-            from utils.configs import EnvConfig
-            from utils.message_vector_index import MessageVectorIndex, MessageVectorIndexConfig
-
-            config = MessageVectorIndexConfig(
-                enabled=EnvConfig.VECTOR_MEMORY_ENABLED,
-                persist_path=EnvConfig.VECTOR_MEMORY_CHROMA_PATH,
-                collection_name=EnvConfig.VECTOR_MEMORY_COLLECTION,
-                embedding_model=EnvConfig.VECTOR_MEMORY_EMBEDDING_MODEL,
-                top_k=EnvConfig.VECTOR_MEMORY_SEMANTIC_TOP_K,
-                embedding_batch_size=EnvConfig.VECTOR_MEMORY_EMBEDDING_BATCH_SIZE,
-                embedding_device=EnvConfig.VECTOR_MEMORY_EMBEDDING_DEVICE or None,
-                preload_on_startup=EnvConfig.VECTOR_MEMORY_PRELOAD_ON_STARTUP,
-            )
-            _MESSAGE_VECTOR_INDEX = MessageVectorIndex(config)
-            self._vector_index = _MESSAGE_VECTOR_INDEX
-        except Exception as exc:
-            logger.warning("Message vector index initialization failed: %s", exc)
-            _MESSAGE_VECTOR_INDEX = False
-            self._vector_index = _MESSAGE_VECTOR_INDEX
-        return self._vector_index
-
-    def _preload_vector_index_if_configured(self) -> None:
-        try:
-            from utils.configs import EnvConfig
-        except Exception as exc:
-            logger.debug("Vector index preload skipped: %s", exc)
-            return
-        if EnvConfig.VECTOR_MEMORY_ENABLED and EnvConfig.VECTOR_MEMORY_PRELOAD_ON_STARTUP:
-            logger.info("Preloading message vector index")
-            self.get_vector_index()
-
-    def _add_message_to_vector_index(self, message: Message) -> None:
-        if message.source_type != MESSAGE_SOURCE_TYPE_NORMAL:
-            return
-
-        snapshot = Message(
-            time=message.time,
-            msg_id=message.msg_id,
-            user_id=message.user_id,
-            group_id=message.group_id,
-            user_name=message.user_name,
-            role=message.role,
-            content=message.content,
-            raw_segments_json=message.raw_segments_json,
-            normalized_version=message.normalized_version,
-            normalized_status=message.normalized_status,
-            source_type=message.source_type,
-        )
-
-        def index_message() -> None:
-            vector_index = self.get_vector_index()
-            if not vector_index or not getattr(vector_index, "available", False):
-                return
-            add_message = getattr(vector_index, "add_message", None)
-            if not callable(add_message):
-                return
-            add_message(snapshot)
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            index_message()
-        else:
-            loop.create_task(asyncio.to_thread(index_message))
-
-    def _messages_by_ids(self, session: Session, ids: list[int]) -> list[Message]:
-        if not ids:
-            return []
-        messages = session.exec(
-            select(Message)
-            .where(col(Message.time).in_(ids))
-            .where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
-        ).all()
-        messages_by_id = {message.time: message for message in messages}
-        return [messages_by_id[message_id] for message_id in ids if message_id in messages_by_id]
-
-    def _semantic_search_messages(
-        self,
-        session: Session,
-        *,
-        group_id: int | None,
-        user_id: int | None,
-        content_query: str | None,
-        target_user_id: int | None,
-        target_user_name: str | None,
-        msg_id: int | None,
-        start_time: int | None,
-        end_time: int | None,
-        limit: int,
-    ) -> list[Message]:
-        if not content_query:
-            return []
-        vector_index = self.get_vector_index()
-        if not vector_index or not getattr(vector_index, "available", False):
-            return []
-        search_fn = getattr(vector_index, "search", None)
-        if not callable(search_fn):
-            return []
-        vector_results = search_fn(
-            query=content_query,
-            group_id=group_id,
-            user_id=user_id,
-            target_user_id=target_user_id,
-            limit=max(1, min(limit, 500)),
-        )
-        messages = self._messages_by_ids(session, [message_id for message_id, _distance in vector_results])
-        filtered = []
-        for message in messages:
-            if target_user_name and target_user_name not in (message.user_name or ""):
-                continue
-            if msg_id is not None and message.msg_id != msg_id:
-                continue
-            if start_time is not None and message.time < start_time:
-                continue
-            if end_time is not None and message.time > end_time:
-                continue
-            filtered.append(message)
-        return filtered[: max(1, min(limit, 500))]
 
     async def search_messages(  # noqa: C901
         self,
@@ -1324,28 +1192,11 @@ class MessageDatabase:
         end_time: int | None = None,
         limit: int = 50,
         sort: str = "time",
-        mode: str = "keyword",
     ) -> list[Message]:
         def _do():  # noqa: C901
             with Session(self.engine) as session:
-                if mode == "semantic":
-                    semantic_results = self._semantic_search_messages(
-                        session,
-                        group_id=group_id,
-                        user_id=user_id,
-                        content_query=content_query,
-                        target_user_id=target_user_id,
-                        target_user_name=target_user_name,
-                        msg_id=msg_id,
-                        start_time=start_time,
-                        end_time=end_time,
-                        limit=limit,
-                    )
-                    if semantic_results:
-                        return semantic_results
-
                 if self._can_use_fts(content_query):
-                    keyword_results = self._search_messages_fts(
+                    return self._search_messages_fts(
                         session,
                         group_id=group_id,
                         user_id=user_id,
@@ -1358,24 +1209,6 @@ class MessageDatabase:
                         limit=limit,
                         sort=sort,
                     )
-                    if mode == "hybrid":
-                        semantic_results = self._semantic_search_messages(
-                            session,
-                            group_id=group_id,
-                            user_id=user_id,
-                            content_query=content_query,
-                            target_user_id=target_user_id,
-                            target_user_name=target_user_name,
-                            msg_id=msg_id,
-                            start_time=start_time,
-                            end_time=end_time,
-                            limit=limit,
-                        )
-                        seen = {message.time for message in keyword_results}
-                        return (keyword_results + [m for m in semantic_results if m.time not in seen])[
-                            : max(1, min(limit, 500))
-                        ]
-                    return keyword_results
 
                 statement = select(Message).where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
                 if group_id is None:

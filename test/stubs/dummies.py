@@ -5,22 +5,6 @@ import types
 from typing import get_args, get_origin
 
 
-class DummyEmbeddings:
-    def __init__(self, **_kwargs):
-        pass
-
-    def embed_documents(self, docs):
-        return [[0.0] * 3 for _ in docs]
-
-    def embed_query(self, text):
-        return [0.0, 0.0, 0.0]
-
-
-class DummyPersistentClient:
-    def __init__(self, **_kwargs):
-        pass
-
-
 class DummyFilesystemBackend:
     def __init__(self, **kw):
         self.kwargs = kw

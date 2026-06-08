@@ -835,12 +835,12 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
 
 
 @pytest.mark.asyncio
-async def test_agent_queue_serializes_same_thread_chat_jobs(monkeypatch):
+async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
     from plugins import agent
-    from utils.agent_queue import AgentQueueManager
+    from utils.agents import run_serialized
 
     calls = []
     first_started = asyncio.Event()
@@ -870,9 +870,6 @@ async def test_agent_queue_serializes_same_thread_chat_jobs(monkeypatch):
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "send_messages", _noop)
     monkeypatch.setattr(agent, "send_artifacts", _noop)
-    monkeypatch.setattr(
-        agent, "agent_queue", AgentQueueManager(maxsize=2, idle_ttl_seconds=1.0, job_timeout_seconds=1.0)
-    )
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
 
     context_a = agent.AgentRequestContext(
@@ -901,11 +898,11 @@ async def test_agent_queue_serializes_same_thread_chat_jobs(monkeypatch):
         images=[],
         videos=[],
     )
-    thread_id = agent._agent_thread_id("456", 123)
+    thread_id = str(agent._agent_thread_id("456", 123))
 
-    task_a = asyncio.create_task(agent.agent_queue.submit(thread_id, lambda: agent._process_agent_request(context_a)))
+    task_a = asyncio.create_task(run_serialized(thread_id, agent._process_agent_request(context_a)))
     await first_started.wait()
-    task_b = asyncio.create_task(agent.agent_queue.submit(thread_id, lambda: agent._process_agent_request(context_b)))
+    task_b = asyncio.create_task(run_serialized(thread_id, agent._process_agent_request(context_b)))
     await asyncio.sleep(0)
 
     assert calls == ["start-0"]
@@ -915,8 +912,6 @@ async def test_agent_queue_serializes_same_thread_chat_jobs(monkeypatch):
     await task_b
 
     assert calls == ["start-0", "end-0", "start-1", "end-1"]
-
-    await agent.agent_queue.aclose()
 
 
 def test_system_prompt_describes_chat_metadata_and_tool_scope(monkeypatch):
@@ -1051,9 +1046,9 @@ async def test_gateway_approved_weather_request_routes_directly_to_agent(monkeyp
     calls = {"queue": 0}
     sent_messages = []
 
-    class DummyQueue:
-        async def submit(self, *_args, **_kwargs):
-            calls["queue"] += 1
+    async def fake_run_serialized(_key, coro):
+        calls["queue"] += 1
+        return await coro
 
     class DummyMessagesDb:
         async def insert(self, **_kwargs):
@@ -1086,7 +1081,7 @@ async def test_gateway_approved_weather_request_routes_directly_to_agent(monkeyp
     async def fake_message_gateway(_event, _messages):
         return True
 
-    monkeypatch.setattr(agent, "agent_queue", DummyQueue())
+    monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
@@ -1234,7 +1229,7 @@ async def test_process_agent_request_sanitizes_final_response(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_gateway_approved_greeting_routes_to_agent_queue(monkeypatch):  # noqa: C901
+async def test_gateway_approved_greeting_runs_agent(monkeypatch):  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -1244,9 +1239,9 @@ async def test_gateway_approved_greeting_routes_to_agent_queue(monkeypatch):  # 
     assistant_messages = []
     sent_messages = []
 
-    class DummyQueue:
-        async def submit(self, *_args, **_kwargs):
-            calls["queue"] += 1
+    async def fake_run_serialized(_key, coro):
+        calls["queue"] += 1
+        return await coro
 
     class DummyMessagesDb:
         async def insert(self, **kwargs):
@@ -1280,7 +1275,7 @@ async def test_gateway_approved_greeting_routes_to_agent_queue(monkeypatch):  # 
         async def send(self):
             sent_messages.append(self.content)
 
-    monkeypatch.setattr(agent, "agent_queue", DummyQueue())
+    monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
@@ -1334,9 +1329,9 @@ async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # n
     from plugins import agent
 
     calls = {"queue": 0}
-    class DummyQueue:
-        async def submit(self, *_args, **_kwargs):
-            calls["queue"] += 1
+    async def fake_run_serialized(_key, coro):
+        calls["queue"] += 1
+        return await coro
 
     class DummyMessagesDb:
         async def insert(self, **_kwargs):
@@ -1371,7 +1366,7 @@ async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # n
         async def send(self):
             sent_messages.append(self.content)
 
-    monkeypatch.setattr(agent, "agent_queue", DummyQueue())
+    monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
@@ -1417,7 +1412,7 @@ async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # n
 
 
 @pytest.mark.asyncio
-async def test_gateway_approved_closing_message_routes_to_agent_queue(monkeypatch):  # noqa: C901
+async def test_gateway_approved_closing_message_runs_agent(monkeypatch):  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -1425,9 +1420,9 @@ async def test_gateway_approved_closing_message_routes_to_agent_queue(monkeypatc
 
     calls = {"queue": 0}
 
-    class DummyQueue:
-        async def submit(self, *_args, **_kwargs):
-            calls["queue"] += 1
+    async def fake_run_serialized(_key, coro):
+        calls["queue"] += 1
+        return await coro
 
     class DummyMessagesDb:
         async def insert(self, **_kwargs):
@@ -1449,7 +1444,7 @@ async def test_gateway_approved_closing_message_routes_to_agent_queue(monkeypatc
     async def fake_message_gateway(_event, _messages):
         return True
 
-    monkeypatch.setattr(agent, "agent_queue", DummyQueue())
+    monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
@@ -1502,9 +1497,9 @@ async def test_gateway_approved_private_chat_routes_to_agent_without_group_react
 
     calls = {"queue": 0, "reactions": []}
 
-    class DummyQueue:
-        async def submit(self, *_args, **_kwargs):
-            calls["queue"] += 1
+    async def fake_run_serialized(_key, coro):
+        calls["queue"] += 1
+        return await coro
 
     class DummyMessagesDb:
         async def insert(self, **_kwargs):
@@ -1526,7 +1521,7 @@ async def test_gateway_approved_private_chat_routes_to_agent_without_group_react
     async def fake_message_gateway(_event, _messages):
         return True
 
-    monkeypatch.setattr(agent, "agent_queue", DummyQueue())
+    monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
@@ -1589,75 +1584,3 @@ async def test_agent_startup_only_cleans_cached_files(monkeypatch):
     assert calls == ["attachments"]
 
 
-@pytest.mark.asyncio
-async def test_agent_finishes_when_thread_queue_is_full(monkeypatch):  # noqa: C901
-    import nonebot
-
-    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
-    from utils.agent_queue import AgentQueueFullError
-
-    class FullQueue:
-        async def submit(self, *_args, **_kwargs):
-            raise AgentQueueFullError("thread", 2)
-
-    class DummyMessagesDb:
-        async def insert(self, **_kwargs):
-            return None
-
-        async def insert_images(self, **_kwargs):
-            return []
-
-        async def prepare_message(self, *_args, **_kwargs):
-            return []
-
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
-    async def fake_message_extract(_segments):
-        return "hi", [], [], []
-
-    async def fake_message_gateway(_event, _messages):
-        return True
-
-    monkeypatch.setattr(agent, "agent_queue", FullQueue())
-    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
-    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
-
-    incoming = IncomingMessage(
-        message_scene="group",
-        peer_id=123,
-        message_seq=1,
-        sender_id=456,
-        time=0,
-        segments=[{"type": "text", "data": {"text": "hi"}}],
-        friend=None,
-        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
-        group_member=Member(
-            user_id=456,
-            nickname="u",
-            sex="unknown",
-            group_id=123,
-            card="",
-            title="",
-            level="0",
-            role="member",
-            join_time=0,
-            last_sent_time=0,
-            shut_up_end_time=0,
-        ),
-    )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
-
-    async with App().test_matcher() as ctx:
-        adapter = ctx.create_adapter()
-        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
-        ctx.receive_event(bot, event)
-        ctx.should_call_send(event, "前面还有请求在处理，稍等一下")
-        ctx.should_finished()

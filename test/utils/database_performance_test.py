@@ -255,66 +255,6 @@ async def test_search_messages_can_sort_fts_results_by_relevance(tmp_path: Path,
     assert by_relevance[0].msg_id == 10
 
 
-@pytest.mark.asyncio
-async def test_search_messages_can_use_semantic_vector_results(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
-    database = MessageDatabase()
-
-    await database.insert(1000, 10, 1, 123, "Alice", "user", "SQLite 查询延迟很高")
-    await database.insert(2000, 11, 2, 123, "Bob", "user", "天气很好")
-
-    class FakeVectorIndex:
-        available = True
-
-        def add_message(self, _message):
-            return True
-
-        def search(self, **kwargs):
-            assert kwargs["query"] == "数据库性能"
-            assert kwargs["group_id"] == 123
-            return [(1000, 0.1)]
-
-    database._vector_index = FakeVectorIndex()
-
-    results = await database.search_messages(
-        group_id=123,
-        user_id=1,
-        content_query="数据库性能",
-        limit=10,
-        mode="semantic",
-    )
-
-    assert [message.msg_id for message in results] == [10]
-
-
-@pytest.mark.asyncio
-async def test_search_messages_hybrid_merges_keyword_and_semantic_results(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
-    database = MessageDatabase()
-
-    await database.insert(1000, 10, 1, 123, "Alice", "user", "Python keyword")
-    await database.insert(2000, 11, 2, 123, "Bob", "user", "SQLite 查询延迟")
-
-    class FakeVectorIndex:
-        available = True
-
-        def add_message(self, _message):
-            return True
-
-        def search(self, **_kwargs):
-            return [(2000, 0.1), (1000, 0.2)]
-
-    database._vector_index = FakeVectorIndex()
-
-    results = await database.search_messages(
-        group_id=123,
-        user_id=1,
-        content_query="Python",
-        limit=10,
-        mode="hybrid",
-    )
-
-    assert [message.msg_id for message in results] == [10, 11]
 
 
 def test_cleanup_task_execution_history_applies_day_and_per_job_retention(tmp_path: Path, monkeypatch):

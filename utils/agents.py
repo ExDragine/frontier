@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import os
@@ -485,3 +486,16 @@ class FrontierCognitive:
             "total_time": processing_time,
             "uni_messages": uni_messages,
         }
+
+
+_agent_locks: dict[str, asyncio.Lock] = {}
+
+
+async def run_serialized(thread_id: str, coro, *, timeout: float | None = None):
+    """同一 conversation 内序列化 Agent 执行：同 key 互斥，不同 key 并发。"""
+    key = str(thread_id)
+    lock = _agent_locks.setdefault(key, asyncio.Lock())
+    async with lock:
+        if timeout is not None:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        return await coro

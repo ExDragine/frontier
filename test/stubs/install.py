@@ -6,11 +6,9 @@ import types
 from .dummies import (
     DummyCompositeBackend,
     DummyContext,
-    DummyEmbeddings,
     DummyFilesystemBackend,
     DummyLocalShellBackend,
     DummyModel,
-    DummyPersistentClient,
     DummyScheduler,
     DummyTokenizer,
     fake_tool,
@@ -33,9 +31,7 @@ def install_stub(module_name: str, **attrs):
 
 def install_all_third_party_stubs():
     """安装所有必要的第三方库桩。"""
-    install_stub("chromadb", PersistentClient=DummyPersistentClient)
     install_stub("uuid_utils", uuid7=lambda: "uuid")
-    install_stub("langchain_huggingface", HuggingFaceEmbeddings=DummyEmbeddings)
     install_stub("deepagents", create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}))
     install_stub(
         "deepagents.backends",

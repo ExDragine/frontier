@@ -27,14 +27,14 @@ QQ 消息 → NoneBot2 on_message(priority=10)
   ├─ Phase 4: 内容安全 (message_check → risk_check → 表情反应)
   │    文本 + 图片审核，Safe / Controversial / Unsafe 三级
   │
-  └─ Agent 执行 (agent_queue.submit → _process_agent_request → chat_agent)
-        AgentQueueManager 限制并发（maxsize=5），按 (user_id, group_id) 排队
+  └─ Agent 执行 (run_serialized → _process_agent_request → chat_agent)
+        asyncio.Lock 按 (user_id, group_id) 序列化，同一对话内互斥、不同对话并发
         chat_agent → create_deep_agent → 工具调用 → extract_uni_messages → send_messages
 ```
 
 关键边界：
 - 网关在消息存储**之后**、媒体下载**之前**，减少重试下载的成本
-- Agent 在独立线程执行（`agent_queue.submit`），主流程不等待
+- 同一群聊/私聊的消息通过 `asyncio.Lock` 串行执行，避免两个 Agent 并发读写同一 workspace/memory
 - `UniMessage` 是 nonebot_plugin_alconna 的通用消息类型，延迟加载（`require()`）
 
 ---
@@ -66,11 +66,9 @@ QQ 消息 → NoneBot2 on_message(priority=10)
 | `milky_tools.py` | 244 | Milky 协议专用工具（底层 API 封装） |
 | `paint_service.py` | 227 | AI 绘图服务（对接 `/paint` 后端） |
 | `video_service.py` | 249 | AI 视频服务 |
-| `agent_queue.py` | 135 | 并发控制：每个 (user, group) 最多 1 个活跃 Agent，全局 5 并发 |
 | `user_profile.py` | 216 | 长期用户画像：静默提取 → 积累 → 注入 system prompt |
 | `signal_llm.py` | 102 | 轻量 LLM 辅助决策调用 |
 | `message_normalizer.py` | 142 | 长消息拆分/归一化 |
-| `message_vector_index.py` | 210 | 消息向量索引（语义搜索） |
 | `http_client.py` | 40 | httpx 单例客户端池 |
 | `context_check.py` | 61 | 内容安全检查封装 |
 
@@ -157,7 +155,7 @@ from utils.agents import assistant_agent  # 延迟导入避免循环依赖
 
 4. **Model route 逻辑在 `_configured_model_route()`**。`BASIC_MODEL` 用于 `assistant_agent`（工具类调用），`ADVAN_MODEL` 用于 `chat_agent`（对话），`SIGNAL_MODEL` 用于网关辅助决策。
 
-5. **测试用 monkeypatch + Dummy**。测试模式是 monkeypatch 替换模块级对象（`f_cognitive`, `messages_db`, `agent_queue`）然后用 `nonebug.App.test_matcher()` 模拟事件。
+5. **测试用 monkeypatch + Dummy**。测试模式是 monkeypatch 替换模块级对象（`f_cognitive`, `messages_db`, `run_serialized`）然后用 `nonebug.App.test_matcher()` 模拟事件。
 
 6. **循环依赖禁区**: `utils/agents.py` 和 `tools/` 包之间不能直接 import。`tools/memory.py` 里 `from utils.agents import assistant_agent` 是函数内延迟 import，不要把它提到模块顶部。
 
@@ -172,7 +170,7 @@ pytest test/utils/agents_test.py -x   # 单文件
 
 测试基础架构：
 - **nonebug**: NoneBot 的 pytest 插件，提供 `App.test_matcher()` 模拟消息事件
-- **monkeypatch**: 替换模块级依赖（agent_queue, f_cognitive, messages_db）
+- **monkeypatch**: 替换模块级依赖（run_serialized, f_cognitive, messages_db）
 - **IncomingMessage + MessageEvent**: 构造模拟 QQ 消息
 
 写测试时的惯例：

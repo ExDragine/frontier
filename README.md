@@ -38,7 +38,7 @@
 | **网络检索** | Tavily 网页搜索、Wikipedia、ArXiv 论文、Bilibili 视频、网页爬取 |
 | **天文空间** | 极光、彗星、卫星过境、火箭发射、空间天气 |
 | **地球信息** | 地震速报、雷达云图、天气预报 |
-| **记忆** | 聊天记录语义搜索 + 全文检索 |
+| **记忆** | 聊天记录全文检索 |
 | **占卜** | 易经、塔罗牌 |
 | **媒体** | AI 图像生成、AI 视频生成 |
 | **扩展** | MCP 协议动态加载外部工具 |
@@ -50,8 +50,7 @@
 | **运行时** | Python 3.14+ / Node.js（Playwright MCP） |
 | **框架** | NoneBot2 + FastAPI / milky 适配器（QQ 协议） |
 | **Agent** | LangChain + LangGraph / deepagents / 多模型路由 |
-| **向量** | sentence-transformers + Chroma / 本地 embedding |
-| **存储** | SQLite（SQLModel + FTS 全文搜索）+ Chroma 向量库 |
+| **存储** | SQLite（SQLModel + FTS 全文搜索） |
 | **渲染** | Playwright 无头浏览器 / markdown-it-py / Pillow |
 | **任务** | APScheduler |
 | **部署** | Docker / uv 包管理 |
@@ -118,7 +117,6 @@ frontier/
 │   ├── agents.py       #   FrontierCognitive Agent
 │   ├── message.py      #   消息门控与处理管道
 │   ├── database.py     #   SQLite 数据库（SQLModel + FTS）
-│   ├── message_vector_index.py  #   Chroma 向量索引
 │   ├── llm_factory.py  #   多模型路由工厂
 │   ├── signal_llm.py   #   轻量 Signal LLM 封装
 │   ├── configs.py      #   配置加载

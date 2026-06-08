@@ -206,16 +206,6 @@ jwt_secret = "secret"
         {
             "image_memory": {"enabled": False, "ttl_days": 9, "auto_cleanup": False},
             "content_check": {"enabled": True},
-            "vector_memory": {
-                "semantic_search_enabled": False,
-                "chroma_path": "cache/custom-chroma",
-                "chroma_collection": "custom_messages",
-                "embedding_model": "custom-embed",
-                "semantic_top_k": 12,
-                "semantic_embedding_batch_size": 4,
-                "semantic_embedding_device": " cuda ",
-                "preload_on_startup": False,
-            },
         }
     )
 
@@ -223,14 +213,6 @@ jwt_secret = "secret"
     assert configs.EnvConfig.IMAGE_TTL_DAYS == 9
     assert configs.EnvConfig.IMAGE_AUTO_CLEANUP is False
     assert configs.EnvConfig.CONTENT_CHECK_ENABLED is True
-    assert configs.EnvConfig.VECTOR_MEMORY_ENABLED is False
-    assert configs.EnvConfig.VECTOR_MEMORY_CHROMA_PATH == "cache/custom-chroma"
-    assert configs.EnvConfig.VECTOR_MEMORY_COLLECTION == "custom_messages"
-    assert configs.EnvConfig.VECTOR_MEMORY_EMBEDDING_MODEL == "custom-embed"
-    assert configs.EnvConfig.VECTOR_MEMORY_SEMANTIC_TOP_K == 12
-    assert configs.EnvConfig.VECTOR_MEMORY_EMBEDDING_BATCH_SIZE == 4
-    assert configs.EnvConfig.VECTOR_MEMORY_EMBEDDING_DEVICE == "cuda"
-    assert configs.EnvConfig.VECTOR_MEMORY_PRELOAD_ON_STARTUP is False
 
 def test_env_config_llm_endpoint_profiles(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)

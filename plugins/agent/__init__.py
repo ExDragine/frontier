@@ -14,8 +14,7 @@ from nonebot.adapters.milky.event import MessageEvent
 
 require("nonebot_plugin_alconna")
 
-from utils.agent_queue import AgentQueueFullError, AgentQueueManager
-from utils.agents import FrontierCognitive, _agent_thread_id
+from utils.agents import FrontierCognitive, _agent_thread_id, run_serialized
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
@@ -44,11 +43,6 @@ driver = get_driver()
 
 common = on_message(priority=10)
 
-agent_queue = AgentQueueManager(
-    maxsize=5,
-    idle_ttl_seconds=1800.0,
-    job_timeout_seconds=EnvConfig.AGENT_JOB_TIMEOUT_SECONDS,
-)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -196,7 +190,6 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
 async def on_shutdown():
     from utils.http_client import aclose_all
 
-    await agent_queue.aclose()
     await aclose_all()
 
 
@@ -344,16 +337,11 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         videos=videos,
     )
     thread_id = _agent_thread_id(user_id, group_id)
-    try:
-        agent_queue.job_timeout_seconds = EnvConfig.AGENT_JOB_TIMEOUT_SECONDS
-        await agent_queue.submit(thread_id, lambda: _process_agent_request(context, messages))
-        if group_id:
-            try:
-                await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="32", is_add=False
-                )
-            except Exception as e:
-                logger.warning(f"❌ 发送群消息反应失败 用户{user_id} 群{group_id}: {e}")
-    except AgentQueueFullError:
-        logger.warning(f"⚠️ Agent队列已满 用户{user_id} 群{group_id}")
-        await common.finish("前面还有请求在处理，稍等一下")
+    await run_serialized(str(thread_id), _process_agent_request(context, messages))
+    if group_id:
+        try:
+            await bot.send_group_message_reaction(
+                group_id=group_id, message_seq=event_id, reaction="32", is_add=False
+            )
+        except Exception as e:
+            logger.warning(f"❌ 发送群消息反应失败 用户{user_id} 群{group_id}: {e}")
