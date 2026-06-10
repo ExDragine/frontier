@@ -68,6 +68,8 @@ class EnvConfig:
     ADVAN_MODEL_CAPABILITIES: list[str] = endpoint.get("advan_model_capabilities", [])
     PAINT_MODEL: str = endpoint["paint_model"]
     PAINT_BASE_URL: str = endpoint.get("paint_base_url") or OPENAI_BASE_URL
+    PAINT_ASPECT_RATIO: str = endpoint.get("paint_aspect_ratio", "1:1")
+    PAINT_IMAGE_SIZE: str = endpoint.get("paint_image_size", "1K")
     VIDEO_MODEL: str = endpoint.get("video_model") or "alibaba/happyhorse-1.0"
     VIDEO_BASE_URL: str = endpoint.get("video_base_url") or "https://zenmux.ai/api/vertex-ai"
     BASIC_MODEL_USE_RESPONSES_API: bool = endpoint.get("basic_model_use_responses_api", True)
@@ -207,6 +209,8 @@ class EnvConfig:
         cls.OPENAI_BASE_URL = ep.get("openai_base_url", cls.OPENAI_BASE_URL)
         cls.PAINT_MODEL = ep.get("paint_model", cls.PAINT_MODEL)
         cls.PAINT_BASE_URL = ep.get("paint_base_url") or cls.OPENAI_BASE_URL
+        cls.PAINT_ASPECT_RATIO = ep.get("paint_aspect_ratio", cls.PAINT_ASPECT_RATIO)
+        cls.PAINT_IMAGE_SIZE = ep.get("paint_image_size", cls.PAINT_IMAGE_SIZE)
         cls.VIDEO_MODEL = ep.get("video_model") or cls.VIDEO_MODEL
         cls.VIDEO_BASE_URL = ep.get("video_base_url") or cls.VIDEO_BASE_URL
         cls.LLM_ENDPOINTS = config.get("llm_endpoints", {})

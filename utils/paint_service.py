@@ -1,4 +1,3 @@
-import base64
 import inspect
 import io
 import math
@@ -11,7 +10,6 @@ from google import genai
 from google.genai import types as genai_types
 from google.genai.errors import ClientError
 from nonebot import logger
-from openai import AsyncClient
 from PIL import Image
 
 from utils.configs import EnvConfig
@@ -60,117 +58,112 @@ def _normalize_reference_image(image: bytes) -> bytes:
             return png_bytes.getvalue()
 
 
-def _prepare_reference_image(image: bytes, index: int) -> tuple[str, bytes, str]:
-    png_bytes = _normalize_reference_image(image)
-    return (f"reference-{index}.png", png_bytes, "image/png")
-
-
-def _paint_base_url() -> str:
-    return EnvConfig.PAINT_BASE_URL
+# ── Nano Banana 2 (Gemini 3.1 Flash Image) ─────────────────────────
 
 
 def _paint_api_key() -> str:
-    return EnvConfig.PAINT_API_KEY.get_secret_value()
+    paint_key = EnvConfig.PAINT_API_KEY.get_secret_value()
+    if paint_key:
+        return paint_key
+    google_key = getattr(EnvConfig, "GOOGLE_API_KEY", None)
+    if google_key:
+        return google_key.get_secret_value()
+    return ""
 
 
-def _use_vertex_image_gateway() -> bool:
-    return "vertex-ai" in _paint_base_url().lower()
+def _paint_aspect_ratio() -> str:
+    return getattr(EnvConfig, "PAINT_ASPECT_RATIO", "1:1")
 
 
-def _openai_client_kwargs() -> dict[str, str]:
-    return {
-        "api_key": _paint_api_key(),
-        "base_url": _paint_base_url(),
-    }
+def _paint_image_size() -> str:
+    return getattr(EnvConfig, "PAINT_IMAGE_SIZE", "1K")
 
 
-async def _paint_with_openai_images(prompt: str, reference_images: list[bytes]) -> bytes | None:
-    client = AsyncClient(**_openai_client_kwargs())
-    request = {
-        "model": EnvConfig.PAINT_MODEL,
-        "prompt": prompt,
-        "response_format": "b64_json",
-    }
-
-    if reference_images:
-        payload = [_prepare_reference_image(image, idx) for idx, image in enumerate(reference_images, start=1)]
-        response = await client.images.edit(image=payload, **request)
-    else:
-        response = await client.images.generate(**request)
-
-    if not response.data:
-        logger.warning("绘图API返回空 data")
-        return None
-
-    image_b64 = getattr(response.data[0], "b64_json", None)
-    if not image_b64:
-        logger.warning("绘图API响应缺少 b64_json 字段")
-        return None
-
-    return base64.b64decode(image_b64)
+def _build_genai_client() -> genai.Client:
+    kwargs: dict = {"api_key": _paint_api_key()}
+    base_url = EnvConfig.PAINT_BASE_URL
+    if base_url:
+        kwargs["http_options"] = genai_types.HttpOptions(base_url=base_url)
+    return genai.Client(**kwargs)
 
 
-async def _paint_with_vertex_gateway(prompt: str, reference_images: list[bytes]) -> bytes | None:
-    client = genai.Client(
-        api_key=_paint_api_key(),
-        vertexai=True,
-        http_options=genai_types.HttpOptions(api_version="v1", base_url=_paint_base_url()),
+async def _close_genai_client(client: genai.Client) -> None:
+    aio_client = getattr(client, "aio", None)
+    aclose = getattr(aio_client, "aclose", None)
+    if callable(aclose):
+        maybe_awaitable = aclose()
+        if inspect.isawaitable(maybe_awaitable):
+            await maybe_awaitable
+
+    close = getattr(client, "close", None)
+    if callable(close):
+        maybe_awaitable = close()
+        if inspect.isawaitable(maybe_awaitable):
+            await maybe_awaitable
+
+
+async def _paint_with_gemini(prompt: str, reference_images: list[bytes]) -> bytes | None:
+    client = _build_genai_client()
+
+    config = genai_types.GenerateContentConfig(
+        response_modalities=["TEXT", "IMAGE"],
+        image_config=genai_types.ImageConfig(
+            # aspect_ratio=_paint_aspect_ratio(),
+            image_size=_paint_image_size(),
+        ),
     )
+
+    # 构建 contents：参考图片在前，文本提示词在后
+    if reference_images:
+        contents = []
+        for image in reference_images:
+            png_bytes = _normalize_reference_image(image)
+            contents.append(genai_types.Part.from_bytes(data=png_bytes, mime_type="image/png"))
+        contents.append(genai_types.Part.from_text(text=prompt))
+    else:
+        contents = prompt
+
     try:
-        if reference_images:
-            payload = [
-                genai_types.RawReferenceImage(
-                    reference_id=idx,
-                    reference_image=genai_types.Image(
-                        image_bytes=_normalize_reference_image(image),
-                        mime_type="image/png",
-                    ),
-                )
-                for idx, image in enumerate(reference_images, start=1)
-            ]
-            try:
-                response = await client.aio.models.edit_image(
-                    model=EnvConfig.PAINT_MODEL,
-                    prompt=prompt,
-                    reference_images=payload,
-                )
-            except ClientError:
-                return None
-        else:
-            try:
-                response = await client.aio.models.generate_images(
-                    model=EnvConfig.PAINT_MODEL,
-                    prompt=prompt,
-                )
-            except ClientError:
-                return None
+        response = await client.aio.models.generate_content(
+            model=EnvConfig.PAINT_MODEL,
+            contents=contents,
+            config=config,
+        )
+    except ClientError as e:
+        logger.warning(f"Gemini 图片 API 调用失败: {e}")
+        return None
     finally:
-        aio_client = getattr(client, "aio", None)
-        aclose = getattr(aio_client, "aclose", None)
-        if callable(aclose):
-            maybe_awaitable = aclose()
-            if inspect.isawaitable(maybe_awaitable):
-                await maybe_awaitable
+        await _close_genai_client(client)
 
-        close = getattr(client, "close", None)
-        if callable(close):
-            maybe_awaitable = close()
-            if inspect.isawaitable(maybe_awaitable):
-                await maybe_awaitable
-
-    generated_images = getattr(response, "generated_images", None) or []
-    if not generated_images:
-        logger.warning("Vertex 图片API返回空 generated_images")
+    if not response.candidates:
+        logger.warning("Gemini 图片 API 返回空 candidates（可能被安全过滤）")
         return None
 
-    image = getattr(generated_images[0], "image", None)
-    image_bytes = getattr(image, "image_bytes", None)
-    if not image_bytes:
-        logger.warning("Vertex 图片API响应缺少 image_bytes 字段")
+    candidate = response.candidates[0]
+    if candidate.finish_reason and candidate.finish_reason.name == "SAFETY":
+        logger.warning("Gemini 图片 API 因安全原因拒绝: finish_reason=SAFETY")
         return None
 
-    return image_bytes
+    # 从响应中提取图片
+    candidate_content = candidate.content
+    if candidate_content is None:
+        logger.warning("Gemini 图片 API 响应中 candidate.content 为 None")
+        return None
 
+    for part in candidate_content.parts:
+        if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+            return part.inline_data.data
+
+    # 没有图片时输出文本用于诊断
+    for part in candidate_content.parts:
+        if part.text:
+            logger.warning(f"Gemini 图片 API 返回文本而非图片: {part.text[:200]}")
+
+    logger.warning("Gemini 图片 API 响应中没有找到图片数据")
+    return None
+
+
+# ── Pollinations 回退 ──────────────────────────────────────────────
 
 POLLINATIONS_IMAGE_URL = "https://image.pollinations.ai/prompt"
 POLLINATIONS_FALLBACK_MODEL = "flux"
@@ -197,6 +190,9 @@ async def _paint_with_pollinations(prompt: str) -> bytes | None:
         return response.content
 
 
+# ── 主入口 ─────────────────────────────────────────────────────────
+
+
 async def paint(prompt: str, reference_images: list[bytes] | None = None) -> bytes | None:
     reference_images = reference_images or []
 
@@ -215,13 +211,13 @@ async def paint(prompt: str, reference_images: list[bytes] | None = None) -> byt
             return None
 
     logger.info(
-        f"🎨 调用 GPT Image API, model={EnvConfig.PAINT_MODEL}, prompt_length={len(prompt)}, references={len(reference_images)}"
+        f"🎨 调用 Gemini Nano Banana, model={EnvConfig.PAINT_MODEL}, "
+        f"prompt_length={len(prompt)}, references={len(reference_images)}, "
+        # f"aspect_ratio={_paint_aspect_ratio()}"
     )
 
     try:
-        if _use_vertex_image_gateway():
-            return await _paint_with_vertex_gateway(prompt, reference_images)
-        return await _paint_with_openai_images(prompt, reference_images)
+        return await _paint_with_gemini(prompt, reference_images)
     except Exception as e:
-        logger.exception(f"💥 调用 GPT Image API 失败: {e}")
+        logger.exception(f"💥 调用 Gemini 图片 API 失败: {e}")
         return None
