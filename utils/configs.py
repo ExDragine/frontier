@@ -45,7 +45,6 @@ image_memory: dict = config.get("image_memory", {})
 content_check: dict = config.get("content_check", {})
 
 
-
 class EnvConfig:
     BOT_NAME: str = information["name"]
 
@@ -70,7 +69,7 @@ class EnvConfig:
     PAINT_BASE_URL: str = endpoint.get("paint_base_url") or OPENAI_BASE_URL
     PAINT_ASPECT_RATIO: str = endpoint.get("paint_aspect_ratio", "1:1")
     PAINT_IMAGE_SIZE: str = endpoint.get("paint_image_size", "1K")
-    VIDEO_MODEL: str = endpoint.get("video_model") or "alibaba/happyhorse-1.0"
+    VIDEO_MODEL: str = endpoint.get("video_model", "")
     VIDEO_BASE_URL: str = endpoint.get("video_base_url") or "https://zenmux.ai/api/vertex-ai"
     BASIC_MODEL_USE_RESPONSES_API: bool = endpoint.get("basic_model_use_responses_api", True)
     ADVAN_MODEL_USE_RESPONSES_API: bool = endpoint.get("advan_model_use_responses_api", True)
@@ -171,7 +170,6 @@ class EnvConfig:
     IMAGE_AUTO_CLEANUP: bool = image_memory.get("auto_cleanup", True)
 
     CONTENT_CHECK_ENABLED: bool = content_check.get("enabled", False)
-
 
     @classmethod
     def reload(cls, config: dict) -> None:
@@ -282,6 +280,3 @@ class EnvConfig:
         cls.IMAGE_AUTO_CLEANUP = bool(image_memory.get("auto_cleanup", cls.IMAGE_AUTO_CLEANUP))
 
         cls.CONTENT_CHECK_ENABLED = bool(config.get("content_check", {}).get("enabled", cls.CONTENT_CHECK_ENABLED))
-
-
-

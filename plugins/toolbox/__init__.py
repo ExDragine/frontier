@@ -22,7 +22,7 @@ from utils.message import (
 
 driver = get_driver()
 updater = on_command("update", priority=1, block=True, aliases={"更新"}, permission=SUPERUSER)
-setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"}, permission=SUPERUSER)
+setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
 set_cmd = on_command("set", priority=2, block=True, aliases={"设置"})
 restart = on_command("restart", priority=3, block=True, aliases={"重启"}, permission=SUPERUSER)
 
@@ -47,6 +47,7 @@ def _group_settings() -> GroupSettingsManager:
 
 
 # ── /set wake ──────────────────────────────────────────────
+
 
 async def _set_wake_show(group_id: int) -> str:
     words = _group_settings().get(group_id, SET_WAKE_KEY)
@@ -162,6 +163,7 @@ async def handle_set(event: MessageEvent):
 
 # ── /set model (保留旧兼容) ─────────────────────────────────
 
+
 async def _handle_set_model(event: MessageEvent, model_text: str):
     """/set model 的过渡兼容处理，提示用户使用 /model 或待实现群级别 model。"""
     await UniMessage.text(
@@ -261,7 +263,12 @@ async def handle_setting(event: MessageEvent):
     text = text.replace("/model", "")
     if not text:
         await UniMessage.text(
-            f"当前默认使用的模型为: {EnvConfig.ADVAN_MODEL}\n当前辅助模型为:{EnvConfig.BASIC_MODEL}\n当前绘图模型为:{EnvConfig.PAINT_MODEL}"
+            f"""
+            当前默认使用的模型为: {EnvConfig.ADVAN_MODEL}\n
+            当前辅助模型为:{EnvConfig.BASIC_MODEL}\n
+            当前绘图模型为:{EnvConfig.PAINT_MODEL}\n
+            当前视频模型为:{EnvConfig.VIDEO_MODEL}
+            """
         ).send()
 
 
