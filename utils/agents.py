@@ -5,7 +5,8 @@ import os
 import re
 import time
 import uuid
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Awaitable, Callable, Literal
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
@@ -29,6 +30,29 @@ from utils.message import extract_message_text
 from utils.staged_artifacts import extract_staged_artifact_ids, load_staged_artifact, strip_staged_artifact_handoffs
 
 UniMessage = None
+
+ProgressReporter = Callable[["ProgressEvent"], Awaitable[None]]
+
+
+@dataclass
+class ProgressEvent:
+    """agent 执行过程中的用户可读进度事件。
+
+    reporter 层根据 type 决定是否向用户展示。当前私聊 reporter 消费
+    thinking / subagent_start / tool_call，其余类型预留。
+    """
+
+    type: Literal[
+        "thinking",  # Agent 开始思考（stream.messages 首个 LLM 消息）
+        "tool_call",  # 工具开始执行（stream.tool_calls 新条目）
+        "tool_result",  # 工具执行完成（预留）
+        "subagent_start",  # 子代理启动（stream.subagents 新条目）
+        "subagent_done",  # 子代理完成（预留）
+        "text_delta",  # 段落级文本增量（预留，markdown 结构不能拆）
+        "done",  # 执行完成或出错（预留）
+    ]
+    message: str  # 用户可读的中文描述
+    detail: dict[str, Any] | None = None  # 结构化附加信息
 
 VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 SKILLS_BACKEND_PATH = "/skills"
