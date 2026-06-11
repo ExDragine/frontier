@@ -14,7 +14,7 @@ from nonebot.adapters.milky.event import MessageEvent
 
 require("nonebot_plugin_alconna")
 
-from utils.agents import FrontierCognitive, _agent_thread_id, run_serialized
+from utils.agents import FrontierCognitive, ProgressEvent, _agent_thread_id, run_serialized
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
@@ -78,6 +78,30 @@ def _group_member_role(event: MessageEvent) -> str | None:
     return str(role)
 
 
+async def _private_chat_reporter(event: ProgressEvent) -> None:
+    """私聊场景的进度事件消费者 —— 向用户发送当前 Agent 正在做什么。
+
+    消费的事件：
+    - thinking → "🤔 正在思考…"
+    - subagent_start → "🔍 {name} 已启动"
+    - tool_call → "🔧 正在调用工具：{tool_name}"
+
+    静默的事件（理由）：
+    - subagent_done / tool_result → 避免冗余和内部数据泄露
+    - text_delta → markdown 有结构，拆开发送会破坏格式
+    - done → 最终结果由现有 send_messages 流程处理
+    """
+    match event.type:
+        case "thinking":
+            await UniMessage.text("🤔 正在思考…").send()
+        case "subagent_start":
+            await UniMessage.text(f"🔍 {event.message}").send()
+        case "tool_call":
+            await UniMessage.text(f"🔧 {event.message}").send()
+        case "subagent_done" | "tool_result" | "text_delta" | "done":
+            pass
+
+
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
     messages = list(history_messages or [])
     messages += [
@@ -135,6 +159,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         video_inputs=context.videos,
         wake_word=triggered_wake or None,
         group_member_role=_group_member_role(context.event),
+        progress_reporter=_private_chat_reporter if context.group_id is None else None,
     )
 
     if not isinstance(result, dict) or "response" not in result:
