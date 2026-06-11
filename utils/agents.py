@@ -565,8 +565,14 @@ class FrontierCognitive:
             progress_task = asyncio.create_task(
                 _collect_progress(stream, progress_reporter)
             )
-            response = await stream.output
-            await progress_task
+            try:
+                response = await stream.output
+            finally:
+                progress_task.cancel()
+                try:
+                    await progress_task
+                except asyncio.CancelledError:
+                    pass
         except Exception as e:
             # 其他意外错误，记录详细信息
             logger.error(f"❌ Agent执行出现意外错误 用户{user_id}: {type(e).__name__}")
