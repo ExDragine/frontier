@@ -159,6 +159,83 @@ def _parse_structured_response_from_messages(messages: list, response_format):
     raise KeyError("structured_response")
 
 
+async def _emit_progress(reporter: ProgressReporter | None, event: ProgressEvent) -> None:
+    """安全调用 reporter —— reporter 自身异常不中断 agent 执行。"""
+    if reporter is None:
+        return
+    try:
+        await reporter(event)
+    except Exception as e:
+        logger.warning(f"Progress reporter 调用失败: {type(e).__name__}: {e}")
+
+
+async def _collect_progress(stream, reporter: ProgressReporter | None) -> None:
+    """消费 astream_events v3 的三个 projection，生成 ProgressEvent。
+
+    独立任务运行，异常不传播到 output 收集路径。
+    每个 projection consumer 有独立的 try/except 保护。
+    """
+    if reporter is None:
+        return
+
+    async def consume_subagents() -> None:
+        async for subagent in stream.subagents:
+            await _emit_progress(
+                reporter,
+                ProgressEvent(
+                    type="subagent_start",
+                    message=f"{subagent.name} 已启动",
+                    detail={"name": subagent.name},
+                ),
+            )
+
+    async def consume_tool_calls() -> None:
+        async for tool_call in stream.tool_calls:
+            await _emit_progress(
+                reporter,
+                ProgressEvent(
+                    type="tool_call",
+                    message=f"正在调用工具：{tool_call.tool_name}",
+                    detail={"tool_name": tool_call.tool_name},
+                ),
+            )
+
+    async def consume_messages() -> None:
+        first_message = True
+        text_buffer: str = ""
+        async for message in stream.messages:
+            if first_message:
+                await _emit_progress(
+                    reporter,
+                    ProgressEvent(type="thinking", message="正在思考…"),
+                )
+                first_message = False
+            # text_delta 累积并按段落切分（代码保留，reporter 层暂不消费）
+            async for chunk in message.text:
+                text_buffer += chunk
+                while "\n\n" in text_buffer:
+                    idx = text_buffer.index("\n\n")
+                    paragraph = text_buffer[:idx].strip()
+                    text_buffer = text_buffer[idx + 2:]
+                    if paragraph:
+                        await _emit_progress(
+                            reporter,
+                            ProgressEvent(type="text_delta", message=paragraph),
+                        )
+
+    async def _safe(coro) -> None:
+        try:
+            await coro
+        except Exception as e:
+            logger.warning(f"Progress collector 异常: {type(e).__name__}: {e}")
+
+    await asyncio.gather(
+        _safe(consume_subagents()),
+        _safe(consume_tool_calls()),
+        _safe(consume_messages()),
+    )
+
+
 async def assistant_agent(
     system_prompt: str = "",
     user_prompt: str = "",
