@@ -100,6 +100,8 @@ async def _private_chat_reporter(event: ProgressEvent) -> None:
             await UniMessage.text(f"🔧 {event.message}").send()
         case "subagent_done" | "tool_result" | "text_delta" | "done":
             pass
+        case _:
+            pass  # 未来新增的事件类型默认静默
 
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
