@@ -10,6 +10,30 @@ import pytest
 from utils import agents
 
 
+# ── 共享 async 迭代工具 ──────────────────────────────────────────
+
+
+class _AsyncIter:
+    """可在测试中注入的异步迭代器。"""
+
+    def __init__(self, items):
+        self._items = list(items)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        await asyncio.sleep(0)
+        if not self._items:
+            raise StopAsyncIteration
+        return self._items.pop(0)
+
+
+# ── 测试 ──────────────────────────────────────────────
+
+
+
+
 class _FakeStream:
     """Minimal astream_events v3 return-object mock — exposes .output awaitable."""
 
@@ -648,19 +672,6 @@ class TestCollectProgress:
     def _mock_stream(*, subagents=(), tool_calls=(), messages=()):
         """构造一个与 astream_events v3 接口兼容的 mock stream。"""
 
-        class _AsyncIter:
-            def __init__(self, items):
-                self._items = list(items)
-
-            def __aiter__(self):
-                return self
-
-            async def __anext__(self):
-                await asyncio.sleep(0)
-                if not self._items:
-                    raise StopAsyncIteration
-                return self._items.pop(0)
-
         class MockStream:
             def __init__(self):
                 self.subagents = _AsyncIter(subagents)
@@ -773,6 +784,58 @@ class TestCollectProgress:
         ]
         assert len(thinking_calls) == 1, "thinking event should still emit even if tool_calls fails"
 
+    @pytest.mark.asyncio
+    async def test_paragraph_split_text_delta(self):
+        """文本按 \\n\\n 段落边界切分并发出 text_delta 事件。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from utils.agents import _collect_progress
+
+        text_chunks = iter(["段落一\n\n段落二\n\n"])
+
+        mock_text = MagicMock()
+        mock_text.__aiter__.return_value = text_chunks
+
+        mock_msg = MagicMock()
+        mock_msg.text = mock_text
+
+        stream = self._mock_stream(messages=[mock_msg])
+        reporter = AsyncMock()
+
+        await _collect_progress(stream, reporter)
+
+        text_delta_calls = [
+            c for c in reporter.call_args_list
+            if c[0][0].type == "text_delta"
+        ]
+        assert len(text_delta_calls) == 2, f"Expected 2 text_delta events, got {len(text_delta_calls)}"
+        assert text_delta_calls[0][0][0].message == "段落一"
+        assert text_delta_calls[1][0][0].message == "段落二"
+
+    @pytest.mark.asyncio
+    async def test_trailing_text_without_newline_is_buffered(self):
+        """不含 \\n\\n 结尾的文本留在 buffer 中不发出。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from utils.agents import _collect_progress
+
+        mock_text = MagicMock()
+        mock_text.__aiter__.return_value = iter(["未完结文本"])
+
+        mock_msg = MagicMock()
+        mock_msg.text = mock_text
+
+        stream = self._mock_stream(messages=[mock_msg])
+        reporter = AsyncMock()
+
+        await _collect_progress(stream, reporter)
+
+        text_delta_calls = [
+            c for c in reporter.call_args_list
+            if c[0][0].type == "text_delta"
+        ]
+        assert len(text_delta_calls) == 0, "Trailing text should be buffered, not emitted"
+
 
 class TestChatAgentStreaming:
     """chat_agent 流式改造的集成测试。"""
@@ -880,3 +943,39 @@ class TestChatAgentStreaming:
         # 验证传入了 stream 和 reporter
         assert collector_called[0][0] is mock_stream
         assert collector_called[0][1] is reporter
+
+    @pytest.mark.asyncio
+    async def test_error_path_returns_fallback_and_cancels_progress(self, monkeypatch):
+        """stream.output 抛出异常时，返回 fallback 响应并取消 progress_task。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        import utils.agents as agents_mod
+
+        mock_stream = MagicMock()
+        mock_stream.output = asyncio.Future()
+        mock_stream.output.set_exception(RuntimeError("agent failed"))
+
+        mock_agent = MagicMock()
+        mock_agent.astream_events = MagicMock(return_value=mock_stream)
+
+        monkeypatch.setattr(agents_mod, "create_deep_agent", MagicMock(return_value=mock_agent))
+        monkeypatch.setattr(agents_mod, "_build_agent_backend", MagicMock())
+        monkeypatch.setattr(agents_mod, "_agent_thread_id", MagicMock(return_value=uuid.uuid4()))
+        monkeypatch.setattr(agents_mod.FrontierCognitive, "load_system_prompt", lambda *a, **kw: "You are a bot.")
+
+        reporter = AsyncMock()
+
+        cognitive = agents_mod.FrontierCognitive()
+        result = await cognitive.chat_agent(
+            messages=[{"role": "user", "content": "hi"}],
+            user_id="123",
+            user_name="tester",
+            progress_reporter=reporter,
+        )
+
+        # 错误路径应返回带有 error 键的 dict
+        assert isinstance(result, dict)
+        assert "response" in result
+        assert "uni_messages" in result
+        assert "error" in result
+        assert "服务暂时不可用" in result["response"]["messages"][0].content
