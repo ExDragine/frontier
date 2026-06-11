@@ -175,9 +175,6 @@ async def _collect_progress(stream, reporter: ProgressReporter | None) -> None:
     独立任务运行，异常不传播到 output 收集路径。
     每个 projection consumer 有独立的 try/except 保护。
     """
-    if reporter is None:
-        return
-
     async def consume_subagents() -> None:
         async for subagent in stream.subagents:
             await _emit_progress(
