@@ -5,8 +5,9 @@ import os
 import re
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Literal
+from typing import Any, Literal
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
@@ -169,7 +170,7 @@ async def _emit_progress(reporter: ProgressReporter | None, event: ProgressEvent
         logger.warning(f"Progress reporter 调用失败: {type(e).__name__}: {e}")
 
 
-async def _collect_progress(stream, reporter: ProgressReporter | None) -> None:
+async def _collect_progress(stream, reporter: ProgressReporter | None) -> None:  # noqa: C901
     """消费 astream_events v3 的三个 projection，生成 ProgressEvent。
 
     独立任务运行，异常不传播到 output 收集路径。
