@@ -314,7 +314,7 @@ def _ensure_dir(path: str) -> str:
 def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBackend:
     workspace_dir = _ensure_dir(os.path.join(working_dir, "workspaces", workspace_key))
     skills_dir = _ensure_dir(os.path.join(working_dir, "skills"))
-    memory_dir = _ensure_dir(os.path.join(working_dir, f"memory/{workspace_key}"))
+    memory_dir = _ensure_dir(os.path.join(working_dir, "memory", workspace_key))
     agents_md = os.path.join(memory_dir, "AGENTS.md")
     if not os.path.exists(agents_md):
         try:
@@ -467,6 +467,7 @@ class FrontierCognitive:
         thread_id_override: uuid.UUID | str | None = None,
         wake_word: str | None = None,
         group_member_role: str | None = None,
+        progress_reporter: ProgressReporter | None = None,
     ):
         model_kwargs: dict = {
             "model": EnvConfig.ADVAN_MODEL,
@@ -556,10 +557,16 @@ class FrontierCognitive:
                 "image_inputs": image_inputs or [],
                 "video_inputs": video_inputs or [],
             }
-            response = await agent.ainvoke(
-                input=input_data,
+            stream = agent.astream_events(
+                input_data,
                 config=config,
+                version="v3",
             )
+            progress_task = asyncio.create_task(
+                _collect_progress(stream, progress_reporter)
+            )
+            response = await stream.output
+            await progress_task
         except Exception as e:
             # 其他意外错误，记录详细信息
             logger.error(f"❌ Agent执行出现意外错误 用户{user_id}: {type(e).__name__}")
