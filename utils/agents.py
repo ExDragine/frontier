@@ -558,7 +558,7 @@ class FrontierCognitive:
                 "image_inputs": image_inputs or [],
                 "video_inputs": video_inputs or [],
             }
-            stream = agent.astream_events(
+            stream = await agent.astream_events(
                 input_data,
                 config=config,
                 version="v3",

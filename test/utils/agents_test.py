@@ -310,7 +310,7 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     from utils import agents
 
     class DummyAgent:
-        def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, version=None):
             captured["payload"] = payload
             captured["config"] = config
             return _FakeStream(
@@ -377,7 +377,7 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     captured = {}
 
     class DummyAgent:
-        def astream_events(self, input=None, config=None, version=None):
+        async def astream_events(self, input=None, config=None, version=None):
             captured["payload"] = input
             captured["config"] = config
             return _FakeStream(
@@ -430,7 +430,7 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
     captured = {}
 
     class DummyAgent:
-        def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, version=None):
             captured["payload"] = payload
             captured["config"] = config
             return _FakeStream(
@@ -471,7 +471,7 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
     captured = {}
 
     class DummyAgent:
-        def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, version=None):
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -516,7 +516,7 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
     from utils import agents
 
     class DummyAgent:
-        def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, version=None):
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -561,7 +561,7 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
     from utils import agents
 
     class DummyAgent:
-        def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, version=None):
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -859,7 +859,7 @@ class TestChatAgentStreaming:
         })
 
         mock_agent = MagicMock()
-        mock_agent.astream_events = MagicMock(return_value=mock_stream)
+        mock_agent.astream_events = AsyncMock(return_value=mock_stream)
 
         monkeypatch.setattr(agents_mod, "create_deep_agent", MagicMock(return_value=mock_agent))
         monkeypatch.setattr(agents_mod, "_build_agent_backend", MagicMock())
@@ -912,7 +912,7 @@ class TestChatAgentStreaming:
         mock_stream.output = _delayed_output()
 
         mock_agent = MagicMock()
-        mock_agent.astream_events = MagicMock(return_value=mock_stream)
+        mock_agent.astream_events = AsyncMock(return_value=mock_stream)
 
         collector_called: list = []
 
@@ -955,7 +955,7 @@ class TestChatAgentStreaming:
         mock_stream.output.set_exception(RuntimeError("agent failed"))
 
         mock_agent = MagicMock()
-        mock_agent.astream_events = MagicMock(return_value=mock_stream)
+        mock_agent.astream_events = AsyncMock(return_value=mock_stream)
 
         monkeypatch.setattr(agents_mod, "create_deep_agent", MagicMock(return_value=mock_agent))
         monkeypatch.setattr(agents_mod, "_build_agent_backend", MagicMock())
