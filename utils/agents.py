@@ -567,7 +567,7 @@ class FrontierCognitive:
                 _collect_progress(stream, progress_reporter)
             )
             try:
-                response = await stream.output
+                response = await stream.output()
             finally:
                 progress_task.cancel()
                 try:

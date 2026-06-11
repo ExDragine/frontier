@@ -34,11 +34,13 @@ class _AsyncIter:
 
 
 class _FakeStream:
-    """Minimal astream_events v3 return-object mock — exposes .output awaitable."""
+    """Minimal astream_events v3 return-object mock — exposes .output() async method."""
 
     def __init__(self, result: dict):
-        self.output = asyncio.Future()
-        self.output.set_result(result)
+        self._output_result = result
+
+    async def output(self):
+        return self._output_result
 
 
 @pytest.mark.asyncio
@@ -848,9 +850,7 @@ class TestChatAgentStreaming:
 
         # Mock create_deep_agent 返回的 agent
         mock_stream = MagicMock()
-        # stream.output 返回最终 state
-        mock_stream.output = asyncio.Future()
-        mock_stream.output.set_result({
+        mock_stream.output = AsyncMock(return_value={
             "messages": [
                 type("FakeAIMsg", (), {"type": "ai", "text": "hello", "content": "hello"})(),
             ],
@@ -899,17 +899,12 @@ class TestChatAgentStreaming:
         }
 
         mock_stream = MagicMock()
-        # 使用 sleep 延迟的 output，让 progress_task 有机会执行
-        mock_stream.output = asyncio.Future()
-        mock_stream.output.set_result(mock_agent_output)
-        # 挂载一个小的 sleep，确保 progress task 有机会启动
-        _orig_output = mock_stream.output
-
+        # output 现在是 async method；用 async def 函数直接赋值
         async def _delayed_output():
             await asyncio.sleep(0)
-            return await _orig_output
+            return mock_agent_output
 
-        mock_stream.output = _delayed_output()
+        mock_stream.output = _delayed_output
 
         mock_agent = MagicMock()
         mock_agent.astream_events = AsyncMock(return_value=mock_stream)
@@ -951,8 +946,7 @@ class TestChatAgentStreaming:
         import utils.agents as agents_mod
 
         mock_stream = MagicMock()
-        mock_stream.output = asyncio.Future()
-        mock_stream.output.set_exception(RuntimeError("agent failed"))
+        mock_stream.output = AsyncMock(side_effect=RuntimeError("agent failed"))
 
         mock_agent = MagicMock()
         mock_agent.astream_events = AsyncMock(return_value=mock_stream)
