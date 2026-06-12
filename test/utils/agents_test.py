@@ -667,24 +667,7 @@ class TestEmitProgress:
 
 
 class TestCollectProgress:
-    """_collect_progress 消费 astream_events v3 projection 的测试。
-
-    通过 monkeypatch 跳过 signal_llm 调用，避免每个测试等待 1.5s 超时。
-    """
-
-    @pytest.fixture(autouse=True)
-    def _patch_natural_messages(self, monkeypatch):
-        """用同步模板函数替换 signal_llm 调用，加速测试。"""
-        import utils.agents as agents_mod
-
-        async def _fast_tool(name: str) -> str:
-            return f"正在调用 {name}…"
-
-        async def _fast_subagent(name: str) -> str:
-            return f"{name} 已启动"
-
-        monkeypatch.setattr(agents_mod, "_natural_tool_message", _fast_tool)
-        monkeypatch.setattr(agents_mod, "_natural_subagent_message", _fast_subagent)
+    """_collect_progress 消费 astream_events v3 projection 的测试。"""
 
     @staticmethod
     def _mock_stream(*, subagents=(), tool_calls=(), messages=()):

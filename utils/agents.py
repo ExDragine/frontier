@@ -22,24 +22,18 @@ from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_quickjs import CodeInterpreterMiddleware
 from nonebot import logger
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from tools import agent_tools
 from utils.configs import EnvConfig, information
 from utils.llm_factory import create_llm, model_supports
 from utils.message import extract_message_text
-from utils.signal_llm import SignalLLM
+from utils.progress_messages import subagent_message as _subagent_message, tool_message as _tool_message
 from utils.staged_artifacts import extract_staged_artifact_ids, load_staged_artifact, strip_staged_artifact_handoffs
 
 UniMessage = None
 
 ProgressReporter = Callable[["ProgressEvent"], Awaitable[None]]
-
-
-class ProgressMessageText(BaseModel):
-    """SignalLLM 生成的自然语言进度消息。"""
-
-    text: str
 
 
 @dataclass
@@ -178,62 +172,10 @@ async def _emit_progress(reporter: ProgressReporter | None, event: ProgressEvent
         logger.warning(f"Progress reporter 调用失败: {type(e).__name__}: {e}")
 
 
-async def _natural_tool_message(tool_name: str) -> str | None:
-    """使用 SignalLLM 生成自然的中文工具调用描述。
-
-    成功时返回 4-40 字的中文描述；SignalLLM 超时/出错时返回 None，
-    调用方应静默跳过该进度事件。
-    """
-    try:
-        coro = SignalLLM().structured(
-            system_prompt=(
-                "你是进度播报优化器。输入工具名，输出一句 8-16 字的中文进度描述，"
-                "调皮幽默。只输出 JSON，不输出其他内容。"
-            ),
-            user_prompt=tool_name,
-            schema=ProgressMessageText,
-            method="json_mode",
-            temperature=1,
-            extra_body={"thinking": {"type": "disabled"}},
-        )
-        result = await asyncio.wait_for(coro, timeout=5)
-        text = result.text.strip()
-        return text if 4 <= len(text) <= 40 else None
-    except Exception:
-        return None
-
-
-async def _natural_subagent_message(subagent_name: str) -> str | None:
-    """使用 SignalLLM 生成自然的中文子代理启动描述。
-
-    成功时返回 4-40 字的中文描述；SignalLLM 超时/出错时返回 None，
-    调用方应静默跳过该进度事件。
-    """
-    try:
-        coro = SignalLLM().structured(
-            system_prompt=(
-                "你是进度播报优化器。输入子代理名，输出一句 8-16 字的中文启动描述，"
-                "调皮幽默。只输出 JSON，不输出其他内容。"
-            ),
-            user_prompt=subagent_name,
-            schema=ProgressMessageText,
-            method="json_mode",
-            temperature=1,
-            extra_body={"thinking": {"type": "disabled"}},
-        )
-        result = await asyncio.wait_for(coro, timeout=5)
-        text = result.text.strip()
-        return text if 4 <= len(text) <= 40 else None
-    except Exception:
-        return None
-
-
 async def _collect_progress(stream, reporter: ProgressReporter | None) -> None:  # noqa: C901
     """消费 astream_events v3 的三个 projection，生成 ProgressEvent。
 
-    优化点:
-    - 连续重复工具/子代理去重 — 相同 name 连续出现时只播报第一条。
-    - 使用 SignalLLM 生成自然中文描述，超时 1.5s 回落模板。
+    优化点: 连续重复工具/子代理去重 — 相同 name 连续出现时只播报第一条。
 
     独立任务运行，异常不传播到 output 收集路径。
     每个 projection consumer 有独立的 try/except 保护。
@@ -245,13 +187,11 @@ async def _collect_progress(stream, reporter: ProgressReporter | None) -> None: 
             if subagent.name == last_subagent_name:
                 continue
             last_subagent_name = subagent.name
-            if (message := await _natural_subagent_message(subagent.name)) is None:
-                continue
             await _emit_progress(
                 reporter,
                 ProgressEvent(
                     type="subagent_start",
-                    message=message,
+                    message=_subagent_message(subagent.name),
                     detail={"name": subagent.name},
                 ),
             )
@@ -262,13 +202,11 @@ async def _collect_progress(stream, reporter: ProgressReporter | None) -> None: 
             if tool_call.tool_name == last_tool_name:
                 continue
             last_tool_name = tool_call.tool_name
-            if (message := await _natural_tool_message(tool_call.tool_name)) is None:
-                continue
             await _emit_progress(
                 reporter,
                 ProgressEvent(
                     type="tool_call",
-                    message=message,
+                    message=_tool_message(tool_call.tool_name),
                     detail={"tool_name": tool_call.tool_name},
                 ),
             )
