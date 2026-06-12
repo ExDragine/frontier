@@ -79,29 +79,10 @@ def _group_member_role(event: MessageEvent) -> str | None:
 
 
 async def _private_chat_reporter(event: ProgressEvent) -> None:
-    """私聊场景的进度事件消费者 —— 向用户发送当前 Agent 正在做什么。
-
-    消费的事件：
-    - thinking → "🤔 正在思考…"
-    - subagent_start → "🔍 {name} 已启动"
-    - tool_call → "🔧 正在调用工具：{tool_name}"
-
-    静默的事件（理由）：
-    - subagent_done / tool_result → 避免冗余和内部数据泄露
-    - text_delta → markdown 有结构，拆开发送会破坏格式
-    - done → 最终结果由现有 send_messages 流程处理
-    """
+    """私聊场景的进度事件消费者 —— 向用户发送当前 Agent 正在做什么。"""
     match event.type:
-        case "thinking":
-            await UniMessage.text("🤔 正在思考…").send()
-        case "subagent_start":
-            await UniMessage.text(f"🔍 {event.message}").send()
-        case "tool_call":
-            await UniMessage.text(f"🔧 {event.message}").send()
-        case "subagent_done" | "tool_result" | "text_delta" | "done":
-            pass
-        case _:
-            pass  # 未来新增的事件类型默认静默
+        case "thinking" | "subagent_start" | "tool_call":
+            await UniMessage.text(event.message).send()
 
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
