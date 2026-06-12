@@ -178,32 +178,12 @@ async def _emit_progress(reporter: ProgressReporter | None, event: ProgressEvent
         logger.warning(f"Progress reporter 调用失败: {type(e).__name__}: {e}")
 
 
-# ── 工具/子代理名 → 自然语言描述模板（signal_llm 超时时的回退） ──
-_TOOL_MESSAGE_TEMPLATES: dict[str, str] = {
-    "search": "正在搜索相关信息…",
-    "read_file": "正在读取文件…",
-    "write_file": "正在写入文件…",
-    "edit_file": "正在编辑文件…",
-    "execute": "正在执行代码…",
-    "shell": "正在执行命令…",
-}
+async def _natural_tool_message(tool_name: str) -> str | None:
+    """使用 SignalLLM 生成自然的中文工具调用描述。
 
-_SUBAGENT_MESSAGE_TEMPLATES: dict[str, str] = {
-    "code-explorer": "启动代码探索子代理…",
-    "code-reviewer": "启动代码审查子代理…",
-    "feature-dev": "启动功能开发子代理…",
-}
-
-
-async def _natural_tool_message(tool_name: str) -> str:
-    """使用 SignalLLM 生成自然的中文工具调用描述，超时回退到模板。
-
-    调用方应使用此返回值构造 ProgressEvent.message。
+    成功时返回 4-40 字的中文描述；SignalLLM 超时/出错时返回 None，
+    调用方应静默跳过该进度事件。
     """
-    # 先检查模板快速路径
-    template = _TOOL_MESSAGE_TEMPLATES.get(tool_name)
-    fallback = template or f"正在调用 {tool_name}…"
-
     try:
         coro = SignalLLM().structured(
             system_prompt=(
@@ -216,18 +196,19 @@ async def _natural_tool_message(tool_name: str) -> str:
             temperature=1,
             extra_body={"thinking": {"type": "disabled"}},
         )
-        result = await asyncio.wait_for(coro, timeout=1.5)
+        result = await asyncio.wait_for(coro, timeout=5)
         text = result.text.strip()
-        return text if 4 <= len(text) <= 40 else fallback
+        return text if 4 <= len(text) <= 40 else None
     except Exception:
-        return fallback
+        return None
 
 
-async def _natural_subagent_message(subagent_name: str) -> str:
-    """使用 SignalLLM 生成自然的中文子代理启动描述，超时回退到模板。"""
-    template = _SUBAGENT_MESSAGE_TEMPLATES.get(subagent_name)
-    fallback = template or f"{subagent_name} 已启动"
+async def _natural_subagent_message(subagent_name: str) -> str | None:
+    """使用 SignalLLM 生成自然的中文子代理启动描述。
 
+    成功时返回 4-40 字的中文描述；SignalLLM 超时/出错时返回 None，
+    调用方应静默跳过该进度事件。
+    """
     try:
         coro = SignalLLM().structured(
             system_prompt=(
@@ -240,11 +221,11 @@ async def _natural_subagent_message(subagent_name: str) -> str:
             temperature=1,
             extra_body={"thinking": {"type": "disabled"}},
         )
-        result = await asyncio.wait_for(coro, timeout=1.5)
+        result = await asyncio.wait_for(coro, timeout=5)
         text = result.text.strip()
-        return text if 4 <= len(text) <= 40 else fallback
+        return text if 4 <= len(text) <= 40 else None
     except Exception:
-        return fallback
+        return None
 
 
 async def _collect_progress(stream, reporter: ProgressReporter | None) -> None:  # noqa: C901
@@ -264,11 +245,13 @@ async def _collect_progress(stream, reporter: ProgressReporter | None) -> None: 
             if subagent.name == last_subagent_name:
                 continue
             last_subagent_name = subagent.name
+            if (message := await _natural_subagent_message(subagent.name)) is None:
+                continue
             await _emit_progress(
                 reporter,
                 ProgressEvent(
                     type="subagent_start",
-                    message=await _natural_subagent_message(subagent.name),
+                    message=message,
                     detail={"name": subagent.name},
                 ),
             )
@@ -279,11 +262,13 @@ async def _collect_progress(stream, reporter: ProgressReporter | None) -> None: 
             if tool_call.tool_name == last_tool_name:
                 continue
             last_tool_name = tool_call.tool_name
+            if (message := await _natural_tool_message(tool_call.tool_name)) is None:
+                continue
             await _emit_progress(
                 reporter,
                 ProgressEvent(
                     type="tool_call",
-                    message=await _natural_tool_message(tool_call.tool_name),
+                    message=message,
                     detail={"tool_name": tool_call.tool_name},
                 ),
             )

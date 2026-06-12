@@ -678,10 +678,10 @@ class TestCollectProgress:
         import utils.agents as agents_mod
 
         async def _fast_tool(name: str) -> str:
-            return agents_mod._TOOL_MESSAGE_TEMPLATES.get(name) or f"正在调用 {name}…"
+            return f"正在调用 {name}…"
 
         async def _fast_subagent(name: str) -> str:
-            return agents_mod._SUBAGENT_MESSAGE_TEMPLATES.get(name) or f"{name} 已启动"
+            return f"{name} 已启动"
 
         monkeypatch.setattr(agents_mod, "_natural_tool_message", _fast_tool)
         monkeypatch.setattr(agents_mod, "_natural_subagent_message", _fast_subagent)
