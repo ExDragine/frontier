@@ -22,17 +22,24 @@ from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_quickjs import CodeInterpreterMiddleware
 from nonebot import logger
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from tools import agent_tools
 from utils.configs import EnvConfig, information
 from utils.llm_factory import create_llm, model_supports
 from utils.message import extract_message_text
+from utils.signal_llm import SignalLLM
 from utils.staged_artifacts import extract_staged_artifact_ids, load_staged_artifact, strip_staged_artifact_handoffs
 
 UniMessage = None
 
 ProgressReporter = Callable[["ProgressEvent"], Awaitable[None]]
+
+
+class ProgressMessageText(BaseModel):
+    """SignalLLM 生成的自然语言进度消息。"""
+
+    text: str
 
 
 @dataclass
@@ -54,6 +61,7 @@ class ProgressEvent:
     ]
     message: str  # 用户可读的中文描述
     detail: dict[str, Any] | None = None  # 结构化附加信息
+
 
 VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 SKILLS_BACKEND_PATH = "/skills"
@@ -170,30 +178,112 @@ async def _emit_progress(reporter: ProgressReporter | None, event: ProgressEvent
         logger.warning(f"Progress reporter 调用失败: {type(e).__name__}: {e}")
 
 
+# ── 工具/子代理名 → 自然语言描述模板（signal_llm 超时时的回退） ──
+_TOOL_MESSAGE_TEMPLATES: dict[str, str] = {
+    "search": "正在搜索相关信息…",
+    "read_file": "正在读取文件…",
+    "write_file": "正在写入文件…",
+    "edit_file": "正在编辑文件…",
+    "execute": "正在执行代码…",
+    "shell": "正在执行命令…",
+}
+
+_SUBAGENT_MESSAGE_TEMPLATES: dict[str, str] = {
+    "code-explorer": "启动代码探索子代理…",
+    "code-reviewer": "启动代码审查子代理…",
+    "feature-dev": "启动功能开发子代理…",
+}
+
+
+async def _natural_tool_message(tool_name: str) -> str:
+    """使用 SignalLLM 生成自然的中文工具调用描述，超时回退到模板。
+
+    调用方应使用此返回值构造 ProgressEvent.message。
+    """
+    # 先检查模板快速路径
+    template = _TOOL_MESSAGE_TEMPLATES.get(tool_name)
+    fallback = template or f"正在调用 {tool_name}…"
+
+    try:
+        coro = SignalLLM().structured(
+            system_prompt=(
+                "你是进度播报优化器。输入工具名，输出一句 8-16 字的中文进度描述，"
+                "调皮幽默。只输出 JSON，不输出其他内容。"
+            ),
+            user_prompt=tool_name,
+            schema=ProgressMessageText,
+            method="json_mode",
+            temperature=1,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        result = await asyncio.wait_for(coro, timeout=1.5)
+        text = result.text.strip()
+        return text if 4 <= len(text) <= 40 else fallback
+    except Exception:
+        return fallback
+
+
+async def _natural_subagent_message(subagent_name: str) -> str:
+    """使用 SignalLLM 生成自然的中文子代理启动描述，超时回退到模板。"""
+    template = _SUBAGENT_MESSAGE_TEMPLATES.get(subagent_name)
+    fallback = template or f"{subagent_name} 已启动"
+
+    try:
+        coro = SignalLLM().structured(
+            system_prompt=(
+                "你是进度播报优化器。输入子代理名，输出一句 8-16 字的中文启动描述，"
+                "调皮幽默。只输出 JSON，不输出其他内容。"
+            ),
+            user_prompt=subagent_name,
+            schema=ProgressMessageText,
+            method="json_mode",
+            temperature=1,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        result = await asyncio.wait_for(coro, timeout=1.5)
+        text = result.text.strip()
+        return text if 4 <= len(text) <= 40 else fallback
+    except Exception:
+        return fallback
+
+
 async def _collect_progress(stream, reporter: ProgressReporter | None) -> None:  # noqa: C901
     """消费 astream_events v3 的三个 projection，生成 ProgressEvent。
+
+    优化点:
+    - 连续重复工具/子代理去重 — 相同 name 连续出现时只播报第一条。
+    - 使用 SignalLLM 生成自然中文描述，超时 1.5s 回落模板。
 
     独立任务运行，异常不传播到 output 收集路径。
     每个 projection consumer 有独立的 try/except 保护。
     """
+
     async def consume_subagents() -> None:
+        last_subagent_name: str | None = None
         async for subagent in stream.subagents:
+            if subagent.name == last_subagent_name:
+                continue
+            last_subagent_name = subagent.name
             await _emit_progress(
                 reporter,
                 ProgressEvent(
                     type="subagent_start",
-                    message=f"{subagent.name} 已启动",
+                    message=await _natural_subagent_message(subagent.name),
                     detail={"name": subagent.name},
                 ),
             )
 
     async def consume_tool_calls() -> None:
+        last_tool_name: str | None = None
         async for tool_call in stream.tool_calls:
+            if tool_call.tool_name == last_tool_name:
+                continue
+            last_tool_name = tool_call.tool_name
             await _emit_progress(
                 reporter,
                 ProgressEvent(
                     type="tool_call",
-                    message=f"正在调用工具：{tool_call.tool_name}",
+                    message=await _natural_tool_message(tool_call.tool_name),
                     detail={"tool_name": tool_call.tool_name},
                 ),
             )
@@ -214,7 +304,7 @@ async def _collect_progress(stream, reporter: ProgressReporter | None) -> None: 
                 while "\n\n" in text_buffer:
                     idx = text_buffer.index("\n\n")
                     paragraph = text_buffer[:idx].strip()
-                    text_buffer = text_buffer[idx + 2:]
+                    text_buffer = text_buffer[idx + 2 :]
                     if paragraph:
                         await _emit_progress(
                             reporter,
@@ -563,9 +653,7 @@ class FrontierCognitive:
                 config=config,
                 version="v3",
             )
-            progress_task = asyncio.create_task(
-                _collect_progress(stream, progress_reporter)
-            )
+            progress_task = asyncio.create_task(_collect_progress(stream, progress_reporter))
             try:
                 response = await stream.output()
             finally:

@@ -667,7 +667,24 @@ class TestEmitProgress:
 
 
 class TestCollectProgress:
-    """_collect_progress 消费 astream_events v3 projection 的测试。"""
+    """_collect_progress 消费 astream_events v3 projection 的测试。
+
+    通过 monkeypatch 跳过 signal_llm 调用，避免每个测试等待 1.5s 超时。
+    """
+
+    @pytest.fixture(autouse=True)
+    def _patch_natural_messages(self, monkeypatch):
+        """用同步模板函数替换 signal_llm 调用，加速测试。"""
+        import utils.agents as agents_mod
+
+        async def _fast_tool(name: str) -> str:
+            return agents_mod._TOOL_MESSAGE_TEMPLATES.get(name) or f"正在调用 {name}…"
+
+        async def _fast_subagent(name: str) -> str:
+            return agents_mod._SUBAGENT_MESSAGE_TEMPLATES.get(name) or f"{name} 已启动"
+
+        monkeypatch.setattr(agents_mod, "_natural_tool_message", _fast_tool)
+        monkeypatch.setattr(agents_mod, "_natural_subagent_message", _fast_subagent)
 
     @staticmethod
     def _mock_stream(*, subagents=(), tool_calls=(), messages=()):
@@ -753,6 +770,62 @@ class TestCollectProgress:
         ]
         assert len(tool_calls) == 1
         assert tool_calls[0][0][0].detail["tool_name"] == "web_search"
+
+    @pytest.mark.asyncio
+    async def test_dedup_consecutive_same_tool_calls(self):
+        """连续调用同一工具时，只发送第一条进度事件。"""
+        from unittest.mock import MagicMock
+
+        from utils.agents import _collect_progress
+
+        tc1 = MagicMock()
+        tc1.tool_name = "search"
+        tc2 = MagicMock()
+        tc2.tool_name = "search"
+        tc3 = MagicMock()
+        tc3.tool_name = "search"
+        tc4 = MagicMock()
+        tc4.tool_name = "execute"
+
+        stream = self._mock_stream(tool_calls=[tc1, tc2, tc3, tc4])
+        reporter = MagicMock()
+
+        await _collect_progress(stream, reporter)
+
+        tool_calls = [
+            c for c in reporter.call_args_list
+            if c[0][0].type == "tool_call"
+        ]
+        assert len(tool_calls) == 2, f"Expected 2 unique tool calls, got {len(tool_calls)}"
+        assert tool_calls[0][0][0].detail["tool_name"] == "search"
+        assert tool_calls[1][0][0].detail["tool_name"] == "execute"
+
+    @pytest.mark.asyncio
+    async def test_dedup_consecutive_same_subagents(self):
+        """连续启动同一子代理时，只发送第一条进度事件。"""
+        from unittest.mock import MagicMock
+
+        from utils.agents import _collect_progress
+
+        sa1 = MagicMock()
+        sa1.name = "coder"
+        sa2 = MagicMock()
+        sa2.name = "coder"
+        sa3 = MagicMock()
+        sa3.name = "reviewer"
+
+        stream = self._mock_stream(subagents=[sa1, sa2, sa3])
+        reporter = MagicMock()
+
+        await _collect_progress(stream, reporter)
+
+        subagent_calls = [
+            c for c in reporter.call_args_list
+            if c[0][0].type == "subagent_start"
+        ]
+        assert len(subagent_calls) == 2, f"Expected 2 unique subagent events, got {len(subagent_calls)}"
+        assert subagent_calls[0][0][0].detail["name"] == "coder"
+        assert subagent_calls[1][0][0].detail["name"] == "reviewer"
 
     @pytest.mark.asyncio
     async def test_one_consumer_failure_does_not_block_others(self):
