@@ -197,14 +197,6 @@ async def test_deepseek_balance_tool_reports_http_error(load_tool_module, monkey
     assert result == "获取 DeepSeek API 余额失败: network down"
 
 
-def test_tavily_objects_created(load_tool_module):
-    mod = load_tool_module("tavily")
-    assert hasattr(mod, "tavily_search")
-    assert hasattr(mod, "tavily_extract")
-    assert hasattr(mod, "tavily_crawl")
-    assert hasattr(mod, "tavily_map")
-
-
 def test_mcp_get_tools(load_tool_module, monkeypatch):
     Path("mcp.json").write_text("{}", encoding="utf-8")
     mod = load_tool_module("mcp_client")
@@ -241,7 +233,6 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "milky_system": types.SimpleNamespace(get_login_info=FakeBaseTool("get_login_info")),
         "deepseek_balance": types.SimpleNamespace(get_deepseek_api_balance=FakeBaseTool("get_deepseek_api_balance")),
         "arxiv": types.SimpleNamespace(get_arxiv_paper_info=FakeBaseTool("get_arxiv_paper_info")),
-        "tavily": types.SimpleNamespace(tavily_search=FakeBaseTool("tavily_search")),
         "aurora": types.SimpleNamespace(aurora_live=FakeBaseTool("aurora_live")),
         "earthquake": types.SimpleNamespace(get_china_earthquake=FakeBaseTool("get_china_earthquake")),
         "paint": types.SimpleNamespace(get_paint=FakeBaseTool("get_paint")),
@@ -292,7 +283,6 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_paint",
         "get_video",
         "mcp_tool",
-        "tavily_search",
         "search_messages",
         "mystery_tool",
         "get_arxiv_paper_info",
@@ -300,12 +290,12 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_china_earthquake",
         "iching_divination",
     }
-    assert {tool.name for tool in groups["research"]} == {"get_arxiv_paper_info", "tavily_search"}
+    assert {tool.name for tool in groups["research"]} == {"get_arxiv_paper_info"}
     assert {tool.name for tool in groups["astro"]} == {"aurora_live"}
     assert {tool.name for tool in groups["earth"]} == {"get_china_earthquake"}
     assert {tool.name for tool in groups["media"]} == set()
     assert {tool.name for tool in groups["memory"]} == {"search_messages"}
     assert {tool.name for tool in groups["divination"]} == {"iching_divination"}
     assert {tool.name for tool in groups["external"]} == {"mcp_tool"}
-    assert {tool.name for tool in module.agent_tools.web_tools} == {"tavily_search"}
+    assert {tool.name for tool in module.agent_tools.web_tools} == set()
     assert "mcp_tool" in {tool.name for tool in module.agent_tools.all_tools}

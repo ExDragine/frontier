@@ -12,7 +12,7 @@ Move most local tools out of the main deep agent tool list and into domain-speci
 
 The first split is module based and intentionally conservative:
 
-- `research`: `arxiv`, `bilibili`, `wikipedia`, `tavily`
+- `research`: `arxiv`, `bilibili`, `wikipedia`
 - `astro`: `aurora`, `comet`, `heavens_above`, `rocket`, `satellite`, `space_weather`
 - `earth`: `earthquake`, `radar`, `weather`
 - `main`: `adapter`, `calculator`, `reminder`, `paint`, `video`

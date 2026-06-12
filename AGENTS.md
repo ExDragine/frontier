@@ -78,8 +78,8 @@ QQ 消息 → NoneBot2 on_message(priority=10)
 
 | 分组 | 工具 | 说明 |
 |------|------|------|
-| **main** | `adapter`, `calculator`, `milky_*`, `paint`, `video`, `memory`, `reminder`, `scheduled_task`, `deepseek_balance` | 平台操作、媒体生成、记忆、定时任务 |
-| **research** | `tavily`, `wikipedia`, `arxiv`, `bilibili` | 网络搜索与学术检索 |
+| **main** | `adapter`, `milky_*`, `paint`, `video`, `memory`, `reminder`, `scheduled_task`, `deepseek_balance` | 平台操作、媒体生成、记忆、定时任务 |
+| **research** | `wikipedia`, `arxiv`, `bilibili` | 网络搜索与学术检索 |
 | **astro** | `aurora`, `comet`, `heavens_above`, `rocket`, `satellite`, `space_weather` | 星空/天文/卫星/火箭 |
 | **earth** | `earthquake`, `radar`, `weather` | 地震、雷达、天气 |
 | **memory** | `memory` | 长期记忆读写 |

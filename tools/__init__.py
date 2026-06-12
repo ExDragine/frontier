@@ -9,9 +9,6 @@ from .mcp_client import mcp_get_tools
 # 跳过不应暴露给 Agent 的模块
 _EXCLUDED_MODULES = {"__init__", "mcp_client", "artifact_bridge"}
 
-# 这些模块的工具归入 web_tools 分组
-_WEB_TOOL_MODULES = {"tavily"}
-
 _SUBAGENT_GROUPS = ("research", "astro", "earth", "media", "memory", "divination", "external")
 _ALL_TOOL_GROUPS = ("main", *_SUBAGENT_GROUPS)
 
@@ -27,7 +24,6 @@ _TOOL_MODULE_GROUPS = {
     "reminder": "main",
     "arxiv": "research",
     "bilibili": "research",
-    "tavily": "research",
     "wikipedia": "research",
     "aurora": "astro",
     "comet": "astro",
@@ -69,8 +65,6 @@ def _discover_tools() -> tuple[
         grouped_tools[group].extend(found)
         for tool_obj in found:
             tool_metadata[tool_obj.name] = {"module": mod_info.name, "group": group}
-        if mod_info.name in _WEB_TOOL_MODULES:
-            web_tools.extend(found)
 
     return local_tools, web_tools, grouped_tools, tool_metadata
 

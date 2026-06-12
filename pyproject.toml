@@ -16,7 +16,6 @@ dependencies = [
   "langchain-openai",
   "langchain-mcp-adapters",
   "langchain-huggingface",
-  "langchain-tavily",
   "langchain-chroma",
   "langgraph",
   "deepagents",

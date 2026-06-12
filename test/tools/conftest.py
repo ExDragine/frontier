@@ -125,19 +125,6 @@ def _install_fallback_stubs() -> None:  # noqa: C901
         dotenv.load_dotenv = lambda *args, **kwargs: None
         _install_module("dotenv", dotenv)
 
-    if not _module_exists("langchain_tavily"):
-        tavily = types.ModuleType("langchain_tavily")
-
-        class _Base:
-            def __init__(self, **kwargs):
-                self.kwargs = kwargs
-
-        tavily.TavilySearch = _Base
-        tavily.TavilyExtract = _Base
-        tavily.TavilyCrawl = _Base
-        tavily.TavilyMap = _Base
-        _install_module("langchain_tavily", tavily)
-
     if not _module_exists("langchain_mcp_adapters.client"):
         client_mod = types.ModuleType("langchain_mcp_adapters.client")
 

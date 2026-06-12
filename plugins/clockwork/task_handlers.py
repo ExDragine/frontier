@@ -29,7 +29,7 @@ httpx_client = get_http_client("task_handlers")
 tools = agent_tools.mcp_tools + agent_tools.web_tools
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
-DAILY_NEWS_SEARCH_TOOL_NAMES = {"tavily_search", "web_search_exa"}
+DAILY_NEWS_SEARCH_TOOL_NAMES = {"web_search_exa"}
 
 NEWS_HISTORY_KEY = "daily_news_recent_titles"
 
@@ -41,7 +41,7 @@ async def _load_recent_titles() -> list[str]:
         return []
     try:
         return json.loads(data)
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError, TypeError:
         return []
 
 
@@ -189,9 +189,7 @@ async def build_daily_news_artifacts(
 ) -> DailyNewsArtifacts | None:
     """构建日报素材包、结构化数据和 HTML；不发送消息。"""
     _now_cn, today, period, report_time = daily_news_context(now_cn)
-    system_prompt, user_prompt = daily_news_research_prompts(
-        today, period, report_time, recent_titles
-    )
+    system_prompt, user_prompt = daily_news_research_prompts(today, period, report_time, recent_titles)
 
     material = await assistant_agent(
         system_prompt,
@@ -232,7 +230,6 @@ async def build_daily_news_artifacts(
         payload=payload,
         html=html,
     )
-
 
 
 async def github_post_news(**kwargs):

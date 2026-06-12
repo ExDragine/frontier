@@ -5,15 +5,12 @@ import argparse
 import asyncio
 import datetime
 import json
-import os
 import sys
 import types
 import zoneinfo
 from pathlib import Path
 
-import dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_tavily import TavilySearch
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -56,7 +53,7 @@ EXA_MCP_CONFIG = {
         "transport": "stdio",
     }
 }
-SEARCH_TOOL_NAMES = {"web_search_exa", "tavily_search"}
+SEARCH_TOOL_NAMES = {"web_search_exa"}
 
 
 def _parse_now(value: str | None) -> datetime.datetime | None:
@@ -80,14 +77,6 @@ async def _preview_search_tools(backend: str) -> list:
         selected_tools.extend(
             tool for tool in await mcp_client.get_tools() if str(getattr(tool, "name", "")) in SEARCH_TOOL_NAMES
         )
-
-    if backend in {"tavily", "both"}:
-        dotenv.load_dotenv()
-        tavily_api_key = os.getenv("TAVILY_API_KEY") or os.getenv("tavily_api_key")
-        if tavily_api_key:
-            selected_tools.append(TavilySearch(max_results=10, tavily_api_key=tavily_api_key))
-        elif backend == "tavily":
-            raise RuntimeError("missing TAVILY_API_KEY; add it to the environment or .env before running preview")
 
     if not selected_tools:
         raise RuntimeError(f"no search tools available for backend {backend!r}")
@@ -160,7 +149,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--search-backend",
-        choices=["exa", "tavily", "both"],
+        choices=["exa"],
         default="exa",
         help="Search backend for preview runs.",
     )

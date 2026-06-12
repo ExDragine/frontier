@@ -343,12 +343,10 @@ def test_daily_news_tools_only_expose_search_tools():
         [
             types.SimpleNamespace(name="web_search_exa"),
             types.SimpleNamespace(name="web_fetch_exa"),
-            types.SimpleNamespace(name="tavily_search"),
-            types.SimpleNamespace(name="tavily_extract"),
         ]
     )
 
-    assert {tool.name for tool in selected_tools} == {"web_search_exa", "tavily_search"}
+    assert {tool.name for tool in selected_tools} == {"web_search_exa"}
 
 
 @pytest.mark.asyncio
