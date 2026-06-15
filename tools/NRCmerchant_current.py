@@ -36,7 +36,7 @@ _RARITY_CN = {
 
 httpx_client = get_http_client("nrc_merchant")
 
-# 预警目标商品名称
+# 提醒推送目标商品名称
 ALERT_TARGET_ITEMS = {"国王球", "棱镜球", "炫彩精灵蛋", "祝福项坠", "首领血脉秘药"}
 
 

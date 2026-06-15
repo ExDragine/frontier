@@ -482,7 +482,7 @@ async def happy_new_year(**kwargs):
 
 
 async def nrc_merchant_alert(**kwargs):
-    """远行商人商品预警 - 每天8:00、12:00、16:00、20:00推送。
+    """远行商人商品提醒推送 - 每天8:00、12:00、16:00、20:00推送。
 
     检测目标商品是否上架，有则发提醒文本 + 货架图片，无则静默跳过。
     """
@@ -490,13 +490,13 @@ async def nrc_merchant_alert(**kwargs):
 
     data = await fetch_merchant_data()
     if not data:
-        logger.debug("NRC 商人预警：API 无数据")
+        logger.debug("NRC 商人提醒推送：API 无数据")
         return
 
     items = data.get("items", [])
     hits = [item for item in items if item.get("name") in ALERT_TARGET_ITEMS]
     if not hits:
-        logger.debug("NRC 商人预警：无目标商品上架，静默跳过")
+        logger.debug("NRC 商人提醒推送：无目标商品上架，静默跳过")
         return
 
     hit_names = "、".join(item["name"] for item in hits)
@@ -516,7 +516,7 @@ async def nrc_merchant_alert(**kwargs):
             await msg_img.send(target=Target.group(str(group)))
             groups_sent.append(int(group))
         except Exception as e:
-            logger.error(f"NRC 商人预警推送到群 {group} 失败: {e}")
+            logger.error(f"NRC 商人提醒推送推送到群 {group} 失败: {e}")
 
     return TaskRunResult(
         groups_sent=groups_sent,

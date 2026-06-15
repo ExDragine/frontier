@@ -54,11 +54,11 @@ async def init_task_system():
     # 4. 同步群组配置到 EnvConfig
     await task_manager.initialize()
 
-    # 5. 注册 NRC 远行商人商品预警（每天 8:00、12:00、16:00、20:00）
+    # 5. 注册 NRC 远行商人商品提醒推送（每天 8:00、12:00、16:00、20:00）
     try:
         await task_manager.register_task(
             job_id="nrc_merchant_alert",
-            name="远行商人商品预警",
+            name="远行商人商品提醒推送",
             handler_module="plugins.clockwork.task_handlers",
             handler_function="nrc_merchant_alert",
             trigger_type="cron",
@@ -74,7 +74,7 @@ async def init_task_system():
                 created_from="system",
             ),
         )
-        logger.info("NRC 远行商人商品预警已注册（cron: 8,12,16,20:00 Asia/Shanghai）")
+        logger.info("NRC 远行商人商品提醒推送已注册（cron: 8,12,16,20:00 Asia/Shanghai）")
     except Exception as exc:
         logger.warning(f"注册 NRC 远行商人任务失败（可能已存在）: {exc}")
 
