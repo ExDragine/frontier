@@ -37,6 +37,7 @@ _TOOL_MODULE_GROUPS = {
     "paint": "main",
     "video": "main",
     "memory": "memory",
+    "NRCmerchant_current": "main",
     "iching": "divination",
     "tarot": "divination",
 }

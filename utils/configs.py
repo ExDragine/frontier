@@ -111,6 +111,7 @@ class EnvConfig:
     EARTH_NOW_GROUP_ID: list = message.get("earth_now_group_id", [])
     NEWS_SUMMARY_GROUP_ID: list = message.get("news_summary_group_id", [])
     EARTHQUAKE_GROUP_ID: list = message.get("earthquake_group_id", [])
+    NRC_MERCHANT_GROUP_ID: list = message.get("nrc_merchant_group_id", [])
 
     QUERY_MESSAGE_NUMBERS: int = database["query_message_numbers"]
 
@@ -265,6 +266,7 @@ class EnvConfig:
         cls.EARTH_NOW_GROUP_ID = msg.get("earth_now_group_id", [])
         cls.NEWS_SUMMARY_GROUP_ID = msg.get("news_summary_group_id", [])
         cls.EARTHQUAKE_GROUP_ID = msg.get("earthquake_group_id", [])
+        cls.NRC_MERCHANT_GROUP_ID = msg.get("nrc_merchant_group_id", [])
 
         # ── 杂项 ──
         cls.QUERY_MESSAGE_NUMBERS = config.get("database", {}).get("query_message_numbers", cls.QUERY_MESSAGE_NUMBERS)
