@@ -27,9 +27,7 @@ body {
 #render-content {
     width: 480px;
     margin: 0 auto;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+    padding-bottom: 16px;
 }
 
 /* ── Header ── */
@@ -65,7 +63,6 @@ body {
 
 /* ── Main ── */
 .eggs-main {
-    flex: 1;
     padding: var(--stack-md) 16px;
     display: flex;
     flex-direction: column;
