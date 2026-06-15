@@ -38,6 +38,7 @@ _TOOL_MODULE_GROUPS = {
     "video": "main",
     "memory": "memory",
     "NRCmerchant_current": "main",
+    "NRCeggs_details": "main",
     "iching": "divination",
     "tarot": "divination",
 }

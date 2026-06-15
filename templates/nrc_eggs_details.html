@@ -1,0 +1,45 @@
+<header class="eggs-header">
+    <div class="eggs-header-inner">
+        <img alt="洛克王国孵蛋图标" class="eggs-header-icon" referrerpolicy="no-referrer" src="https://images.xiaopiaa.com/static/storage/20260419/5ca94fca1a6d97e38014a57e45594377.png">
+        <h1 class="eggs-header-title">洛克王国孵蛋查询</h1>
+    </div>
+</header>
+
+<main class="eggs-main">
+    {% if items %}
+    {% for item in items %}
+    <div class="eggs-card" style="--prob-color: {{ item.prob_color }}; --rank-bg: {{ item.rank_bg }}; --rank-fg: {{ item.rank_fg }}; --danzu-color: {{ item.danzu_color }}; --prob-width: {{ item.prob_width }}%;">
+        <span class="eggs-rank">{{ item.rank }}</span>
+        <div class="eggs-card-body">
+            <div class="eggs-image-wrap">
+                {% if item.image_url %}
+                <img alt="{{ item.name }}预览" class="eggs-image" referrerpolicy="no-referrer" src="{{ item.image_url }}">
+                {% else %}
+                <span class="eggs-no-image">暂无图片</span>
+                {% endif %}
+            </div>
+            <div class="eggs-info">
+                <div class="eggs-info-top">
+                    <div class="eggs-name-row">
+                        <h3 class="eggs-name">{{ item.name }}</h3>
+                        <span class="eggs-danzu">{{ item.danzu_display }}</span>
+                    </div>
+                    <div class="eggs-prob-text">
+                        <span class="eggs-prob-label">孵化概率</span>
+                        <span class="eggs-prob-value">{{ item.prob_display }}%</span>
+                    </div>
+                </div>
+                <div class="eggs-progress">
+                    <div class="eggs-progress-fill"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="eggs-empty">
+        <p class="eggs-empty-title">未找到匹配的精灵蛋孵化结果</p>
+        <p class="eggs-empty-desc">请检查直径和重量数据是否正确</p>
+    </div>
+    {% endif %}
+</main>
