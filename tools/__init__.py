@@ -40,6 +40,7 @@ _TOOL_MODULE_GROUPS = {
     "NRCmerchant_current": "main",
     "NRCeggs_details": "main",
     "NRCeggs_groups": "main",
+    "NRCevent_calendar": "main",
     "iching": "divination",
     "tarot": "divination",
 }
