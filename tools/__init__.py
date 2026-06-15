@@ -39,6 +39,7 @@ _TOOL_MODULE_GROUPS = {
     "memory": "memory",
     "NRCmerchant_current": "main",
     "NRCeggs_details": "main",
+    "NRCeggs_groups": "main",
     "iching": "divination",
     "tarot": "divination",
 }

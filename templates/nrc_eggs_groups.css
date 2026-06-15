@@ -1,0 +1,457 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --surface: #ffffff;
+    --surface-container-lowest: #ffffff;
+    --surface-container-low: #eef5f7;
+    --surface-container: #e2e9ec;
+    --surface-container-high: #d4dbdd;
+    --surface-container-highest: #c7cfd1;
+    --on-surface: #161d1f;
+    --on-surface-variant: #414754;
+    --outline-variant: #c2c6d6;
+    --primary: #0058bd;
+    --primary-container: #1470e8;
+    --on-primary-container: #fefcff;
+    --primary-fixed-dim: #adc6ff;
+    --secondary: #326b00;
+    --error: #ba1a1a;
+    --error-container: #ffdad6;
+    --on-error: #ffffff;
+    --tertiary: #864f00;
+    --tertiary-fixed-dim: #ffb86b;
+    --stack-sm: 8px;
+    --stack-md: 16px;
+    --stack-lg: 24px;
+    --edge-margin: 20px;
+    --radius-sm: 6px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+#render-content {
+    width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    background: var(--surface);
+    font-family: "Plus Jakarta Sans", "MiSans", -apple-system, sans-serif;
+    color: var(--on-surface);
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+    overflow: hidden;
+}
+
+/* ── Header ── */
+.eggs-groups-header {
+    background: var(--surface);
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    height: 64px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(12px);
+}
+
+.eggs-groups-header-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.eggs-groups-header-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    object-fit: cover;
+}
+
+.eggs-groups-header-title {
+    font: 800 22px/1.3 "Plus Jakarta Sans", sans-serif;
+    color: var(--on-surface);
+    letter-spacing: -0.02em;
+}
+
+/* ── Main ── */
+.eggs-groups-main {
+    padding: var(--stack-md) var(--edge-margin) var(--stack-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-lg);
+    background: var(--surface-container-low);
+    min-height: calc(100vh - 64px);
+}
+
+/* ── Section Title ── */
+.section-title {
+    font: 700 18px/1.4 "Plus Jakarta Sans", sans-serif;
+    color: var(--on-surface);
+    text-align: center;
+    margin-bottom: var(--stack-sm);
+}
+
+.section-count {
+    font: 500 14px/1.4 "Plus Jakarta Sans", sans-serif;
+    color: var(--on-surface-variant);
+}
+
+/* ══════════════════════════════════════════════
+   Compare Mode
+   ══════════════════════════════════════════════ */
+.compare-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-lg);
+    padding-top: var(--stack-md);
+}
+
+.compare-cards {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--stack-sm);
+}
+
+/* Pet Card (Compare) */
+.compare-pet-card {
+    flex: 1;
+    max-width: 180px;
+    background: var(--surface-container-lowest);
+    border-radius: var(--radius-lg);
+    padding: var(--stack-md);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--stack-sm);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border: 1px solid rgba(0,0,0,0.04);
+}
+
+.compare-pet-image-wrap {
+    width: 96px;
+    height: 96px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--surface-container);
+    border: 2px solid rgba(0,0,0,0.06);
+}
+
+.compare-pet-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.compare-pet-no-img {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: var(--on-surface-variant);
+}
+
+.compare-pet-name {
+    font: 700 16px/1.3 "Plus Jakarta Sans", sans-serif;
+    color: var(--on-surface);
+    text-align: center;
+}
+
+.compare-pet-name .name-note {
+    font: 600 11px/1.3 "Plus Jakarta Sans", sans-serif;
+}
+
+.compare-pet-danzu {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font: 600 12px/1.3 "Plus Jakarta Sans", sans-serif;
+    color: #ffffff;
+    background: var(--danzu-color, #9E9E9E);
+}
+
+.compare-pet-breed-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font: 500 11px/1.3 "Plus Jakarta Sans", sans-serif;
+}
+
+.breed-yes {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.breed-no {
+    background: #fbe9e7;
+    color: #c62828;
+}
+
+/* VS Divider */
+.compare-vs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--surface-container);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.compare-vs-text {
+    font: 800 14px/1 "Plus Jakarta Sans", sans-serif;
+    color: var(--on-surface-variant);
+    letter-spacing: 0.02em;
+}
+
+/* Result Banner */
+.compare-result {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--stack-sm);
+    padding: var(--stack-md) var(--edge-margin);
+    border-radius: var(--radius-md);
+    text-align: center;
+}
+
+.result-success {
+    background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+    border: 1px solid #a5d6a7;
+}
+
+.result-fail {
+    background: linear-gradient(135deg, #fbe9e7, #ffccbc);
+    border: 1px solid #ef9a9a;
+}
+
+.compare-result-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.result-success .compare-result-icon {
+    color: #2e7d32;
+}
+
+.result-fail .compare-result-icon {
+    color: #c62828;
+}
+
+.compare-result-text {
+    font: 700 16px/1.5 "Plus Jakarta Sans", sans-serif;
+}
+
+.result-success .compare-result-text {
+    color: #1b5e20;
+}
+
+.result-fail .compare-result-text {
+    color: #b71c1c;
+}
+
+.cannot-breed-name {
+    font-weight: 800;
+}
+
+.compare-result-extra {
+    display: block;
+    font: 600 13px/1.5 "Plus Jakarta Sans", sans-serif;
+    opacity: 0.7;
+    margin-top: 2px;
+}
+
+/* ══════════════════════════════════════════════
+   Find Matches Mode
+   ══════════════════════════════════════════════ */
+
+/* Current Pet Section */
+.current-pet-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.current-pet-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface-container-lowest);
+    border-radius: var(--radius-lg);
+    padding: var(--stack-lg) var(--stack-md);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border: 1px solid rgba(0,0,0,0.04);
+    width: 100%;
+    max-width: 340px;
+}
+
+.current-pet-image-wrap {
+    width: 100px;
+    height: 100px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--surface-container);
+    border: 2px solid rgba(0,0,0,0.06);
+    flex-shrink: 0;
+}
+
+.current-pet-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.current-pet-no-img {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: var(--on-surface-variant);
+}
+
+.current-pet-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.current-pet-name {
+    font: 800 24px/1.3 "Plus Jakarta Sans", sans-serif;
+    color: var(--primary);
+    text-align: center;
+}
+
+.current-pet-name .name-note {
+    font: 600 15px/1.3 "Plus Jakarta Sans", sans-serif;
+}
+
+.current-pet-breed-tag {
+    display: inline-block;
+    padding: 4px 16px;
+    border-radius: 14px;
+    font: 600 14px/1.3 "Plus Jakobarta Sans", sans-serif;
+    color: #ffffff;
+}
+
+.current-pet-breed-tag.breed-yes {
+    background: #2e7d32;
+}
+
+.current-pet-breed-tag.breed-no {
+    background: #c62828;
+}
+
+/* Matches Grid */
+.matches-section {
+    background: var(--surface-container-lowest);
+    border-radius: var(--radius-xl) var(--radius-xl) var(--radius-md) var(--radius-md);
+    padding: var(--stack-lg) var(--stack-sm) var(--stack-lg);
+    box-shadow: 0 -4px 16px rgba(58,134,255,0.04);
+    border-top: 1px solid var(--surface-container);
+}
+
+.matches-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.match-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--surface-container-low);
+    border-radius: var(--radius-sm);
+    padding: 6px 4px;
+    border: 1px solid rgba(0,0,0,0.04);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: transform 0.15s;
+}
+
+.match-image-wrap {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--surface-container-high);
+    margin-bottom: 4px;
+    position: relative;
+}
+
+.match-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.match-no-img {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--on-surface-variant);
+}
+
+.match-no-breed-badge {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    padding: 1px 4px;
+    border-radius: 2px;
+    font: 600 8px/1.3 "Plus Jakarta Sans", sans-serif;
+    background: rgba(198,40,40,0.85);
+    color: #ffffff;
+}
+
+.match-name {
+    font: 600 12px/1.3 "Plus Jakarta Sans", sans-serif;
+    color: var(--on-surface);
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.match-name .name-note {
+    font: 500 9px/1.3 "Plus Jakarta Sans", sans-serif;
+}
+
+/* Empty State */
+.matches-empty {
+    text-align: center;
+    padding: 40px var(--stack-md);
+}
+
+.matches-empty-title {
+    font: 600 18px/1.5 "Plus Jakarta Sans", sans-serif;
+    color: var(--on-surface-variant);
+    margin-bottom: 6px;
+}
+
+.matches-empty-desc {
+    font: 400 14px/1.6 "Plus Jakarta Sans", sans-serif;
+    color: var(--on-surface-variant);
+    opacity: 0.7;
+}
