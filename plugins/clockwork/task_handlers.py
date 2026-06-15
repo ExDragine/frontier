@@ -479,3 +479,47 @@ async def happy_new_year(**kwargs):
     group_list = await milky_bot.get_group_list()
     for group in group_list:
         await message.send(target=Target.group(str(group.group_id)))
+
+
+async def nrc_merchant_alert(**kwargs):
+    """远行商人商品预警 - 每天8:00、12:00、16:00、20:00推送。
+
+    检测目标商品是否上架，有则发提醒文本 + 货架图片，无则静默跳过。
+    """
+    from tools.NRCmerchant_current import ALERT_TARGET_ITEMS, _load_css, _render_html, fetch_merchant_data
+
+    data = await fetch_merchant_data()
+    if not data:
+        logger.debug("NRC 商人预警：API 无数据")
+        return
+
+    items = data.get("items", [])
+    hits = [item for item in items if item.get("name") in ALERT_TARGET_ITEMS]
+    if not hits:
+        logger.debug("NRC 商人预警：无目标商品上架，静默跳过")
+        return
+
+    hit_names = "、".join(item["name"] for item in hits)
+    alert_text = f"⚠️ 远行商人上架提醒：{hit_names} 已上架！"
+
+    html = _render_html(data)
+    css = _load_css()
+    image = await html_to_image(html, css=css, width=480)
+
+    msg_text = UniMessage.text(alert_text)
+    msg_img = UniMessage.image(raw=image)
+
+    groups_sent: list[int] = []
+    for group in EnvConfig.NRC_MERCHANT_GROUP_ID:
+        try:
+            await msg_text.send(target=Target.group(str(group)))
+            await msg_img.send(target=Target.group(str(group)))
+            groups_sent.append(int(group))
+        except Exception as e:
+            logger.error(f"NRC 商人预警推送到群 {group} 失败: {e}")
+
+    return TaskRunResult(
+        groups_sent=groups_sent,
+        messages_sent=len(groups_sent) * 2,
+        output_summary=f"nrc_merchant_alert → {hit_names} ({groups_sent})",
+    )

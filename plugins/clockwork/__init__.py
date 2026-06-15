@@ -54,7 +54,31 @@ async def init_task_system():
     # 4. 同步群组配置到 EnvConfig
     await task_manager.initialize()
 
-    # 5. 注册 V3 Dreaming 记忆整理（每天凌晨 4:00）
+    # 5. 注册 NRC 远行商人商品预警（每天 8:00、12:00、16:00、20:00）
+    try:
+        await task_manager.register_task(
+            job_id="nrc_merchant_alert",
+            name="远行商人商品预警",
+            handler_module="plugins.clockwork.task_handlers",
+            handler_function="nrc_merchant_alert",
+            trigger_type="cron",
+            trigger_args={"hour": "8,12,16,20", "minute": "0"},
+            group_ids=EnvConfig.NRC_MERCHANT_GROUP_ID,
+            description="每天定时检测远行商人是否上架目标商品（国王球、棱镜球、炫彩精灵蛋、祝福项坠、首领血脉秘药），有则推送提醒",
+            metadata=ScheduledTaskMetadata(
+                job_id="nrc_merchant_alert",
+                owner_user_id="system",
+                target_type="group",
+                target_id=",".join(str(g) for g in EnvConfig.NRC_MERCHANT_GROUP_ID) if EnvConfig.NRC_MERCHANT_GROUP_ID else "0",
+                prompt="",
+                created_from="system",
+            ),
+        )
+        logger.info("NRC 远行商人商品预警已注册（cron: 8,12,16,20:00 Asia/Shanghai）")
+    except Exception as exc:
+        logger.warning(f"注册 NRC 远行商人任务失败（可能已存在）: {exc}")
+
+    # 6. 注册 V3 Dreaming 记忆整理（每天凌晨 4:00）
     try:
         from utils.dreaming_pipeline import build_dreaming_task_config
 

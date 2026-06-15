@@ -1,0 +1,48 @@
+<!-- Top App Bar -->
+<header class="app-bar">
+    <h1 class="app-bar-title">
+        🛒 远行商人实时货架
+    </h1>
+</header>
+
+<div class="main-content">
+    <!-- Status Card -->
+    <section class="status-card">
+        <div class="status-top">
+            <span class="status-date">{{ slot_date }}</span>
+            <div class="status-round">
+                <span class="status-round-text">当前轮次 {{ round }} / {{ total_rounds }}</span>
+            </div>
+        </div>
+        <div class="countdown-box">
+            <span class="countdown-label">距离下轮刷新时间</span>
+            <span class="countdown-time">{{ countdown }}</span>
+        </div>
+    </section>
+
+    <!-- Product List -->
+    <div class="product-list">
+        {% for item in items %}
+        <div class="product-card">
+            <div class="product-image-wrap">
+                <img class="product-image" alt="{{ item.name }}" src="{{ item.image_full }}">
+            </div>
+            <div class="product-body">
+                <div class="product-row">
+                    <h3 class="product-name">{{ item.name }}</h3>
+                    <span class="rarity-badge rarity-{{ item.rarity }}">{{ item.rarity_cn }}</span>
+                </div>
+                <div class="product-row">
+                    <span class="product-limit">限购 {{ item.purchase_limit }}</span>
+                    <div class="price-row">
+                        <img class="currency-icon" alt="洛克贝" src="https://patchwiki.biligame.com/images/rocom/thumb/c/cf/h7k7nhpjbxp1o2yulg4xmjs595qctic.png/75px-%E7%89%A9%E5%93%81%E5%9B%BE%E6%A0%87_%E6%B4%9B%E5%85%8B%E8%B4%9D.png">
+                        <span class="price-text">{{ item.price_fmt }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <footer class="merchant-footer">更新于 {{ updated_at }}</footer>
+</div>

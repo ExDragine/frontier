@@ -29,6 +29,7 @@ class TaskManager:
         "eq_cenc": "EARTHQUAKE_GROUP_ID",
         "eq_usgs": "EARTHQUAKE_GROUP_ID",
         "daily_news": "NEWS_SUMMARY_GROUP_ID",
+        "nrc_merchant_alert": "NRC_MERCHANT_GROUP_ID",
         "happy_new_year": None,  # 特殊处理：发送所有群
     }
 

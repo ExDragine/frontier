@@ -1,0 +1,249 @@
+@import url('https://font.sec.miui.com/font/css?family=MiSans:400,500,600,700,800,900:MiSans');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap');
+
+:root {
+    --surface: #ffffff;
+    --on-surface: #1a1c1e;
+    --on-surface-variant: #44474e;
+    --outline: #74777f;
+    --outline-variant: #c4c6cf;
+    --primary: #6750a4;
+    --secondary: #625b71;
+    --tertiary: #7d5260;
+    --background: #ffffff;
+    --gold-accent: #8a6d00;
+    --stack-sm: 8px;
+    --container-margin: 24px;
+    --stack-md: 16px;
+    --gutter: 16px;
+    --stack-lg: 32px;
+    --unit: 8px;
+    --font-display-xl: 900 48px/1.1 "MiSans", sans-serif;
+    --font-headline-lg: 800 32px/1.2 "MiSans", sans-serif;
+    --font-headline-lg-mobile: 800 28px/1.2 "MiSans", sans-serif;
+    --font-headline-md: 700 24px/1.3 "MiSans", sans-serif;
+    --font-body-lg: 400 18px/1.6 "MiSans", sans-serif;
+    --font-body-md: 400 16px/1.6 "MiSans", sans-serif;
+    --font-label-bold: 600 14px/1.4 "MiSans", sans-serif;
+    --font-label-sm: 500 12px/1.4 "MiSans", sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background-color: var(--background);
+    color: var(--on-surface);
+    font-family: "MiSans", -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    min-height: fit-content;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+#render-content {
+    width: 480px;
+    margin: 0 auto;
+    padding-bottom: 24px;
+}
+
+/* ── Top App Bar ── */
+
+.app-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+    padding: 0 var(--container-margin);
+    background: var(--surface);
+    border-bottom: 1px solid #e1e2ec;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+
+.app-bar-title {
+    font: var(--font-headline-lg-mobile);
+    color: var(--on-surface);
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+
+/* ── Main Content ── */
+
+.main-content {
+    padding: var(--stack-md) var(--container-margin) 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-md);
+}
+
+/* ── Status Card ── */
+
+.status-card {
+    background: #f8f9ff;
+    border: 1px solid #e1e2ec;
+    border-radius: 1rem;
+    padding: var(--stack-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-md);
+    overflow: hidden;
+}
+
+.status-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.status-date {
+    font: var(--font-headline-md);
+    color: var(--on-surface);
+}
+
+.status-round {
+    background: rgba(103, 80, 164, 0.1);
+    padding: 4px 12px;
+    border-radius: 9999px;
+    border: 1px solid rgba(103, 80, 164, 0.2);
+}
+
+.status-round-text {
+    font: var(--font-label-bold);
+    color: var(--primary);
+}
+
+.countdown-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: var(--surface);
+    border-radius: 1rem;
+    border: 1px solid #e1e2ec;
+}
+
+.countdown-label {
+    font: var(--font-label-sm);
+    color: var(--on-surface-variant);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+}
+
+.countdown-time {
+    font: var(--font-display-xl);
+    color: var(--on-surface);
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Product List ── */
+
+.product-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-md);
+}
+
+.product-card {
+    display: flex;
+    gap: var(--stack-md);
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid #e1e2ec;
+    transition: background-color 0.15s;
+}
+
+.product-card:last-child { border-bottom: none; }
+
+.product-image-wrap {
+    position: relative;
+    flex-shrink: 0;
+    height: 96px;
+    width: 96px;
+}
+
+.product-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 8px;
+}
+
+.product-body {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    gap: 6px;
+}
+
+.product-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.product-name {
+    font: 700 24px/1.2 "MiSans", sans-serif;
+    color: var(--on-surface);
+}
+
+.product-limit {
+    font: 600 18px/1.4 "MiSans", sans-serif;
+    color: var(--on-surface-variant);
+}
+
+.rarity-badge {
+    font: 700 16px/1.4 "MiSans", sans-serif;
+    padding: 5px 14px;
+    border-radius: 1rem;
+}
+
+.rarity-legendary {
+    background-color: rgba(245, 200, 64, 0.18);
+    color: var(--gold-accent);
+    border: 1px solid rgba(138, 109, 0, 0.25);
+}
+
+.rarity-rare {
+    background-color: rgba(192, 132, 252, 0.18);
+    color: #7c3aed;
+    border: 1px solid rgba(124, 58, 237, 0.25);
+}
+
+.rarity-common {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--on-surface-variant);
+    border: 1px solid #c4c6cf;
+}
+
+.price-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.currency-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+}
+
+.price-text {
+    font: 700 24px/1.3 "Montserrat", "MiSans", sans-serif;
+    color: var(--on-surface);
+}
+
+/* ── Footer ── */
+
+.merchant-footer {
+    text-align: center;
+    padding: 12px 0 0;
+    font: var(--font-label-sm);
+    color: var(--outline);
+}
