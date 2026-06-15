@@ -9,10 +9,12 @@
 import logging
 import os
 import secrets
+import subprocess
 from asyncio import Lock
 from collections.abc import Callable
 from typing import Any
 
+import imageio_ffmpeg
 from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
@@ -104,6 +106,26 @@ async def _run_with_crash_retry(action: Callable[[], Any]) -> Any:
         raise
 
 
+def _webm_to_mp4(webm_path: str, mp4_path: str) -> str:
+    """使用 imageio-ffmpeg 将 webm 视频转换为 mp4 格式。"""
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    cmd = [
+        ffmpeg,
+        "-i", webm_path,
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "18",
+        "-c:a", "aac",
+        "-y",
+        mp4_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"视频转码失败: {result.stderr}")
+    logger.info("视频转码完成: %s -> %s", webm_path, mp4_path)
+    return mp4_path
+
+
 async def screenshot(
     url: str,
     *,
@@ -152,14 +174,15 @@ async def record_video(
     url: str,
     *,
     duration: int = 10,
-    width: int = 1280,
-    height: int = 720,
+    width: int = 1920,
+    height: int = 1080,
     wait_until: str = "networkidle",
     timeout: int = 30000,
     output_path: str | None = None,
 ) -> str:
-    """录制指定 URL 的网页视频，返回视频文件路径。
+    """录制指定 URL 的网页视频，返回 mp4 视频文件路径。
 
+    Playwright 原生输出 webm，录制完成后自动调用 imageio-ffmpeg 转为 mp4。
     内置浏览器崩溃重试机制：若浏览器进程在录制期间崩溃，自动重启后重试一次。
 
     Args:
@@ -169,14 +192,17 @@ async def record_video(
         height: 视口高度（像素）
         wait_until: 页面加载等待策略（load / domcontentloaded / networkidle）
         timeout: 导航超时毫秒数
-        output_path: 输出视频文件路径，默认自动生成于 cache 目录
+        output_path: 输出 mp4 文件路径，默认自动生成于 cache 目录
 
     Returns:
-        视频文件的绝对路径（webm 格式）
+        mp4 视频文件的绝对路径
     """
     if output_path is None:
-        output_path = os.path.abspath(f"./cache/{secrets.token_hex(16)}.webm")
+        output_path = os.path.abspath(f"./cache/{secrets.token_hex(16)}.mp4")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    # Playwright 原生输出 webm，先录制到临时路径再转码
+    temp_webm = os.path.abspath(f"./cache/video_{secrets.token_hex(8)}.webm")
 
     async def _do_record() -> str:
         video_dir = os.path.abspath(f"./cache/video_{secrets.token_hex(8)}")
@@ -201,14 +227,22 @@ async def record_video(
         if not video_files:
             raise FileNotFoundError(f"录屏未生成视频文件: {url}")
         video_file = os.path.join(video_dir, video_files[-1])
-        os.rename(video_file, output_path)
+        os.rename(video_file, temp_webm)
         try:
             os.rmdir(video_dir)
         except OSError:
             pass
-        return os.path.abspath(output_path)
+        return os.path.abspath(temp_webm)
 
-    return await _run_with_crash_retry(_do_record)
+    webm_path = await _run_with_crash_retry(_do_record)
+    try:
+        _webm_to_mp4(webm_path, output_path)
+    finally:
+        try:
+            os.remove(webm_path)
+        except OSError:
+            pass
+    return os.path.abspath(output_path)
 
 
 async def close_browser():
