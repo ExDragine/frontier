@@ -1,5 +1,6 @@
 from nonebot import get_driver, logger, require
 
+from utils.configs import EnvConfig
 from utils.database import get_engine
 
 require("nonebot_plugin_apscheduler")
@@ -54,7 +55,7 @@ async def init_task_system():
     # 4. 同步群组配置到 EnvConfig
     await task_manager.initialize()
 
-    # 5. 注册 NRC 远行商人商品提醒推送（每天 8:00、12:00、16:00、20:00）
+    # 5. 注册 NRC 远行商人商品提醒推送（每天 8:15、12:15、16:15、20:15）
     try:
         await task_manager.register_task(
             job_id="nrc_merchant_alert",
@@ -62,7 +63,7 @@ async def init_task_system():
             handler_module="plugins.clockwork.task_handlers",
             handler_function="nrc_merchant_alert",
             trigger_type="cron",
-            trigger_args={"hour": "8,12,16,20", "minute": "0"},
+            trigger_args={"hour": "8,12,16,20", "minute": "15"},
             group_ids=EnvConfig.NRC_MERCHANT_GROUP_ID,
             description="每天定时检测远行商人是否上架目标商品（国王球、棱镜球、炫彩精灵蛋、祝福项坠、首领血脉秘药），有则推送提醒",
             metadata=ScheduledTaskMetadata(
@@ -74,7 +75,7 @@ async def init_task_system():
                 created_from="system",
             ),
         )
-        logger.info("NRC 远行商人商品提醒推送已注册（cron: 8,12,16,20:00 Asia/Shanghai）")
+        logger.info("NRC 远行商人商品提醒推送已注册（cron: 8,12,16,20:15 Asia/Shanghai）")
     except Exception as exc:
         logger.warning(f"注册 NRC 远行商人任务失败（可能已存在）: {exc}")
 
