@@ -38,6 +38,7 @@ _TOOL_MODULE_GROUPS = {
     "video": "main",
     "memory": "memory",
     "NRCmerchant_current": "main",
+    "webpage_screenshot": "main",
     "NRCeggs_details": "main",
     "NRCeggs_groups": "main",
     "NRCevent_calendar": "main",
