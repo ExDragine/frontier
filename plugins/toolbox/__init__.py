@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from signal import SIGINT
 
 from git import Repo
@@ -16,6 +17,7 @@ require("nonebot_plugin_alconna")
 from utils.alconna import Target, UniMessage
 from utils.configs import EnvConfig
 from utils.database import GroupSettingsManager, get_engine
+from utils.markdown_render import html_to_image
 from utils.message import (
     message_extract,
 )
@@ -24,10 +26,27 @@ driver = get_driver()
 updater = on_command("update", priority=1, block=True, aliases={"更新"}, permission=SUPERUSER)
 setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
 set_cmd = on_command("set", priority=2, block=True, aliases={"设置"})
+vehelp_cmd = on_command("vehelp", priority=2, block=True, aliases={"专业模式", "vep菜单"})
 restart = on_command("restart", priority=3, block=True, aliases={"重启"}, permission=SUPERUSER)
 
 SKILL_CREATOR_URL = "https://gh-proxy.org/https://github.com/anthropics/skills.git"
 SKILL_CREATOR_PATH = os.path.join(".", "cache", "sandbox", "skills", "skill-creator")
+
+# vehelp 菜单缓存（内存级，bot 停止自动释放）
+_vep_menu_cache: bytes | None = None
+_TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
+
+
+async def _get_vep_menu() -> bytes:
+    """返回 vep 参数菜单截图（首次渲染后缓存）。"""
+    global _vep_menu_cache
+    if _vep_menu_cache is not None:
+        return _vep_menu_cache
+    html = (_TEMPLATES_DIR / "vep_menu.html").read_text(encoding="utf-8")
+    image = await html_to_image(html, width=480)
+    _vep_menu_cache = image
+    logger.info("vep 菜单已渲染并缓存")
+    return image
 
 SET_WAKE_KEY = "wake_word"
 
@@ -278,3 +297,15 @@ async def handle_restart(event: MessageEvent):
     if os.name == "nt":
         shutdown_executable = shutil.which("shutdown") or "shutdown"
         subprocess.Popen([shutdown_executable, "/r", "/t", "0"])  # noqa: S603
+
+
+@vehelp_cmd.handle()
+async def handle_vehelp():
+    """返回 vep 专业模式参数菜单截图（首次渲染后缓存）。"""
+    try:
+        image = await _get_vep_menu()
+        await UniMessage.text("ve专业模式参数菜单：").send()
+        await UniMessage.image(raw=image).send()
+    except Exception as e:
+        logger.error(f"vehelp 菜单渲染失败: {e}")
+        await UniMessage.text(f"菜单加载失败: {e}").send()
