@@ -19,9 +19,20 @@ async def webpage_recording(
     wait_until: str = "networkidle",
     timeout: int = 30000,
 ) -> tuple[str, UniMessage | None]:
-    """对指定网页进行录屏并返回视频。
+    """录制网页视频（mp4），不是截图、不是拍照、不是快照。
 
-    触发关键词：网页录屏、录屏、录制网页、网页录制、record、screen record
+    仅在用户明确要求以下操作时才调用：
+    - 网页录屏 / 录屏 / 录制网页 / 网页录制 / 给网页录屏 / 录制屏幕 / 屏幕录制
+    - record screen / screen record / web record
+    - 给这个网页录个视频 / 把这个网页录下来 / 录一段网页视频
+
+    绝对不要调用的情况：
+    - 用户要的是截图、拍照、快照、截屏（那是另一个工具的事，与此工具无关）
+    - 用户只是发了一个链接但没说录屏
+    - 用户说"看看"、"打开"、"访问"某个网页
+    - 任何不包含上述录屏关键词的请求
+
+    录制过程需要约 10 秒，调用后请等待结果返回，不要中途改用其他工具。
 
     Args:
         url: 目标网页 URL（支持 http/https 协议）
