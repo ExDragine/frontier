@@ -20,44 +20,44 @@ from utils.tool_helpers import tool_timer
 
 SCENARIO_MAP: dict[str, dict] = {
     # ── 大气模式 wind（地表 surface，10个）──
-    "风速":         {"mode": "wind", "height": "surface", "overlay": None,                       "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "温度":         {"mode": "wind", "height": "surface", "overlay": "temp",                      "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "体感温度":     {"mode": "wind", "height": "surface", "overlay": "misery_index",              "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "相对湿度":     {"mode": "wind", "height": "surface", "overlay": "relative_humidity",         "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "3小时降水":    {"mode": "wind", "height": "surface", "overlay": "precip_3hr",                "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "平均海平面压力": {"mode": "wind", "height": "surface", "overlay": "mean_sea_level_pressure", "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "紫外线指数":   {"mode": "wind", "height": "surface", "overlay": "uv_index",                  "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "CAPE":         {"mode": "wind", "height": "surface", "overlay": "cape",                      "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "水汽含量":     {"mode": "wind", "height": "surface", "overlay": "total_precipitable_water",  "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "露点温度":     {"mode": "wind", "height": "surface", "overlay": "dew_point_temp",            "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "风速":         {"mode": "wind", "height": "surface", "overlay": None,                       "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "温度":         {"mode": "wind", "height": "surface", "overlay": "temp",                      "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "体感温度":     {"mode": "wind", "height": "surface", "overlay": "misery_index",              "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "相对湿度":     {"mode": "wind", "height": "surface", "overlay": "relative_humidity",         "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "3小时降水":    {"mode": "wind", "height": "surface", "overlay": "precip_3hr",                "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "平均海平面压力": {"mode": "wind", "height": "surface", "overlay": "mean_sea_level_pressure", "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "紫外线指数":   {"mode": "wind", "height": "surface", "overlay": "uv_index",                  "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "CAPE":         {"mode": "wind", "height": "surface", "overlay": "cape",                      "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "水汽含量":     {"mode": "wind", "height": "surface", "overlay": "total_precipitable_water",  "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "露点温度":     {"mode": "wind", "height": "surface", "overlay": "dew_point_temp",            "animation": "level", "projection": "orthographic", "zoom": 4500},
 
     # ── 海洋模式 ocean（5个）──
-    "洋流":         {"mode": "ocean", "height": "surface", "overlay": None,                       "animation": "currents",      "projection": "equirectangular", "zoom": 80},
-    "有效浪高":     {"mode": "ocean", "height": "surface", "overlay": "significant_wave_height",  "animation": "currents",      "projection": "equirectangular", "zoom": 80},
-    "波峰周期":     {"mode": "ocean", "height": "surface", "overlay": "primary_waves",            "animation": "primary/waves", "projection": "equirectangular", "zoom": 80},
-    "海面温度":     {"mode": "ocean", "height": "surface", "overlay": "sea_surface_temp",         "animation": "currents",      "projection": "equirectangular", "zoom": 80},
-    "海面温度异常": {"mode": "ocean", "height": "surface", "overlay": "sea_surface_temp_anomaly", "animation": "currents",      "projection": "equirectangular", "zoom": 80},
+    "洋流":         {"mode": "ocean", "height": "surface", "overlay": None,                       "animation": "currents",      "projection": "equirectangular", "zoom": 300},
+    "有效浪高":     {"mode": "ocean", "height": "surface", "overlay": "significant_wave_height",  "animation": "currents",      "projection": "equirectangular", "zoom": 300},
+    "波峰周期":     {"mode": "ocean", "height": "surface", "overlay": "primary_waves",            "animation": "primary/waves", "projection": "equirectangular", "zoom": 300},
+    "海面温度":     {"mode": "ocean", "height": "surface", "overlay": "sea_surface_temp",         "animation": "currents",      "projection": "equirectangular", "zoom": 300},
+    "海面温度异常": {"mode": "ocean", "height": "surface", "overlay": "sea_surface_temp_anomaly", "animation": "currents",      "projection": "equirectangular", "zoom": 300},
 
     # ── 化学污染物模式 chem（4个）──
-    "一氧化碳浓度": {"mode": "chem", "height": "surface", "overlay": "cosc",    "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "二氧化碳浓度": {"mode": "chem", "height": "surface", "overlay": "co2sc",   "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "二氧化硫质量": {"mode": "chem", "height": "surface", "overlay": "so2smass", "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "二氧化氮浓度": {"mode": "chem", "height": "surface", "overlay": "no2",     "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "一氧化碳浓度": {"mode": "chem", "height": "surface", "overlay": "cosc",    "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "二氧化碳浓度": {"mode": "chem", "height": "surface", "overlay": "co2sc",   "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "二氧化硫质量": {"mode": "chem", "height": "surface", "overlay": "so2smass", "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "二氧化氮浓度": {"mode": "chem", "height": "surface", "overlay": "no2",     "animation": "level", "projection": "orthographic", "zoom": 4500},
 
     # ── 颗粒物模式 particulates（6个）──
-    "PM2.5":        {"mode": "particulates", "height": "surface", "overlay": "pm2.5",              "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "PM10":         {"mode": "particulates", "height": "surface", "overlay": "pm10",               "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "PM1":          {"mode": "particulates", "height": "surface", "overlay": "pm1",                "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "尘埃消光":     {"mode": "particulates", "height": "surface", "overlay": "duexttau",          "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "有机物气溶胶": {"mode": "particulates", "height": "surface", "overlay": "organic_matter_aot", "animation": "level", "projection": "orthographic", "zoom": 3500},
-    "硫酸盐消光":   {"mode": "particulates", "height": "surface", "overlay": "suexttau",          "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "PM2.5":        {"mode": "particulates", "height": "surface", "overlay": "pm2.5",              "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "PM10":         {"mode": "particulates", "height": "surface", "overlay": "pm10",               "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "PM1":          {"mode": "particulates", "height": "surface", "overlay": "pm1",                "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "尘埃消光":     {"mode": "particulates", "height": "surface", "overlay": "duexttau",          "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "有机物气溶胶": {"mode": "particulates", "height": "surface", "overlay": "organic_matter_aot", "animation": "level", "projection": "orthographic", "zoom": 4500},
+    "硫酸盐消光":   {"mode": "particulates", "height": "surface", "overlay": "suexttau",          "animation": "level", "projection": "orthographic", "zoom": 4500},
 
     # ── 空间天气模式 space（1个，默认暂停 → 截图）──
-    "极光": {"mode": "space", "height": "surface", "overlay": "aurora", "animation": "level", "projection": "orthographic", "zoom": 300},
+    "极光": {"mode": "space", "height": "surface", "overlay": "aurora", "animation": "level", "projection": "orthographic", "zoom": 800},
 
     # ── 生物模式 bio（2个）──
-    "珊瑚白化": {"mode": "bio", "height": "surface", "overlay": "bleaching_alert_area", "animation": "level", "projection": "orthographic", "zoom": 300},
-    "活跃火点": {"mode": "bio", "height": "surface", "overlay": None,                    "animation": "level", "projection": "orthographic", "zoom": 300, "annotation": "fires"},
+    "珊瑚白化": {"mode": "bio", "height": "surface", "overlay": "bleaching_alert_area", "animation": "level", "projection": "orthographic", "zoom": 1500},
+    "活跃火点": {"mode": "bio", "height": "surface", "overlay": None,                    "animation": "level", "projection": "orthographic", "zoom": 1500, "annotation": "fires"},
 }
 
 # ── 国内城市坐标字典（lon, lat）──

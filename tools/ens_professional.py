@@ -46,7 +46,7 @@ _OVERLAY = {
 
 _BIO_ANNOT = {0: None, 1: "fires"}
 
-_ZOOM_DEFAULT = {"wind": 3500, "ocean": 80, "chem": 3500, "particulates": 3500, "space": 300, "bio": 300}
+_ZOOM_DEFAULT = {"wind": 4500, "ocean": 300, "chem": 4500, "particulates": 4500, "space": 800, "bio": 1500}
 
 # 测试环境无法跨文件导入 _CITY_COORDS 时的 fallback
 _CITY_COORDS_FALLBACK: dict[str, tuple[float, float]] = {
