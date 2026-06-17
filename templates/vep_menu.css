@@ -1,0 +1,140 @@
+/* Earth Nullschool 专业模式参数菜单样式 */
+/* 所有颜色值从用户提供的 Tailwind 配置提取 */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary: #003d9b; --primary-container: #0052cc; --on-primary: #ffffff;
+  --secondary: #00687b; --secondary-container: #50dcff; --on-secondary: #ffffff;
+  --tertiary: #414446; --tertiary-container: #595b5d; --on-tertiary: #ffffff;
+  --error: #ba1a1a; --error-container: #ffdad6;
+  --background: #f9f9ff; --on-background: #041b3c;
+  --surface: #f9f9ff; --on-surface: #041b3c; --on-surface-variant: #434654;
+  --surface-variant: #d7e2ff; --surface-container-low: #f1f3ff;
+  --surface-container-lowest: #ffffff;
+  --color-green: #34A853;
+  --radius: 0.25rem; --radius-lg: 0.5rem; --radius-xl: 0.75rem; --radius-full: 9999px;
+  --spacing-xs: 4px; --spacing-sm: 8px; --spacing-md: 16px;
+  --spacing-lg: 24px; --spacing-xl: 32px; --spacing-gutter: 12px;
+  --spacing-container: 20px;
+}
+
+/* Material Icons font (from BootCDN) */
+.material-icons { font-family: 'Material Icons'; font-weight: normal; font-style: normal;
+  font-size: 24px; display: inline-block; line-height: 1; text-transform: none;
+  letter-spacing: normal; word-wrap: normal; white-space: nowrap; direction: ltr;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--background); color: var(--on-background);
+  min-height: 100vh; display: flex; flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Header */
+.header { width: 100%; background: var(--surface); display: flex;
+  align-items: center; justify-content: center; padding: var(--spacing-md) var(--spacing-container);
+  box-shadow: 0 1px 3px rgba(23,43,77,0.06); }
+.header h1 { font-size: 32px; line-height: 40px; font-weight: 700; color: var(--primary);
+  letter-spacing: -0.02em; text-align: center; }
+
+/* Main */
+.main { flex: 1; padding: var(--spacing-md) var(--spacing-container) 96px;
+  overflow-y: auto; }
+
+/* Hint bar */
+.hint-bar { width: 100%; margin-bottom: var(--spacing-md); }
+.hint-bar div { display: block; width: 100%; padding: 12px 16px;
+  background: var(--surface-container-low); border-radius: var(--radius-xl);
+  color: var(--on-surface); font-size: 14px; line-height: 20px; text-align: center; }
+
+/* Sections */
+.section { margin-bottom: var(--spacing-md); }
+.section-title { font-size: 16px; line-height: 24px; font-weight: 700; margin-bottom: var(--spacing-md); }
+.subsection { margin-bottom: 12px; }
+.subsection-title { font-size: 16px; font-weight: 600; color: var(--on-surface);
+  text-align: center; margin-bottom: var(--spacing-sm); }
+
+/* Grids */
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--spacing-sm); }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacing-sm); }
+
+/* Cards */
+.card { background: var(--surface); border-radius: var(--radius-xl);
+  box-shadow: 0 4px 15px rgba(23,43,77,0.04); }
+.card:active { transform: scale(0.98); transition: transform 0.15s; }
+
+.card-col { composes: card; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center; padding: 8px; }
+.card-row { composes: card; display: flex; align-items: center; gap: 4px;
+  padding: 6px 8px; overflow: hidden; height: 100%; }
+.card-row-lg { composes: card-row; border-radius: var(--radius-lg); }
+.card-icon-wrap { width: 40px; height: 40px; border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: var(--spacing-sm); flex-shrink: 0; }
+.card-icon-sm { width: 20px; height: 20px; border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-size: 10px; font-weight: 700; }
+.card-label { font-size: 12px; font-weight: 600; color: var(--on-surface);
+  letter-spacing: 0.05em; }
+
+/* Color themes per mode */
+.c-primary   { background: rgba(0,61,155,0.08); color: var(--primary); }
+.c-secondary { background: rgba(0,104,123,0.15); color: var(--secondary); }
+.c-tertiary  { background: rgba(65,68,70,0.08); color: var(--tertiary); }
+.c-error     { background: rgba(186,26,26,0.12); color: var(--error); }
+.c-neutral   { background: var(--surface-variant); color: var(--on-surface-variant); }
+.c-green     { background: rgba(52,168,83,0.08); color: var(--color-green); }
+
+.bg-primary   { background: rgba(0,61,155,0.08); }
+.bg-secondary { background: rgba(0,104,123,0.15); }
+.bg-tertiary  { background: rgba(65,68,70,0.08); }
+.bg-error     { background: rgba(186,26,26,0.12); }
+.bg-neutral   { background: var(--surface-variant); }
+.bg-green     { background: rgba(52,168,83,0.08); }
+
+.txt-primary   { color: var(--primary); }
+.txt-secondary { color: var(--secondary); }
+.txt-tertiary  { color: var(--tertiary); }
+.txt-error     { color: var(--error); }
+.txt-neutral   { color: var(--on-surface-variant); }
+.txt-green     { color: var(--color-green); }
+
+/* Icon sizing */
+.icon { font-size: 18px; line-height: 1; }
+.icon-sm { font-size: 14px; line-height: 1; flex-shrink: 0; }
+.icon-lg { font-size: 24px; line-height: 1; }
+.icon-title { font-size: 32px; vertical-align: middle; margin-right: 4px; color: var(--primary); }
+
+/* Card label text */
+.card-text { font-size: 11px; font-weight: 600; color: var(--on-surface);
+  line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Annotation tag */
+.annot-tag { font-size: 8px; color: var(--error); border: 1px solid rgba(186,26,26,0.5);
+  border-radius: 2px; padding: 1px 2px; line-height: 1; flex-shrink: 0; }
+
+/* Info rows */
+.info-row { background: var(--surface-container-low); border-radius: var(--radius-xl);
+  padding: 12px; display: flex; align-items: center; gap: var(--spacing-md);
+  box-shadow: 0 4px 15px rgba(23,43,77,0.04); }
+.info-icon { color: var(--primary); flex-shrink: 0; font-size: 20px; }
+.info-text { font-size: 14px; line-height: 20px; color: var(--on-surface); }
+
+/* Example area */
+.example { padding: 1px 0; }
+.example code { font-size: 11px; color: var(--on-surface); white-space: nowrap; }
+.example-desc { font-size: 11px; color: var(--on-surface); line-height: 1.25; }
+
+/* Spacing helpers */
+.mt-sm { margin-top: var(--spacing-sm); }
+.mt-md { margin-top: var(--spacing-md); }
+.mb-sm { margin-bottom: var(--spacing-sm); }
+.mb-md { margin-bottom: var(--spacing-md); }
+.mb-xl { margin-bottom: var(--spacing-xl); }
+.space-y-sm > * + * { margin-top: var(--spacing-sm); }
+
+/* Overflow */
+.overflow-x-auto { overflow-x: auto; }
