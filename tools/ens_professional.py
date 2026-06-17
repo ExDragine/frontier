@@ -46,7 +46,13 @@ _OVERLAY = {
 
 _BIO_ANNOT = {0: None, 1: "fires"}
 
-_ZOOM_DEFAULT = {"wind": 1850, "ocean": 80, "chem": 1850, "particulates": 1850, "space": 300, "bio": 300}
+_ZOOM_DEFAULT = {"wind": 3500, "ocean": 80, "chem": 3500, "particulates": 3500, "space": 300, "bio": 300}
+
+# 测试环境无法跨文件导入 _CITY_COORDS 时的 fallback
+_CITY_COORDS_FALLBACK: dict[str, tuple[float, float]] = {
+    "北京": (116.40, 39.90), "上海": (121.47, 31.23), "广州": (113.26, 23.13),
+    "深圳": (114.07, 22.62), "成都": (104.07, 30.67), "杭州": (120.15, 30.28),
+}
 
 
 def _build_professional_url(
@@ -85,7 +91,7 @@ def _parse_time(raw: str) -> str:
 
 async def run_ens_professional(
     p1: int = 1, p2: int = 0, p3: int = 1, p4: int = 0,
-    p5: int = 1, p6: float = 0, p7: float = 0,
+    p5: int = 1, p6: str = "0", p7: str = "0",
     p8: int = 0, p9: str = "0", p10: str = "0",
     bio_annot: int = 0,
 ) -> tuple[str, UniMessage | None]:
@@ -109,15 +115,42 @@ async def run_ens_professional(
         if p4 != 0 and overlay is None and p4 not in overlay_table:
             return f"无效叠加层编号: {p4}（该模式下无此选项）", None
 
-        # Bio annotation
         annot = None
         if mode == "bio" and bio_annot:
             annot = _BIO_ANNOT.get(bio_annot)
             if annot is None:
                 return f"无效生物注释编号: {bio_annot}（0-1）", None
 
-        if p6 == 0 and p7 == 0:
-            return "请提供有效的经纬度坐标（p6=经度, p7=纬度）", None
+        # 坐标解析：支持数字经纬度或城市名
+        try:
+            lon = float(p6)
+            lat = float(p7)
+            if lon == 0 and lat == 0:
+                return "请提供有效的经纬度坐标或城市名（如：北京、广州）", None
+        except ValueError:
+            # 非数字 → 作为城市名查找。优先用 ens_normal 字典，测试环境 fallback 小字典
+            try:
+                from .ens_normal import _CITY_COORDS as _coords
+            except ImportError:
+                try:
+                    from tools.ens_normal import _CITY_COORDS as _coords  # type: ignore[no-redef]
+                except ImportError:
+                    _coords = _CITY_COORDS_FALLBACK
+            location = p6.strip()
+            if not location:
+                return "请提供有效的经纬度坐标或城市名", None
+            if location in _coords:
+                lon, lat = _coords[location]
+            else:
+                matched = None
+                for city, coords in sorted(_coords.items(), key=lambda x: -len(x[0])):
+                    if city in location or location in city:
+                        matched = coords
+                        break
+                if matched:
+                    lon, lat = matched
+                else:
+                    return f"未找到「{location}」的坐标，国内城市请用标准名，国外请让 LLM 搜经纬度后直接输入数字", None
 
         zoom = p8 if p8 > 0 else _ZOOM_DEFAULT.get(mode, 1850)
         time = _parse_time(p9)
@@ -134,20 +167,20 @@ async def run_ens_professional(
             desc += f", 叠加层={overlay}"
         if annot:
             desc += f", 注释={annot}"
-        desc += f", 坐标=({p6},{p7}), zoom={zoom}"
+        desc += f", 坐标=({lon},{lat}), zoom={zoom}"
 
         if paused:
             image_bytes = await screenshot(
                 url=url, width=1920, height=1080,
-                wait_until="domcontentloaded", timeout=60000,
+                wait_until="networkidle", timeout=60000, wait_selector="canvas", post_wait_ms=1500, hard_wait=True,
             )
-            return f"Earth Nullschool 专业模式 - {desc}（静态截图）", UniMessage.image(raw=image_bytes)
+            return f"✅ Earth Nullschool 专业模式 - {desc}（静态截图）", UniMessage.image(raw=image_bytes)
         else:
             video_bytes = await record_video(
                 url=url, duration=10, width=1920, height=1080,
-                wait_until="domcontentloaded", timeout=60000,
+                wait_until="networkidle", timeout=60000, wait_selector="canvas", post_wait_ms=1500, hard_wait=True,
             )
-            return f"Earth Nullschool 专业模式 - {desc}（10秒视频）", UniMessage.video(raw=video_bytes)
+            return f"✅ Earth Nullschool 专业模式 - {desc}（10秒视频）", UniMessage.video(raw=video_bytes)
     except Exception as e:
         logger.error(f"ens_professional 失败: {e}")
         return f"获取失败: {e}", None
@@ -156,7 +189,7 @@ async def run_ens_professional(
 @tool(response_format="content_and_artifact")
 async def ens_professional(
     p1: int = 1, p2: int = 0, p3: int = 1, p4: int = 0,
-    p5: int = 1, p6: float = 0, p7: float = 0,
+    p5: int = 1, p6: str = "0", p7: str = "0",
     p8: int = 0, p9: str = "0", p10: str = "0",
     bio_annot: int = 0,
 ) -> tuple[str, UniMessage | None]:
@@ -178,8 +211,8 @@ async def ens_professional(
          空间 1=极光
          生物 0=默认 1=珊瑚白化
     p5 - 投影：1=正射 2=等距圆柱 3=等距圆锥 4=亚特兰蒂斯 5=帕特森 6=立体 7=蝴蝶 8=温克尔Ⅲ
-    p6 - 经度（float，如 116.4）
-    p7 - 纬度（float，如 39.9）
+    p6 - 经度或城市名（数字如 116.4，或城市名如"北京"、"广州"）
+    p7 - 纬度（p6 为城市名时可填 0）
     p8 - 缩放（int，0=自动根据模式选默认值，越高越近）
     p9 - 时间：0=当前 或 YYYYMMDD.HHMM（如 20261001.1200）
     p10 - 暂停："animoff"=暂停，其他=播放

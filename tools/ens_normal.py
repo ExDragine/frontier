@@ -20,16 +20,16 @@ from utils.tool_helpers import tool_timer
 
 SCENARIO_MAP: dict[str, dict] = {
     # ── 大气模式 wind（地表 surface，10个）──
-    "风速":         {"mode": "wind", "height": "surface", "overlay": None,                       "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "温度":         {"mode": "wind", "height": "surface", "overlay": "temp",                      "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "体感温度":     {"mode": "wind", "height": "surface", "overlay": "misery_index",              "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "相对湿度":     {"mode": "wind", "height": "surface", "overlay": "relative_humidity",         "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "3小时降水":    {"mode": "wind", "height": "surface", "overlay": "precip_3hr",                "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "平均海平面压力": {"mode": "wind", "height": "surface", "overlay": "mean_sea_level_pressure", "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "紫外线指数":   {"mode": "wind", "height": "surface", "overlay": "uv_index",                  "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "CAPE":         {"mode": "wind", "height": "surface", "overlay": "cape",                      "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "水汽含量":     {"mode": "wind", "height": "surface", "overlay": "total_precipitable_water",  "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "露点温度":     {"mode": "wind", "height": "surface", "overlay": "dew_point_temp",            "animation": "level", "projection": "orthographic", "zoom": 1850},
+    "风速":         {"mode": "wind", "height": "surface", "overlay": None,                       "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "温度":         {"mode": "wind", "height": "surface", "overlay": "temp",                      "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "体感温度":     {"mode": "wind", "height": "surface", "overlay": "misery_index",              "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "相对湿度":     {"mode": "wind", "height": "surface", "overlay": "relative_humidity",         "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "3小时降水":    {"mode": "wind", "height": "surface", "overlay": "precip_3hr",                "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "平均海平面压力": {"mode": "wind", "height": "surface", "overlay": "mean_sea_level_pressure", "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "紫外线指数":   {"mode": "wind", "height": "surface", "overlay": "uv_index",                  "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "CAPE":         {"mode": "wind", "height": "surface", "overlay": "cape",                      "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "水汽含量":     {"mode": "wind", "height": "surface", "overlay": "total_precipitable_water",  "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "露点温度":     {"mode": "wind", "height": "surface", "overlay": "dew_point_temp",            "animation": "level", "projection": "orthographic", "zoom": 3500},
 
     # ── 海洋模式 ocean（5个）──
     "洋流":         {"mode": "ocean", "height": "surface", "overlay": None,                       "animation": "currents",      "projection": "equirectangular", "zoom": 80},
@@ -39,18 +39,18 @@ SCENARIO_MAP: dict[str, dict] = {
     "海面温度异常": {"mode": "ocean", "height": "surface", "overlay": "sea_surface_temp_anomaly", "animation": "currents",      "projection": "equirectangular", "zoom": 80},
 
     # ── 化学污染物模式 chem（4个）──
-    "一氧化碳浓度": {"mode": "chem", "height": "surface", "overlay": "cosc",    "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "二氧化碳浓度": {"mode": "chem", "height": "surface", "overlay": "co2sc",   "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "二氧化硫质量": {"mode": "chem", "height": "surface", "overlay": "so2smass", "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "二氧化氮浓度": {"mode": "chem", "height": "surface", "overlay": "no2",     "animation": "level", "projection": "orthographic", "zoom": 1850},
+    "一氧化碳浓度": {"mode": "chem", "height": "surface", "overlay": "cosc",    "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "二氧化碳浓度": {"mode": "chem", "height": "surface", "overlay": "co2sc",   "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "二氧化硫质量": {"mode": "chem", "height": "surface", "overlay": "so2smass", "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "二氧化氮浓度": {"mode": "chem", "height": "surface", "overlay": "no2",     "animation": "level", "projection": "orthographic", "zoom": 3500},
 
     # ── 颗粒物模式 particulates（6个）──
-    "PM2.5":        {"mode": "particulates", "height": "surface", "overlay": "pm2.5",              "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "PM10":         {"mode": "particulates", "height": "surface", "overlay": "pm10",               "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "PM1":          {"mode": "particulates", "height": "surface", "overlay": "pm1",                "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "尘埃消光":     {"mode": "particulates", "height": "surface", "overlay": "duexttau",          "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "有机物气溶胶": {"mode": "particulates", "height": "surface", "overlay": "organic_matter_aot", "animation": "level", "projection": "orthographic", "zoom": 1850},
-    "硫酸盐消光":   {"mode": "particulates", "height": "surface", "overlay": "suexttau",          "animation": "level", "projection": "orthographic", "zoom": 1850},
+    "PM2.5":        {"mode": "particulates", "height": "surface", "overlay": "pm2.5",              "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "PM10":         {"mode": "particulates", "height": "surface", "overlay": "pm10",               "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "PM1":          {"mode": "particulates", "height": "surface", "overlay": "pm1",                "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "尘埃消光":     {"mode": "particulates", "height": "surface", "overlay": "duexttau",          "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "有机物气溶胶": {"mode": "particulates", "height": "surface", "overlay": "organic_matter_aot", "animation": "level", "projection": "orthographic", "zoom": 3500},
+    "硫酸盐消光":   {"mode": "particulates", "height": "surface", "overlay": "suexttau",          "animation": "level", "projection": "orthographic", "zoom": 3500},
 
     # ── 空间天气模式 space（1个，默认暂停 → 截图）──
     "极光": {"mode": "space", "height": "surface", "overlay": "aurora", "animation": "level", "projection": "orthographic", "zoom": 300},
@@ -219,15 +219,15 @@ async def run_ens_normal(
         if params.get("anim_state") == "off":
             image_bytes = await screenshot(
                 url=url, width=1920, height=1080,
-                wait_until="domcontentloaded", timeout=60000,
+                wait_until="networkidle", timeout=60000, wait_selector="canvas", post_wait_ms=1500, hard_wait=True,
             )
-            return f"{scenario} - {location}（静态截图）\n💡 vep 专业模式自定义参数 | /vehelp 查看参数菜单", UniMessage.image(raw=image_bytes)
+            return f"✅ {scenario} - {location}（静态截图）\n💡 vep 专业模式自定义参数 | /vehelp 查看参数菜单", UniMessage.image(raw=image_bytes)
         else:
             video_bytes = await record_video(
                 url=url, duration=10, width=1920, height=1080,
-                wait_until="domcontentloaded", timeout=60000,
+                wait_until="networkidle", timeout=60000, wait_selector="canvas", post_wait_ms=1500, hard_wait=True,
             )
-            return f"{scenario} - {location}（10秒视频）\n💡 vep 专业模式自定义参数 | /vehelp 查看参数菜单", UniMessage.video(raw=video_bytes)
+            return f"✅ {scenario} - {location}（10秒视频）\n💡 vep 专业模式自定义参数 | /vehelp 查看参数菜单", UniMessage.video(raw=video_bytes)
     except Exception as e:
         logger.error(f"ens_normal 失败 [{scenario}/{location}]: {e}")
         return f"获取失败: {e}", None
@@ -264,7 +264,7 @@ async def ens_normal(
         time: 时间，格式 "#current"（当前）或 "#YYYY/MM/DD/HHMMZ"，默认当前
         lon: 经度，传入后跳过内置坐标查询
         lat: 纬度，传入后跳过内置坐标查询
-        zoom: 缩放等级，传入后覆盖场景默认值（局部默认 1850，宏观 80~300）
+        zoom: 缩放等级，传入后覆盖场景默认值（城市级默认 3500，宏观 80~300）
 
     Returns:
         tuple[str, UniMessage | None]: (文字摘要, 视频或截图)
