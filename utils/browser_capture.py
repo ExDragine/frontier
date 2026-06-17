@@ -202,8 +202,20 @@ async def record_video(
     """
 
     async def _do_record() -> bytes:
+        browser = await _get_browser()
+
+        # 预热：用不带录制的 context 先加载一次页面，填充浏览器缓存
+        warmup_context = await browser.new_context(
+            viewport={"width": width, "height": height},
+        )
+        try:
+            warmup_page = await warmup_context.new_page()
+            await warmup_page.goto(url, wait_until=wait_until, timeout=timeout)
+        finally:
+            await warmup_context.close()
+
+        # 正式录制：缓存已热，二次导航秒加载，录制时长 ≈ duration
         with tempfile.TemporaryDirectory() as video_dir:
-            browser = await _get_browser()
             context = await browser.new_context(
                 viewport={"width": width, "height": height},
                 record_video_dir=video_dir,
@@ -211,7 +223,7 @@ async def record_video(
             )
             try:
                 page = await context.new_page()
-                await page.goto(url, wait_until=wait_until, timeout=timeout)
+                await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
                 await page.wait_for_timeout(duration * 1000)
             finally:
                 await context.close()
