@@ -53,7 +53,7 @@ SCENARIO_MAP: dict[str, dict] = {
     "硫酸盐消光":   {"mode": "particulates", "height": "surface", "overlay": "suexttau",          "animation": "level", "projection": "orthographic", "zoom": 1850},
 
     # ── 空间天气模式 space（1个，默认暂停 → 截图）──
-    "极光": {"mode": "space", "height": "surface", "overlay": "aurora", "animation": "level", "projection": "orthographic", "zoom": 300, "anim_state": "off"},
+    "极光": {"mode": "space", "height": "surface", "overlay": "aurora", "animation": "level", "projection": "orthographic", "zoom": 300},
 
     # ── 生物模式 bio（2个）──
     "珊瑚白化": {"mode": "bio", "height": "surface", "overlay": "bleaching_alert_area", "animation": "level", "projection": "orthographic", "zoom": 300},
@@ -221,13 +221,13 @@ async def run_ens_normal(
                 url=url, width=1920, height=1080,
                 wait_until="domcontentloaded", timeout=60000,
             )
-            return f"{scenario} - {location}（静态截图）", UniMessage.image(raw=image_bytes)
+            return f"{scenario} - {location}（静态截图）\n💡 vep 专业模式自定义参数 | /vehelp 查看参数菜单", UniMessage.image(raw=image_bytes)
         else:
             video_bytes = await record_video(
                 url=url, duration=10, width=1920, height=1080,
                 wait_until="domcontentloaded", timeout=60000,
             )
-            return f"{scenario} - {location}（10秒视频）", UniMessage.video(raw=video_bytes)
+            return f"{scenario} - {location}（10秒视频）\n💡 vep 专业模式自定义参数 | /vehelp 查看参数菜单", UniMessage.video(raw=video_bytes)
     except Exception as e:
         logger.error(f"ens_normal 失败 [{scenario}/{location}]: {e}")
         return f"获取失败: {e}", None
