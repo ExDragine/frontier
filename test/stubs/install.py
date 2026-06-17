@@ -59,6 +59,7 @@ def install_all_third_party_stubs():
         AIMessage=type("AIMessage", (), {"__init__": lambda self, content=None: setattr(self, "content", content)}),
     )
     install_stub("langchain_core.runnables", RunnableConfig=dict)
+    install_stub("langchain_core.tools", tool=fake_tool)
     install_stub("langchain_openai", ChatOpenAI=type("ChatOpenAI", (), {"__init__": lambda self, **_kw: None}))
     install_stub("langchain_deepseek", ChatDeepSeek=type("ChatDeepSeek", (), {"__init__": lambda self, **_kw: None}))
     install_stub(
