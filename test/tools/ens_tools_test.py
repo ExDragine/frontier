@@ -21,14 +21,14 @@ async def test_ens_normal_video_path(load_tool_module, monkeypatch):
     captured_url = {}
 
     async def fake_record_video(
-        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         captured_url["url"] = url
         captured_url["duration"] = duration
         return b"fake-video"
 
     async def fake_screenshot(
-        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         raise AssertionError("不应调用截图")
 
@@ -37,10 +37,7 @@ async def test_ens_normal_video_path(load_tool_module, monkeypatch):
 
     text, artifact = await mod.ens_normal(scenario="风速", location="北京")
 
-    assert "风速" in text
-    assert "北京" in text
-    assert "10秒视频" in text
-    assert "/vehelp" in text  # 提示文本
+    assert "你要的北京现在的风速已返回" == text
     assert "wind" in captured_url["url"]
     assert "level" in captured_url["url"]
     assert "orthographic" in captured_url["url"]
@@ -56,13 +53,13 @@ async def test_ens_normal_space_mode_plays_video(load_tool_module, monkeypatch):
     captured_url = {}
 
     async def fake_record_video(
-        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         captured_url["url"] = url
         return b"fake-video"
 
     async def fake_screenshot(
-        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         raise AssertionError("极光现在默认播放，不应截图")
 
@@ -76,8 +73,7 @@ async def test_ens_normal_space_mode_plays_video(load_tool_module, monkeypatch):
         lat=64.86,
     )
 
-    assert "极光" in text
-    assert "10秒视频" in text
+    assert "你要的费尔班克斯现在的极光已返回" == text
     assert "anim=off" not in captured_url["url"]  # 不再有 anim=off
     assert artifact is not None
 
@@ -88,7 +84,7 @@ async def test_ens_normal_explicit_coordinates(load_tool_module, monkeypatch):
     mod = load_tool_module("ens_normal")
 
     async def fake_record_video(
-        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         return b"fake-video"
 
@@ -114,7 +110,7 @@ async def test_ens_normal_record_video_failure(load_tool_module, monkeypatch):
     mod = load_tool_module("ens_normal")
 
     async def fake_record_video(
-        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         raise RuntimeError("浏览器崩溃")
 
@@ -135,14 +131,14 @@ async def test_ens_professional_video_path(load_tool_module, monkeypatch):
     captured_url = {}
 
     async def fake_record_video(
-        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         captured_url["url"] = url
         captured_url["duration"] = duration
         return b"fake-video"
 
     async def fake_screenshot(
-        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         raise AssertionError("不应调用截图")
 
@@ -162,7 +158,7 @@ async def test_ens_professional_video_path(load_tool_module, monkeypatch):
         p10="0",
     )
 
-    assert "10秒视频" in text
+    assert "你要的(116.4, 39.9)现在的大气数据已返回" == text
     assert "wind" in captured_url["url"]
     assert "isobaric/500hPa" in captured_url["url"]
     assert "overlay=temp" in captured_url["url"]
@@ -179,12 +175,12 @@ async def test_ens_professional_pause_screenshot(load_tool_module, monkeypatch):
     captured_url = {}
 
     async def fake_record_video(
-        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         raise AssertionError("animoff 不应录屏")
 
     async def fake_screenshot(
-        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         captured_url["url"] = url
         return b"fake-image"
@@ -205,7 +201,7 @@ async def test_ens_professional_pause_screenshot(load_tool_module, monkeypatch):
         p10="animoff",
     )
 
-    assert "静态截图" in text
+    assert "你要的(0.0, 60.0)现在的空间天气数据已返回" == text
     assert "space" in captured_url["url"]
     assert "anim=off" in captured_url["url"]
     assert artifact is not None
@@ -218,7 +214,7 @@ async def test_ens_professional_bio_fires(load_tool_module, monkeypatch):
     captured_url = {}
 
     async def fake_record_video(
-        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         captured_url["url"] = url
         return b"fake-video"
@@ -226,7 +222,7 @@ async def test_ens_professional_bio_fires(load_tool_module, monkeypatch):
     monkeypatch.setattr(mod, "record_video", fake_record_video)
 
     async def fake_screenshot(
-        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         return b"fake"
 
@@ -256,7 +252,7 @@ async def test_ens_professional_time_parse(load_tool_module, monkeypatch):
     captured_url = {}
 
     async def fake_record_video(
-        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         captured_url["url"] = url
         return b"fake-video"
@@ -264,7 +260,7 @@ async def test_ens_professional_time_parse(load_tool_module, monkeypatch):
     monkeypatch.setattr(mod, "record_video", fake_record_video)
 
     async def fake_screenshot(
-        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         return b"fake"
 
@@ -292,7 +288,7 @@ async def test_ens_professional_failure(load_tool_module, monkeypatch):
     mod = load_tool_module("ens_professional")
 
     async def fake_record_video(
-        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False
+        url, *, duration, width, height, wait_until, timeout, wait_selector=None, post_wait_ms=0, hard_wait=False, ready_timeout=15000, wait_function=None
     ):
         raise RuntimeError("浏览器超时")
 
