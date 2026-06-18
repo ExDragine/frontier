@@ -1,7 +1,7 @@
-"""Earth Nullschool 普通模式工具。
+"""地球可视化数据 普通模式工具。
 
 预设场景方案，LLM 匹配场景名 + 提取位置/时间 → 拼接 URL → 截图或录屏返回。
-动画播放时返回 10 秒视频，动画暂停时（空间天气等）返回截图。
+动画播放时返回视频，动画暂停时（空间天气等）返回截图。
 
 触发方式：消息以 "ve" 开头（如 "ve看看广州PM2.5"），LLM 自动路由到本工具。
 国内城市走内置坐标字典，国外/特殊位置由 LLM 搜索经纬度后直接传入 lon/lat。
@@ -430,7 +430,7 @@ def _resolve_coords(location: str) -> tuple[float, float]:
 
 
 def _build_earth_url(params: dict, lon: float, lat: float, time: str) -> str:
-    """拼接 earth.nullschool.net 的 hash-fragment URL。
+    """拼接地球可视化数据的 hash-fragment URL。
 
     格式: time/mode/height/animation/[annot][anim=off][grid][overlay=xxx]/projection=lon,lat,zoom/loc=lon,lat
     """
@@ -625,7 +625,7 @@ async def ens_normal(
     lat: float | None = None,
     zoom: int | None = None,
 ) -> tuple[str, UniMessage | None]:
-    """Earth Nullschool 普通模式——通过预设场景查看地球可视化数据。
+    """地球可视化数据 普通模式——通过预设场景查看地球数据。
 
     ⚠️ 仅在用户消息以 "ve" 开头时调用（如 "ve看看广州PM2.5"）。
 

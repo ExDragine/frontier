@@ -155,7 +155,7 @@ async def _wait_for_page_ready(
 async def _extract_page_data(page) -> dict:
     """从已加载完成的页面提取关键数据（坐标、数值、时间等）。
 
-    ⚠️ 当前仅内置了 earth.nullschool.net 的 DOM 选择器。
+    ⚠️ 当前仅内置了地球可视化站点的 DOM 选择器。
     其他网站调用 page_data_out={} 会返回空 dict，不影响截图/录屏核心流程。
 
     如需支持更多网站的数据提取，在本函数内按 page.url 做域名分发，
@@ -261,7 +261,7 @@ async def screenshot(
         ready_timeout: _wait_for_page_ready 超时毫秒数
         wait_function: 自定义 JS 等待条件（如等待 loading 指示器消失）
         page_data_out: 传入 dict 时，将 _extract_page_data() 提取的数据写入该 dict。
-            当前仅适配 NullSchool，其他网站返回空 dict 不影响截图/录屏主流程。
+            当前仅适配地球可视化站点，其他网站返回空 dict 不影响截图/录屏主流程。
             扩展新网站：在 _extract_page_data() 按域名分发即可，无需改本函数签名。
 
     Returns:
@@ -339,7 +339,7 @@ async def record_video(
         ready_timeout: _wait_for_page_ready 超时毫秒数
         wait_function: 自定义 JS 等待条件（如等待 loading 指示器消失）
         page_data_out: 传入 dict 时，将 _extract_page_data() 提取的数据写入该 dict。
-            当前仅适配 NullSchool，其他网站返回空 dict 不影响主流程。
+            当前仅适配地球可视化站点，其他网站返回空 dict 不影响主流程。
             扩展新网站：在 _extract_page_data() 按域名分发即可，无需改本函数签名。
 
     Returns:

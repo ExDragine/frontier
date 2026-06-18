@@ -1,4 +1,4 @@
-"""Earth Nullschool 专业模式工具。
+"""地球可视化数据 专业模式工具。
 
 数字参数接口：用户通过编号选择选项，LLM/用户按 "vep" 触发。
 所有模式默认播放动画，用户可传 animoff 暂停。
@@ -378,7 +378,7 @@ async def ens_professional(
     p10: str = "0",
     bio_annot: int = 0,
 ) -> tuple[str, UniMessage | None]:
-    """Earth Nullschool 专业模式——数字参数方式查看地球可视化数据。
+    """地球可视化数据 专业模式——数字参数方式查看地球数据。
 
     ⚠️ 仅在用户消息以 "vep" 开头时调用（如 "vep 1,0,1,0,1,116.4,39.9,1850"）。
 
