@@ -182,8 +182,10 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
 
 @driver.on_shutdown
 async def on_shutdown():
+    from utils.browser_capture import close_browser
     from utils.http_client import aclose_all
 
+    await close_browser()
     await aclose_all()
 
 
