@@ -7,6 +7,8 @@
 国内城市走内置坐标字典，国外/特殊位置由 LLM 搜索经纬度后直接传入 lon/lat。
 """
 
+import re
+
 from langchain_core.tools import tool
 from nonebot import logger
 
@@ -445,6 +447,23 @@ def _build_earth_url(params: dict, lon: float, lat: float, time: str) -> str:
     return f"https://earth.nullschool.net/zh-cn/{path}/{view}/{loc}"
 
 
+_NULLSCHOOL_LOADING_WAIT = (
+    "(function(){var l=document.getElementById('load');if(!l)return true;"
+    "var s=window.getComputedStyle(l);return s.display==='none'||s.visibility==='hidden';})()"
+)
+
+
+def _format_time_text(time: str) -> str:
+    """将 URL 时间片段转为用户可读文本。"""
+    if time == "#current":
+        return "现在"
+    m = re.match(r"^#(\d{4})/(\d{2})/(\d{2})/(\d{2})(\d{2})Z$", time)
+    if m:
+        y, mo, d, h, mi = m.groups()
+        return f"{y}年{int(mo)}月{int(d)}日{h}:{mi}"
+    return time
+
+
 async def run_ens_normal(
     scenario: str,
     location: str,
@@ -478,11 +497,14 @@ async def run_ens_normal(
                 wait_until="networkidle",
                 timeout=60000,
                 wait_selector="canvas",
-                post_wait_ms=1500,
+                wait_function=_NULLSCHOOL_LOADING_WAIT,
+                post_wait_ms=5000,
                 hard_wait=True,
+                ready_timeout=30000,
             )
+            time_text = _format_time_text(time)
             return (
-                f"✅ {scenario} - {location}（静态截图）\n💡 vep 专业模式自定义参数 | /vehelp 查看参数菜单",
+                f"你要的{location}{time_text}的{scenario}已返回",
                 UniMessage.image(raw=image_bytes),
             )
         else:
@@ -494,11 +516,14 @@ async def run_ens_normal(
                 wait_until="networkidle",
                 timeout=60000,
                 wait_selector="canvas",
-                post_wait_ms=1500,
+                wait_function=_NULLSCHOOL_LOADING_WAIT,
+                post_wait_ms=5000,
                 hard_wait=True,
+                ready_timeout=30000,
             )
+            time_text = _format_time_text(time)
             return (
-                f"✅ {scenario} - {location}（10秒视频）\n💡 vep 专业模式自定义参数 | /vehelp 查看参数菜单",
+                f"你要的{location}{time_text}的{scenario}已返回",
                 UniMessage.video(raw=video_bytes),
             )
     except Exception as e:
