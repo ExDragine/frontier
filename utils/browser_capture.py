@@ -10,6 +10,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import time
 from asyncio import Lock
 from collections.abc import Callable
 from typing import Any
@@ -32,6 +33,14 @@ _CRASH_MSG_SNIPPETS = (
     "Browser has been closed",
     "Protocol error",
 )
+
+
+class PageLoadTimeoutError(RuntimeError):
+    """页面加载超时，携带当前状态截图供工具层回退使用。"""
+
+    def __init__(self, message: str, screenshot_bytes: bytes):
+        super().__init__(message)
+        self.screenshot_bytes = screenshot_bytes
 
 
 def _is_crash_error(error: Exception) -> bool:
@@ -108,6 +117,41 @@ async def _restart_browser():
         logger.info("Playwright 浏览器已重新启动")
 
 
+async def _wait_for_page_ready(
+    page,
+    *,
+    wait_selector: str | None = None,
+    post_wait_ms: int = 500,
+    hard_wait: bool = False,
+    ready_timeout: int = 15000,
+    wait_function: str | None = None,
+) -> bool:
+    """等待页面核心内容渲染就绪，返回 True（就绪）或 False（超时）。
+
+    若指定 wait_selector → 等该选择器出现。
+    若 hard_wait=True → 直接 wait_for_timeout(post_wait_ms)。
+    默认方案B → 等可见媒体元素（img/canvas/video）出现，或文本量够 + networkidle。
+    若指定 wait_function → 执行自定义 JS 等待条件（如等待 loading 指示器消失）。
+    """
+    try:
+        if wait_selector:
+            await page.wait_for_selector(wait_selector, timeout=ready_timeout)
+        if wait_function:
+            await page.wait_for_function(wait_function, timeout=ready_timeout)
+        if post_wait_ms:
+            if hard_wait:
+                await page.wait_for_timeout(post_wait_ms)
+            else:
+                await page.wait_for_function(
+                    "document.body && (document.body.innerText.trim().length > 20"
+                    " || document.querySelector('img,canvas,video'))",
+                    timeout=post_wait_ms,
+                )
+        return True
+    except Exception:
+        return False
+
+
 async def _run_with_crash_retry(action: Callable[[], Any]) -> Any:
     """执行浏览器操作，崩溃时自动重启并重试一次。"""
     try:
@@ -120,24 +164,18 @@ async def _run_with_crash_retry(action: Callable[[], Any]) -> Any:
         raise
 
 
-def _webm_to_mp4_bytes(webm_path: str, mp4_path: str) -> bytes:
-    """使用 imageio-ffmpeg 将 webm 转为 mp4 写入 mp4_path，读回后返回 bytes。"""
+def _webm_to_mp4_bytes(
+    webm_path: str, mp4_path: str, trim_start: float = 0, trim_duration: float | None = None
+) -> bytes:
+    """将 webm 转为 mp4，可选裁掉开头 trim_start 秒、保留 trim_duration 秒。"""
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-    cmd = [
-        ffmpeg,
-        "-i",
-        webm_path,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "18",
-        "-c:a",
-        "aac",
-        "-y",
-        mp4_path,
-    ]
+    cmd = [ffmpeg]
+    if trim_start > 0:
+        cmd += ["-ss", str(trim_start)]
+    cmd += ["-i", webm_path]
+    if trim_duration is not None:
+        cmd += ["-t", str(trim_duration)]
+    cmd += ["-c:v", "libx264", "-preset", "fast", "-crf", "18", "-c:a", "aac", "-y", mp4_path]
     result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise RuntimeError(f"视频转码失败: {result.stderr}")
@@ -159,6 +197,8 @@ async def screenshot(
     wait_selector: str | None = None,
     post_wait_ms: int = 500,
     hard_wait: bool = False,
+    ready_timeout: int = 15000,
+    wait_function: str | None = None,
 ) -> bytes:
     """对指定 URL 进行网页截图，返回 PNG 字节数据。
 
@@ -173,7 +213,10 @@ async def screenshot(
         wait_until: 页面加载等待策略（load / domcontentloaded / networkidle）
         timeout: 导航超时毫秒数
         wait_selector: 导航后等待该 CSS 选择器出现（如 "canvas" 等待 WebGL 初始化）
-        post_wait_ms: wait_selector 命中后额外等待毫秒数
+        post_wait_ms: 内容就绪后额外等待毫秒数
+        hard_wait: True=直接 sleep post_wait_ms，False=方案B 智能检测
+        ready_timeout: _wait_for_page_ready 超时毫秒数
+        wait_function: 自定义 JS 等待条件（如等待 loading 指示器消失）
 
     Returns:
         PNG 格式的截图字节数据
@@ -185,20 +228,14 @@ async def screenshot(
         page = await browser.new_page(viewport={"width": width, "height": height})
         try:
             await page.goto(url, wait_until=wait_until, timeout=timeout)
-            if wait_selector:
-                await page.wait_for_selector(wait_selector, timeout=timeout)
-            if post_wait_ms:
-                if hard_wait:
-                    await page.wait_for_timeout(post_wait_ms)
-                else:
-                    try:
-                        await page.wait_for_function(
-                            "document.body && (document.body.innerText.trim().length > 20"
-                            " || document.querySelector('img,canvas,video'))",
-                            timeout=post_wait_ms,
-                        )
-                    except Exception:
-                        pass
+            await _wait_for_page_ready(
+                page,
+                wait_selector=wait_selector,
+                post_wait_ms=post_wait_ms,
+                hard_wait=hard_wait,
+                ready_timeout=ready_timeout,
+                wait_function=wait_function,
+            )
             if selector:
                 element = await page.wait_for_selector(selector, timeout=timeout)
                 if element is None:
@@ -225,14 +262,17 @@ async def record_video(
     wait_selector: str | None = None,
     post_wait_ms: int = 500,
     hard_wait: bool = False,
+    ready_timeout: int = 15000,
+    wait_function: str | None = None,
 ) -> bytes:
     """录制指定 URL 的网页视频，返回 mp4 字节数据。
 
-    Playwright 原生输出 webm 至 TemporaryDirectory，
-    context.close() 后通过 imageio-ffmpeg stdout 管道转为 mp4 bytes，
-    TemporaryDirectory 退出时自动清理 webm 源文件，全程 mp4 不落盘。
+    单 Context 流程：导航 → 等页面就绪 → 录制 duration 秒。
+    Playwright 原生输出 webm 至 TemporaryDirectory，转码为 mp4 后返回。
 
     内置浏览器崩溃重试机制：若浏览器进程在录制期间崩溃，自动重启后重试一次。
+
+    若页面在 ready_timeout 内未就绪，抛出 PageLoadTimeoutError（携带当前状态截图）。
 
     Args:
         url: 目标网页 URL（支持 http/https/file 协议）
@@ -241,6 +281,11 @@ async def record_video(
         height: 视口高度（像素）
         wait_until: 页面加载等待策略（load / domcontentloaded / networkidle）
         timeout: 导航超时毫秒数
+        wait_selector: 导航后等待该 CSS 选择器出现（如 "canvas" 等待 WebGL 初始化）
+        post_wait_ms: 内容就绪后额外等待毫秒数
+        hard_wait: True=直接 sleep post_wait_ms，False=方案B 智能检测
+        ready_timeout: _wait_for_page_ready 超时毫秒数
+        wait_function: 自定义 JS 等待条件（如等待 loading 指示器消失）
 
     Returns:
         mp4 格式的视频字节数据
@@ -250,54 +295,31 @@ async def record_video(
         logger.info(f"正在打开网页并录屏: {url}")
         browser = await _get_browser()
 
-        # 预热
-        warmup_context = await browser.new_context(
-            viewport={"width": width, "height": height},
-        )
-        try:
-            warmup_page = await warmup_context.new_page()
-            await warmup_page.goto(url, wait_until=wait_until, timeout=timeout)
-            if wait_selector:
-                await warmup_page.wait_for_selector(wait_selector, timeout=timeout)
-            if post_wait_ms:
-                if hard_wait:
-                    await warmup_page.wait_for_timeout(post_wait_ms)
-                else:
-                    try:
-                        await warmup_page.wait_for_function(
-                            "document.body && (document.body.innerText.trim().length > 20"
-                            " || document.querySelector('img,canvas,video'))",
-                            timeout=post_wait_ms,
-                        )
-                    except Exception:
-                        pass
-        finally:
-            await warmup_context.close()
-
-        # 正式录制：缓存已热，二次导航秒加载，录制时长 ≈ duration
         with tempfile.TemporaryDirectory() as video_dir:
             context = await browser.new_context(
                 viewport={"width": width, "height": height},
                 record_video_dir=video_dir,
                 record_video_size={"width": width, "height": height},
             )
+            _recording_start = time.time()
             try:
                 page = await context.new_page()
                 await page.goto(url, wait_until=wait_until, timeout=timeout)
-                if wait_selector:
-                    await page.wait_for_selector(wait_selector, timeout=timeout)
-                if post_wait_ms:
-                    if hard_wait:
-                        await page.wait_for_timeout(post_wait_ms)
-                    else:
-                        try:
-                            await page.wait_for_function(
-                                "document.body && (document.body.innerText.trim().length > 20"
-                                " || document.querySelector('img,canvas,video'))",
-                                timeout=post_wait_ms,
-                            )
-                        except Exception:
-                            pass
+                ready = await _wait_for_page_ready(
+                    page,
+                    wait_selector=wait_selector,
+                    post_wait_ms=post_wait_ms,
+                    hard_wait=hard_wait,
+                    ready_timeout=ready_timeout,
+                    wait_function=wait_function,
+                )
+                if not ready:
+                    screenshot_bytes = await page.screenshot(type="png")
+                    raise PageLoadTimeoutError(
+                        f"页面加载超时 ({ready_timeout}ms): {url}",
+                        screenshot_bytes,
+                    )
+                _ready_elapsed = time.time() - _recording_start
                 await page.wait_for_timeout(duration * 1000)
             finally:
                 await context.close()
@@ -310,8 +332,10 @@ async def record_video(
                 raise FileNotFoundError(f"录屏未生成视频文件: {url}")
             webm_path = os.path.join(video_dir, video_files[-1])
             mp4_path = os.path.join(video_dir, "output.mp4")
-            mp4_bytes = _webm_to_mp4_bytes(webm_path, mp4_path)
-        logger.info(f"录屏完成: {len(mp4_bytes)} bytes")
+            mp4_bytes = _webm_to_mp4_bytes(
+                webm_path, mp4_path, trim_start=_ready_elapsed, trim_duration=float(duration)
+            )
+        logger.info(f"录屏完成: {len(mp4_bytes)} bytes (裁掉前 {_ready_elapsed:.1f}s 加载)")
         return mp4_bytes
 
     return await _run_with_crash_retry(_do_record)
