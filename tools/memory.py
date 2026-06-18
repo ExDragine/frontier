@@ -1,8 +1,8 @@
 import datetime
 import zoneinfo
 
-from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 from nonebot import logger
 
 from utils.configs import EnvConfig
@@ -196,7 +196,7 @@ async def summarize_messages(
 async def search_messages(  # noqa: C901
     config: RunnableConfig,
     query: str | None = None,
-    search_mode: str = "hybrid",
+    search_mode: str = "keyword",
     target_user_id: int | None = None,
     target_user_name: str | None = None,
     message_id: int | None = None,
@@ -209,7 +209,7 @@ async def search_messages(  # noqa: C901
     在群聊中只搜索本群消息，在私聊中只搜索与当前用户的私聊消息。
     Args:
         query (str): 可选，消息内容关键词，支持部分匹配
-        search_mode (str): 搜索模式，keyword、semantic 或 hybrid，默认 hybrid
+        search_mode (str): 搜索模式，默认 keyword
         target_user_id (int): 可选，群聊中筛选特定用户ID
         target_user_name (str): 可选，按用户显示名称部分匹配
         message_id (int): 可选，按平台消息ID精确搜索
@@ -220,8 +220,8 @@ async def search_messages(  # noqa: C901
         str: 匹配的聊天记录列表
     """
     content_query = _clean_optional_text(query)
-    if search_mode not in {"keyword", "semantic", "hybrid"}:
-        return "search_mode 只能是 keyword、semantic 或 hybrid。"
+    if search_mode != "keyword":
+        return "当前仅支持 keyword 搜索模式。"
     user_name_query = _clean_optional_text(target_user_name)
     start_ms: int | None = None
     end_ms: int | None = None
@@ -246,7 +246,7 @@ async def search_messages(  # noqa: C901
     try:
         current_user_id = int(raw_user_id) if raw_user_id not in (None, "") else None
         group_id = int(raw_group_id) if raw_group_id is not None else None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return "用户上下文错误，无法搜索聊天记录。"
 
     if group_id is None and current_user_id is None:
@@ -265,7 +265,6 @@ async def search_messages(  # noqa: C901
             start_time=start_ms,
             end_time=end_ms,
             limit=query_limit,
-            mode=search_mode,
         )
     except Exception as e:
         logger.error(f"消息搜索失败: {e}")

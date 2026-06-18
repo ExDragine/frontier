@@ -1,0 +1,475 @@
+<!DOCTYPE html><html class="light" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport">
+<title>NavHub Homepage</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-surface-variant": "#434654",
+                      "background": "#f9f9ff",
+                      "on-error": "#ffffff",
+                      "on-background": "#041b3c",
+                      "on-primary-fixed-variant": "#0040a2",
+                      "error": "#ba1a1a",
+                      "inverse-on-surface": "#edf0ff",
+                      "outline-variant": "#c3c6d6",
+                      "on-secondary-fixed-variant": "#004e5d",
+                      "on-primary-fixed": "#001848",
+                      "secondary-fixed": "#afecff",
+                      "secondary-container": "#50dcff",
+                      "on-error-container": "#93000a",
+                      "on-tertiary-fixed-variant": "#444749",
+                      "surface-variant": "#d7e2ff",
+                      "primary-fixed-dim": "#b2c5ff",
+                      "primary": "#003d9b",
+                      "on-primary": "#ffffff",
+                      "on-surface": "#041b3c",
+                      "on-secondary-fixed": "#001f27",
+                      "on-primary-container": "#c4d2ff",
+                      "surface-bright": "#f9f9ff",
+                      "error-container": "#ffdad6",
+                      "surface-container-high": "#e0e8ff",
+                      "surface-container-low": "#f1f3ff",
+                      "on-tertiary": "#ffffff",
+                      "inverse-surface": "#1d3052",
+                      "surface": "#f9f9ff",
+                      "inverse-primary": "#b2c5ff",
+                      "tertiary-fixed": "#e1e2e4",
+                      "secondary": "#00687b",
+                      "outline": "#737685",
+                      "on-tertiary-container": "#d2d3d5",
+                      "secondary-fixed-dim": "#48d7f9",
+                      "surface-container": "#e8edff",
+                      "surface-dim": "#cadaff",
+                      "surface-tint": "#0c56d0",
+                      "primary-container": "#0052cc",
+                      "on-tertiary-fixed": "#191c1e",
+                      "on-secondary-container": "#005f71",
+                      "on-secondary": "#ffffff",
+                      "surface-container-lowest": "#ffffff",
+                      "tertiary": "#414446",
+                      "primary-fixed": "#dae2ff",
+                      "tertiary-container": "#595b5d",
+                      "surface-container-highest": "#d7e2ff",
+                      "tertiary-fixed-dim": "#c5c6c8"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "sm": "8px",
+                      "lg": "24px",
+                      "md": "16px",
+                      "xs": "4px",
+                      "xl": "32px",
+                      "gutter": "12px",
+                      "container-margin": "20px",
+                      "base": "4px"
+              },
+              "fontFamily": {
+                      "display-lg": ["Inter"],
+                      "body-md": ["Inter"],
+                      "headline-md-mobile": ["Inter"],
+                      "headline-sm": ["Inter"],
+                      "body-lg": ["Inter"],
+                      "label-md": ["Inter"],
+                      "headline-md": ["Inter"]
+              },
+              "fontSize": {
+                      "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "headline-md-mobile": ["22px", {"lineHeight": "28px", "fontWeight": "600"}],
+                      "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                      "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+              }
+            }
+          }
+        }
+    </script>
+<style>
+        body {
+            -webkit-tap-highlight-color: transparent;
+        }
+        .ambient-shadow {
+            box-shadow: 0 4px 15px rgba(23, 43, 77, 0.04);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen flex flex-col antialiased">
+<!-- TopAppBar -->
+<header class="w-full sticky top-0 z-50 shadow-sm bg-surface flex items-center px-container-margin py-md justify-center">
+<div class="flex items-center gap-sm">
+</div>
+<h1 class="font-display-lg text-display-lg font-bold text-primary text-center">🌎ve专业模式帮助</h1>
+</header>
+<!-- Main Content -->
+<main class="flex-1 px-container-margin pt-md pb-24 overflow-y-auto">
+<!-- Search Bar -->
+<div class="relative w-full group mb-md"><div class="block w-full px-4 py-3 bg-surface-container-low rounded-xl text-on-surface font-body-md text-body-md text-center"><div class="">使用vep命令来触发专业模式，从下方选择选项</div><div class="">使用逗号分隔，例如"vep 1,2,3"</div></div></div>
+<!-- Section: Tools -->
+<section class="mb-md">
+<h2 class="font-body-lg text-body-lg font-bold mb-md">观察模式（必须项）</h2>
+<div class="grid grid-cols-3 gap-sm">
+<!-- Card 1: Wind -->
+<a class="bg-surface rounded-xl ambient-shadow flex flex-col items-center justify-center text-center active:scale-[0.98] duration-150 transition-transform p-2" href="#">
+<div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary-container/10 text-primary flex items-center justify-center mb-2 shrink-0">
+<span class="material-symbols-outlined text-[20px] sm:text-[24px]" style="font-variation-settings: 'FILL' 1;">air</span>
+</div>
+<div class="font-label-md sm:font-body-md text-label-md sm:text-body-md font-semibold text-on-surface flex items-center gap-1">
+<span class="text-primary">1</span>大气</div>
+</a>
+<!-- Card 2: Ocean Current -->
+<a class="bg-surface rounded-xl ambient-shadow flex flex-col items-center justify-center text-center active:scale-[0.98] duration-150 transition-transform p-2" href="#">
+<div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center mb-2 shrink-0">
+<span class="material-symbols-outlined text-[20px] sm:text-[24px]" style="font-variation-settings: 'FILL' 1;">water</span>
+</div>
+<div class="font-label-md sm:font-body-md text-label-md sm:text-body-md font-semibold text-on-surface flex items-center gap-1">
+<span class="text-secondary">2</span>海洋</div>
+</a>
+<!-- Card 3: Waves -->
+<a class="bg-surface rounded-xl ambient-shadow flex flex-col items-center justify-center text-center active:scale-[0.98] duration-150 transition-transform p-2" href="#">
+<div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-tertiary-container/10 text-tertiary flex items-center justify-center mb-2 shrink-0">
+<span class="material-symbols-outlined text-[20px] sm:text-[24px]" style="font-variation-settings: 'FILL' 1;">science</span>
+</div>
+<div class="font-label-md sm:font-body-md text-label-md sm:text-body-md font-semibold text-on-surface flex items-center gap-1">
+<span class="text-tertiary">3</span>大气化学</div>
+</a>
+<!-- Item 4 -->
+<a class="bg-surface rounded-xl ambient-shadow flex flex-col items-center justify-center text-center active:scale-[0.98] duration-150 transition-transform p-2" href="#">
+<div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-error-container/20 text-error flex items-center justify-center mb-2 shrink-0">
+<span class="material-symbols-outlined text-[20px] sm:text-[24px]" style="font-variation-settings: 'FILL' 1;">grain</span>
+</div>
+<div class="font-label-md sm:font-body-md text-label-md sm:text-body-md font-semibold text-on-surface flex items-center gap-1">
+<span class="text-error">4</span>颗粒物</div>
+</a>
+<!-- Item 5 -->
+<a class="bg-surface rounded-xl ambient-shadow flex flex-col items-center justify-center text-center active:scale-[0.98] duration-150 transition-transform p-2" href="#">
+<div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-surface-variant text-on-surface-variant flex items-center justify-center mb-2 shrink-0">
+<span class="material-symbols-outlined text-[20px] sm:text-[24px]" style="font-variation-settings: 'FILL' 1;">sunny</span>
+</div>
+<div class="font-label-md sm:font-body-md text-label-md sm:text-body-md font-semibold text-on-surface flex items-center gap-1">
+<span class="text-on-surface-variant">5</span>空间天气</div>
+</a>
+<!-- Item 6 -->
+<a class="bg-surface rounded-xl ambient-shadow flex flex-col items-center justify-center text-center active:scale-[0.98] duration-150 transition-transform p-2" href="#">
+<div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#34A853]/10 text-[#34A853] flex items-center justify-center mb-2 shrink-0">
+<span class="material-symbols-outlined text-[20px] sm:text-[24px]" style="font-variation-settings: 'FILL' 1;">eco</span>
+</div>
+<div class="font-label-md sm:font-body-md text-label-md sm:text-body-md font-semibold text-on-surface flex items-center gap-1">
+<span class="text-[#34A853]">6</span>生物</div>
+</a>
+</div>
+</section><section class="mb-md"><h2 class="font-body-lg text-body-lg font-bold mb-md">高度 (必须项，单位：hPa)</h2><div class="grid grid-cols-4 gap-sm"><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-label-md font-bold">0</div><span class="text-label-md font-semibold text-on-surface">地表</span></div><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0 text-label-md font-bold">1</div><span class="text-label-md font-semibold text-on-surface">10</span></div><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-tertiary-container/10 text-tertiary flex items-center justify-center shrink-0 text-label-md font-bold">2</div><span class="text-label-md font-semibold text-on-surface">70</span></div><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-error-container/20 text-error flex items-center justify-center shrink-0 text-label-md font-bold">3</div><span class="text-label-md font-semibold text-on-surface">250</span></div><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-surface-variant text-on-surface-variant flex items-center justify-center shrink-0 text-label-md font-bold">4</div><span class="text-label-md font-semibold text-on-surface">500</span></div><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-[#34A853]/10 text-[#34A853] flex items-center justify-center shrink-0 text-label-md font-bold">5</div><span class="text-label-md font-semibold text-on-surface">700</span></div><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-label-md font-bold">6</div><span class="text-label-md font-semibold text-on-surface">850</span></div><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0 text-label-md font-bold">7</div><span class="text-label-md font-semibold text-on-surface">1000</span></div></div></section><section class="mb-sm"><div class="flex items-center justify-between mb-md"><div class="flex items-center gap-sm"><h2 class="font-body-lg text-body-lg font-bold text-on-surface">动画 <span class="text-on-surface-variant font-body-md">(必须项)</span></h2></div></div><div class="grid grid-cols-3 gap-sm"><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-label-md font-bold">1</div><span class="material-symbols-outlined text-[18px] text-primary">air</span><span class="text-label-md font-semibold text-on-surface">风</span></div><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0 text-label-md font-bold">2</div><span class="material-symbols-outlined text-[18px] text-secondary">water</span><span class="text-label-md font-semibold text-on-surface">洋流</span></div><div class="bg-surface rounded-xl ambient-shadow flex items-center gap-2 active:scale-[0.98] duration-150 transition-transform py-1 px-2"><div class="w-6 h-6 rounded-full bg-tertiary-container/10 text-tertiary flex items-center justify-center shrink-0 text-label-md font-bold">3</div><span class="material-symbols-outlined text-[18px] text-tertiary">waves</span><span class="text-label-md font-semibold text-on-surface">波浪</span></div></div><div class="grid grid-cols-3 gap-sm"></div></section><section class="mb-xl">
+</section>
+<!-- Section: Overlay -->
+<section class="mb-md">
+<h2 class="font-body-lg text-body-lg font-bold mb-2">叠加层（必须项）</h2>
+<!-- Sub-section: 大气模式 -->
+<div class="mb-3">
+<h3 class="font-headline-sm text-body-lg font-semibold text-on-surface text-center mb-2">大气模式</h3>
+<div class="grid grid-cols-3 gap-sm">
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">0</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">block</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">无</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">1</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">air</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">风</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">2</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">device_thermostat</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">温度</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">3</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">humidity_percentage</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">相对湿度</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">4</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">water_drop</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">露点</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">5</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">thermometer</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">湿球温度</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">6</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">rainy</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">3HPA</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">7</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">flash_on</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">CAPE</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">8</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">waves</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">水汽含量</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">9</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">cloud</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">云中总水量</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">10</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">compress</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">MSLP</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">11</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">accessibility_new</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">体感温度</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">12</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">wb_sunny</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">UVI</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">13</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">speed</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">WPD</span>
+</div>
+</div>
+</div>
+<!-- Sub-section: 海洋模式 -->
+<div class="mb-3">
+<h3 class="font-headline-sm text-body-lg font-semibold text-on-surface text-center mb-2">海洋模式</h3>
+<div class="grid grid-cols-3 gap-sm">
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0 text-[10px] font-bold">0</div>
+<span class="material-symbols-outlined text-[14px] text-secondary shrink-0">block</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">无</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0 text-[10px] font-bold">1</div>
+<span class="material-symbols-outlined text-[14px] text-secondary shrink-0">water</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">洋流</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0 text-[10px] font-bold">2</div>
+<span class="material-symbols-outlined text-[14px] text-secondary shrink-0">timeline</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">波峰周期</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0 text-[10px] font-bold">3</div>
+<span class="material-symbols-outlined text-[14px] text-secondary shrink-0">tsunami</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">浪高</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0 text-[10px] font-bold">4</div>
+<span class="material-symbols-outlined text-[14px] text-secondary shrink-0">thermostat</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">海面温度</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0 text-[10px] font-bold">5</div>
+<span class="material-symbols-outlined text-[14px] text-secondary shrink-0">compare_arrows</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">海温偏差值</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0 text-[10px] font-bold">6</div>
+<span class="material-symbols-outlined text-[14px] text-secondary shrink-0">forest</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">珊瑚白化</span>
+</div>
+</div>
+</div>
+<!-- Sub-section: 大气化学模式 -->
+<div class="mb-3">
+<h3 class="font-headline-sm text-body-lg font-semibold text-on-surface text-center mb-2">大气化学模式</h3>
+<div class="grid grid-cols-3 gap-sm">
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-tertiary-container/10 text-tertiary flex items-center justify-center shrink-0 text-[10px] font-bold">1</div>
+<span class="material-symbols-outlined text-[14px] text-tertiary shrink-0">co2</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">COsc</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-tertiary-container/10 text-tertiary flex items-center justify-center shrink-0 text-[10px] font-bold">2</div>
+<span class="material-symbols-outlined text-[14px] text-tertiary shrink-0">co2</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">CO2sc</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-tertiary-container/10 text-tertiary flex items-center justify-center shrink-0 text-[10px] font-bold">3</div>
+<span class="material-symbols-outlined text-[14px] text-tertiary shrink-0">factory</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">SO2sm</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-tertiary-container/10 text-tertiary flex items-center justify-center shrink-0 text-[10px] font-bold">4</div>
+<span class="material-symbols-outlined text-[10px] text-tertiary shrink-0">foggy</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">NO2</span>
+</div>
+</div>
+</div>
+<!-- Sub-section: 颗粒物模式 -->
+<div class="mb-3">
+<h3 class="font-headline-sm text-body-lg font-semibold text-on-surface text-center mb-2">颗粒物模式</h3>
+<div class="grid grid-cols-3 gap-sm">
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-error-container/20 text-error flex items-center justify-center shrink-0 text-[10px] font-bold">1</div>
+<span class="material-symbols-outlined text-[14px] text-error shrink-0">grain</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">尘埃消光</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-error-container/20 text-error flex items-center justify-center shrink-0 text-[10px] font-bold">2</div>
+<span class="material-symbols-outlined text-[14px] text-error shrink-0">blur_on</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">PM1</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-error-container/20 text-error flex items-center justify-center shrink-0 text-[10px] font-bold">3</div>
+<span class="material-symbols-outlined text-[14px] text-error shrink-0">blur_on</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">PM2.5</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-error-container/20 text-error flex items-center justify-center shrink-0 text-[10px] font-bold">4</div>
+<span class="material-symbols-outlined text-[14px] text-error shrink-0">blur_circular</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">PM10</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-error-container/20 text-error flex items-center justify-center shrink-0 text-[10px] font-bold">5</div>
+<span class="material-symbols-outlined text-[14px] text-error shrink-0">science</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">OMaot</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-error-container/20 text-error flex items-center justify-center shrink-0 text-[10px] font-bold">6</div>
+<span class="material-symbols-outlined text-[14px] text-error shrink-0">science</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">SO4ex</span>
+</div>
+</div>
+</div>
+<!-- Sub-section: 空间天气模式 -->
+<div class="mb-3">
+<h3 class="font-headline-sm text-body-lg font-semibold text-on-surface text-center mb-2">空间天气模式</h3>
+<div class="grid grid-cols-3 gap-sm">
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-surface-variant text-on-surface-variant flex items-center justify-center shrink-0 text-[10px] font-bold">1</div>
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant shrink-0">brightness_low</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">极光</span>
+</div>
+</div>
+</div>
+<!-- Sub-section: 生物模式 -->
+<div class="mb-3">
+<h3 class="font-headline-sm text-body-lg font-semibold text-on-surface text-center mb-2">生物模式</h3>
+<div class="grid grid-cols-3 gap-sm">
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-[#34A853]/10 text-[#34A853] flex items-center justify-center shrink-0 text-[10px] font-bold">0</div>
+<span class="material-symbols-outlined text-[14px] text-[#34A853] shrink-0">block</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">无</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-[#34A853]/10 text-[#34A853] flex items-center justify-center shrink-0 text-[10px] font-bold">1</div>
+<span class="material-symbols-outlined text-[14px] text-[#34A853] shrink-0">forest</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">珊瑚白化</span>
+</div>
+</div><div class="grid grid-cols-3 gap-sm mt-sm">
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-[#34A853]/10 text-[#34A853] flex items-center justify-center shrink-0 text-[10px] font-bold">0</div>
+<span class="material-symbols-outlined text-[14px] text-[#34A853] shrink-0">block</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">无</span>
+<span class="text-[8px] text-error border border-error/50 rounded-sm px-[2px] py-[1px] leading-none shrink-0">注释</span>
+</div>
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-[#34A853]/10 text-[#34A853] flex items-center justify-center shrink-0 text-[10px] font-bold">1</div>
+<span class="material-symbols-outlined text-[14px] text-[#34A853] shrink-0">local_fire_department</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">火点</span>
+<span class="text-[8px] text-error border border-error/50 rounded-sm px-[2px] py-[1px] leading-none shrink-0">注释</span>
+</div>
+</div>
+</div>
+<!-- Sub-section: 投影模式 -->
+<div class="mb-3">
+</div></section><section class="mb-md">
+<h2 class="font-body-lg text-body-lg font-bold mb-md">投影</h2>
+<div class="grid grid-cols-3 gap-sm">
+<!-- Item 1 -->
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">1</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">public</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">正射投影</span>
+</div>
+<!-- Item 2 -->
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">2</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">map</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">等距圆柱</span>
+</div>
+<!-- Item 3 -->
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">3</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">language</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">等距圆锥</span>
+</div>
+<!-- Item 4 -->
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">4</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">explore</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">亚特兰蒂斯</span>
+</div>
+<!-- Item 5 -->
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">5</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">grid_view</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">帕特森投影</span>
+</div>
+<!-- Item 6 -->
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">6</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">circle</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">立体投影</span>
+</div>
+<!-- Item 7 -->
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">7</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">filter_vintage</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">沃特曼蝴蝶</span>
+</div>
+<!-- Item 8 -->
+<div class="bg-surface rounded-lg ambient-shadow flex flex-row items-center p-1.5 h-full gap-1 active:scale-[0.98] duration-150 transition-transform overflow-hidden">
+<div class="w-5 h-5 rounded-full bg-primary-container/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-bold">8</div>
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">layers</span>
+<span class="text-[11px] font-semibold text-on-surface leading-none whitespace-nowrap overflow-hidden text-ellipsis">温克尔Ⅲ</span>
+</div>
+</div>
+</section>
+<div class="space-y-sm mt-md">
+<div class="bg-surface-container-low rounded-xl p-3 flex items-center gap-md ambient-shadow">
+<span class="material-symbols-outlined text-primary shrink-0">location_on</span>
+<p class="text-body-md text-on-surface">经纬度和 zoom 值直接键入，不需要使用序号，zoom 越高越近</p>
+</div>
+<div class="bg-surface-container-low rounded-xl p-3 flex items-center gap-md ambient-shadow">
+<span class="material-symbols-outlined text-primary shrink-0">schedule</span>
+<p class="text-body-md text-on-surface">时间按照YYYYMMDD.HHMM格式键入，指定当前时间时键入0</p>
+</div>
+<div class="bg-surface-container-low rounded-xl p-3 flex items-center gap-md ambient-shadow">
+<span class="material-symbols-outlined text-primary shrink-0">pause_circle</span>
+<p class="text-body-md text-on-surface">暂停功能参数为animoff，默认为播放状态</p>
+</div>
+<div class="bg-surface-container-low rounded-xl p-3 flex items-center gap-md ambient-shadow">
+<span class="material-symbols-outlined text-primary shrink-0">description</span>
+<p class="text-body-md text-on-surface">生物模式下的注释功能编号跟在其叠加层编号后面，仅生物模式需要</p>
+</div>
+<div class="py-[1px] whitespace-nowrap overflow-x-auto"><p class="text-on-surface"><span class="text-[11px]">示例：vep 1,0,1,11,1,114.15,24.87,1850,20261001.1200,animoff</span></p></div><div class="py-[1px]"><p class="text-on-surface leading-tight"><span class="text-[11px]">意为：大气模式+地表+风+体感温度+正射投影+zoom1850，24.87°N 114.15°E，2026年10月1日12时00分，暂停播放</span></p></div></div></main>
+</body></html>

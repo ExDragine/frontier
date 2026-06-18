@@ -1,7 +1,7 @@
 import json
 
-from langchain.tools import tool
 from langchain_community.document_loaders import ArxivLoader
+from langchain_core.tools import tool
 
 
 @tool(response_format="content")

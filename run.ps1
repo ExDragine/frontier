@@ -5,7 +5,6 @@ if (-not $env:HF_ENDPOINT) {
 .venv/Scripts/Activate.ps1
 
 do {
-    uv sync --upgrade
-    nb run
+    uv run nb run
     sleep 5
 }while($true)

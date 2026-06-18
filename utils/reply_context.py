@@ -1,10 +1,17 @@
 import importlib
+import json
 
 from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
 
 from utils.configs import EnvConfig
-from utils.database import MessageDatabase
+from utils.database import MESSAGE_SOURCE_TYPE_NORMAL, MessageDatabase
+from utils.http_client import get_http_client
+from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments, segments_to_raw_json
+
+_httpx_client = get_http_client("reply_context")
+FORWARD_CONTEXT_MAX_DEPTH = 3
+FORWARD_CONTEXT_MAX_NODES = 80
 
 
 def _message_utils():
@@ -18,7 +25,7 @@ def reply_seq_from_segments(segments: list[dict]) -> int | None:
         message_seq = segment.get("data", {}).get("message_seq")
         try:
             return int(message_seq)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
     return None
 
@@ -38,10 +45,6 @@ def _sender_name_from_milky_message(message) -> str:
     return str(message.sender_id)
 
 
-def _role_label(role: str) -> str:
-    return "助手" if role == "assistant" else "用户"
-
-
 def _format_quote(role: str, name: str | None, text: str, image_count: int, missing_images: int) -> str:
     content_parts = []
     if text.strip():
@@ -51,7 +54,8 @@ def _format_quote(role: str, name: str | None, text: str, image_count: int, miss
     if missing_images:
         content_parts.append(" ".join("[引用消息包含图片，但图片已失效]" for _ in range(missing_images)))
     content = "\n".join(content_parts) if content_parts else "[空消息]"
-    return f"\n\n[引用消息]\n{_role_label(role)}({name or '未知'}): {content}"
+    role_label = "助手" if role == "assistant" else "用户"
+    return f"\n\n[引用消息]\n{role_label}({name or '未知'}): {content}"
 
 
 async def _fetch_reply_message_from_milky(bot, event: MessageEvent, reply_seq: int):
@@ -70,8 +74,9 @@ async def _fetch_reply_message_from_milky(bot, event: MessageEvent, reply_seq: i
 
 
 async def _download_image_from_url(url: str) -> bytes | None:
+    """下载引用消息中的图片，失败返回 None。"""
     try:
-        return (await _message_utils().httpx_client.get(url)).content
+        return (await _httpx_client.get(url)).content
     except Exception as e:
         logger.warning(f"⚠️ 下载引用图片失败 url={url}: {type(e).__name__}: {e}")
         return None
@@ -98,21 +103,146 @@ async def _download_milky_image(bot, segment: dict) -> bytes | None:
     return await _download_image_from_url(resource_url)
 
 
-async def _extract_milky_message_content(bot, message) -> tuple[str, list[bytes], int]:
-    image_segments = [segment for segment in message.segments if segment.get("type") == "image"]
-    text_segments = [segment for segment in message.segments if segment.get("type") != "image"]
-    text, *_ = await _message_utils().message_extract(text_segments)
-    images = []
+def _forward_marker(data: dict) -> str:
+    title = data.get("title", "")
+    summary = data.get("summary", "")
+    if title or summary:
+        return f"[合并转发:{title} - {summary}]"
+    return "[合并转发]"
+
+
+async def _extract_forward_segment_content(bot, segment: dict, depth: int) -> tuple[str, list[bytes], int]:
+    data = segment.get("data", {})
+    marker = _forward_marker(data)
+    forward_id = data.get("forward_id")
+    if not forward_id:
+        return marker, [], 0
+    if depth >= FORWARD_CONTEXT_MAX_DEPTH:
+        return f"{marker}\n[合并转发展开已达到深度限制]", [], 0
+
+    try:
+        nodes = await bot.get_forwarded_messages(forward_id=forward_id)
+    except Exception as e:
+        logger.warning(f"⚠️ 拉取合并转发失败 forward_id={forward_id}: {type(e).__name__}: {e}")
+        return f"{marker}\n[合并转发内容拉取失败]", [], 0
+
+    lines = [marker]
+    images: list[bytes] = []
     missing_images = 0
-    for segment in image_segments:
-        if image := await _download_milky_image(bot, segment):
-            images.append(image)
-        else:
-            missing_images += 1
-    return text, images, missing_images
+    for node in list(nodes)[:FORWARD_CONTEXT_MAX_NODES]:
+        node_text, node_images, node_missing = await _extract_segments_content(
+            bot,
+            getattr(node, "segments", []),
+            depth=depth + 1,
+        )
+        images.extend(node_images)
+        missing_images += node_missing
+        sender_name = getattr(node, "sender_name", None) or "未知"
+        content = node_text.strip() or "[空消息]"
+        lines.append(f"{sender_name}: {content}")
+    if len(nodes) > FORWARD_CONTEXT_MAX_NODES:
+        lines.append(f"[合并转发还有 {len(nodes) - FORWARD_CONTEXT_MAX_NODES} 条，已省略]")
+    return "\n".join(lines), images, missing_images
 
 
-async def build_reply_context(
+async def _extract_segments_content(bot, segments: list[dict], *, depth: int = 0) -> tuple[str, list[bytes], int]:
+    text_parts: list[str] = []
+    images: list[bytes] = []
+    missing_images = 0
+
+    for segment in segments:
+        segment_type = segment.get("type")
+        if segment_type == "image":
+            if image := await _download_milky_image(bot, segment):
+                images.append(image)
+            else:
+                missing_images += 1
+            continue
+        if segment_type == "forward":
+            forward_text, forward_images, forward_missing = await _extract_forward_segment_content(bot, segment, depth)
+            text_parts.append(forward_text)
+            images.extend(forward_images)
+            missing_images += forward_missing
+            continue
+        if segment_type == "record":
+            duration = segment.get("data", {}).get("duration", 0)
+            text_parts.append(f"[语音:{duration}秒]")
+            continue
+        if segment_type == "video":
+            duration = segment.get("data", {}).get("duration", 0)
+            text_parts.append(f"[视频:{duration}秒]")
+            continue
+
+        text, *_ = await _message_utils().message_extract([segment])
+        if text:
+            text_parts.append(text)
+
+    return "\n".join(part for part in text_parts if part), images, missing_images
+
+
+async def _extract_milky_message_content(bot, message) -> tuple[str, list[bytes], int]:
+    return await _extract_segments_content(bot, message.segments)
+
+
+def _quoted_needs_normalization_rebuild(quoted) -> bool:
+    status = getattr(quoted, "normalized_status", "legacy")
+    if getattr(quoted, "normalized_version", 0) >= NORMALIZED_VERSION and status == "complete":
+        return False
+    if getattr(quoted, "raw_segments_json", None):
+        return True
+    content = getattr(quoted, "content", "") or ""
+    if "[合并转发:" in content or "[合并转发]" in content:
+        return True
+    return status not in ("complete", "legacy")
+
+
+async def _rebuild_quoted_normalization(
+    bot, event: MessageEvent, quoted, reply_seq: int, messages_db: MessageDatabase
+):
+    raw_segments_json = getattr(quoted, "raw_segments_json", None)
+    segments = None
+    if raw_segments_json:
+        try:
+            loaded = json.loads(raw_segments_json)
+            if isinstance(loaded, list):
+                segments = loaded
+        except json.JSONDecodeError:
+            segments = None
+
+    milky_message = None
+    if segments is None:
+        milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
+        if not milky_message:
+            return quoted
+        segments = milky_message.segments
+        raw_segments_json = segments_to_raw_json(segments)
+
+    normalized = await normalize_segments(bot, segments)
+    await messages_db.update_message_normalization(
+        time=quoted.time,
+        content=normalized.content,
+        raw_segments_json=raw_segments_json,
+        normalized_version=normalized.normalized_version,
+        normalized_status=normalized.status,
+    )
+    await messages_db.replace_derived_messages(
+        parent_msg_time=quoted.time,
+        parent_msg_id=quoted.msg_id,
+        user_id=quoted.user_id,
+        group_id=quoted.group_id,
+        role=quoted.role,
+        derived_messages=normalized.derived_messages,
+        normalized_version=NORMALIZED_VERSION,
+    )
+    quoted.content = normalized.content
+    quoted.raw_segments_json = raw_segments_json
+    quoted.normalized_version = normalized.normalized_version
+    quoted.normalized_status = normalized.status
+    quoted.source_type = MESSAGE_SOURCE_TYPE_NORMAL
+    return quoted
+
+
+async def build_reply_context(  # noqa: C901
     bot,
     event: MessageEvent,
     reply_seq: int,
@@ -121,8 +251,10 @@ async def build_reply_context(
 ) -> tuple[str, list[bytes]]:
     quoted = await messages_db.select_by_msg_id(msg_id=reply_seq, group_id=group_id)
     if quoted:
-        image_records = await messages_db.select_images_by_msg_time(quoted.time)
-        local_images, missing_images = messages_db.load_image_files(image_records)
+        if _quoted_needs_normalization_rebuild(quoted):
+            quoted = await _rebuild_quoted_normalization(bot, event, quoted, reply_seq, messages_db)
+        image_records = await messages_db.select_image_attachments_by_msg_time(quoted.time)
+        local_images, missing_images = messages_db.load_attachment_files(image_records)
         fetched_images: list[bytes] = []
         if missing_images:
             milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
@@ -141,7 +273,9 @@ async def build_reply_context(
                         logger.warning(f"⚠️ 重建引用图片缓存失败 message_seq={reply_seq}: {type(e).__name__}: {e}")
         images = local_images + fetched_images
         return (
-            _format_quote(quoted.role, quoted.user_name or str(quoted.user_id), quoted.content, len(images), missing_images),
+            _format_quote(
+                quoted.role, quoted.user_name or str(quoted.user_id), quoted.content, len(images), missing_images
+            ),
             images,
         )
 
@@ -149,7 +283,9 @@ async def build_reply_context(
     if not milky_message:
         return "", []
 
-    quoted_text, images, missing_images = await _extract_milky_message_content(bot, milky_message)
+    normalized = await normalize_segments(bot, milky_message.segments)
+    quoted_text = normalized.content
+    _image_text, images, missing_images = await _extract_milky_message_content(bot, milky_message)
     role = "assistant" if str(milky_message.sender_id) == str(event.self_id) else "user"
     name = _sender_name_from_milky_message(milky_message)
     quoted_time = milky_message.time * 1000 if milky_message.time < 10_000_000_000 else milky_message.time
@@ -162,7 +298,20 @@ async def build_reply_context(
             user_name=name,
             role=role,
             content=quoted_text,
+            raw_segments_json=normalized.raw_segments_json,
+            normalized_version=normalized.normalized_version,
+            normalized_status=normalized.status,
         )
+        if normalized.derived_messages:
+            await messages_db.replace_derived_messages(
+                parent_msg_time=quoted_time,
+                parent_msg_id=milky_message.message_seq,
+                user_id=int(milky_message.sender_id),
+                group_id=group_id,
+                role=role,
+                derived_messages=normalized.derived_messages,
+                normalized_version=NORMALIZED_VERSION,
+            )
     except Exception as e:
         logger.warning(f"⚠️ 写入引用消息记录失败 message_seq={reply_seq}: {type(e).__name__}: {e}")
     if images and EnvConfig.IMAGE_ENABLED:

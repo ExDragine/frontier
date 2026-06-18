@@ -149,6 +149,72 @@ jwt_secret = "secret"
     assert configs.EnvConfig.ANTHROPIC_BASE_URL == "https://anthropic.example.com"
 
 
+def test_env_config_reload_updates_runtime_sections(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    env_path = tmp_path / "env.toml"
+    env_path.write_text(
+        """
+[information]
+name = "Bot"
+
+[endpoint]
+openai_base_url = "https://example.com"
+basic_model = "basic"
+advan_model = "advan"
+paint_model = "paint"
+
+[key]
+openai_api_key = "sk"
+nasa_api_key = "nasa"
+github_pat = "gh"
+
+[function]
+agent_module_enabled = true
+paint_module_enabled = true
+agent_capability = "none"
+agent_whitelist_mode = false
+agent_whitelist_person_list = []
+agent_whitelist_group_list = []
+agent_blacklist_person_list = []
+agent_blacklist_group_list = []
+paint_whitelist_mode = false
+paint_whitelist_person_list = []
+paint_whitelist_group_list = []
+paint_blacklist_person_list = []
+paint_blacklist_group_list = []
+
+[message]
+test_group_id = []
+
+[database]
+query_message_numbers = 3
+
+[debug]
+agent_debug_mode = false
+
+[dashboard]
+password = "admin"
+jwt_secret = "secret"
+""",
+        encoding="utf-8",
+    )
+
+    configs = importlib.import_module("utils.configs")
+    importlib.reload(configs)
+
+    configs.EnvConfig.reload(
+        {
+            "image_memory": {"enabled": False, "ttl_days": 9, "auto_cleanup": False},
+            "content_check": {"enabled": True},
+        }
+    )
+
+    assert configs.EnvConfig.IMAGE_ENABLED is False
+    assert configs.EnvConfig.IMAGE_TTL_DAYS == 9
+    assert configs.EnvConfig.IMAGE_AUTO_CLEANUP is False
+    assert configs.EnvConfig.CONTENT_CHECK_ENABLED is True
+
+
 def test_env_config_llm_endpoint_profiles(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     env_path = tmp_path / "env.toml"

@@ -1,5 +1,6 @@
 # ruff: noqa: S101
 
+import importlib
 import types
 
 import pytest
@@ -129,6 +130,111 @@ async def test_message_extract(monkeypatch):
     assert video
 
 
+def test_extract_message_files():
+    segments = [
+        {"type": "text", "data": {"text": "hi"}},
+        {
+            "type": "file",
+            "data": {
+                "file_id": "file-1",
+                "file_name": "a.txt",
+                "file_size": 10,
+                "file_hash": "hash-1",
+            },
+        },
+    ]
+
+    files = message_module.extract_message_files(segments)
+
+    assert files == [
+        message_module.MessageFileItem(
+            file_id="file-1",
+            file_name="a.txt",
+            file_size=10,
+            file_hash="hash-1",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stage_message_files_downloads_group_file_to_memory_files(monkeypatch, tmp_path):
+    calls = []
+
+    class DummyBot:
+        async def get_group_file_download_url(self, **kwargs):
+            calls.append(("get_group_file_download_url", kwargs))
+            return "https://example.com/a.txt"
+
+    async def fake_get(url):
+        calls.append(("get", url))
+        return DummyResponse(b"file-bytes")
+
+    monkeypatch.setattr(message_module.httpx_client, "get", fake_get)
+
+    staged = await message_module.stage_message_files(
+        DummyBot(),
+        [
+            message_module.MessageFileItem(
+                file_id="file-1",
+                file_name="../a.txt",
+                file_size=10,
+            )
+        ],
+        memory_dir=tmp_path,
+        workspace_key="123",
+        user_id="456",
+        group_id=123,
+    )
+
+    assert len(staged) == 1
+    assert staged[0].file_name == "a.txt"
+    assert staged[0].virtual_path == "/memory/123/files/a.txt"
+    assert staged[0].local_path.read_bytes() == b"file-bytes"
+    assert calls == [
+        ("get_group_file_download_url", {"group_id": 123, "file_id": "file-1"}),
+        ("get", "https://example.com/a.txt"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stage_message_files_passes_empty_private_file_hash(monkeypatch, tmp_path):
+    calls = []
+
+    class DummyBot:
+        async def get_private_file_download_url(self, **kwargs):
+            calls.append(("get_private_file_download_url", kwargs))
+            return "https://example.com/private.txt"
+
+    async def fake_get(url):
+        calls.append(("get", url))
+        return DummyResponse(b"private-file")
+
+    monkeypatch.setattr(message_module.httpx_client, "get", fake_get)
+
+    staged = await message_module.stage_message_files(
+        DummyBot(),
+        [
+            message_module.MessageFileItem(
+                file_id="file-1",
+                file_name="private.txt",
+                file_size=12,
+                file_hash="",
+            )
+        ],
+        memory_dir=tmp_path,
+        workspace_key="456",
+        user_id="456",
+        group_id=None,
+    )
+
+    assert staged[0].virtual_path == "/memory/456/files/private.txt"
+    assert staged[0].local_path.read_bytes() == b"private-file"
+    assert calls == [
+        ("get_private_file_download_url", {"user_id": 456, "file_id": "file-1", "file_hash": ""}),
+        ("get", "https://example.com/private.txt"),
+    ]
+
+
 @pytest.mark.asyncio
 async def test_send_messages_fallback_to_text(monkeypatch):
     monkeypatch.setattr(message_module, "UniMessage", DummyUniMessage)
@@ -204,20 +310,60 @@ def test_message_renders_long_simple_content_as_image_for_any_group():
     assert message_module._message_should_render_as_image("x" * 600) is True
 
 
+def test_extract_message_text_reads_content_block_lists():
+    content = [
+        {"type": "text", "text": "hello"},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,abc"}},
+        {"type": "output_text", "text": "world"},
+    ]
+
+    assert message_module.extract_message_text(content) == "hello\nworld"
+
+
+def test_outgoing_message_content_reads_llm_content_blocks():
+    raw = types.SimpleNamespace(
+        content=[
+            {"type": "text", "text": "hello"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,abc"}},
+        ]
+    )
+
+    assert message_module.outgoing_message_content(raw) == "hello"
+
+
+def test_outgoing_message_content_reads_wrapped_content_blocks():
+    raw = types.SimpleNamespace(content=str({"content": [{"type": "text", "text": "hello"}]}))
+
+    assert message_module.outgoing_message_content(raw) == "hello"
+
+
+def test_message_text_extractors_handle_text_methods():
+    class MessageWithTextMethod:
+        content = [{"type": "text", "text": "content text"}]
+
+        def text(self):
+            return ""
+
+    raw = MessageWithTextMethod()
+
+    assert message_module.extract_message_text(raw) == "content text"
+    assert message_module.outgoing_message_content(raw) == "content text"
+
+
 @pytest.mark.asyncio
-async def test_message_http_client_can_be_closed(monkeypatch):
-    closed = False
+async def test_message_http_client_uses_registry():
+    """验证 message 模块的 HTTP 客户端通过注册表获取。"""
+    from utils import http_client as registry
 
-    class DummyClient:
-        async def aclose(self):
-            nonlocal closed
-            closed = True
+    # Clean start
+    registry._clients.clear()
+    registry._aclose_all_called = False
+    reloaded_message = importlib.reload(message_module)
 
-    monkeypatch.setattr(message_module, "httpx_client", DummyClient())
+    assert reloaded_message.httpx_client is not None
+    assert registry.get_http_client("message") is reloaded_message.httpx_client
 
-    await message_module.aclose_http_client()
-
-    assert closed is True
+    await registry.aclose_all()
 
 
 @pytest.mark.asyncio
@@ -530,3 +676,36 @@ async def test_sanitize_outgoing_text_allows_controversial_output(monkeypatch):
     result = await message_module.sanitize_outgoing_text("borderline model output")
 
     assert result == "borderline model output"
+
+
+# ── _get_wake_words 测试 ────────────────────────────────────
+
+
+class TestGetWakeWords:
+    def test_returns_bot_name_when_no_custom_words(self, monkeypatch):
+        from utils.database import get_engine
+
+        monkeypatch.setattr(message_module, "get_engine", get_engine)
+        monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "小李子")
+        words = message_module._get_wake_words(99999)
+        assert words == ["小李子"]
+
+    def test_returns_custom_words_from_database(self, monkeypatch, memory_engine):
+        from utils.database import GroupSettings, GroupSettingsManager
+
+        GroupSettings.metadata.create_all(memory_engine)
+        manager = GroupSettingsManager(memory_engine)
+        manager.set(456, "wake_word", "小天")
+        manager.set(456, "wake_word", "助手")
+
+        # 让 _get_wake_words 使用 memory_engine
+        monkeypatch.setattr(message_module, "get_engine", lambda url=None: memory_engine)
+        monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "小李子")
+
+        words = message_module._get_wake_words(456)
+        assert sorted(words) == ["助手", "小天"]
+
+    def test_returns_bot_name_for_dm(self, monkeypatch):
+        monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "小李子")
+        words = message_module._get_wake_words(0)
+        assert words == ["小李子"]

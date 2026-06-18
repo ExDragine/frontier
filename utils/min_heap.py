@@ -1,4 +1,3 @@
-import heapq
 import time
 from collections import defaultdict
 
@@ -63,17 +62,15 @@ class RepeatMessageHeap:
 
     def add(self, group_id: int, message: str) -> bool:
         """按群ID管理，每个群有独立计数"""
-        if group_id not in self.groups:
-            self.groups[group_id] = _GroupMessageHeap(self.capacity, self.threshold, self.time_window)
-        return self.groups[group_id].add(message)
+        heap = self.groups.get(group_id)
+        if heap is None:
+            heap = self.groups[group_id] = _GroupMessageHeap(self.capacity, self.threshold, self.time_window)
+        return heap.add(message)
 
     def __repr__(self) -> str:
         """返回所有群的状态"""
         if not self.groups:
             return "<RepeatHeap: 无活跃群组>"
 
-        group_stats = []
-        for gid, heap in self.groups.items():
-            group_stats.append(f"  群{gid}: {heap}")
-
+        group_stats = [f"  群{gid}: {heap}" for gid, heap in self.groups.items()]
         return f"<RepeatHeap: {len(self.groups)} 个群组>\n" + "\n".join(group_stats)

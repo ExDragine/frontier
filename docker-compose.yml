@@ -9,7 +9,33 @@ services:
     environment:
       - HOST=0.0.0.0
     restart: unless-stopped
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    # Resource limits (adjust based on your server)
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    # Read-only root filesystem with writable volumes
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=256M
     volumes:
-      - ./env.toml:/app/env.toml
-      - ./mcp.json:/app/mcp.json
+      - ./env.toml:/app/env.toml:ro
+      - ./mcp.json:/app/mcp.json:ro
       - ./frontier.db:/app/frontier.db
+      - frontier_cache:/app/cache
+      - frontier_data:/app/data
+
+volumes:
+  frontier_cache:
+    driver: local
+  frontier_data:
+    driver: local

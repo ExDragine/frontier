@@ -4,7 +4,7 @@ import types
 
 import pytest
 
-from utils import render
+from utils import markdown_render as render
 
 
 @pytest.mark.asyncio
@@ -47,18 +47,10 @@ async def test_html_to_image_keeps_raw_html_tags(monkeypatch, tmp_path):
         async def close(self):
             return None
 
-    class DummyPlaywright:
-        async def __aenter__(self):
-            async def launch():
-                return DummyBrowser()
+    async def fake_get_browser():
+        return DummyBrowser()
 
-            self.chromium = types.SimpleNamespace(launch=launch)
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return None
-
-    monkeypatch.setattr(render, "async_playwright", lambda: DummyPlaywright())
+    monkeypatch.setattr(render, "_get_browser", fake_get_browser)
 
     result = await render.html_to_image('<article class="lead-card">标题</article>', css=".lead-card {}")
 
@@ -102,21 +94,10 @@ async def test_playwright_render_eq_usgs(monkeypatch, tmp_path):
         async def close(self):
             return None
 
-    class DummyPlaywright:
-        async def __aenter__(self):
-            async def launch():
-                return DummyBrowser()
+    async def fake_get_browser():
+        return DummyBrowser()
 
-            self.chromium = types.SimpleNamespace(launch=launch)
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return None
-
-    def fake_async_playwright():
-        return DummyPlaywright()
-
-    monkeypatch.setattr(render, "async_playwright", fake_async_playwright)
+    monkeypatch.setattr(render, "_get_browser", fake_get_browser)
 
     payload = {
         "title": "Earthquake",
@@ -163,21 +144,10 @@ async def test_playwright_render_eq_cenc_with_depth_units(monkeypatch, tmp_path)
         async def close(self):
             return None
 
-    class DummyPlaywright:
-        async def __aenter__(self):
-            async def launch():
-                return DummyBrowser()
+    async def fake_get_browser():
+        return DummyBrowser()
 
-            self.chromium = types.SimpleNamespace(launch=launch)
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return None
-
-    def fake_async_playwright():
-        return DummyPlaywright()
-
-    monkeypatch.setattr(render, "async_playwright", fake_async_playwright)
+    monkeypatch.setattr(render, "_get_browser", fake_get_browser)
 
     payload = {
         "title": "Earthquake",

@@ -1,6 +1,8 @@
 """定时任务处理函数"""
 
 import datetime
+import inspect
+import json
 import traceback
 import zoneinfo
 from dataclasses import dataclass
@@ -16,18 +18,40 @@ from tools import agent_tools
 from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 from utils.database import EventDatabase
-from utils.render import html_to_image, playwright_render
+from utils.http_client import get_http_client
+from utils.markdown_render import html_to_image, playwright_render
 
 from .task_models import TaskRunResult
 
 # 共享的资源
 event_database = EventDatabase()
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+httpx_client = get_http_client("task_handlers")
 tools = agent_tools.mcp_tools + agent_tools.web_tools
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
-DAILY_NEWS_SEARCH_TOOL_NAMES = {"tavily_search", "web_search_exa"}
+DAILY_NEWS_SEARCH_TOOL_NAMES = {"web_search_exa"}
+
+NEWS_HISTORY_KEY = "daily_news_recent_titles"
+
+
+async def _load_recent_titles() -> list[str]:
+    """读取最近一次推送中报道过的新闻标题，用于去重。"""
+    data = await event_database.select(NEWS_HISTORY_KEY)
+    if not data:
+        return []
+    try:
+        return json.loads(data)
+    except json.JSONDecodeError, TypeError:
+        return []
+
+
+async def _save_recent_titles(titles: list[str]) -> None:
+    """保存本次推送的新闻标题，供下次去重使用。"""
+    data = json.dumps(titles, ensure_ascii=False)
+    try:
+        await event_database.insert(NEWS_HISTORY_KEY, data)
+    except Exception:
+        await event_database.update(NEWS_HISTORY_KEY, data)
 
 
 class TopStory(BaseModel):
@@ -138,7 +162,9 @@ def daily_news_context(now_cn: datetime.datetime | None = None) -> tuple[datetim
     return now_cn, today, period, report_time
 
 
-def daily_news_research_prompts(today: str, period: str, report_time: str) -> tuple[str, str]:
+def daily_news_research_prompts(
+    today: str, period: str, report_time: str, recent_titles: list[str] | None = None
+) -> tuple[str, str]:
     with open(PROMPTS_DIR / "daily_news.md", encoding="utf-8") as f:
         system_prompt = f.read().format(current_time=today)
 
@@ -147,13 +173,23 @@ def daily_news_research_prompts(today: str, period: str, report_time: str) -> tu
         f"当前北京时间为{report_time}。"
         "请主动搜索最近24小时内的重要新闻，不需要再另行询问。"
     )
+
+    if recent_titles:
+        titles_text = "\n".join(f"  - {t}" for t in recent_titles)
+        user_prompt += (
+            f"\n\n⚠️ 以下是上一次推送中已经报道过的新闻标题，"
+            f"请务必避免重复报道相同事件，优先搜索其他重要新闻：\n{titles_text}"
+        )
+
     return system_prompt, user_prompt
 
 
-async def build_daily_news_artifacts(now_cn: datetime.datetime | None = None) -> DailyNewsArtifacts | None:
+async def build_daily_news_artifacts(
+    now_cn: datetime.datetime | None = None, recent_titles: list[str] | None = None
+) -> DailyNewsArtifacts | None:
     """构建日报素材包、结构化数据和 HTML；不发送消息。"""
     _now_cn, today, period, report_time = daily_news_context(now_cn)
-    system_prompt, user_prompt = daily_news_research_prompts(today, period, report_time)
+    system_prompt, user_prompt = daily_news_research_prompts(today, period, report_time, recent_titles)
 
     material = await assistant_agent(
         system_prompt,
@@ -196,10 +232,6 @@ async def build_daily_news_artifacts(now_cn: datetime.datetime | None = None) ->
     )
 
 
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()
-
-
 async def github_post_news(**kwargs):
     """GitHub 新闻推送（未启用）"""
     GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
@@ -221,7 +253,7 @@ async def github_post_news(**kwargs):
         headers={"Authorization": f"Bearer {EnvConfig.GITHUB_PAT.get_secret_value()}"},
         json={"query": query},
     )
-    print(response.json())
+    logger.debug("GitHub GraphQL response: %s", response.text)
 
 
 async def apod_everyday(**kwargs):
@@ -275,7 +307,7 @@ async def eq_cenc(**kwargs):
     content: dict = response.json()
 
     if not content:
-        logger.debug("CENC 没有新的地震")
+        logger.debug("CENC API 返回空数据，跳过")
         return None
 
     # 获取最新的地震数据
@@ -289,7 +321,7 @@ async def eq_cenc(**kwargs):
         else:
             await event_database.update(EVENT_NAME, event_id)
     else:
-        logger.debug("CENC 没有新的地震")
+        logger.debug(f"CENC 地震已处理过 (event_id={event_id})，跳过")
         return
     logger.info(f"检测到{data['HypoCenter']}发生{data['Magnitude']}级地震")
     if int(data["Magnitude"]) < 3:
@@ -333,7 +365,7 @@ async def eq_usgs(**kwargs):
     content: dict = response.json()
 
     if not content or not content.get("features"):
-        logger.debug("USGS 没有新的地震")
+        logger.debug("USGS API 返回空数据或缺少 features，跳过")
         return None
 
     # 获取最新的地震数据
@@ -349,7 +381,7 @@ async def eq_usgs(**kwargs):
         else:
             await event_database.update(EVENT_NAME, event_id)
     else:
-        logger.debug("USGS 没有新的地震")
+        logger.debug(f"USGS 地震已处理过 (event_id={event_id})，跳过")
         return
     logger.debug(f"检测到{properties['place']}发生{properties['mag']}级地震")
     # 准备详细信息
@@ -391,11 +423,15 @@ async def eq_usgs(**kwargs):
             await message.send(target=Target.group(str(group)))
 
 
-async def daily_news(**kwargs):
+async def daily_news(**kwargs):  # noqa: C901
     """每日新闻摘要 - 每天9:00、21:00推送"""
     logger.info("开始获取每日新闻摘要")
 
-    artifacts = await build_daily_news_artifacts()
+    recent_titles = await _load_recent_titles()
+    if "recent_titles" in inspect.signature(build_daily_news_artifacts).parameters:
+        artifacts = await build_daily_news_artifacts(recent_titles=recent_titles)
+    else:
+        artifacts = await build_daily_news_artifacts()
     if not artifacts:
         return
 
@@ -415,6 +451,20 @@ async def daily_news(**kwargs):
     if send_errors and not groups_sent:
         raise send_errors[0]
 
+    # 保存本次推送的标题，供下次去重使用
+    payload = artifacts.payload
+    if isinstance(payload, BaseModel):
+        payload = payload.model_dump()
+    all_titles: list[str] = []
+    for story in payload.get("top_stories", []):
+        if title := story.get("title", "").strip():
+            all_titles.append(title)
+    for story in payload.get("worth_reading", []):
+        if title := story.get("title", "").strip():
+            all_titles.append(title)
+    if all_titles:
+        await _save_recent_titles(all_titles)
+
     return TaskRunResult(
         groups_sent=groups_sent,
         messages_sent=len(groups_sent),
@@ -429,3 +479,43 @@ async def happy_new_year(**kwargs):
     group_list = await milky_bot.get_group_list()
     for group in group_list:
         await message.send(target=Target.group(str(group.group_id)))
+
+
+async def nrc_merchant_alert(**kwargs):
+    """远行商人商品提醒推送 - 每天8:00、12:00、16:00、20:00推送。
+
+    每次推送货架图片；检测到目标商品上架时，先发提醒文本再发图片。
+    """
+    from tools.NRCmerchant_current import ALERT_TARGET_ITEMS, _load_css, _render_html, fetch_merchant_data
+
+    data = await fetch_merchant_data()
+    if not data:
+        logger.debug("NRC 商人提醒推送：API 无数据")
+        return
+
+    items = data.get("items", [])
+    hits = [item for item in items if item.get("name") in ALERT_TARGET_ITEMS]
+    hit_names = "、".join(item["name"] for item in hits) if hits else ""
+
+    html = _render_html(data)
+    css = _load_css()
+    image = await html_to_image(html, css=css, width=480)
+
+    groups_sent: list[int] = []
+    for group in EnvConfig.NRC_MERCHANT_GROUP_ID:
+        try:
+            if hits:
+                await UniMessage.text(f"⚠️ 远行商人上架提醒：{hit_names} 已上架！").send(
+                    target=Target.group(str(group))
+                )
+            await UniMessage.image(raw=image).send(target=Target.group(str(group)))
+            groups_sent.append(int(group))
+        except Exception as e:
+            logger.error(f"NRC 商人提醒推送推送到群 {group} 失败: {e}")
+
+    msg_count = len(groups_sent) * (2 if hits else 1)
+    return TaskRunResult(
+        groups_sent=groups_sent,
+        messages_sent=msg_count,
+        output_summary=f"nrc_merchant_alert → {hit_names or '无目标'} ({groups_sent})",
+    )

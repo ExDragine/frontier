@@ -13,9 +13,7 @@ STAGED_ARTIFACTS_DIR = Path("cache") / "staged_artifacts"
 DEFAULT_STAGED_ARTIFACT_TTL_SECONDS = 24 * 60 * 60
 MAX_STAGED_ARTIFACT_BYTES = 256 * 1024 * 1024
 
-_ARTIFACT_ID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-)
+_ARTIFACT_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 _STAGED_ARTIFACT_TAG_RE = re.compile(r'<staged_artifact\b[^>]*\bartifact_id="([^"]+)"[^>]*/>')
 
 

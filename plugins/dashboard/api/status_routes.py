@@ -1,3 +1,4 @@
+import logging
 import os
 import platform
 import shutil
@@ -8,12 +9,15 @@ from nonebot import get_bots
 from sqlmodel import Session, func, select
 
 from utils.configs import EnvConfig
-from utils.database import Message, User
+from utils.database import Message, User, get_engine
 
 from ..auth import require_auth
-from ..db import engine
+
+engine = get_engine()
 
 router = APIRouter()
+AUTH_DEPENDENCY = Depends(require_auth)
+logger = logging.getLogger(__name__)
 
 # 记录启动时间
 _start_time = time.time()
@@ -45,13 +49,13 @@ def get_process_memory_mb():
             for line in f:
                 if line.startswith("VmRSS:"):
                     return int(line.split()[1]) // 1024  # kB -> MB
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to read process memory from /proc/self/status: %s", exc)
     return 0
 
 
 @router.get("/overview")
-async def get_status_overview(user: dict = Depends(require_auth)):
+async def get_status_overview(user: dict = AUTH_DEPENDENCY):
     """获取 Bot 运行状态概览"""
     bots = get_bots()
     uptime_seconds = int(time.time() - _start_time)
@@ -96,7 +100,7 @@ async def get_status_overview(user: dict = Depends(require_auth)):
 
 
 @router.get("/system")
-async def get_system_status(user: dict = Depends(require_auth)):
+async def get_system_status(user: dict = AUTH_DEPENDENCY):
     """获取系统资源信息"""
     memory = get_memory_info()
     process_memory_mb = get_process_memory_mb()

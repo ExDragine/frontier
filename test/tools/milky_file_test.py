@@ -65,8 +65,11 @@ def _install_dummy_bot(monkeypatch, module):
     return bot
 
 
-def _config(group_id=123, user_id="456"):
-    return {"configurable": {"group_id": group_id, "user_id": user_id}}
+def _config(group_id=123, user_id="456", workspace_dir=None):
+    cfg = {"configurable": {"group_id": group_id, "user_id": user_id}}
+    if workspace_dir is not None:
+        cfg["configurable"]["workspace_dir"] = workspace_dir
+    return cfg
 
 
 @pytest.mark.asyncio
@@ -159,3 +162,59 @@ async def test_group_file_management_tools_call_milky(load_tool_module, monkeypa
         ("rename_group_folder", {"group_id": 123, "folder_id": "folder-1", "new_folder_name": "新资料"}),
         ("delete_group_folder", {"group_id": 123, "folder_id": "folder-1"}),
     ]
+
+
+# ── 沙箱 workspace 路径解析 ───────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_upload_private_file_resolves_workspace_path(load_tool_module, monkeypatch, tmp_path):
+    milky_file = load_tool_module("milky_file")
+    _install_dummy_bot(monkeypatch, milky_file)
+
+    (tmp_path / "report.pdf").write_bytes(b"pdf")
+
+    result = await milky_file.upload_private_file(
+        file_uri="/report.pdf",
+        file_name="report.pdf",
+        config=_config(workspace_dir=str(tmp_path)),
+    )
+
+    assert result == "已上传私聊文件 report.pdf，file_id=private-file-id"
+
+
+@pytest.mark.asyncio
+async def test_upload_group_file_resolves_workspace_path(load_tool_module, monkeypatch, tmp_path):
+    milky_file = load_tool_module("milky_file")
+    bot = _install_dummy_bot(monkeypatch, milky_file)
+
+    sandbox_file = tmp_path / "data.csv"
+    sandbox_file.write_bytes(b"a,b,c")
+
+    result = await milky_file.upload_group_file(
+        file_uri="/data.csv",
+        config=_config(workspace_dir=str(tmp_path)),
+    )
+
+    assert result == "已上传群 123 文件 data.csv，file_id=group-file-id"
+    upload_call = next(c for name, c in bot.calls if name == "upload_group_file")
+    assert upload_call["path"] == str(sandbox_file)
+    assert upload_call["file_name"] == "data.csv"
+
+
+@pytest.mark.asyncio
+async def test_upload_group_file_extracts_file_name_from_workspace_path(load_tool_module, monkeypatch, tmp_path):
+    milky_file = load_tool_module("milky_file")
+    bot = _install_dummy_bot(monkeypatch, milky_file)
+
+    (tmp_path / "archive.zip").write_bytes(b"zip")
+
+    result = await milky_file.upload_group_file(
+        file_uri="/archive.zip",
+        config=_config(workspace_dir=str(tmp_path)),
+    )
+
+    assert result == "已上传群 123 文件 archive.zip，file_id=group-file-id"
+    upload_call = next(c for name, c in bot.calls if name == "upload_group_file")
+    assert upload_call["path"] == str(tmp_path / "archive.zip")
+    assert upload_call["file_name"] == "archive.zip"

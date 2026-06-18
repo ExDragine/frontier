@@ -22,7 +22,8 @@ async def test_aurora_live_success_and_failure(load_tool_module, monkeypatch):
     assert artifact2 is None
 
 
-def test_comet_tool_info_and_list(load_tool_module):
+@pytest.mark.asyncio
+async def test_comet_tool_info_and_list(load_tool_module, monkeypatch):
     mod = load_tool_module("comet")
 
     class DummyResp:
@@ -33,26 +34,27 @@ def test_comet_tool_info_and_list(load_tool_module):
             return self._payload
 
     class DummyClient:
-        def get(self, url, params):
+        async def get(self, url, params):
             if "comet.api" in url:
                 return DummyResp({"object": {"fullname": "C/2023 A3", "current_mag": 2.3}})
             return DummyResp({"objects": [{"fullname": "C/2023 A3"}, {"fullname": "1P/Halley"}]})
 
-    tool = mod.CometTool(DummyClient())
-    assert "C/2023 A3" in tool.info("A3")
-    assert "1P/Halley" in tool.list()
+    monkeypatch.setattr(mod, "httpx_client", DummyClient())
+    assert "C/2023 A3" in await mod.comet_information("A3")
+    assert "1P/Halley" in await mod.comet_list()
 
 
-def test_comet_tool_error(load_tool_module):
+@pytest.mark.asyncio
+async def test_comet_tool_error(load_tool_module, monkeypatch):
     mod = load_tool_module("comet")
 
     class BadClient:
-        def get(self, *_args, **_kwargs):
+        async def get(self, *_args, **_kwargs):
             raise RuntimeError("network down")
 
-    tool = mod.CometTool(BadClient())
-    assert "失败" in tool.info("A3")
-    assert "失败" in tool.list()
+    monkeypatch.setattr(mod, "httpx_client", BadClient())
+    assert "失败" in await mod.comet_information("A3")
+    assert "失败" in await mod.comet_list()
 
 
 @pytest.mark.asyncio
@@ -66,11 +68,7 @@ async def test_station_location(load_tool_module, monkeypatch):
         async def get(self, *_args, **_kwargs):
             return DummyResp()
 
-    def sync_get_should_not_run(*_args, **_kwargs):
-        raise AssertionError("async heavens_above tool should not call synchronous httpx.get")
-
     monkeypatch.setattr(mod, "httpx_client", DummyClient())
-    monkeypatch.setattr(mod.httpx, "get", sync_get_should_not_run)
     text, artifact = await mod.station_location("国际空间站")
     assert text.startswith("空间站位置获取成功")
     assert "send_staged_artifact" not in text

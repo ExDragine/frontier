@@ -1,18 +1,18 @@
+import logging
 import zoneinfo
 from datetime import UTC, datetime, timedelta
 
-from httpx import AsyncClient
-from langchain.tools import tool
+from langchain_core.tools import tool
+
+from utils.http_client import get_http_client
+
+logger = logging.getLogger(__name__)
 
 # 常量配置
 TLP_LAUNCH_URL = "https://tlpnetwork.com/api/launches"
 
 # 全局 HTTP 客户端复用
-http_client = AsyncClient(timeout=30, http2=True)
-
-
-async def aclose_http_client() -> None:
-    await http_client.aclose()
+http_client = get_http_client("rocket")
 
 
 # 火箭发射
@@ -86,5 +86,5 @@ async def get_launches(days: int = 7):
             )
         return messages
     except Exception as e:
-        print(f"❌ 发生错误: {e}")
+        logger.error("Failed to fetch launch schedule: %s", e)
         return f"❌ 获取发射计划时发生错误： {e}。"

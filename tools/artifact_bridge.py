@@ -1,10 +1,8 @@
-from langchain.tools import tool
-from nonebot import logger, require
+from langchain_core.tools import tool
+from nonebot import logger
 
+from utils.alconna import UniMessage
 from utils.staged_artifacts import load_staged_artifact
-
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 
 @tool(response_format="content_and_artifact")

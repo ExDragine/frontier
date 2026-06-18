@@ -111,8 +111,14 @@ def _install_dummy_bot(monkeypatch, module):
     return bot
 
 
-def _group_config(group_id=123):
-    return {"configurable": {"group_id": group_id}}
+def _group_config(group_id=123, role="admin"):
+    configurable = {"group_id": group_id}
+    if role is not None:
+        configurable["group_member_role"] = role
+    return {"configurable": configurable}
+
+
+_ADMIN_REQUIRED_MESSAGE = "只有目标群的群主或管理员才能执行此群管理操作。"
 
 
 def test_group_tools_are_split_out_of_adapter(load_tool_module):
@@ -138,7 +144,9 @@ async def test_group_management_allows_explicit_group_id(load_tool_module, monke
     group = load_tool_module("milky_group")
     bot = _install_dummy_bot(monkeypatch, group)
 
-    result = await group.set_group_member_mute(group_id=456, user_id=789, duration=60, config=_group_config())
+    result = await group.set_group_member_mute(
+        group_id=456, user_id=789, duration=60, config=_group_config(group_id=456)
+    )
 
     assert result == "已将群 456 内用户 789 禁言 60 秒"
     assert bot.calls == [("set_group_member_mute", {"group_id": 456, "user_id": 789, "duration": 60})]
@@ -152,6 +160,79 @@ async def test_group_management_requires_group_context(load_tool_module, monkeyp
     result = await group.set_group_whole_mute(config={"configurable": {"group_id": None}})
 
     assert result == "缺少群号：请在群聊中使用，或显式传入 group_id。"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_tool",
+    [
+        lambda group: group.set_group_name(new_group_name="新群名", config=_group_config(role="member")),
+        lambda group: group.set_group_avatar(
+            image_uri="https://example.com/avatar.png", config=_group_config(role="member")
+        ),
+        lambda group: group.set_group_member_card(user_id=789, card="小明", config=_group_config(role="member")),
+        lambda group: group.set_group_member_special_title(
+            user_id=789,
+            special_title="头衔",
+            config=_group_config(role="member"),
+        ),
+        lambda group: group.set_group_member_admin(user_id=789, is_set=True, config=_group_config(role="member")),
+        lambda group: group.set_group_member_mute(user_id=789, duration=60, config=_group_config(role="member")),
+        lambda group: group.set_group_whole_mute(is_mute=True, config=_group_config(role="member")),
+        lambda group: group.kick_group_member(user_id=789, config=_group_config(role="member")),
+        lambda group: group.send_group_announcement(content="公告", config=_group_config(role="member")),
+        lambda group: group.delete_group_announcement(announcement_id="ann-1", config=_group_config(role="member")),
+        lambda group: group.set_group_essence_message(message_seq=88, config=_group_config(role="member")),
+        lambda group: group.quit_group(config=_group_config(role="member")),
+        lambda group: group.accept_group_request(
+            notification_seq=9001,
+            notification_type="join_request",
+            group_id=123,
+            config=_group_config(role="member"),
+        ),
+        lambda group: group.reject_group_request(
+            notification_seq=9002,
+            notification_type="invited_join_request",
+            group_id=123,
+            config=_group_config(role="member"),
+        ),
+    ],
+)
+async def test_privileged_group_tools_require_admin_or_owner(load_tool_module, monkeypatch, call_tool):
+    group = load_tool_module("milky_group")
+    bot = _install_dummy_bot(monkeypatch, group)
+
+    result = await call_tool(group)
+
+    assert result == _ADMIN_REQUIRED_MESSAGE
+    assert bot.calls == []
+
+
+@pytest.mark.asyncio
+async def test_privileged_group_tools_reject_when_role_context_is_missing_or_for_another_group(
+    load_tool_module,
+    monkeypatch,
+):
+    group = load_tool_module("milky_group")
+    bot = _install_dummy_bot(monkeypatch, group)
+
+    missing_role = await group.set_group_whole_mute(config=_group_config(role=None))
+    other_group = await group.kick_group_member(user_id=789, group_id=456, config=_group_config(group_id=123))
+
+    assert missing_role == _ADMIN_REQUIRED_MESSAGE
+    assert other_group == _ADMIN_REQUIRED_MESSAGE
+    assert bot.calls == []
+
+
+@pytest.mark.asyncio
+async def test_privileged_group_tools_allow_group_owner(load_tool_module, monkeypatch):
+    group = load_tool_module("milky_group")
+    bot = _install_dummy_bot(monkeypatch, group)
+
+    result = await group.set_group_whole_mute(config=_group_config(role="owner"))
+
+    assert result == "已开启群 123 的全员禁言"
+    assert bot.calls == [("set_group_whole_mute", {"group_id": 123, "is_mute": True})]
 
 
 @pytest.mark.asyncio
@@ -237,12 +318,14 @@ async def test_group_notification_and_invitation_tools(load_tool_module, monkeyp
         notification_type="join_request",
         group_id=123,
         is_filtered=True,
+        config=_group_config(),
     )
     rejected = await group.reject_group_request(
         notification_seq=9002,
         notification_type="invited_join_request",
         group_id=123,
         reason="不符合要求",
+        config=_group_config(),
     )
     invite_accepted = await group.accept_group_invitation(group_id=123, invitation_seq=77)
     invite_rejected = await group.reject_group_invitation(group_id=123, invitation_seq=78)

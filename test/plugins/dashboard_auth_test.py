@@ -4,6 +4,7 @@ import time
 
 import jwt
 import pytest
+from fastapi import HTTPException
 
 from plugins.dashboard import auth
 
@@ -17,7 +18,7 @@ def test_create_and_verify_token(monkeypatch):
 def test_verify_token_expired(monkeypatch):
     payload = {"sub": "admin", "iat": int(time.time()) - 10, "exp": int(time.time()) - 1}
     token = jwt.encode(payload, auth.EnvConfig.DASHBOARD_JWT_SECRET, algorithm="HS256")
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         auth.verify_token(token)
 
 

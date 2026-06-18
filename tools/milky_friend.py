@@ -1,5 +1,5 @@
-from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 from nonebot import get_bot
 
 from utils.milky_tools import format_records, resolve_user_id

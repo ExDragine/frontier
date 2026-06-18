@@ -2,35 +2,35 @@ import ast
 import asyncio
 import re
 import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from io import BytesIO
-from types import SimpleNamespace
+from pathlib import Path
 from typing import Any, Literal
 
-import httpx
-from nonebot import logger, require
+from langchain.messages import AIMessage
+from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.exception import ActionFailed
 from PIL import Image
 from pydantic import BaseModel, Field
 
+from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
 from utils.database import MessageDatabase
+from utils.http_client import get_http_client
 from utils.markdown_render import markdown_to_image, markdown_to_text
 from utils.signal_llm import signal_structured
 
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
-
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+httpx_client = get_http_client("message")
 messages_db = MessageDatabase()
 text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
 MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
 MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
-MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD = 768
+MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD = 500
 REPLY_CHECK_MIN_TEXT_LENGTH = 8
 REPLY_CHECK_GROUP_COOLDOWN_SECONDS = 120
 REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS = 20 * 60
@@ -89,11 +89,41 @@ _MERMAID_DIAGRAM_RE = re.compile(
 )
 
 
+_TEXT_CONTENT_BLOCK_TYPES = {"text", "output_text"}
+
+
 class ReplyCheck(BaseModel):
     should_reply: str = Field(
         description="Should or not reply message. If should, reply with true, either reply with false"
     )
     confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
+
+
+def extract_message_text(content: Any) -> str:
+    """从消息 content 中提取纯文本（str / content blocks / 对象）。"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        item_type = content.get("type")
+        if item_type in _TEXT_CONTENT_BLOCK_TYPES or (item_type is None and "text" in content):
+            return str(content.get("text", ""))
+        if "content" in content:
+            return extract_message_text(content.get("content"))
+        return "" if item_type is not None else str(content or "")
+    if isinstance(content, list):
+        return "\n".join(part for item in content if (part := extract_message_text(item)))
+
+    text = getattr(content, "text", None)
+    if callable(text):
+        try:
+            text = text()
+        except TypeError, AttributeError:
+            text = None
+    if text:
+        return extract_message_text(text)
+    if hasattr(content, "content"):
+        return extract_message_text(content.content)
+    return str(content or "")
 
 
 def _reply_check_content_text(content: Any) -> str:
@@ -214,21 +244,241 @@ async def _reply_check_should_reply(group_id: int, plaintext: str, messages: lis
     return reply_check.should_reply == "true" and reply_check.confidence > 0.5
 
 
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()
+MediaItem = bytes | bytearray | Callable[[], Awaitable[bytes | None]]
+FILE_URL_FIELDS = ("temp_url", "url", "download_url", "download_uri")
 
 
-async def message_extract(messages: list[dict]) -> tuple[str, list[bytes], list[bytes], list[bytes]]:
-    """提取消息中的文本和媒体内容
+@dataclass(frozen=True, slots=True)
+class MessageFileItem:
+    file_id: str | None
+    file_name: str
+    file_size: int
+    file_hash: str | None = None
+    url: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StagedMessageFile:
+    file_name: str
+    file_size: int
+    virtual_path: str
+    local_path: Path
+
+
+def _media_downloader(url: str, label: str) -> Callable[[], Awaitable[bytes | None]]:
+    async def _download() -> bytes | None:
+        try:
+            return (await httpx_client.get(url)).content
+        except Exception as exc:
+            logger.warning("下载%s失败: %s", label, exc)
+            return None
+
+    return _download
+
+
+def _first_file_url(data: dict) -> str | None:
+    for field in FILE_URL_FIELDS:
+        value = data.get(field)
+        if value:
+            return str(value)
+    return None
+
+
+def _int_or_zero(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except TypeError, ValueError:
+        return 0
+
+
+def extract_message_files(messages: list[dict]) -> list[MessageFileItem]:
+    files: list[MessageFileItem] = []
+    for message in messages:
+        if message.get("type") != "file":
+            continue
+        msg_data = message.get("data", {})
+        file_hash = msg_data.get("file_hash")
+        files.append(
+            MessageFileItem(
+                file_id=str(file_id) if (file_id := msg_data.get("file_id")) else None,
+                file_name=str(msg_data.get("file_name") or "file"),
+                file_size=_int_or_zero(msg_data.get("file_size")),
+                file_hash=str(file_hash) if file_hash is not None else None,
+                url=_first_file_url(msg_data),
+            )
+        )
+    return files
+
+
+async def _message_file_download_url(
+    bot,
+    file_item: MessageFileItem,
+    *,
+    user_id: str | int,
+    group_id: int | None,
+) -> str | None:
+    if file_item.url:
+        return file_item.url
+    if not file_item.file_id:
+        return None
+    try:
+        if group_id is not None:
+            return await bot.get_group_file_download_url(group_id=int(group_id), file_id=file_item.file_id)
+        if file_item.file_hash is None:
+            logger.warning(f"私聊文件缺少 file_hash 字段，无法获取下载链接: {file_item.file_name}")
+            return None
+        return await bot.get_private_file_download_url(
+            user_id=int(user_id),
+            file_id=file_item.file_id,
+            file_hash=file_item.file_hash,
+        )
+    except Exception as exc:
+        logger.warning(f"获取文件下载链接失败 {file_item.file_name}: {type(exc).__name__}: {exc}")
+        return None
+
+
+async def _download_file_bytes(url: str, file_name: str) -> bytes | None:
+    try:
+        response = await httpx_client.get(url)
+        raise_for_status = getattr(response, "raise_for_status", None)
+        if callable(raise_for_status):
+            raise_for_status()
+        return response.content
+    except Exception as exc:
+        logger.warning(f"下载文件失败 {file_name}: {type(exc).__name__}: {exc}")
+        return None
+
+
+def _safe_attachment_file_name(file_name: str) -> str:
+    safe_name = Path(str(file_name).replace("\\", "/")).name.strip()
+    return safe_name or "file"
+
+
+def _unique_attachment_path(directory: Path, file_name: str) -> Path:
+    original = Path(file_name)
+    stem = original.stem or "file"
+    suffix = original.suffix
+    candidate = directory / file_name
+    counter = 2
+    while candidate.exists():
+        candidate = directory / f"{stem}-{counter}{suffix}"
+        counter += 1
+    return candidate
+
+
+async def stage_message_files(
+    bot,
+    file_items: list[MessageFileItem],
+    *,
+    memory_dir: str | Path,
+    workspace_key: str,
+    user_id: str | int,
+    group_id: int | None,
+) -> list[StagedMessageFile]:
+    """Download incoming file segments into the agent memory files directory."""
+    if not file_items:
+        return []
+
+    memory_path = Path(memory_dir)
+    files_dir = memory_path / "files"
+    files_dir.mkdir(parents=True, exist_ok=True)
+    staged_files: list[StagedMessageFile] = []
+
+    for file_item in file_items:
+        url = await _message_file_download_url(bot, file_item, user_id=user_id, group_id=group_id)
+        if not url:
+            logger.warning(f"文件缺少可下载链接，无法注入工作区: {file_item.file_name}")
+            continue
+        file_bytes = await _download_file_bytes(url, file_item.file_name)
+        if file_bytes is None:
+            continue
+
+        safe_name = _safe_attachment_file_name(file_item.file_name)
+        target_path = _unique_attachment_path(files_dir, safe_name)
+        target_path.write_bytes(file_bytes)
+        virtual_path = f"/memory/{workspace_key}/{target_path.relative_to(memory_path).as_posix()}"
+        staged_files.append(
+            StagedMessageFile(
+                file_name=target_path.name,
+                file_size=file_item.file_size,
+                virtual_path=virtual_path,
+                local_path=target_path,
+            )
+        )
+
+    return staged_files
+
+
+def format_staged_message_files(staged_files: list[StagedMessageFile]) -> str:
+    lines = []
+    for staged_file in staged_files:
+        size_label = f" ({staged_file.file_size}字节)" if staged_file.file_size else ""
+        lines.append(f"[文件:{staged_file.file_name}{size_label}，已保存到工作区 {staged_file.virtual_path}]")
+    return "\n".join(lines)
+
+
+async def _resolve_media_item(item: MediaItem) -> bytes | None:
+    if isinstance(item, bytes):
+        return item
+    if isinstance(item, bytearray):
+        return bytes(item)
+    if callable(item):
+        try:
+            return await item()
+        except Exception as exc:
+            logger.warning("下载媒体失败: %s: %s", type(exc).__name__, exc)
+            return None
+    logger.debug("忽略未知媒体项类型: %s", type(item).__name__)
+    return None
+
+
+async def download_media(
+    image_items: list[MediaItem] | None = None,
+    audio_items: list[MediaItem] | None = None,
+    video_items: list[MediaItem] | None = None,
+) -> tuple[list[bytes], list[bytes], list[bytes]]:
+    """并行解析 message_extract 返回的 lazy 媒体项。
+
+    兼容旧调用方测试桩直接返回 bytes 的情况；真实消息中通常是 async callable。
+    """
+    results: tuple[list[bytes], list[bytes], list[bytes]] = ([], [], [])
+    buckets = (image_items or [], audio_items or [], video_items or [])
+    tasks: list[tuple[int, Awaitable[bytes | None]]] = []
+
+    for bucket_index, bucket in enumerate(buckets):
+        for item in bucket:
+            tasks.append((bucket_index, _resolve_media_item(item)))
+
+    if not tasks:
+        return results
+
+    resolved = await asyncio.gather(*(task for _, task in tasks), return_exceptions=True)
+    for (bucket_index, _task), value in zip(tasks, resolved, strict=True):
+        if isinstance(value, Exception):
+            logger.warning("下载媒体失败: %s: %s", type(value).__name__, value)
+            continue
+        if value and isinstance(value, bytes):
+            results[bucket_index].append(value)
+    return results
+
+
+async def message_extract(  # noqa: C901
+    messages: list[dict],
+) -> tuple[str, list[MediaItem], list[MediaItem], list[MediaItem]]:
+    """提取消息中的文本和媒体内容。
 
     Args:
         messages: 消息段列表,每个消息段包含 type 和 data 字段
 
     Returns:
-        tuple: (文本内容, 图片列表, 语音列表, 视频列表)
+        tuple: (文本内容, image_downloaders, audio_downloaders, video_downloaders)
+        媒体项是 async callable，调用后返回 bytes 或 None。
+        调用方应在网关通过后再下载媒体，避免浪费带宽。
     """
-    text_parts = []
-    images, audio, video = [], [], []
+    text_parts: list[str] = []
+    image_downloaders: list[MediaItem] = []
+    audio_downloaders: list[MediaItem] = []
+    video_downloaders: list[MediaItem] = []
 
     for message in messages:
         msg_type = message.get("type")
@@ -236,100 +486,75 @@ async def message_extract(messages: list[dict]) -> tuple[str, list[bytes], list[
 
         match msg_type:
             case "text":
-                # 文本消息段
                 if text_content := msg_data.get("text"):
                     text_parts.append(text_content)
 
             case "mention":
-                # 提及消息段
                 if user_id := msg_data.get("user_id"):
                     text_parts.append(f"@{user_id}")
 
             case "mention_all":
-                # 提及全体消息段
                 text_parts.append("@全体成员")
 
             case "face":
-                # 表情消息段
                 face_id = msg_data.get("face_id", "")
                 is_large = msg_data.get("is_large", False)
                 face_type = "超级表情" if is_large else "表情"
                 text_parts.append(f"[{face_type}:{face_id}]")
 
             case "reply":
-                # 回复消息段
                 message_seq = msg_data.get("message_seq")
                 if message_seq:
                     text_parts.append(f"[回复消息:{message_seq}]")
 
             case "image":
-                # 图片消息段
                 if temp_url := msg_data.get("temp_url"):
-                    try:
-                        image_content = (await httpx_client.get(temp_url)).content
-                        images.append(image_content)
-                    except Exception as e:
-                        logger.warning(f"下载图片失败: {e}")
-                        if summary := msg_data.get("summary"):
-                            text_parts.append(f"[图片:{summary}]")
+                    image_downloaders.append(_media_downloader(temp_url, "图片"))
+                elif summary := msg_data.get("summary"):
+                    text_parts.append(f"[图片:{summary}]")
 
             case "record":
-                # 语音消息段
                 if temp_url := msg_data.get("temp_url"):
-                    try:
-                        audio_content = (await httpx_client.get(temp_url)).content
-                        audio.append(audio_content)
-                    except Exception as e:
-                        logger.warning(f"下载语音失败: {e}")
-                        duration = msg_data.get("duration", 0)
-                        text_parts.append(f"[语音:{duration}秒]")
+                    audio_downloaders.append(_media_downloader(temp_url, "语音"))
+                else:
+                    duration = msg_data.get("duration", 0)
+                    text_parts.append(f"[语音:{duration}秒]")
 
             case "video":
-                # 视频消息段
                 if temp_url := msg_data.get("temp_url"):
-                    try:
-                        video_content = (await httpx_client.get(temp_url)).content
-                        video.append(video_content)
-                    except Exception as e:
-                        logger.warning(f"下载视频失败: {e}")
-                        duration = msg_data.get("duration", 0)
-                        text_parts.append(f"[视频:{duration}秒]")
+                    video_downloaders.append(_media_downloader(temp_url, "视频"))
+                else:
+                    duration = msg_data.get("duration", 0)
+                    text_parts.append(f"[视频:{duration}秒]")
 
             case "file":
-                # 文件消息段
                 file_name = msg_data.get("file_name", "")
                 file_size = msg_data.get("file_size", 0)
                 text_parts.append(f"[文件:{file_name} ({file_size}字节)]")
 
             case "forward":
-                # 合并转发消息段
                 title = msg_data.get("title", "")
                 summary = msg_data.get("summary", "")
                 text_parts.append(f"[合并转发:{title} - {summary}]")
 
             case "market_face":
-                # 市场表情消息段
                 summary = msg_data.get("summary", "")
                 text_parts.append(f"[市场表情:{summary}]")
 
             case "light_app":
-                # 小程序消息段
                 app_name = msg_data.get("app_name", "")
                 text_parts.append(f"[小程序:{app_name}]")
 
             case "xml":
-                # XML消息段
                 service_id = msg_data.get("service_id", "")
                 text_parts.append(f"[XML消息:{service_id}]")
 
             case _:
-                # 未知类型
                 logger.debug(f"未处理的消息类型: {msg_type}")
 
-    # 合并所有文本部分
     text = "".join(text_parts) if text_parts else ""
 
-    return text, images, audio, video
+    return text, image_downloaders, audio_downloaders, video_downloaders
 
 
 async def send_artifacts(artifacts):
@@ -354,16 +579,23 @@ async def send_artifacts(artifacts):
 
 def outgoing_message_content(raw: Any) -> str:
     text_attr = getattr(raw, "text", None)
-    content = str(text_attr) if text_attr is not None else getattr(raw, "content", "")
-    if content:
+    if text_attr is not None and not callable(text_attr):
+        content = text_attr
+    elif hasattr(raw, "content"):
+        content = raw.content
+    else:
+        content = raw
+    if isinstance(content, str) and content:
         try:
-            content = ast.literal_eval(content)["content"]
-        except (ValueError, SyntaxError, KeyError) as e:
+            parsed = ast.literal_eval(content)
+            if isinstance(parsed, dict) and "content" in parsed:
+                content = parsed["content"]
+        except (ValueError, SyntaxError) as e:
             logger.debug(f"消息内容不是字典字面量，使用原始内容: {type(e).__name__}")
         except Exception as e:
             # 意外错误
             logger.warning(f"解析消息内容时出现意外错误: {type(e).__name__}: {e}")
-    return str(content or "")
+    return extract_message_text(content)
 
 
 async def sanitize_outgoing_text(content: str | None) -> str | None:
@@ -385,7 +617,7 @@ async def sanitize_outgoing_message(raw: Any) -> Any:
     sanitized = await sanitize_outgoing_text(content)
     if sanitized == content:
         return raw
-    return SimpleNamespace(text=sanitized)
+    return AIMessage(content=sanitized)
 
 
 async def _markdown_to_image_with_retry(content: str) -> bytes | None:
@@ -451,7 +683,7 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
             logger.error(f"图片消息发送失败: {e}")
 
 
-async def message_gateway(event: MessageEvent, messages: list):
+async def message_gateway(event: MessageEvent, messages: list) -> bool:
     group_id = event.data.group.group_id if event.data.group else 0
     user_id = _message_gateway_user_id(event)
     if _message_gateway_blocked_by_access_policy(group_id, user_id):
@@ -459,14 +691,25 @@ async def message_gateway(event: MessageEvent, messages: list):
     if event.is_tome() or event.to_me:
         return True
     plaintext = event.get_plaintext().strip()
-    if plaintext.startswith(EnvConfig.BOT_NAME):
+    wake_words = _get_wake_words(group_id)
+    if any(plaintext.startswith(w) for w in wake_words):
         return True
-    if group_id in EnvConfig.TEST_GROUP_ID:
+    if group_id != 0:
         return await _reply_check_should_reply(group_id, plaintext, messages)
     return False
 
 
-async def message_check(text: str | None, images: list | None) -> Literal["Safe", "Controversial", "Unsafe"]:
+def _get_wake_words(group_id: int) -> list[str]:
+    """获取群级别的唤醒词列表。数据库中有自定义唤醒词时返回，否则 fallback 到 BOT_NAME。"""
+    from utils.database import GroupSettingsManager, get_engine
+
+    if group_id == 0:
+        return [EnvConfig.BOT_NAME]
+    words = GroupSettingsManager(get_engine()).get(group_id, "wake_word")
+    return words if words else [EnvConfig.BOT_NAME]
+
+
+async def message_check(text: str | None, images: list[bytes] | None) -> Literal["Safe", "Controversial", "Unsafe"]:
     if not EnvConfig.CONTENT_CHECK_ENABLED:
         return "Safe"
     if text_det is None or image_det is None:

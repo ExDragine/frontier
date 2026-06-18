@@ -1,16 +1,18 @@
+# ruff: noqa: E402
+
 import time
 
 from nonebot import on_command, on_notice, require
 from nonebot.adapters.milky.bot import Bot
 from nonebot.adapters.milky.event import FriendNudgeEvent, GroupNudgeEvent, MessageEvent
 
+require("nonebot_plugin_alconna")
+
+from utils.alconna import UniMessage
 from utils.configs import EnvConfig
-from utils.message import message_extract
+from utils.message import download_media, message_extract
 from utils.paint_service import PaintRateLimiter, paint
 from utils.video_service import generate_video
-
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
 
 notice = on_notice(priority=0, block=True)
 paint_entry = on_command("paint", priority=3, block=True, aliases={"画图", "绘图"})
@@ -81,7 +83,7 @@ async def handle_paint_entry(event: MessageEvent):
         await UniMessage.text(MEDIA_ACCESS_DENIED).send()
         return
 
-    text, images, *_ = await message_extract(event.data.segments)
+    text, image_items, audio_items, video_items = await message_extract(event.data.segments)
     prompt = _strip_command_prefix(text, PAINT_PREFIXES)
     if not prompt:
         await UniMessage.text("用法: /paint <提示词>，可附带图片进行编辑").send()
@@ -97,6 +99,7 @@ async def handle_paint_entry(event: MessageEvent):
         await UniMessage.text(f"画得太快了，{rate_limit.retry_after_seconds} 秒后再试吧").send()
         return
 
+    images, _audio, _videos = await download_media(image_items, audio_items, video_items)
     image = await paint(prompt, images)
     if not image:
         await UniMessage.text("图片生成失败").send()
@@ -113,7 +116,7 @@ async def handle_video_entry(event: MessageEvent):
         await UniMessage.text(MEDIA_ACCESS_DENIED).send()
         return
 
-    text, images, _audio, videos = await message_extract(event.data.segments)
+    text, image_items, audio_items, video_items = await message_extract(event.data.segments)
     prompt = _strip_command_prefix(text, VIDEO_PREFIXES)
     if not prompt:
         await UniMessage.text("用法: /video <提示词>，可附带图片或视频作为输入").send()
@@ -129,6 +132,7 @@ async def handle_video_entry(event: MessageEvent):
         await UniMessage.text(f"视频生成得太快了，{rate_limit.retry_after_seconds} 秒后再试吧").send()
         return
 
+    images, _audio, videos = await download_media(image_items, audio_items, video_items)
     if videos:
         generated = await generate_video(prompt, video=videos[-1])
     elif images:

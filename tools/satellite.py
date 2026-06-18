@@ -1,15 +1,13 @@
 import time
 from typing import Literal
 
-import httpx
-from langchain.tools import tool
-from nonebot import logger, require
+from langchain_core.tools import tool
+from nonebot import logger
 
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
+from utils.alconna import UniMessage
+from utils.http_client import get_http_client
 
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+httpx_client = get_http_client("satellite")
 
 
 @tool(response_format="content_and_artifact")
@@ -92,13 +90,12 @@ async def get_fy4b_geos_cloud_map(
     if fn2url is None:
         return None
     try:
-        async with httpx.AsyncClient(timeout=30.0, http2=True) as client:
-            response = await client.get(fn2url)
-            response.raise_for_status()
-            video_bytes: bytes = response.content
-            if video_bytes:
-                return "成功获取FY4B卫星全地球视角云图视频", UniMessage.video(raw=video_bytes)
-    except httpx.HTTPError:
+        response = await httpx_client.get(fn2url)
+        response.raise_for_status()
+        video_bytes: bytes = response.content
+        if video_bytes:
+            return "成功获取FY4B卫星全地球视角云图视频", UniMessage.video(raw=video_bytes)
+    except Exception:
         return "获取FY4B卫星全地球视角云图视频失败", None
 
 
@@ -122,7 +119,3 @@ async def get_himawari_satellite_image() -> tuple[str, UniMessage | None]:
         end_time = time.time()
         logger.error(f"💥 工具执行异常: get_himawari_satellite_image - {str(e)} (耗时: {end_time - start_time:.2f}s)")
         return f"获取Himawari卫星图像失败: {str(e)}", None
-
-
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()

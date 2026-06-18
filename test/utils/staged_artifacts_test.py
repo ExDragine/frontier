@@ -15,7 +15,7 @@ class DummyUniMessage:
     def text(cls, text: str):
         return cls({"type": "text", "text": text})
 
-    def extend(self, other: "DummyUniMessage") -> "DummyUniMessage":
+    def extend(self, other: DummyUniMessage) -> DummyUniMessage:
         current = self.content if isinstance(self.content, list) else [self.content]
         incoming = other.content if isinstance(other.content, list) else [other.content]
         self.content = current + incoming

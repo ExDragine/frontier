@@ -1,12 +1,11 @@
 import time
 from typing import Any
 
-from langchain.tools import tool
-from nonebot import logger, require
+from langchain_core.tools import tool
+from nonebot import logger
 from playwright.async_api import async_playwright
 
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import UniMessage  # noqa: E402
+from utils.alconna import UniMessage
 
 
 @tool(response_format="content_and_artifact")

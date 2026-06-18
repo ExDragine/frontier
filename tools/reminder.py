@@ -3,8 +3,8 @@
 import datetime
 import zoneinfo
 
-from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 
 from tools.scheduled_task import create_scheduled_task_record
 

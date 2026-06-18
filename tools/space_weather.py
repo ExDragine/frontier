@@ -1,21 +1,14 @@
 import datetime
 from typing import Literal
 
-import httpx
 from bs4 import BeautifulSoup
-from langchain.tools import tool
-from nonebot import require
+from langchain_core.tools import tool
 from playwright.async_api import async_playwright
 
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
+from utils.alconna import Image, UniMessage
+from utils.http_client import get_http_client
 
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna import Image, UniMessage  # noqa: E402
-
-
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()
+httpx_client = get_http_client("space_weather")
 
 
 @tool(response_format="content")
@@ -34,9 +27,8 @@ async def solar_flare():
     url = "https://api.nasa.gov/DONKI/FLR"
     params = {"startDate": before_str, "endDate": today_str, "api_key": "DEMO_KEY"}
     noticed: list[str] = []
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        flare_data = response.json()
+    response = await httpx_client.get(url, params=params)
+    flare_data = response.json()
     for event in flare_data:
         if event["classType"][:1] == "X":
             message = (

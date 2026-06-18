@@ -1,14 +1,62 @@
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 MISSING_GROUP_ID = "缺少群号：请在群聊中使用，或显式传入 group_id。"
 MISSING_USER_ID = "缺少用户号：请显式传入 user_id，或在用户上下文中使用。"
 SCENES = {"friend", "group", "temp"}
 
 
-def is_local(source: str) -> bool:
-    return Path(source).is_file()
+def is_local(source: str, root_dir: str | None = None) -> bool:
+    """Check if *source* points to an existing file.
+
+    When *root_dir* is given, *source* is resolved strictly inside that
+    directory — path-traversal attempts (``..``, symlinks that escape, etc.)
+    are rejected.  Absolute paths without *root_dir* are also rejected for
+    safety, since they would otherwise allow unrestricted filesystem access.
+    """
+    if root_dir:
+        root = Path(root_dir).resolve()
+        normalized = source.lstrip("/")
+        candidate = (root / normalized).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return False
+        return candidate.is_file()
+
+    path = Path(source)
+    if path.is_absolute():
+        return False
+    return path.resolve().is_file()
+
+
+def resolve_local_path(source: str, root_dir: str | None = None) -> Path | None:
+    """Resolve *source* to an existing :class:`Path`.
+
+    When *root_dir* is given, *source* MUST stay inside that sandbox —
+    otherwise ``None`` is returned.  Absolute paths without *root_dir* are
+    rejected for the same reason.
+    """
+    if root_dir:
+        root = Path(root_dir).resolve()
+        normalized = source.lstrip("/")
+        candidate = (root / normalized).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return None
+        if candidate.is_file():
+            return candidate
+        return None
+
+    path = Path(source)
+    if path.is_absolute():
+        return None
+    resolved = path.resolve()
+    if resolved.is_file():
+        return resolved
+    return None
 
 
 def validate_url(url: str) -> None:
@@ -58,7 +106,7 @@ def resolve_peer(
     return resolve_user_id(config=config)
 
 
-def binary_kwargs_from_uri(uri: str | None) -> dict[str, str]:
+def binary_kwargs_from_uri(uri: str | None, root_dir: str | None = None) -> dict[str, str]:  # noqa: C901
     raw = (uri or "").strip()
     if not raw:
         return {}
@@ -68,19 +116,27 @@ def binary_kwargs_from_uri(uri: str | None) -> dict[str, str]:
         validate_url(raw)
         return {"url": raw}
     if parsed.scheme == "file":
-        path = parsed.path
+        path = unquote(parsed.path)
         if parsed.netloc and not path:
-            path = parsed.netloc
+            path = unquote(parsed.netloc)
         if not path:
             raise ValueError(f"无效的文件 URI：{uri!r}")
-        return {"path": path}
+        if root_dir is None:
+            return {"path": path}
+        root = Path(root_dir).resolve()
+        candidate = (root / path.lstrip("/")).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            raise ValueError(f"无效的文件 URI：{uri!r}，文件路径不在允许的工作区内") from None
+        return {"path": str(candidate)}
     if parsed.scheme == "base64":
         encoded = raw[len("base64://") :]
         if not encoded:
             raise ValueError(f"无效的文件 URI：{uri!r}")
         return {"base64": encoded}
-    if is_local(raw):
-        return {"path": raw}
+    if resolved := resolve_local_path(raw, root_dir):
+        return {"path": str(resolved)}
 
     raise ValueError(f"无效的文件 URI：{uri!r}，仅支持 file://、http(s)://、base64:// 或本地文件路径")
 

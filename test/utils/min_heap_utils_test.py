@@ -5,6 +5,15 @@ import time
 from utils.min_heap import RepeatMessageHeap, _GroupMessageHeap
 
 
+def test_repeat_message_heap_triggers_after_threshold():
+    heap = RepeatMessageHeap(capacity=10, threshold=3)
+
+    assert heap.add(912579570, "1") is False
+    assert heap.add(912579570, "1") is False
+    assert heap.add(912579570, "1") is True
+    assert heap.add(912579570, "1") is False
+
+
 def test_group_message_heap_threshold_and_cleanup(monkeypatch):
     heap = _GroupMessageHeap(capacity=2, threshold=2, time_window=10)
 

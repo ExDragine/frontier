@@ -1,11 +1,14 @@
 import asyncio
 import base64
 import datetime
+import hashlib
 import json
 import logging
 import os
+import posixpath
 import time
 import zoneinfo
+from contextlib import asynccontextmanager
 from functools import lru_cache
 
 from sqlalchemy import Engine, event, inspect, text
@@ -17,8 +20,44 @@ SQLITE_BUSY_TIMEOUT_MS = 5000
 SQLITE_CACHE_SIZE_KIB = 65536
 SQLITE_MMAP_SIZE_BYTES = 256 * 1024 * 1024
 MESSAGE_FTS_MIN_QUERY_LENGTH = 3
+MESSAGE_SOURCE_TYPE_NORMAL = "message"
+MESSAGE_SOURCE_TYPE_FORWARD_NODE = "forward_node"
 logger = logging.getLogger(__name__)
-_MESSAGE_VECTOR_INDEX = None
+
+
+async def _run_in_thread(func, *args, **kwargs):
+    """将同步数据库操作放入线程池执行，避免阻塞 asyncio 事件循环。"""
+    return await asyncio.to_thread(func, *args, **kwargs)
+
+
+@asynccontextmanager
+async def async_session_scope(engine: Engine):
+    """异步 Session 上下文管理器，自动处理线程调度和提交。
+
+    用法:
+        async with async_session_scope(engine) as session:
+            result = session.exec(select(Model).where(...)).all()
+    """
+    session = Session(engine)
+
+    async def _execute_sync(fn, *a, **kw):
+        if _engine_uses_memory_database(engine):
+            return fn(*a, **kw)
+        return await _run_in_thread(fn, *a, **kw)
+
+    yield session
+    await _execute_sync(lambda: (session.commit(), None) if session.is_active else None)
+    await _execute_sync(session.close)
+
+
+def _engine_uses_memory_database(engine: Engine) -> bool:
+    return engine.url.get_backend_name() == "sqlite" and _is_memory_database(str(engine.url))
+
+
+async def _run_database(engine: Engine, func, *args, **kwargs):
+    if _engine_uses_memory_database(engine):
+        return func(*args, **kwargs)
+    return await _run_in_thread(func, *args, **kwargs)
 
 
 def _is_memory_database(database_url: str) -> bool:
@@ -78,6 +117,7 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_message_user_group_time ON message (user_id, group_id, time DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_message_group_role_time ON message (group_id, role, time DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_message_group_msg_id_time ON message (group_id, msg_id, time DESC)",
+                "CREATE INDEX IF NOT EXISTS ix_message_source_parent ON message (source_type, parent_msg_time)",
                 (
                     "CREATE INDEX IF NOT EXISTS ix_message_private_user_time "
                     "ON message (user_id, time DESC) WHERE group_id IS NULL"
@@ -85,16 +125,12 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
             ]
         )
 
-    if "messageimage" in table_names:
+    if "messageattachment" in table_names:
         statements.extend(
             [
-                (
-                    'DELETE FROM messageimage WHERE id NOT IN '
-                    '(SELECT max(id) FROM messageimage GROUP BY msg_time, "index")'
-                ),
-                'CREATE UNIQUE INDEX IF NOT EXISTS ux_messageimage_msg_time_index ON messageimage (msg_time, "index")',
-                'CREATE INDEX IF NOT EXISTS ix_messageimage_msg_time_index ON messageimage (msg_time, "index")',
-                "CREATE INDEX IF NOT EXISTS ix_messageimage_expires_at ON messageimage (expires_at)",
+                "CREATE INDEX IF NOT EXISTS ix_messageattachment_msg_time ON messageattachment (msg_time)",
+                "CREATE INDEX IF NOT EXISTS ix_messageattachment_expires_at ON messageattachment (expires_at)",
+                "CREATE INDEX IF NOT EXISTS ix_messageattachment_scope ON messageattachment (workspace_key, kind)",
             ]
         )
 
@@ -112,6 +148,13 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
             ]
         )
 
+    if "group_settings" in table_names:
+        statements.extend(
+            [
+                "CREATE INDEX IF NOT EXISTS ix_group_settings_group_key ON group_settings (group_id, key)",
+            ]
+        )
+
     if not statements:
         return
 
@@ -119,6 +162,27 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
         for statement in statements:
             conn.execute(text(statement))
         conn.execute(text("PRAGMA optimize"))
+
+
+def ensure_message_schema(engine: Engine) -> None:
+    if "message" not in set(inspect(engine).get_table_names()):
+        return
+    columns = {column["name"] for column in inspect(engine).get_columns("message")}
+    column_migrations = [
+        ("raw_segments_json", "ALTER TABLE message ADD COLUMN raw_segments_json TEXT"),
+        ("normalized_version", "ALTER TABLE message ADD COLUMN normalized_version INTEGER NOT NULL DEFAULT 0"),
+        ("normalized_status", "ALTER TABLE message ADD COLUMN normalized_status TEXT NOT NULL DEFAULT 'legacy'"),
+        ("source_type", "ALTER TABLE message ADD COLUMN source_type TEXT NOT NULL DEFAULT 'message'"),
+        ("parent_msg_id", "ALTER TABLE message ADD COLUMN parent_msg_id INTEGER"),
+        ("parent_msg_time", "ALTER TABLE message ADD COLUMN parent_msg_time INTEGER"),
+        ("parent_forward_id", "ALTER TABLE message ADD COLUMN parent_forward_id TEXT"),
+    ]
+    statements = [statement for column, statement in column_migrations if column not in columns]
+    if not statements:
+        return
+    with engine.begin() as conn:
+        for statement in statements:
+            conn.execute(text(statement))
 
 
 def _table_exists(conn, table_name: str) -> bool:
@@ -149,7 +213,9 @@ def get_database_diagnostics(engine: Engine | None = None) -> dict[str, object]:
         for table_name in sorted(table_names):
             table_diagnostics[table_name] = {
                 "row_count": _safe_table_count(conn, table_name),
-                "indexes": sorted(index["name"] for index in inspector.get_indexes(table_name)),
+                "indexes": sorted(
+                    index["name"] for index in inspector.get_indexes(table_name) if index["name"] is not None
+                ),
             }
 
         for fts_table in ["message_fts"]:
@@ -245,9 +311,13 @@ def sqlite_supports_fts5(engine: Engine) -> bool:
     with engine.begin() as conn:
         try:
             conn.execute(text("CREATE VIRTUAL TABLE temp.frontier_fts5_probe USING fts5(content)"))
-            conn.execute(text("DROP TABLE temp.frontier_fts5_probe"))
-        except Exception:
+        except Exception as exc:
+            logger.warning("FTS5 probe failed during CREATE: %s: %s", type(exc).__name__, exc)
             return False
+        try:
+            conn.execute(text("DROP TABLE temp.frontier_fts5_probe"))
+        except Exception as exc:
+            logger.warning("FTS5 probe succeeded CREATE but failed DROP: %s: %s", type(exc).__name__, exc)
     return True
 
 
@@ -356,6 +426,13 @@ class Message(SQLModel, table=True):
     user_name: str | None
     role: str
     content: str
+    raw_segments_json: str | None = None
+    normalized_version: int = 0
+    normalized_status: str = "legacy"
+    source_type: str = MESSAGE_SOURCE_TYPE_NORMAL
+    parent_msg_id: int | None = None
+    parent_msg_time: int | None = None
+    parent_forward_id: str | None = None
 
 
 class TimeStamp(SQLModel, table=True):
@@ -363,59 +440,334 @@ class TimeStamp(SQLModel, table=True):
     id: str | None
 
 
-class MessageImage(SQLModel, table=True):
+class MessageAttachment(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     msg_time: int = Field(index=True)
+    msg_id: int | None = Field(default=None, index=True)
     user_id: int = Field(index=True)
-    group_id: int | None = None
-    index: int = 0
-    file_path: str
+    group_id: int | None = Field(default=None, index=True)
+    workspace_key: str = Field(index=True)
+    kind: str = Field(index=True)
+    source_type: str = "message"
+    file_name: str
+    mime_type: str | None = None
     file_size: int | None = None
+    sha256: str | None = None
+    physical_path: str
+    virtual_path: str
     created_at: int
     expires_at: int
+    metadata_json: str = "{}"
 
 
-class UserDatabase:
-    def __init__(self):
-        self.engine = get_engine()
-        User.metadata.create_all(self.engine)
+class GroupSettings(SQLModel, table=True):
+    __tablename__ = "group_settings"
+    id: int | None = Field(default=None, primary_key=True)
+    group_id: int = Field(index=True)
+    key: str = Field(index=True)
+    value: str
+    updated_at: int
 
-    async def insert(self, user_id, user_name, custom_model):
-        with Session(self.engine) as session:
-            user = User(id=user_id, name=user_name, model=custom_model)
-            session.add(user)
-            session.commit()
 
-    async def select(self, user_id: int):
-        with Session(self.engine) as session:
-            user = session.get(User, user_id)
-            return user
+def _message_workspace_key(user_id: int, group_id: int | None) -> str:
+    return str(group_id) if group_id is not None else str(user_id)
 
-    async def update(self, user_id):
-        with Session(self.engine) as session:
-            user = await self.select(user_id)
-            if user:
-                user.name = ""
-                session.add(user)
+
+def _attachment_paths(user_id: int, group_id: int | None, *parts: str) -> tuple[str, str]:
+    workspace_key = _message_workspace_key(user_id, group_id)
+    physical_path = os.path.join("cache", "sandbox", "memory", workspace_key, *parts)
+    virtual_path = posixpath.join("/memory", workspace_key, *parts)
+    return physical_path, virtual_path
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _prune_empty_attachment_dirs(path: str) -> None:
+    root = os.path.abspath(os.path.join(os.getcwd(), "cache", "sandbox", "memory"))
+    current = os.path.abspath(os.path.dirname(path))
+    while current.startswith(root) and current != root:
+        try:
+            os.rmdir(current)
+        except OSError:
+            break
+        current = os.path.dirname(current)
+
+
+class _MessageAttachmentManager:
+    """通用附件索引：记录、查询和按 DB 清理文件。"""
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    async def insert_attachment(
+        self,
+        *,
+        msg_time: int,
+        msg_id: int | None,
+        user_id: int,
+        group_id: int | None,
+        kind: str,
+        physical_path: str,
+        virtual_path: str,
+        file_name: str,
+        file_size: int | None,
+        expires_at: int,
+        source_type: str = "message",
+        mime_type: str | None = None,
+        sha256: str | None = None,
+        metadata_json: str = "{}",
+    ) -> MessageAttachment:
+        def _do():
+            workspace_key = _message_workspace_key(user_id, group_id)
+            now_ms = int(time.time() * 1000)
+            with Session(self.engine) as session:
+                attachment = session.exec(
+                    select(MessageAttachment).where(MessageAttachment.physical_path == physical_path).limit(1)
+                ).first()
+                if attachment is None:
+                    attachment = MessageAttachment(
+                        msg_time=msg_time,
+                        msg_id=msg_id,
+                        user_id=user_id,
+                        group_id=group_id,
+                        workspace_key=workspace_key,
+                        kind=kind,
+                        source_type=source_type,
+                        file_name=file_name,
+                        mime_type=mime_type,
+                        file_size=file_size,
+                        sha256=sha256,
+                        physical_path=physical_path,
+                        virtual_path=virtual_path,
+                        created_at=now_ms,
+                        expires_at=expires_at,
+                        metadata_json=metadata_json,
+                    )
+                else:
+                    attachment.msg_time = msg_time
+                    attachment.msg_id = msg_id
+                    attachment.user_id = user_id
+                    attachment.group_id = group_id
+                    attachment.workspace_key = workspace_key
+                    attachment.kind = kind
+                    attachment.source_type = source_type
+                    attachment.file_name = file_name
+                    attachment.mime_type = mime_type
+                    attachment.file_size = file_size
+                    attachment.sha256 = sha256
+                    attachment.virtual_path = virtual_path
+                    attachment.expires_at = expires_at
+                    attachment.metadata_json = metadata_json
+                session.add(attachment)
+                session.commit()
+                session.refresh(attachment)
+                return attachment
+
+        return await _run_database(self.engine, _do)
+
+    async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
+        def _do():
+            from utils.configs import EnvConfig
+
+            now_ms = int(time.time() * 1000)
+            expires_ms = now_ms + EnvConfig.IMAGE_TTL_DAYS * 86400 * 1000
+            workspace_key = _message_workspace_key(user_id, group_id)
+            paths = []
+            with Session(self.engine) as session:
+                for i, image_bytes in enumerate(images):
+                    file_name = f"{msg_time}_{i}.jpg"
+                    file_path, virtual_path = _attachment_paths(user_id, group_id, "images", file_name)
+                    full_path = os.path.join(os.getcwd(), file_path)
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(full_path, "wb") as f:
+                        f.write(image_bytes)
+
+                    attachment = session.exec(
+                        select(MessageAttachment).where(MessageAttachment.physical_path == file_path).limit(1)
+                    ).first()
+                    if attachment is None:
+                        attachment = MessageAttachment(
+                            msg_time=msg_time,
+                            msg_id=None,
+                            user_id=user_id,
+                            group_id=group_id,
+                            workspace_key=workspace_key,
+                            kind="image",
+                            source_type="message",
+                            file_name=file_name,
+                            mime_type="image/jpeg",
+                            file_size=len(image_bytes),
+                            sha256=_sha256_bytes(image_bytes),
+                            physical_path=file_path,
+                            virtual_path=virtual_path,
+                            created_at=now_ms,
+                            expires_at=expires_ms,
+                        )
+                    else:
+                        attachment.msg_time = msg_time
+                        attachment.msg_id = None
+                        attachment.user_id = user_id
+                        attachment.group_id = group_id
+                        attachment.workspace_key = workspace_key
+                        attachment.kind = "image"
+                        attachment.source_type = "message"
+                        attachment.file_name = file_name
+                        attachment.mime_type = "image/jpeg"
+                        attachment.file_size = len(image_bytes)
+                        attachment.sha256 = _sha256_bytes(image_bytes)
+                        attachment.virtual_path = virtual_path
+                        attachment.expires_at = expires_ms
+                    session.add(attachment)
+                    paths.append(file_path)
+                session.commit()
+            return paths
+
+        return await _run_database(self.engine, _do)
+
+    async def select_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
+        def _do():
+            with Session(self.engine) as session:
+                statement = (
+                    select(MessageAttachment)
+                    .where(MessageAttachment.msg_time == msg_time)
+                    .order_by(col(MessageAttachment.id))
+                )
+                return session.exec(statement).all()
+
+        return await _run_database(self.engine, _do)
+
+    async def select_by_msg_times(
+        self, msg_times: list[int], *, kind: str | None = None
+    ) -> dict[int, list[MessageAttachment]]:
+        def _do():
+            attachments_by_time: dict[int, list[MessageAttachment]] = {}
+            if not msg_times:
+                return attachments_by_time
+            with Session(self.engine) as session:
+                statement = select(MessageAttachment).where(col(MessageAttachment.msg_time).in_(msg_times))
+                if kind is not None:
+                    statement = statement.where(MessageAttachment.kind == kind)
+                statement = statement.order_by(col(MessageAttachment.msg_time), col(MessageAttachment.file_name))
+                for attachment in session.exec(statement).all():
+                    attachments_by_time.setdefault(attachment.msg_time, []).append(attachment)
+            return attachments_by_time
+
+        return await _run_database(self.engine, _do)
+
+    @staticmethod
+    def load_files(records: list[MessageAttachment]) -> tuple[list[bytes], int]:
+        files: list[bytes] = []
+        missing = 0
+        for record in sorted(records, key=lambda item: item.file_name):
+            full_path = os.path.join(os.getcwd(), record.physical_path)
+            if os.path.exists(full_path):
+                with open(full_path, "rb") as f:
+                    files.append(f.read())
+            else:
+                missing += 1
+        return files, missing
+
+    async def cleanup_expired_attachments(self, now_ms: int | None = None) -> int:
+        def _do():
+            cutoff = int(time.time() * 1000) if now_ms is None else now_ms
+            cleaned = 0
+            with Session(self.engine) as session:
+                expired = session.exec(select(MessageAttachment).where(MessageAttachment.expires_at < cutoff)).all()
+                for record in expired:
+                    full_path = os.path.join(os.getcwd(), record.physical_path)
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                        _prune_empty_attachment_dirs(full_path)
+                    session.delete(record)
+                    cleaned += 1
+                session.commit()
+            return cleaned
+
+        return await _run_database(self.engine, _do)
+
+
+class GroupSettingsManager:
+    """群级别 key-value 设置管理器。同一 key 允许多行（支持多唤醒词等）。"""
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    def get(self, group_id: int, key: str) -> list[str]:
+        def _do():
+            with Session(self.engine) as session:
+                rows = session.exec(
+                    select(GroupSettings).where(
+                        GroupSettings.group_id == group_id,
+                        GroupSettings.key == key,
+                    )
+                ).all()
+                return [row.value for row in rows]
+
+        return _do()
+
+    def set(self, group_id: int, key: str, value: str) -> None:
+        def _do():
+            now_ms = int(time.time() * 1000)
+            with Session(self.engine) as session:
+                row = GroupSettings(
+                    group_id=group_id,
+                    key=key,
+                    value=value,
+                    updated_at=now_ms,
+                )
+                session.add(row)
                 session.commit()
 
-    async def delete(self, user_id):
-        with Session(self.engine) as session:
-            user = await self.select(user_id)
-            if user:
-                session.delete(user)
+        _do()
+
+    def remove(self, group_id: int, key: str, value: str) -> bool:
+        def _do():
+            with Session(self.engine) as session:
+                row = session.exec(
+                    select(GroupSettings).where(
+                        GroupSettings.group_id == group_id,
+                        GroupSettings.key == key,
+                        GroupSettings.value == value,
+                    )
+                ).first()
+                if row is None:
+                    return False
+                session.delete(row)
                 session.commit()
+                return True
+
+        return _do()
+
+    def clear(self, group_id: int, key: str) -> int:
+        def _do():
+            with Session(self.engine) as session:
+                rows = session.exec(
+                    select(GroupSettings).where(
+                        GroupSettings.group_id == group_id,
+                        GroupSettings.key == key,
+                    )
+                ).all()
+                count = len(rows)
+                for row in rows:
+                    session.delete(row)
+                session.commit()
+                return count
+
+        return _do()
 
 
 class MessageDatabase:
     def __init__(self):
         self.engine = get_engine()
-        self._vector_index = None
+        self._attachments = _MessageAttachmentManager(self.engine)
         Message.metadata.create_all(self.engine)
-        MessageImage.metadata.create_all(self.engine)
+        ensure_message_schema(self.engine)
+        MessageAttachment.metadata.create_all(self.engine)
+        GroupSettings.metadata.create_all(self.engine)
         ensure_database_performance_indexes(self.engine)
         ensure_message_fts(self.engine)
-        self._preload_vector_index_if_configured()
 
     async def insert(
         self,
@@ -426,20 +778,36 @@ class MessageDatabase:
         user_name: str | None,
         role: str,
         content: str,
+        raw_segments_json: str | None = None,
+        normalized_version: int = 0,
+        normalized_status: str = "legacy",
+        source_type: str = MESSAGE_SOURCE_TYPE_NORMAL,
+        parent_msg_id: int | None = None,
+        parent_msg_time: int | None = None,
+        parent_forward_id: str | None = None,
     ):
-        with Session(self.engine) as session:
-            message = Message(
-                time=time,
-                msg_id=msg_id,
-                user_id=user_id,
-                group_id=group_id,
-                user_name=user_name,
-                role=role,
-                content=content,
-            )
-            session.add(message)
-            session.commit()
-            self._add_message_to_vector_index(message)
+        def _do():
+            with Session(self.engine) as session:
+                message = Message(
+                    time=time,
+                    msg_id=msg_id,
+                    user_id=user_id,
+                    group_id=group_id,
+                    user_name=user_name,
+                    role=role,
+                    content=content,
+                    raw_segments_json=raw_segments_json,
+                    normalized_version=normalized_version,
+                    normalized_status=normalized_status,
+                    source_type=source_type,
+                    parent_msg_id=parent_msg_id,
+                    parent_msg_time=parent_msg_time,
+                    parent_forward_id=parent_forward_id,
+                )
+                session.add(message)
+                session.commit()
+
+        await _run_database(self.engine, _do)
 
     async def select(
         self,
@@ -448,49 +816,109 @@ class MessageDatabase:
         query_numbers: int = 20,
         before_time: int | None = None,
     ):
-        with Session(self.engine) as session:
-            if group_id is not None:
-                statement = select(Message).where(Message.group_id == group_id)
-            elif user_id:
-                statement = select(Message).where(Message.user_id == user_id)
-            else:
-                return None
-            if before_time is not None:
-                statement = statement.where(Message.time < before_time)
-            statement = statement.order_by(desc(Message.time)).limit(query_numbers)
-            results = session.exec(statement)
-            return results.all()
+        def _do():
+            with Session(self.engine) as session:
+                if group_id is not None:
+                    statement = select(Message).where(Message.group_id == group_id)
+                elif user_id:
+                    statement = select(Message).where(Message.user_id == user_id)
+                else:
+                    return None
+                statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                if before_time is not None:
+                    statement = statement.where(Message.time < before_time)
+                statement = statement.order_by(desc(Message.time)).limit(query_numbers)
+                results = session.exec(statement)
+                return results.all()
+
+        return await _run_database(self.engine, _do)
 
     async def select_by_msg_id(self, *, msg_id: int, group_id: int | None) -> Message | None:
-        with Session(self.engine) as session:
-            statement = select(Message).where(Message.msg_id == msg_id)
-            if group_id is None:
-                statement = statement.where(Message.group_id.is_(None))  # type: ignore
-            else:
-                statement = statement.where(Message.group_id == group_id)
-            statement = statement.order_by(desc(Message.time)).limit(1)
-            return session.exec(statement).first()
+        def _do():
+            with Session(self.engine) as session:
+                statement = select(Message).where(Message.msg_id == msg_id)
+                statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                if group_id is None:
+                    statement = statement.where(Message.group_id.is_(None))  # type: ignore
+                else:
+                    statement = statement.where(Message.group_id == group_id)
+                statement = statement.order_by(desc(Message.time)).limit(1)
+                return session.exec(statement).first()
 
-    async def select_images_by_msg_time(self, msg_time: int) -> list[MessageImage]:
-        with Session(self.engine) as session:
-            statement = select(MessageImage).where(MessageImage.msg_time == msg_time).order_by(MessageImage.index)
-            return session.exec(statement).all()
+        return await _run_database(self.engine, _do)
+
+    async def update_message_normalization(
+        self,
+        *,
+        time: int,
+        content: str,
+        raw_segments_json: str | None,
+        normalized_version: int,
+        normalized_status: str,
+    ) -> None:
+        def _do():
+            with Session(self.engine) as session:
+                message = session.get(Message, time)
+                if message is None:
+                    return
+                message.content = content
+                if raw_segments_json is not None:
+                    message.raw_segments_json = raw_segments_json
+                message.normalized_version = normalized_version
+                message.normalized_status = normalized_status
+                session.add(message)
+                session.commit()
+
+        await _run_database(self.engine, _do)
 
     @staticmethod
-    def _load_image_files(image_records: list[MessageImage]) -> tuple[list[bytes], int]:
-        file_images: list[bytes] = []
-        missing_images = 0
-        for img in sorted(image_records, key=lambda x: x.index):
-            full_path = os.path.join(os.getcwd(), img.file_path)
-            if os.path.exists(full_path):
-                with open(full_path, "rb") as f:
-                    file_images.append(f.read())
-            else:
-                missing_images += 1
-        return file_images, missing_images
+    def _derived_message_time(parent_msg_time: int, ordinal: int) -> int:
+        return -(abs(parent_msg_time) * 1000 + ordinal + 1)
 
-    def load_image_files(self, image_records: list[MessageImage]) -> tuple[list[bytes], int]:
-        return self._load_image_files(image_records)
+    async def replace_derived_messages(
+        self,
+        *,
+        parent_msg_time: int,
+        parent_msg_id: int | None,
+        user_id: int,
+        group_id: int | None,
+        role: str,
+        derived_messages: list,
+        normalized_version: int,
+    ) -> None:
+        def _do():
+            with Session(self.engine) as session:
+                existing = session.exec(
+                    select(Message)
+                    .where(Message.parent_msg_time == parent_msg_time)
+                    .where(Message.source_type != MESSAGE_SOURCE_TYPE_NORMAL)
+                ).all()
+                for message in existing:
+                    session.delete(message)
+
+                inserted: list[Message] = []
+                for ordinal, item in enumerate(derived_messages):
+                    message = Message(
+                        time=self._derived_message_time(parent_msg_time, ordinal),
+                        msg_id=None,
+                        user_id=user_id,
+                        group_id=group_id,
+                        user_name=getattr(item, "sender_name", None),
+                        role=role,
+                        content=getattr(item, "content", ""),
+                        raw_segments_json=getattr(item, "raw_segments_json", None),
+                        normalized_version=normalized_version,
+                        normalized_status="complete",
+                        source_type=MESSAGE_SOURCE_TYPE_FORWARD_NODE,
+                        parent_msg_id=parent_msg_id,
+                        parent_msg_time=parent_msg_time,
+                        parent_forward_id=getattr(item, "forward_id", None),
+                    )
+                    session.add(message)
+                    inserted.append(message)
+                session.commit()
+
+        await _run_database(self.engine, _do)
 
     async def prepare_message(  # noqa: C901
         self,
@@ -516,11 +944,8 @@ class MessageDatabase:
 
         all_msg_times = [m.time for m in messages]
 
-        images_by_time: dict[int, list[MessageImage]] = {}
-        with Session(self.engine) as session:
-            stmt = select(MessageImage).where(col(MessageImage.msg_time).in_(all_msg_times))
-            for img in session.exec(stmt).all():
-                images_by_time.setdefault(img.msg_time, []).append(img)
+        self._attachments.engine = self.engine
+        images_by_time = await self._attachments.select_by_msg_times(all_msg_times, kind="image")
 
         for message in messages:
             msg_images = images_by_time.get(message.time, [])
@@ -528,7 +953,7 @@ class MessageDatabase:
             file_images: list[bytes] = []
 
             if msg_images:
-                file_images, missing_images = self._load_image_files(msg_images)
+                file_images, missing_images = self._attachments.load_files(msg_images)
                 if missing_images:
                     content_text += "\n" + " ".join("[图片]" for _ in range(missing_images))
 
@@ -568,54 +993,31 @@ class MessageDatabase:
         return messages_seq
 
     async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
-        from utils.configs import EnvConfig
+        self._attachments.engine = self.engine
+        return await self._attachments.insert_images(msg_time, user_id, group_id, images)
 
-        now_ms = int(time.time() * 1000)
-        expires_ms = now_ms + EnvConfig.IMAGE_TTL_DAYS * 86400 * 1000
-        dir_path = os.path.join(os.getcwd(), "cache", "images", str(user_id))
-        os.makedirs(dir_path, exist_ok=True)
-        paths = []
-        with Session(self.engine) as session:
-            for i, image_bytes in enumerate(images):
-                file_path = os.path.join("cache", "images", str(user_id), f"{msg_time}_{i}.jpg")
-                with open(os.path.join(os.getcwd(), file_path), "wb") as f:
-                    f.write(image_bytes)
-                record = session.exec(
-                    select(MessageImage).where(MessageImage.msg_time == msg_time).where(MessageImage.index == i)
-                ).first()
-                if record:
-                    record.file_path = file_path
-                    record.file_size = len(image_bytes)
-                    record.expires_at = expires_ms
-                else:
-                    record = MessageImage(
-                        msg_time=msg_time,
-                        user_id=user_id,
-                        group_id=group_id,
-                        index=i,
-                        file_path=file_path,
-                        file_size=len(image_bytes),
-                        created_at=now_ms,
-                        expires_at=expires_ms,
-                    )
-                session.add(record)
-                paths.append(file_path)
-            session.commit()
-        return paths
+    async def insert_attachment(self, **kwargs) -> MessageAttachment:
+        self._attachments.engine = self.engine
+        return await self._attachments.insert_attachment(**kwargs)
 
-    async def cleanup_expired_images(self) -> int:
-        now_ms = int(time.time() * 1000)
-        cleaned = 0
-        with Session(self.engine) as session:
-            expired = session.exec(select(MessageImage).where(MessageImage.expires_at < now_ms)).all()
-            for record in expired:
-                full_path = os.path.join(os.getcwd(), record.file_path)
-                if os.path.exists(full_path):
-                    os.remove(full_path)
-                session.delete(record)
-                cleaned += 1
-            session.commit()
-        return cleaned
+    async def select_image_attachments_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
+        self._attachments.engine = self.engine
+        attachments = await self._attachments.select_by_msg_time(msg_time)
+        return [attachment for attachment in attachments if attachment.kind == "image"]
+
+    def load_attachment_files(self, records: list[MessageAttachment]) -> tuple[list[bytes], int]:
+        return self._attachments.load_files(records)
+
+    def group_settings(self) -> GroupSettingsManager:
+        return GroupSettingsManager(self.engine)
+
+    async def select_attachments_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
+        self._attachments.engine = self.engine
+        return await self._attachments.select_by_msg_time(msg_time)
+
+    async def cleanup_expired_attachments(self, now_ms: int | None = None) -> int:
+        self._attachments.engine = self.engine
+        return await self._attachments.cleanup_expired_attachments(now_ms=now_ms)
 
     async def select_by_time_range(
         self,
@@ -625,37 +1027,49 @@ class MessageDatabase:
         user_id: int | None = None,
         limit: int = 500,
     ) -> list[Message]:
-        with Session(self.engine) as session:
-            statement = select(Message).where(Message.time >= start_time).where(Message.time <= end_time)
-            if group_id is not None:
-                statement = statement.where(Message.group_id == group_id)
-                if user_id is not None:
-                    statement = statement.where(Message.user_id == user_id)
-            elif user_id is not None:
-                statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
-            statement = statement.order_by(Message.time).limit(limit)
-            return session.exec(statement).all()
+        def _do():  # noqa: C901
+            with Session(self.engine) as session:
+                statement = select(Message).where(Message.time >= start_time).where(Message.time <= end_time)
+                statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                if group_id is not None:
+                    statement = statement.where(Message.group_id == group_id)
+                    if user_id is not None:
+                        statement = statement.where(Message.user_id == user_id)
+                elif user_id is not None:
+                    statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
+                statement = statement.order_by(col(Message.time)).limit(limit)
+                return session.exec(statement).all()
+
+        return await _run_database(self.engine, _do)
 
     async def count_group_messages_since(self, *, group_id: int, since_time: int) -> int:
-        with Session(self.engine) as session:
-            statement = (
-                select(func.count())
-                .select_from(Message)
-                .where(Message.group_id == group_id)
-                .where(Message.time >= since_time)
-            )
-            return int(session.exec(statement).one())
+        def _do():
+            with Session(self.engine) as session:
+                statement = (
+                    select(func.count())
+                    .select_from(Message)
+                    .where(Message.group_id == group_id)
+                    .where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                    .where(Message.time >= since_time)
+                )
+                return int(session.exec(statement).one())
+
+        return await _run_database(self.engine, _do)
 
     async def latest_group_role_message_time(self, *, group_id: int, role: str) -> int | None:
-        with Session(self.engine) as session:
-            statement = (
-                select(Message.time)
-                .where(Message.group_id == group_id)
-                .where(Message.role == role)
-                .order_by(desc(Message.time))
-                .limit(1)
-            )
-            return session.exec(statement).first()
+        def _do():
+            with Session(self.engine) as session:
+                statement = (
+                    select(Message.time)
+                    .where(Message.group_id == group_id)
+                    .where(Message.role == role)
+                    .where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                    .order_by(desc(Message.time))
+                    .limit(1)
+                )
+                return session.exec(statement).first()
+
+        return await _run_database(self.engine, _do)
 
     @staticmethod
     def _like_pattern(value: str) -> str:
@@ -722,6 +1136,7 @@ class MessageDatabase:
                 (:scope = 'group' AND m.group_id = :group_id)
                 OR (:scope = 'private' AND m.user_id = :user_id AND m.group_id IS NULL)
               )
+              AND m.source_type = 'message'
               AND (:target_user_id_enabled = 0 OR m.user_id = :target_user_id)
               AND (:target_user_name IS NULL OR m.user_name LIKE :target_user_name ESCAPE '\\')
               AND (:msg_id IS NULL OR m.msg_id = :msg_id)
@@ -742,6 +1157,7 @@ class MessageDatabase:
                 (:scope = 'group' AND m.group_id = :group_id)
                 OR (:scope = 'private' AND m.user_id = :user_id AND m.group_id IS NULL)
               )
+              AND m.source_type = 'message'
               AND (:target_user_id_enabled = 0 OR m.user_id = :target_user_id)
               AND (:target_user_name IS NULL OR m.user_name LIKE :target_user_name ESCAPE '\\')
               AND (:msg_id IS NULL OR m.msg_id = :msg_id)
@@ -761,116 +1177,6 @@ class MessageDatabase:
         messages_by_id = {message.time: message for message in messages}
         return [messages_by_id[message_id] for message_id in ids if message_id in messages_by_id]
 
-    def _get_vector_index(self):
-        if self._vector_index is not None:
-            return self._vector_index
-        global _MESSAGE_VECTOR_INDEX
-        if _MESSAGE_VECTOR_INDEX is not None:
-            self._vector_index = _MESSAGE_VECTOR_INDEX
-            return self._vector_index
-        try:
-            from utils.configs import EnvConfig
-            from utils.message_vector_index import MessageVectorIndex, MessageVectorIndexConfig
-
-            config = MessageVectorIndexConfig(
-                enabled=EnvConfig.VECTOR_MEMORY_ENABLED,
-                persist_path=EnvConfig.VECTOR_MEMORY_CHROMA_PATH,
-                collection_name=EnvConfig.VECTOR_MEMORY_COLLECTION,
-                embedding_model=EnvConfig.VECTOR_MEMORY_EMBEDDING_MODEL,
-                top_k=EnvConfig.VECTOR_MEMORY_SEMANTIC_TOP_K,
-                embedding_batch_size=EnvConfig.VECTOR_MEMORY_EMBEDDING_BATCH_SIZE,
-                embedding_device=EnvConfig.VECTOR_MEMORY_EMBEDDING_DEVICE or None,
-                preload_on_startup=EnvConfig.VECTOR_MEMORY_PRELOAD_ON_STARTUP,
-            )
-            _MESSAGE_VECTOR_INDEX = MessageVectorIndex(config)
-            self._vector_index = _MESSAGE_VECTOR_INDEX
-        except Exception as exc:
-            logger.warning("Message vector index initialization failed: %s", exc)
-            _MESSAGE_VECTOR_INDEX = False
-            self._vector_index = _MESSAGE_VECTOR_INDEX
-        return self._vector_index
-
-    def _preload_vector_index_if_configured(self) -> None:
-        try:
-            from utils.configs import EnvConfig
-        except Exception as exc:
-            logger.debug("Vector index preload skipped: %s", exc)
-            return
-        if EnvConfig.VECTOR_MEMORY_ENABLED and EnvConfig.VECTOR_MEMORY_PRELOAD_ON_STARTUP:
-            logger.info("Preloading message vector index")
-            self._get_vector_index()
-
-    def _add_message_to_vector_index(self, message: Message) -> None:
-        snapshot = Message(
-            time=message.time,
-            msg_id=message.msg_id,
-            user_id=message.user_id,
-            group_id=message.group_id,
-            user_name=message.user_name,
-            role=message.role,
-            content=message.content,
-        )
-
-        def index_message() -> None:
-            vector_index = self._get_vector_index()
-            if not vector_index or not getattr(vector_index, "available", False):
-                return
-            vector_index.add_message(snapshot)
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            index_message()
-        else:
-            loop.create_task(asyncio.to_thread(index_message))
-
-    def _messages_by_ids(self, session: Session, ids: list[int]) -> list[Message]:
-        if not ids:
-            return []
-        messages = session.exec(select(Message).where(col(Message.time).in_(ids))).all()
-        messages_by_id = {message.time: message for message in messages}
-        return [messages_by_id[message_id] for message_id in ids if message_id in messages_by_id]
-
-    def _semantic_search_messages(
-        self,
-        session: Session,
-        *,
-        group_id: int | None,
-        user_id: int | None,
-        content_query: str | None,
-        target_user_id: int | None,
-        target_user_name: str | None,
-        msg_id: int | None,
-        start_time: int | None,
-        end_time: int | None,
-        limit: int,
-    ) -> list[Message]:
-        if not content_query:
-            return []
-        vector_index = self._get_vector_index()
-        if not vector_index or not getattr(vector_index, "available", False):
-            return []
-        vector_results = vector_index.search(
-            query=content_query,
-            group_id=group_id,
-            user_id=user_id,
-            target_user_id=target_user_id,
-            limit=max(1, min(limit, 500)),
-        )
-        messages = self._messages_by_ids(session, [message_id for message_id, _distance in vector_results])
-        filtered = []
-        for message in messages:
-            if target_user_name and target_user_name not in (message.user_name or ""):
-                continue
-            if msg_id is not None and message.msg_id != msg_id:
-                continue
-            if start_time is not None and message.time < start_time:
-                continue
-            if end_time is not None and message.time > end_time:
-                continue
-            filtered.append(message)
-        return filtered[: max(1, min(limit, 500))]
-
     async def search_messages(  # noqa: C901
         self,
         *,
@@ -884,85 +1190,55 @@ class MessageDatabase:
         end_time: int | None = None,
         limit: int = 50,
         sort: str = "time",
-        mode: str = "keyword",
     ) -> list[Message]:
-        with Session(self.engine) as session:
-            if mode == "semantic":
-                semantic_results = self._semantic_search_messages(
-                    session,
-                    group_id=group_id,
-                    user_id=user_id,
-                    content_query=content_query,
-                    target_user_id=target_user_id,
-                    target_user_name=target_user_name,
-                    msg_id=msg_id,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit,
-                )
-                if semantic_results:
-                    return semantic_results
-
-            if self._can_use_fts(content_query):
-                keyword_results = self._search_messages_fts(
-                    session,
-                    group_id=group_id,
-                    user_id=user_id,
-                    content_query=content_query or "",
-                    target_user_id=target_user_id,
-                    target_user_name=target_user_name,
-                    msg_id=msg_id,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit,
-                    sort=sort,
-                )
-                if mode == "hybrid":
-                    semantic_results = self._semantic_search_messages(
+        def _do():  # noqa: C901
+            with Session(self.engine) as session:
+                if self._can_use_fts(content_query):
+                    return self._search_messages_fts(
                         session,
                         group_id=group_id,
                         user_id=user_id,
-                        content_query=content_query,
+                        content_query=content_query or "",
                         target_user_id=target_user_id,
                         target_user_name=target_user_name,
                         msg_id=msg_id,
                         start_time=start_time,
                         end_time=end_time,
                         limit=limit,
+                        sort=sort,
                     )
-                    seen = {message.time for message in keyword_results}
-                    return (keyword_results + [m for m in semantic_results if m.time not in seen])[
-                        : max(1, min(limit, 500))
-                    ]
-                return keyword_results
 
-            statement = select(Message)
-            if group_id is None:
-                if user_id is None:
-                    return []
-                statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
-                if target_user_id is not None and target_user_id != user_id:
-                    return []
-            else:
-                statement = statement.where(Message.group_id == group_id)
-                if target_user_id is not None:
-                    statement = statement.where(Message.user_id == target_user_id)
+                statement = select(Message).where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                if group_id is None:
+                    if user_id is None:
+                        return []
+                    statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
+                    if target_user_id is not None and target_user_id != user_id:
+                        return []
+                else:
+                    statement = statement.where(Message.group_id == group_id)
+                    if target_user_id is not None:
+                        statement = statement.where(Message.user_id == target_user_id)
 
-            if content_query:
-                statement = statement.where(col(Message.content).like(self._like_pattern(content_query), escape="\\"))
-            if target_user_name:
-                statement = statement.where(
-                    col(Message.user_name).like(self._like_pattern(target_user_name), escape="\\")
-                )
-            if msg_id is not None:
-                statement = statement.where(Message.msg_id == msg_id)
-            if start_time is not None:
-                statement = statement.where(Message.time >= start_time)
-            if end_time is not None:
-                statement = statement.where(Message.time <= end_time)
+                if content_query:
+                    statement = statement.where(
+                        col(Message.content).like(self._like_pattern(content_query), escape="\\")
+                    )
+                if target_user_name:
+                    statement = statement.where(
+                        col(Message.user_name).like(self._like_pattern(target_user_name), escape="\\")
+                    )
+                if msg_id is not None:
+                    statement = statement.where(Message.msg_id == msg_id)
+                if start_time is not None:
+                    statement = statement.where(Message.time >= start_time)
+                if end_time is not None:
+                    statement = statement.where(Message.time <= end_time)
 
-            statement = statement.order_by(desc(Message.time)).limit(max(1, min(limit, 500)))
-            return session.exec(statement).all()
+                statement = statement.order_by(desc(Message.time)).limit(max(1, min(limit, 500)))
+                return session.exec(statement).all()
+
+        return await _run_database(self.engine, _do)
 
     @staticmethod
     def format_for_llm(messages: list[Message]) -> str:
@@ -986,28 +1262,40 @@ class EventDatabase:
         TimeStamp.metadata.create_all(self.engine)
 
     async def insert(self, name, id: str | None = None):
-        with Session(self.engine) as session:
-            target = TimeStamp(name=name, id=id)
-            session.add(target)
-            session.commit()
-
-    async def delete(self, name):
-        with Session(self.engine) as session:
-            target = session.get(TimeStamp, name)
-            if target:
-                session.delete(target)
-                session.commit()
-
-    async def update(self, name, id):
-        with Session(self.engine) as session:
-            target = session.get(TimeStamp, name)
-            if target:
-                target.id = id
+        def _do():
+            with Session(self.engine) as session:
+                target = TimeStamp(name=name, id=id)
                 session.add(target)
                 session.commit()
 
+        await _run_database(self.engine, _do)
+
+    async def delete(self, name):
+        def _do():
+            with Session(self.engine) as session:
+                target = session.get(TimeStamp, name)
+                if target:
+                    session.delete(target)
+                    session.commit()
+
+        await _run_database(self.engine, _do)
+
+    async def update(self, name, id):
+        def _do():
+            with Session(self.engine) as session:
+                target = session.get(TimeStamp, name)
+                if target:
+                    target.id = id
+                    session.add(target)
+                    session.commit()
+
+        await _run_database(self.engine, _do)
+
     async def select(self, name):
-        with Session(self.engine) as session:
-            target = session.get(TimeStamp, name)
-            if target:
-                return target.id
+        def _do():
+            with Session(self.engine) as session:
+                target = session.get(TimeStamp, name)
+                if target:
+                    return target.id
+
+        return await _run_database(self.engine, _do)

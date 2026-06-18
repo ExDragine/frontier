@@ -330,5 +330,5 @@ sandbox/
 uv.lock
 env.toml
 temp
-.db-shm
-.db-wal
+*.db-shm
+*.db-wal

@@ -1,19 +1,14 @@
 from urllib.parse import urlparse, urlunparse
 
-import httpx
-from langchain.tools import tool
+from langchain_core.tools import tool
 from nonebot import logger
 
 from utils.configs import EnvConfig
+from utils.http_client import get_http_client
 
 DEFAULT_BALANCE_URL = "https://api.deepseek.com/user/balance"
 
-transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-httpx_client = httpx.AsyncClient(transport=transport, timeout=30)
-
-
-async def aclose_http_client() -> None:
-    await httpx_client.aclose()
+httpx_client = get_http_client("deepseek_balance")
 
 
 def _api_key_value() -> str:

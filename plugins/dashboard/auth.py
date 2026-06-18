@@ -1,15 +1,16 @@
 import secrets
 import time
 from collections import defaultdict
-from typing import Optional
 
+import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from utils.configs import EnvConfig
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
+SECURITY_DEPENDENCY = Depends(security)
 
 # 登录限流：记录每个 IP 的登录尝试
 _login_attempts = defaultdict(list)
@@ -32,22 +33,42 @@ def verify_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, EnvConfig.DASHBOARD_JWT_SECRET, algorithms=["HS256"])
         return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token 已过期")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="无效的 Token")
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status_code=401, detail="Token 已过期") from exc
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="无效的 Token") from exc
 
 
 def verify_password(password: str) -> bool:
-    """验证密码"""
-    return secrets.compare_digest(password, EnvConfig.DASHBOARD_PASSWORD)
+    """验证密码，支持 bcrypt 哈希和明文（向后兼容）。"""
+    stored = EnvConfig.DASHBOARD_PASSWORD
+
+    if stored.startswith("$2"):
+        # bcrypt hash
+        return bcrypt.checkpw(password.encode(), stored.encode())
+
+    # 明文回退 — 向后兼容旧配置
+    return secrets.compare_digest(password, stored)
 
 
 async def require_auth(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = SECURITY_DEPENDENCY,
 ) -> dict:
-    """FastAPI 依赖：要求请求携带有效的 JWT token"""
-    return verify_token(credentials.credentials)
+    """FastAPI 依赖：从 Authorization header 或 HttpOnly cookie 中提取 JWT token。
+
+    优先级：Authorization header > cookie
+    """
+    token = credentials.credentials if credentials else None
+
+    # Fallback: read from HttpOnly cookie
+    if not token:
+        token = request.cookies.get("frontier_token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="缺少认证 token")
+
+    return verify_token(token)
 
 
 def check_rate_limit(ip: str) -> bool:

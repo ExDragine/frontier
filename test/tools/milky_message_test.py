@@ -46,11 +46,11 @@ class DummyMilkyBot:
             )
         ], 0
 
-    async def get_resource_temp_url(self, resource_id):
+    async def get_resource_temp_url(self, *, resource_id):
         self.calls.append(("get_resource_temp_url", {"resource_id": resource_id}))
         return "https://example.com/resource"
 
-    async def get_forwarded_messages(self, forward_id):
+    async def get_forwarded_messages(self, *, forward_id):
         self.calls.append(("get_forwarded_messages", {"forward_id": forward_id}))
         return [
             types.SimpleNamespace(

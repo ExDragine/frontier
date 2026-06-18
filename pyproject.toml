@@ -16,7 +16,6 @@ dependencies = [
   "langchain-openai",
   "langchain-mcp-adapters",
   "langchain-huggingface",
-  "langchain-tavily",
   "langchain-chroma",
   "langgraph",
   "deepagents",
@@ -28,17 +27,18 @@ dependencies = [
   "playwright",
   "websockets",
   "httpx[http2]",
+  "imageio-ffmpeg",
   "gitpython",
   "pypinyin",
   "sqlmodel",
   "markdown-it-py",
   "mdit-py-plugins",
   "pillow",
-  # "pypika @ git+https://github.com/pyctrl/pypika.git@v0.48.9-patched",
   "nonebot-adapter-milky",
   "langchain-google-genai",
   "langchain-anthropic",
   "langchain-deepseek",
+  "langchain-quickjs",
 ]
 
 [[tool.uv.index]]
@@ -92,7 +92,6 @@ exclude = [
 extend-include = ["*.ipynb"]
 line-length = 119
 indent-width = 4
-# target-version = "py314"
 
 [dependency-groups]
 dev = [
