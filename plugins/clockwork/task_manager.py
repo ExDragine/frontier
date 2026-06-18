@@ -99,7 +99,55 @@ class TaskManager:
             existing_task = session.exec(statement).first()
 
             if existing_task:
-                self.logger.info(f"任务 {job_id} 已存在，跳过注册")
+                updated = False
+                new_trigger_args_str = json.dumps(trigger_args, sort_keys=True)
+                old_trigger_args_str = json.dumps(
+                    json.loads(existing_task.trigger_args) if isinstance(existing_task.trigger_args, str)
+                    else existing_task.trigger_args,
+                    sort_keys=True,
+                )
+
+                if existing_task.trigger_type != trigger_type or old_trigger_args_str != new_trigger_args_str:
+                    self.logger.info(
+                        f"任务 {job_id} 触发器变更: {existing_task.trigger_type}/{old_trigger_args_str} → {trigger_type}/{new_trigger_args_str}"
+                    )
+                    try:
+                        self.scheduler.reschedule_job(job_id, trigger=trigger_type, **trigger_args)
+                    except Exception as e:
+                        self.logger.error(f"更新调度器任务 {job_id} 失败: {e}")
+                        return existing_task
+                    existing_task.trigger_type = trigger_type
+                    existing_task.trigger_args = new_trigger_args_str
+                    existing_task.updated_at = int(time.time())
+                    updated = True
+
+                if existing_task.handler_module != handler_module or existing_task.handler_function != handler_function:
+                    existing_task.handler_module = handler_module
+                    existing_task.handler_function = handler_function
+                    existing_task.updated_at = int(time.time())
+                    updated = True
+
+                # 同步群组
+                old_groups = [
+                    m.group_id for m in
+                    session.exec(select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)).all()
+                ]
+                new_groups = sorted(set(group_ids))
+                if old_groups != new_groups:
+                    for m in session.exec(select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)).all():
+                        session.delete(m)
+                    for gid in new_groups:
+                        session.add(TaskGroupMapping(job_id=job_id, group_id=gid))
+                    updated = True
+
+                if updated:
+                    session.add(existing_task)
+                    session.commit()
+                    session.refresh(existing_task)
+                    self._sync_group_config(job_id, group_ids)
+                    self.logger.info(f"任务 {job_id} 已更新")
+                else:
+                    self.logger.info(f"任务 {job_id} 已存在且配置未变，跳过")
                 return existing_task
 
             # 创建任务配置

@@ -27,6 +27,7 @@ dependencies = [
   "playwright",
   "websockets",
   "httpx[http2]",
+  "imageio-ffmpeg",
   "gitpython",
   "pypinyin",
   "sqlmodel",

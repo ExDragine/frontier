@@ -117,7 +117,7 @@ def extract_message_text(content: Any) -> str:
     if callable(text):
         try:
             text = text()
-        except TypeError:
+        except (TypeError, AttributeError):
             text = None
     if text:
         return extract_message_text(text)

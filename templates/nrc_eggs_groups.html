@@ -1,0 +1,134 @@
+<!-- Header -->
+<header class="eggs-groups-header">
+        <div class="eggs-groups-header-inner">
+            <img class="eggs-groups-header-icon" src="https://images.xiaopiaa.com/static/storage/20260419/5ca94fca1a6d97e38014a57e45594377.png" alt="孵蛋图标" referrerpolicy="no-referrer">
+            <h1 class="eggs-groups-header-title">洛克王国蛋组查询</h1>
+        </div>
+    </header>
+
+    <main class="eggs-groups-main">
+        {% if mode == "compare" %}
+        <!-- ═══ Compare Mode ═══ -->
+        <section class="compare-section">
+            <div class="compare-cards">
+                <!-- Pet 1 -->
+                <div class="compare-pet-card">
+                    <div class="compare-pet-image-wrap">
+                        {% if pet1.image_url %}
+                        <img class="compare-pet-image" src="{{ pet1.image_url }}" alt="{{ pet1.name }}" referrerpolicy="no-referrer">
+                        {% else %}
+                        <span class="compare-pet-no-img">?</span>
+                        {% endif %}
+                    </div>
+                    <h2 class="compare-pet-name">{{ pet1.name_main }}{% if pet1.name_note %}<span class="name-note">{{ pet1.name_note }}</span>{% endif %}</h2>
+                    <span class="compare-pet-danzu" style="--danzu-color: {{ pet1.danzu_color }}">{{ pet1.danzu_display }}</span>
+                    <span class="compare-pet-breed-tag {% if pet1.can_breed %}breed-yes{% else %}breed-no{% endif %}">
+                        {% if pet1.can_breed %}可孵蛋{% else %}不可孵蛋{% endif %}
+                    </span>
+                </div>
+
+                <!-- VS Divider -->
+                <div class="compare-vs">
+                    <span class="compare-vs-text">VS</span>
+                </div>
+
+                <!-- Pet 2 -->
+                <div class="compare-pet-card">
+                    <div class="compare-pet-image-wrap">
+                        {% if pet2.image_url %}
+                        <img class="compare-pet-image" src="{{ pet2.image_url }}" alt="{{ pet2.name }}" referrerpolicy="no-referrer">
+                        {% else %}
+                        <span class="compare-pet-no-img">?</span>
+                        {% endif %}
+                    </div>
+                    <h2 class="compare-pet-name">{{ pet2.name_main }}{% if pet2.name_note %}<span class="name-note">{{ pet2.name_note }}</span>{% endif %}</h2>
+                    <span class="compare-pet-danzu" style="--danzu-color: {{ pet2.danzu_color }}">{{ pet2.danzu_display }}</span>
+                    <span class="compare-pet-breed-tag {% if pet2.can_breed %}breed-yes{% else %}breed-no{% endif %}">
+                        {% if pet2.can_breed %}可孵蛋{% else %}不可孵蛋{% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Result Banner -->
+            {% if result_type == "success" %}
+            <div class="compare-result result-success">
+                <span class="compare-result-icon">&#10004;</span>
+                <span class="compare-result-text">可以在一起孵蛋！</span>
+            </div>
+            {% elif result_type == "danzu_mismatch" %}
+            <div class="compare-result result-fail">
+                <span class="compare-result-icon">&#10008;</span>
+                <div class="compare-result-text">
+                    <span>不能在一起孵蛋，因为蛋组不同</span>
+                </div>
+            </div>
+            {% elif result_type == "cannot_breed" %}
+            <div class="compare-result result-fail">
+                <span class="compare-result-icon">&#10008;</span>
+                <div class="compare-result-text">
+                    {% for p in cannot_breed_pets %}
+                    <span class="cannot-breed-name">{{ p.name_main }}{% if p.name_note %}<span class="name-note">{{ p.name_note }}</span>{% endif %}</span>{% if not loop.last %}、{% endif %}
+                    {% endfor %}
+                    不能孵蛋！
+                    <span class="compare-result-extra">传说团本精灵、战令精灵等特殊精灵无法繁殖后代</span>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+
+        {% elif mode == "find_matches" %}
+        <!-- ═══ Find Matches Mode ═══ -->
+        <section class="current-pet-section">
+            <h2 class="section-title">当前查询精灵</h2>
+            <div class="current-pet-card">
+                <div class="current-pet-image-wrap">
+                    {% if current_pet.image_url %}
+                    <img class="current-pet-image" src="{{ current_pet.image_url }}" alt="{{ current_pet.name }}" referrerpolicy="no-referrer">
+                    {% else %}
+                    <span class="current-pet-no-img">?</span>
+                    {% endif %}
+                </div>
+                <div class="current-pet-info">
+                    <h2 class="current-pet-name">{{ current_pet.name_main }}{% if current_pet.name_note %}<span class="name-note">{{ current_pet.name_note }}</span>{% endif %}</h2>
+                    <span class="current-pet-breed-tag {% if current_pet.can_breed %}breed-yes{% else %}breed-no{% endif %}">
+                        {% if current_pet.can_breed %}可孵蛋{% else %}不可孵蛋{% endif %}
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Compatible Pets Grid -->
+        <section class="matches-section">
+            <h2 class="section-title">
+                可当配偶孵蛋的精灵
+                {% if total_count %}
+                <span class="section-count">（共 {{ total_count }} 只）</span>
+                {% endif %}
+            </h2>
+            {% if matches %}
+            <div class="matches-grid">
+                {% for m in matches %}
+                <div class="match-card">
+                    <div class="match-image-wrap">
+                        {% if m.image_url %}
+                        <img class="match-image" src="{{ m.image_url }}" alt="{{ m.name }}" referrerpolicy="no-referrer">
+                        {% else %}
+                        <span class="match-no-img">?</span>
+                        {% endif %}
+                        {% if not m.can_breed %}
+                        <span class="match-no-breed-badge">不可孵</span>
+                        {% endif %}
+                    </div>
+                    <span class="match-name">{{ m.name_main }}{% if m.name_note %}<span class="name-note">{{ m.name_note }}</span>{% endif %}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="matches-empty">
+                <p class="matches-empty-title">未找到可当配偶孵蛋的精灵</p>
+                <p class="matches-empty-desc">该精灵的蛋组暂无其他成员</p>
+            </div>
+            {% endif %}
+        </section>
+        {% endif %}
+    </main>
