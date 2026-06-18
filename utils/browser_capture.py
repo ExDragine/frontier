@@ -152,6 +152,48 @@ async def _wait_for_page_ready(
         return False
 
 
+async def _extract_page_data(page) -> dict:
+    """从已加载完成的页面提取关键数据（坐标、数值、时间等）。
+
+    ⚠️ 当前仅内置了 earth.nullschool.net 的 DOM 选择器。
+    其他网站调用 page_data_out={} 会返回空 dict，不影响截图/录屏核心流程。
+
+    如需支持更多网站的数据提取，在本函数内按 page.url 做域名分发，
+    各自写对应的 JS 选择器即可，无需修改 screenshot/record_video 签名。
+    """
+    return await page.evaluate(
+        """() => {
+            const r = {};
+            // spotlight-a — 主数据行（如风速）
+            const rowA = document.querySelector('#spotlight-panel [data-name="spotlight-a"]');
+            if (rowA && !rowA.hasAttribute('hidden')) {
+                const valA = rowA.querySelector('div[aria-label]');
+                if (valA) r['spotA.value'] = valA.getAttribute('aria-label');
+                const labelA = rowA.querySelector('[data-name="product-label"]');
+                if (labelA) r['spotA.label'] = labelA.textContent.trim();
+            }
+            // spotlight-b — 叠加层数据行（如温度、体感温度）
+            const rowB = document.querySelector('#spotlight-panel [data-name="spotlight-b"]');
+            if (rowB && !rowB.hasAttribute('hidden')) {
+                const valB = rowB.querySelector('div[aria-label]');
+                if (valB) r['spotB.value'] = valB.getAttribute('aria-label');
+                const labelB = rowB.querySelector('[data-name="product-label"]');
+                if (labelB) r['spotB.label'] = labelB.textContent.trim();
+            }
+            // 坐标
+            const coords = document.querySelector('#spotlight-panel [data-name="spotlight-coords"]');
+            if (coords) r.coords = coords.textContent.trim();
+            // 数据时间
+            const allDivs = document.querySelectorAll('div');
+            allDivs.forEach(el => {
+                const t = (el.textContent || '').trim();
+                if (/^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2} Local$/.test(t)) r.time = t;
+            });
+            return r;
+        }"""
+    )
+
+
 async def _run_with_crash_retry(action: Callable[[], Any]) -> Any:
     """执行浏览器操作，崩溃时自动重启并重试一次。"""
     try:
@@ -199,6 +241,7 @@ async def screenshot(
     hard_wait: bool = False,
     ready_timeout: int = 15000,
     wait_function: str | None = None,
+    page_data_out: dict | None = None,
 ) -> bytes:
     """对指定 URL 进行网页截图，返回 PNG 字节数据。
 
@@ -217,6 +260,9 @@ async def screenshot(
         hard_wait: True=直接 sleep post_wait_ms，False=方案B 智能检测
         ready_timeout: _wait_for_page_ready 超时毫秒数
         wait_function: 自定义 JS 等待条件（如等待 loading 指示器消失）
+        page_data_out: 传入 dict 时，将 _extract_page_data() 提取的数据写入该 dict。
+            当前仅适配 NullSchool，其他网站返回空 dict 不影响截图/录屏主流程。
+            扩展新网站：在 _extract_page_data() 按域名分发即可，无需改本函数签名。
 
     Returns:
         PNG 格式的截图字节数据
@@ -236,6 +282,11 @@ async def screenshot(
                 ready_timeout=ready_timeout,
                 wait_function=wait_function,
             )
+            if page_data_out is not None:
+                try:
+                    page_data_out.update(await _extract_page_data(page))
+                except Exception:
+                    pass
             if selector:
                 element = await page.wait_for_selector(selector, timeout=timeout)
                 if element is None:
@@ -264,6 +315,7 @@ async def record_video(
     hard_wait: bool = False,
     ready_timeout: int = 15000,
     wait_function: str | None = None,
+    page_data_out: dict | None = None,
 ) -> bytes:
     """录制指定 URL 的网页视频，返回 mp4 字节数据。
 
@@ -286,6 +338,9 @@ async def record_video(
         hard_wait: True=直接 sleep post_wait_ms，False=方案B 智能检测
         ready_timeout: _wait_for_page_ready 超时毫秒数
         wait_function: 自定义 JS 等待条件（如等待 loading 指示器消失）
+        page_data_out: 传入 dict 时，将 _extract_page_data() 提取的数据写入该 dict。
+            当前仅适配 NullSchool，其他网站返回空 dict 不影响主流程。
+            扩展新网站：在 _extract_page_data() 按域名分发即可，无需改本函数签名。
 
     Returns:
         mp4 格式的视频字节数据
@@ -319,6 +374,11 @@ async def record_video(
                         f"页面加载超时 ({ready_timeout}ms): {url}",
                         screenshot_bytes,
                     )
+                if page_data_out is not None:
+                    try:
+                        page_data_out.update(await _extract_page_data(page))
+                    except Exception:
+                        pass
                 _ready_elapsed = time.time() - _recording_start
                 await page.wait_for_timeout(duration * 1000)
             finally:
