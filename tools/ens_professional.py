@@ -244,6 +244,7 @@ async def run_ens_professional(
         time_text = _format_time_text(time)
 
         if paused:
+            await UniMessage.text("正在获取数据中...").send()
             image_bytes = await screenshot(
                 url=url,
                 width=1920,
@@ -258,9 +259,10 @@ async def run_ens_professional(
             )
             return f"你要的{location_text}{time_text}的{mode_name}数据已返回", UniMessage.image(raw=image_bytes)
         else:
+            await UniMessage.text("正在获取数据中...").send()
             video_bytes = await record_video(
                 url=url,
-                duration=10,
+                duration=3,
                 width=1920,
                 height=1080,
                 wait_until="networkidle",

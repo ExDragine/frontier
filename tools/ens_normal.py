@@ -489,6 +489,8 @@ async def run_ens_normal(
 
         url = _build_earth_url(params, resolved_lon, resolved_lat, time)
 
+        await UniMessage.text("正在获取数据中...").send()
+
         if params.get("anim_state") == "off":
             image_bytes = await screenshot(
                 url=url,
@@ -510,7 +512,7 @@ async def run_ens_normal(
         else:
             video_bytes = await record_video(
                 url=url,
-                duration=10,
+                duration=3,
                 width=1920,
                 height=1080,
                 wait_until="networkidle",
