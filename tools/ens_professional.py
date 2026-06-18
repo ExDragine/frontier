@@ -4,6 +4,7 @@
 所有模式默认播放动画，用户可传 animoff 暂停。
 """
 
+import asyncio
 import re
 
 from langchain_core.tools import tool
@@ -243,8 +244,13 @@ async def run_ens_professional(
         mode_name = _MODE_NAMES.get(p1, mode)
         time_text = _format_time_text(time)
 
+        async def _delayed_progress():
+            await asyncio.sleep(3)
+            await UniMessage.text("🌐 正在获取数据中...").send()
+
+        progress_task = asyncio.create_task(_delayed_progress())
+
         if paused:
-            await UniMessage.text("正在获取数据中...").send()
             image_bytes = await screenshot(
                 url=url,
                 width=1920,
@@ -257,9 +263,9 @@ async def run_ens_professional(
                 hard_wait=True,
                 ready_timeout=30000,
             )
+            progress_task.cancel()
             return f"你要的{location_text}{time_text}的{mode_name}数据已返回", UniMessage.image(raw=image_bytes)
         else:
-            await UniMessage.text("正在获取数据中...").send()
             video_bytes = await record_video(
                 url=url,
                 duration=3,
@@ -273,6 +279,7 @@ async def run_ens_professional(
                 hard_wait=True,
                 ready_timeout=30000,
             )
+            progress_task.cancel()
             return f"你要的{location_text}{time_text}的{mode_name}数据已返回", UniMessage.video(raw=video_bytes)
     except Exception as e:
         logger.error(f"ens_professional 失败: {e}")

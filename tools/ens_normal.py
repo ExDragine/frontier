@@ -7,6 +7,7 @@
 国内城市走内置坐标字典，国外/特殊位置由 LLM 搜索经纬度后直接传入 lon/lat。
 """
 
+import asyncio
 import re
 
 from langchain_core.tools import tool
@@ -489,7 +490,11 @@ async def run_ens_normal(
 
         url = _build_earth_url(params, resolved_lon, resolved_lat, time)
 
-        await UniMessage.text("正在获取数据中...").send()
+        async def _delayed_progress():
+            await asyncio.sleep(3)
+            await UniMessage.text("🌐 正在获取数据中...").send()
+
+        progress_task = asyncio.create_task(_delayed_progress())
 
         if params.get("anim_state") == "off":
             image_bytes = await screenshot(
@@ -504,6 +509,7 @@ async def run_ens_normal(
                 hard_wait=True,
                 ready_timeout=30000,
             )
+            progress_task.cancel()
             time_text = _format_time_text(time)
             return (
                 f"你要的{location}{time_text}的{scenario}已返回",
@@ -523,6 +529,7 @@ async def run_ens_normal(
                 hard_wait=True,
                 ready_timeout=30000,
             )
+            progress_task.cancel()
             time_text = _format_time_text(time)
             return (
                 f"你要的{location}{time_text}的{scenario}已返回",
