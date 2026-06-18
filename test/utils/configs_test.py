@@ -214,6 +214,7 @@ jwt_secret = "secret"
     assert configs.EnvConfig.IMAGE_AUTO_CLEANUP is False
     assert configs.EnvConfig.CONTENT_CHECK_ENABLED is True
 
+
 def test_env_config_llm_endpoint_profiles(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     env_path = tmp_path / "env.toml"

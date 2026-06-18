@@ -201,7 +201,9 @@ async def test_get_video_image_input_without_image_fails_before_service_call(loa
     monkeypatch.setattr(mod, "generate_video", fake_generate_video)
     monkeypatch.setattr(mod.EnvConfig, "VIDEO_MODULE_ENABLED", True, raising=False)
 
-    text, artifact = await mod.get_video("make this move", input_type="image", state={"user_id": "10001", "messages": []})
+    text, artifact = await mod.get_video(
+        "make this move", input_type="image", state={"user_id": "10001", "messages": []}
+    )
 
     assert "没有可用的图片" in text
     assert artifact is None

@@ -45,7 +45,7 @@ def _node_time_ms(node: Any) -> int | None:
         return None
     try:
         value = int(node_time)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return value * 1000 if value < 10_000_000_000 else value
 

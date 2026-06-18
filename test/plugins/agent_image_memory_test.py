@@ -1329,6 +1329,7 @@ async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # n
     from plugins import agent
 
     calls = {"queue": 0}
+
     async def fake_run_serialized(_key, coro):
         calls["queue"] += 1
         return await coro
@@ -1582,5 +1583,3 @@ async def test_agent_startup_only_cleans_cached_files(monkeypatch):
     await agent.on_startup()
 
     assert calls == ["attachments"]
-
-

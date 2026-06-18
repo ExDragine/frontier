@@ -56,9 +56,7 @@ async def login(request: Request, body: LoginRequest):
     token = create_token()
     expires_in = EnvConfig.DASHBOARD_JWT_EXPIRE_HOURS * 3600
 
-    response = JSONResponse(
-        content={"token": token, "expires_in": expires_in}
-    )
+    response = JSONResponse(content={"token": token, "expires_in": expires_in})
     _set_auth_cookie(response, token, expires_in)
     return response
 

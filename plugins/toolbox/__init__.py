@@ -48,6 +48,7 @@ async def _get_vep_menu() -> bytes:
     logger.info("vep 菜单已渲染并缓存")
     return image
 
+
 SET_WAKE_KEY = "wake_word"
 
 

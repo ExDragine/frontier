@@ -73,9 +73,13 @@ def _generate_video_source(
         video,
         default_mime_type=_guess_video_mime_type(video) if isinstance(video, bytes) else "video/mp4",
     )
-    image_ref = None if video_ref else _coerce_media_reference(
-        image,
-        default_mime_type=_guess_image_mime_type(image) if isinstance(image, bytes) else "image/jpeg",
+    image_ref = (
+        None
+        if video_ref
+        else _coerce_media_reference(
+            image,
+            default_mime_type=_guess_image_mime_type(image) if isinstance(image, bytes) else "image/jpeg",
+        )
     )
     return genai_types.GenerateVideosSource(
         prompt=prompt,

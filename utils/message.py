@@ -117,7 +117,7 @@ def extract_message_text(content: Any) -> str:
     if callable(text):
         try:
             text = text()
-        except (TypeError, AttributeError):
+        except TypeError, AttributeError:
             text = None
     if text:
         return extract_message_text(text)
@@ -287,7 +287,7 @@ def _first_file_url(data: dict) -> str | None:
 def _int_or_zero(value: Any) -> int:
     try:
         return int(value or 0)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0
 
 

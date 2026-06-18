@@ -102,7 +102,8 @@ class TaskManager:
                 updated = False
                 new_trigger_args_str = json.dumps(trigger_args, sort_keys=True)
                 old_trigger_args_str = json.dumps(
-                    json.loads(existing_task.trigger_args) if isinstance(existing_task.trigger_args, str)
+                    json.loads(existing_task.trigger_args)
+                    if isinstance(existing_task.trigger_args, str)
                     else existing_task.trigger_args,
                     sort_keys=True,
                 )
@@ -121,7 +122,10 @@ class TaskManager:
                     existing_task.updated_at = int(time.time())
                     updated = True
 
-                if existing_task.handler_module != handler_module or existing_task.handler_function != handler_function:
+                if (
+                    existing_task.handler_module != handler_module
+                    or existing_task.handler_function != handler_function
+                ):
                     existing_task.handler_module = handler_module
                     existing_task.handler_function = handler_function
                     existing_task.updated_at = int(time.time())
@@ -129,8 +133,8 @@ class TaskManager:
 
                 # 同步群组
                 old_groups = [
-                    m.group_id for m in
-                    session.exec(select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)).all()
+                    m.group_id
+                    for m in session.exec(select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)).all()
                 ]
                 new_groups = sorted(set(group_ids))
                 if old_groups != new_groups:
@@ -308,7 +312,9 @@ class TaskManager:
             if not task:
                 self.logger.warning(f"任务 {job_id} 不存在")
                 return False
-            metadata = session.exec(select(ScheduledTaskMetadata).where(ScheduledTaskMetadata.job_id == job_id)).first()
+            metadata = session.exec(
+                select(ScheduledTaskMetadata).where(ScheduledTaskMetadata.job_id == job_id)
+            ).first()
             if metadata and metadata.archived:
                 self.logger.warning(f"任务 {job_id} 已归档，不能启用")
                 return False
@@ -405,7 +411,9 @@ class TaskManager:
                 return False
 
             now = int(time.time())
-            metadata = session.exec(select(ScheduledTaskMetadata).where(ScheduledTaskMetadata.job_id == job_id)).first()
+            metadata = session.exec(
+                select(ScheduledTaskMetadata).where(ScheduledTaskMetadata.job_id == job_id)
+            ).first()
             if metadata:
                 metadata.archived = True
                 metadata.archived_at = now
@@ -671,7 +679,10 @@ class TaskManager:
                 ).first()
                 if existing:
                     continue
-                if task.handler_module != "plugins.clockwork.reminder_handler" or task.handler_function != "fire_reminder":
+                if (
+                    task.handler_module != "plugins.clockwork.reminder_handler"
+                    or task.handler_function != "fire_reminder"
+                ):
                     continue
                 if not task.description:
                     continue

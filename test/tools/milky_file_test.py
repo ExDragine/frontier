@@ -203,9 +203,7 @@ async def test_upload_group_file_resolves_workspace_path(load_tool_module, monke
 
 
 @pytest.mark.asyncio
-async def test_upload_group_file_extracts_file_name_from_workspace_path(
-    load_tool_module, monkeypatch, tmp_path
-):
+async def test_upload_group_file_extracts_file_name_from_workspace_path(load_tool_module, monkeypatch, tmp_path):
     milky_file = load_tool_module("milky_file")
     bot = _install_dummy_bot(monkeypatch, milky_file)
 

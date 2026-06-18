@@ -51,9 +51,7 @@ def _validate_mcp_config(description: dict) -> None:
         # HTTP-based MCP servers use url instead of command — skip cmd validation
         if not command:
             if not entry.get("url"):
-                raise ValueError(
-                    f"MCP server '{name}': 必须提供 'command' (stdio/sse) 或 'url' (http)"
-                )
+                raise ValueError(f"MCP server '{name}': 必须提供 'command' (stdio/sse) 或 'url' (http)")
             continue
 
         if command not in _ALLOWED_COMMANDS:
@@ -64,9 +62,7 @@ def _validate_mcp_config(description: dict) -> None:
         for idx, arg in enumerate(args):
             for pattern in _FORBIDDEN_ARG_PATTERNS:
                 if pattern.search(arg):
-                    raise ValueError(
-                        f"MCP server '{name}': 参数 '{arg}' (位置 {idx}) 包含禁止的 shell 模式。"
-                    )
+                    raise ValueError(f"MCP server '{name}': 参数 '{arg}' (位置 {idx}) 包含禁止的 shell 模式。")
 
 
 def _check_mcp_json_file_permissions(path: str) -> None:

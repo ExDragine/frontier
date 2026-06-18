@@ -58,11 +58,14 @@ async def _get_browser():
                 _playwright = None
             _browser = None
             _playwright = await async_playwright().start()
-            _browser = await _playwright.chromium.launch(headless=True, args=[
-                "--use-gl=angle",
-                "--enable-webgl",
-                "--ignore-gpu-blocklist",
-            ])
+            _browser = await _playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--use-gl=angle",
+                    "--enable-webgl",
+                    "--ignore-gpu-blocklist",
+                ],
+            )
             logger.info("Playwright 浏览器已初始化")
         return _browser
 
@@ -94,11 +97,14 @@ async def _restart_browser():
                 pass
             _playwright = None
         _playwright = await async_playwright().start()
-        _browser = await _playwright.chromium.launch(headless=True, args=[
-            "--use-gl=angle",
-            "--enable-webgl",
-            "--ignore-gpu-blocklist",
-        ])
+        _browser = await _playwright.chromium.launch(
+            headless=True,
+            args=[
+                "--use-gl=angle",
+                "--enable-webgl",
+                "--ignore-gpu-blocklist",
+            ],
+        )
         logger.info("Playwright 浏览器已重新启动")
 
 
@@ -119,11 +125,16 @@ def _webm_to_mp4_bytes(webm_path: str, mp4_path: str) -> bytes:
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     cmd = [
         ffmpeg,
-        "-i", webm_path,
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "18",
-        "-c:a", "aac",
+        "-i",
+        webm_path,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "18",
+        "-c:a",
+        "aac",
         "-y",
         mp4_path,
     ]

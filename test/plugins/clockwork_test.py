@@ -324,7 +324,7 @@ async def test_daily_news_uses_general_news_tools_and_custom_layout(monkeypatch)
     assert calls[1]["kwargs"]["use_model"] == task_handlers_module.EnvConfig.SIGNAL_MODEL
     assert calls[1]["kwargs"]["tools"] is None
     assert calls[1]["kwargs"]["response_format"] is task_handlers_module.DailyNewsPayload
-    assert captured["rendered_summary"].startswith("<main class=\"news-page\">")
+    assert captured["rendered_summary"].startswith('<main class="news-page">')
     assert "要闻标题" in captured["rendered_summary"]
     assert "更多标题" in captured["rendered_summary"]
     assert "css" in captured["render_kwargs"]
@@ -375,7 +375,7 @@ async def test_daily_news_continues_when_one_group_send_fails(monkeypatch):
             report_time="18:30",
             material="素材",
             payload=task_handlers_module.DailyNewsPayload(top_stories=[], worth_reading=[]),
-            html="<main class=\"news-page\"></main>",
+            html='<main class="news-page"></main>',
         )
 
     async def fake_html_to_image(summary, **kwargs):
@@ -429,7 +429,7 @@ async def test_build_daily_news_artifacts_returns_material_payload_and_html(monk
     assert artifacts.report_time == "17:30"
     assert "今日要闻候选" in artifacts.material
     assert artifacts.payload.top_stories[0].title == "要闻标题"
-    assert "<main class=\"news-page\">" in artifacts.html
+    assert '<main class="news-page">' in artifacts.html
     assert len(calls) == 2
 
 

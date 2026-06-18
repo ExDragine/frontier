@@ -25,7 +25,7 @@ def reply_seq_from_segments(segments: list[dict]) -> int | None:
         message_seq = segment.get("data", {}).get("message_seq")
         try:
             return int(message_seq)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
     return None
 
@@ -196,7 +196,9 @@ def _quoted_needs_normalization_rebuild(quoted) -> bool:
     return status not in ("complete", "legacy")
 
 
-async def _rebuild_quoted_normalization(bot, event: MessageEvent, quoted, reply_seq: int, messages_db: MessageDatabase):
+async def _rebuild_quoted_normalization(
+    bot, event: MessageEvent, quoted, reply_seq: int, messages_db: MessageDatabase
+):
     raw_segments_json = getattr(quoted, "raw_segments_json", None)
     segments = None
     if raw_segments_json:
@@ -271,7 +273,9 @@ async def build_reply_context(  # noqa: C901
                         logger.warning(f"⚠️ 重建引用图片缓存失败 message_seq={reply_seq}: {type(e).__name__}: {e}")
         images = local_images + fetched_images
         return (
-            _format_quote(quoted.role, quoted.user_name or str(quoted.user_id), quoted.content, len(images), missing_images),
+            _format_quote(
+                quoted.role, quoted.user_name or str(quoted.user_id), quoted.content, len(images), missing_images
+            ),
             images,
         )
 

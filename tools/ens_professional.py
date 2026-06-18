@@ -18,30 +18,60 @@ from utils.tool_helpers import tool_timer
 _MODE = {1: "wind", 2: "ocean", 3: "chem", 4: "particulates", 5: "space", 6: "bio"}
 
 _HEIGHT = {
-    0: "surface", 1: "isobaric/10hPa", 2: "isobaric/70hPa", 3: "isobaric/250hPa",
-    4: "isobaric/500hPa", 5: "isobaric/700hPa", 6: "isobaric/850hPa", 7: "isobaric/1000hPa",
+    0: "surface",
+    1: "isobaric/10hPa",
+    2: "isobaric/70hPa",
+    3: "isobaric/250hPa",
+    4: "isobaric/500hPa",
+    5: "isobaric/700hPa",
+    6: "isobaric/850hPa",
+    7: "isobaric/1000hPa",
 }
 
 _ANIM = {1: "level", 2: "currents", 3: "primary/waves"}
 
 _PROJ = {
-    1: "orthographic", 2: "equirectangular", 3: "conic_equidistant",
-    4: "atlantis", 5: "patterson", 6: "stereographic", 7: "waterman", 8: "winkel3",
+    1: "orthographic",
+    2: "equirectangular",
+    3: "conic_equidistant",
+    4: "atlantis",
+    5: "patterson",
+    6: "stereographic",
+    7: "waterman",
+    8: "winkel3",
 }
 
 # 叠加层按模式分表
 _OVERLAY = {
-    "wind":  {0: None, 1: None, 2: "temp", 3: "relative_humidity", 4: "dew_point_temp",
-              5: "wet_bulb_temp", 6: "precip_3hr", 7: "cape", 8: "total_precipitable_water",
-              9: "total_cloud_water", 10: "mean_sea_level_pressure", 11: "misery_index",
-              12: "uv_index", 13: "wind_power_density"},
-    "ocean": {0: None, 1: None, 2: "primary_waves", 3: "significant_wave_height",
-              4: "sea_surface_temp", 5: "sea_surface_temp_anomaly", 6: "bleaching_alert_area"},
-    "chem":  {1: "cosc", 2: "co2sc", 3: "so2smass", 4: "no2"},
-    "particulates": {1: "duexttau", 2: "pm1", 3: "pm2.5", 4: "pm10",
-                     5: "organic_matter_aot", 6: "suexttau"},
+    "wind": {
+        0: None,
+        1: None,
+        2: "temp",
+        3: "relative_humidity",
+        4: "dew_point_temp",
+        5: "wet_bulb_temp",
+        6: "precip_3hr",
+        7: "cape",
+        8: "total_precipitable_water",
+        9: "total_cloud_water",
+        10: "mean_sea_level_pressure",
+        11: "misery_index",
+        12: "uv_index",
+        13: "wind_power_density",
+    },
+    "ocean": {
+        0: None,
+        1: None,
+        2: "primary_waves",
+        3: "significant_wave_height",
+        4: "sea_surface_temp",
+        5: "sea_surface_temp_anomaly",
+        6: "bleaching_alert_area",
+    },
+    "chem": {1: "cosc", 2: "co2sc", 3: "so2smass", 4: "no2"},
+    "particulates": {1: "duexttau", 2: "pm1", 3: "pm2.5", 4: "pm10", 5: "organic_matter_aot", 6: "suexttau"},
     "space": {1: "aurora"},
-    "bio":   {0: None, 1: "bleaching_alert_area"},
+    "bio": {0: None, 1: "bleaching_alert_area"},
 }
 
 _BIO_ANNOT = {0: None, 1: "fires"}
@@ -50,16 +80,26 @@ _ZOOM_DEFAULT = {"wind": 4500, "ocean": 300, "chem": 4500, "particulates": 4500,
 
 # 测试环境无法跨文件导入 _CITY_COORDS 时的 fallback
 _CITY_COORDS_FALLBACK: dict[str, tuple[float, float]] = {
-    "北京": (116.40, 39.90), "上海": (121.47, 31.23), "广州": (113.26, 23.13),
-    "深圳": (114.07, 22.62), "成都": (104.07, 30.67), "杭州": (120.15, 30.28),
+    "北京": (116.40, 39.90),
+    "上海": (121.47, 31.23),
+    "广州": (113.26, 23.13),
+    "深圳": (114.07, 22.62),
+    "成都": (104.07, 30.67),
+    "杭州": (120.15, 30.28),
 }
 
 
 def _build_professional_url(
-    mode: str, animation: str, projection: str,
-    lon: float, lat: float, zoom: int,
-    time: str = "#current", height: str = "surface",
-    overlay: str | None = None, annot: str | None = None,
+    mode: str,
+    animation: str,
+    projection: str,
+    lon: float,
+    lat: float,
+    zoom: int,
+    time: str = "#current",
+    height: str = "surface",
+    overlay: str | None = None,
+    annot: str | None = None,
     paused: bool = False,
 ) -> str:
     """拼接 hash-fragment URL。"""
@@ -90,9 +130,16 @@ def _parse_time(raw: str) -> str:
 
 
 async def run_ens_professional(
-    p1: int = 1, p2: int = 0, p3: int = 1, p4: int = 0,
-    p5: int = 1, p6: str = "0", p7: str = "0",
-    p8: int = 0, p9: str = "0", p10: str = "0",
+    p1: int = 1,
+    p2: int = 0,
+    p3: int = 1,
+    p4: int = 0,
+    p5: int = 1,
+    p6: str = "0",
+    p7: str = "0",
+    p8: int = 0,
+    p9: str = "0",
+    p10: str = "0",
     bio_annot: int = 0,
 ) -> tuple[str, UniMessage | None]:
     """专业模式核心逻辑。"""
@@ -157,9 +204,17 @@ async def run_ens_professional(
         paused = p10.strip().lower() == "animoff"
 
         url = _build_professional_url(
-            mode=mode, animation=animation, projection=projection,
-            lon=p6, lat=p7, zoom=zoom, time=time, height=height,
-            overlay=overlay, annot=annot, paused=paused,
+            mode=mode,
+            animation=animation,
+            projection=projection,
+            lon=p6,
+            lat=p7,
+            zoom=zoom,
+            time=time,
+            height=height,
+            overlay=overlay,
+            annot=annot,
+            paused=paused,
         )
 
         desc = f"模式={mode}"
@@ -171,14 +226,27 @@ async def run_ens_professional(
 
         if paused:
             image_bytes = await screenshot(
-                url=url, width=1920, height=1080,
-                wait_until="networkidle", timeout=60000, wait_selector="canvas", post_wait_ms=1500, hard_wait=True,
+                url=url,
+                width=1920,
+                height=1080,
+                wait_until="networkidle",
+                timeout=60000,
+                wait_selector="canvas",
+                post_wait_ms=1500,
+                hard_wait=True,
             )
             return f"✅ Earth Nullschool 专业模式 - {desc}（静态截图）", UniMessage.image(raw=image_bytes)
         else:
             video_bytes = await record_video(
-                url=url, duration=10, width=1920, height=1080,
-                wait_until="networkidle", timeout=60000, wait_selector="canvas", post_wait_ms=1500, hard_wait=True,
+                url=url,
+                duration=10,
+                width=1920,
+                height=1080,
+                wait_until="networkidle",
+                timeout=60000,
+                wait_selector="canvas",
+                post_wait_ms=1500,
+                hard_wait=True,
             )
             return f"✅ Earth Nullschool 专业模式 - {desc}（10秒视频）", UniMessage.video(raw=video_bytes)
     except Exception as e:
@@ -188,9 +256,16 @@ async def run_ens_professional(
 
 @tool(response_format="content_and_artifact")
 async def ens_professional(
-    p1: int = 1, p2: int = 0, p3: int = 1, p4: int = 0,
-    p5: int = 1, p6: str = "0", p7: str = "0",
-    p8: int = 0, p9: str = "0", p10: str = "0",
+    p1: int = 1,
+    p2: int = 0,
+    p3: int = 1,
+    p4: int = 0,
+    p5: int = 1,
+    p6: str = "0",
+    p7: str = "0",
+    p8: int = 0,
+    p9: str = "0",
+    p10: str = "0",
     bio_annot: int = 0,
 ) -> tuple[str, UniMessage | None]:
     """Earth Nullschool 专业模式——数字参数方式查看地球可视化数据。
@@ -225,7 +300,15 @@ async def ens_professional(
     """
     async with tool_timer("ens_professional", {"p1": p1, "p4": p4, "p6": p6, "p7": p7}):
         return await run_ens_professional(
-            p1=p1, p2=p2, p3=p3, p4=p4, p5=p5,
-            p6=p6, p7=p7, p8=p8, p9=p9, p10=p10,
+            p1=p1,
+            p2=p2,
+            p3=p3,
+            p4=p4,
+            p5=p5,
+            p6=p6,
+            p7=p7,
+            p8=p8,
+            p9=p9,
+            p10=p10,
             bio_annot=bio_annot,
         )

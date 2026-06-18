@@ -33,7 +33,9 @@ def main() -> None:
     maintain_parser.add_argument("--checkpoint", action="store_true", help="Run a passive WAL checkpoint.")
 
     cleanup_parser = subparsers.add_parser("cleanup-history", help="Prune task execution history.")
-    cleanup_parser.add_argument("--older-than-days", type=int, default=None, help="Delete rows older than this many days.")
+    cleanup_parser.add_argument(
+        "--older-than-days", type=int, default=None, help="Delete rows older than this many days."
+    )
     cleanup_parser.add_argument("--keep-per-job", type=int, default=None, help="Keep only the newest N rows per job.")
 
     args = parser.parse_args()

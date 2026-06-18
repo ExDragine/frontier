@@ -60,8 +60,6 @@ async def _run_database(engine: Engine, func, *args, **kwargs):
     return await _run_in_thread(func, *args, **kwargs)
 
 
-
-
 def _is_memory_database(database_url: str) -> bool:
     return database_url in {"sqlite://", "sqlite:///:memory:"} or database_url.endswith(":memory:")
 
@@ -640,7 +638,9 @@ class _MessageAttachmentManager:
 
         return await _run_database(self.engine, _do)
 
-    async def select_by_msg_times(self, msg_times: list[int], *, kind: str | None = None) -> dict[int, list[MessageAttachment]]:
+    async def select_by_msg_times(
+        self, msg_times: list[int], *, kind: str | None = None
+    ) -> dict[int, list[MessageAttachment]]:
         def _do():
             attachments_by_time: dict[int, list[MessageAttachment]] = {}
             if not msg_times:
@@ -889,9 +889,9 @@ class MessageDatabase:
         def _do():
             with Session(self.engine) as session:
                 existing = session.exec(
-                    select(Message).where(Message.parent_msg_time == parent_msg_time).where(
-                        Message.source_type != MESSAGE_SOURCE_TYPE_NORMAL
-                    )
+                    select(Message)
+                    .where(Message.parent_msg_time == parent_msg_time)
+                    .where(Message.source_type != MESSAGE_SOURCE_TYPE_NORMAL)
                 ).all()
                 for message in existing:
                     session.delete(message)
@@ -917,8 +917,6 @@ class MessageDatabase:
                     session.add(message)
                     inserted.append(message)
                 session.commit()
-                for message in inserted:
-                    pass
 
         await _run_database(self.engine, _do)
 
@@ -1041,44 +1039,6 @@ class MessageDatabase:
                     statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
                 statement = statement.order_by(col(Message.time)).limit(limit)
                 return session.exec(statement).all()
-
-        return await _run_database(self.engine, _do)
-
-    async def get_active_conversations_since(
-        self, since_time: int, max_scopes: int = 100
-    ) -> list[dict]:
-        """查询自 since_time 以来有消息的 (user_id, group_id) 去重列表。
-
-        返回每个对话范围的基本统计信息，用于 Dreaming 管道批量处理。
-        """
-        def _do():
-            with Session(self.engine) as session:
-                stmt = (
-                    select(
-                        Message.user_id,
-                        Message.group_id,
-                        func.min(Message.time).label("earliest_time"),
-                        func.max(Message.time).label("latest_time"),
-                        func.count().label("message_count"),
-                    )
-                    .where(Message.time >= since_time)
-                    .where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
-                    .where(Message.role == "user")
-                    .group_by(Message.user_id, Message.group_id)
-                    .order_by(func.count().desc())
-                    .limit(max_scopes)
-                )
-                rows = session.exec(stmt).all()
-                return [
-                    {
-                        "user_id": r[0],
-                        "group_id": r[1],
-                        "earliest_time": r[2],
-                        "latest_time": r[3],
-                        "message_count": r[4],
-                    }
-                    for r in rows
-                ]
 
         return await _run_database(self.engine, _do)
 
@@ -1216,7 +1176,6 @@ class MessageDatabase:
         messages = session.exec(select(Message).where(col(Message.time).in_(ids))).all()
         messages_by_id = {message.time: message for message in messages}
         return [messages_by_id[message_id] for message_id in ids if message_id in messages_by_id]
-
 
     async def search_messages(  # noqa: C901
         self,

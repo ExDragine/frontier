@@ -314,10 +314,6 @@ async def test_prepare_message_excludes_forward_node_derived_records(monkeypatch
     assert "derived content" in prepared[0]["content"]
 
 
-
-
-
-
 @pytest.mark.asyncio
 async def test_search_messages_filters_history_by_scope_name_id_and_content(monkeypatch, memory_engine):
     database = MessageDatabase()

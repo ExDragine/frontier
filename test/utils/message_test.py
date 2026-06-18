@@ -699,10 +699,7 @@ class TestGetWakeWords:
         manager.set(456, "wake_word", "助手")
 
         # 让 _get_wake_words 使用 memory_engine
-        monkeypatch.setattr(
-            message_module, "get_engine",
-            lambda url=None: memory_engine
-        )
+        monkeypatch.setattr(message_module, "get_engine", lambda url=None: memory_engine)
         monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "小李子")
 
         words = message_module._get_wake_words(456)

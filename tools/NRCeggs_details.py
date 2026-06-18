@@ -113,7 +113,7 @@ def _parse_prob(prob_raw) -> str:
         return "0.00"
     try:
         value = float(str(prob_raw)) * 100
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return "0.00"
     # 截断到两位小数：将浮点数展开到高精度字符串，取前两位小数
     s = f"{value:.10f}"
@@ -121,7 +121,7 @@ def _parse_prob(prob_raw) -> str:
     if dot == -1:
         return f"{s}.00"
     integer_part = s[:dot]
-    decimal_part = s[dot + 1:dot + 3]
+    decimal_part = s[dot + 1 : dot + 3]
     return f"{integer_part}.{decimal_part}"
 
 
@@ -129,7 +129,7 @@ def _prob_width(prob_raw) -> str:
     """概率 → 进度条宽度百分比（0-100）。"""
     try:
         value = float(str(prob_raw)) * 100
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return "0"
     clamped = max(0, min(100, int(value)))
     return str(clamped)
@@ -139,7 +139,7 @@ def _prob_color(prob_raw) -> str:
     """根据概率返回进度条颜色。"""
     try:
         value = float(str(prob_raw)) * 100
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return "#ef4444"
     if value >= 50:
         return "#10b981"
@@ -176,18 +176,20 @@ def _build_items(items: list[dict]) -> list[dict]:
         prob_display = _parse_prob(prob_raw)
         rank_bg, rank_fg = _rank_badge_style(idx)
 
-        result.append({
-            "name": name,
-            "danzu_display": _parse_danzu(danzu_raw),
-            "danzu_color": _get_danzu_color(danzu_raw),
-            "prob_display": prob_display,
-            "prob_width": _prob_width(prob_raw),
-            "prob_color": _prob_color(prob_raw),
-            "image_url": IMAGE_BASE + pic if pic else "",
-            "rank": idx + 1,
-            "rank_bg": rank_bg,
-            "rank_fg": rank_fg,
-        })
+        result.append(
+            {
+                "name": name,
+                "danzu_display": _parse_danzu(danzu_raw),
+                "danzu_color": _get_danzu_color(danzu_raw),
+                "prob_display": prob_display,
+                "prob_width": _prob_width(prob_raw),
+                "prob_color": _prob_color(prob_raw),
+                "image_url": IMAGE_BASE + pic if pic else "",
+                "rank": idx + 1,
+                "rank_bg": rank_bg,
+                "rank_fg": rank_fg,
+            }
+        )
     return result
 
 
@@ -208,10 +210,7 @@ def _summary_text(zj: str, zl: str, items: list[dict]) -> str:
     if not items:
         lines.append("未找到匹配的精灵蛋数据")
     for item in items:
-        lines.append(
-            f"  {item['rank']}. [{item['danzu_display']}] {item['name']}"
-            f" - 概率: {item['prob_display']}%"
-        )
+        lines.append(f"  {item['rank']}. [{item['danzu_display']}] {item['name']} - 概率: {item['prob_display']}%")
     return "\n".join(lines)
 
 

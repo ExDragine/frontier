@@ -144,7 +144,9 @@ async def test_group_management_allows_explicit_group_id(load_tool_module, monke
     group = load_tool_module("milky_group")
     bot = _install_dummy_bot(monkeypatch, group)
 
-    result = await group.set_group_member_mute(group_id=456, user_id=789, duration=60, config=_group_config(group_id=456))
+    result = await group.set_group_member_mute(
+        group_id=456, user_id=789, duration=60, config=_group_config(group_id=456)
+    )
 
     assert result == "已将群 456 内用户 789 禁言 60 秒"
     assert bot.calls == [("set_group_member_mute", {"group_id": 456, "user_id": 789, "duration": 60})]
@@ -165,7 +167,9 @@ async def test_group_management_requires_group_context(load_tool_module, monkeyp
     "call_tool",
     [
         lambda group: group.set_group_name(new_group_name="新群名", config=_group_config(role="member")),
-        lambda group: group.set_group_avatar(image_uri="https://example.com/avatar.png", config=_group_config(role="member")),
+        lambda group: group.set_group_avatar(
+            image_uri="https://example.com/avatar.png", config=_group_config(role="member")
+        ),
         lambda group: group.set_group_member_card(user_id=789, card="小明", config=_group_config(role="member")),
         lambda group: group.set_group_member_special_title(
             user_id=789,

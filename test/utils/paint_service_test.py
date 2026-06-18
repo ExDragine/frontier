@@ -52,15 +52,19 @@ async def test_paint_gemini_text_to_image(monkeypatch):
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "https://generativelanguage.googleapis.com")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint-key"))
     monkeypatch.setattr(paint_service, "genai", SimpleNamespace(Client=DummyClient))
-    monkeypatch.setattr(paint_service, "genai_types", SimpleNamespace(
-        GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        Part=SimpleNamespace(
-            from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
-            from_text=lambda text: SimpleNamespace(text=text),
+    monkeypatch.setattr(
+        paint_service,
+        "genai_types",
+        SimpleNamespace(
+            GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            Part=SimpleNamespace(
+                from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
+                from_text=lambda text: SimpleNamespace(text=text),
+            ),
+            HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
         ),
-        HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
-    ))
+    )
 
     result = await paint_service.paint("a crystal fox")
 
@@ -98,15 +102,19 @@ async def test_paint_gemini_image_edit(monkeypatch):
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "https://generativelanguage.googleapis.com")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint-key"))
     monkeypatch.setattr(paint_service, "genai", SimpleNamespace(Client=DummyClient))
-    monkeypatch.setattr(paint_service, "genai_types", SimpleNamespace(
-        GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        Part=SimpleNamespace(
-            from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
-            from_text=lambda text: SimpleNamespace(text=text),
+    monkeypatch.setattr(
+        paint_service,
+        "genai_types",
+        SimpleNamespace(
+            GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            Part=SimpleNamespace(
+                from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
+                from_text=lambda text: SimpleNamespace(text=text),
+            ),
+            HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
         ),
-        HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
-    ))
+    )
 
     result = await paint_service.paint("turn it into watercolor", [_tiny_png_bytes()])
 
@@ -143,15 +151,19 @@ async def test_paint_gemini_aspect_ratio_config(monkeypatch):
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr("sk-paint-key"))
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_ASPECT_RATIO", "16:9")
     monkeypatch.setattr(paint_service, "genai", SimpleNamespace(Client=DummyClient))
-    monkeypatch.setattr(paint_service, "genai_types", SimpleNamespace(
-        GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        Part=SimpleNamespace(
-            from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
-            from_text=lambda text: SimpleNamespace(text=text),
+    monkeypatch.setattr(
+        paint_service,
+        "genai_types",
+        SimpleNamespace(
+            GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            Part=SimpleNamespace(
+                from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
+                from_text=lambda text: SimpleNamespace(text=text),
+            ),
+            HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
         ),
-        HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
-    ))
+    )
 
     await paint_service.paint("a wide landscape")
 
@@ -183,15 +195,19 @@ async def test_paint_gemini_api_key_falls_back_to_google_key(monkeypatch):
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr(""))
     monkeypatch.setattr(paint_service.EnvConfig, "GOOGLE_API_KEY", SecretStr("sk-google-key"))
     monkeypatch.setattr(paint_service, "genai", SimpleNamespace(Client=DummyClient))
-    monkeypatch.setattr(paint_service, "genai_types", SimpleNamespace(
-        GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        Part=SimpleNamespace(
-            from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
-            from_text=lambda text: SimpleNamespace(text=text),
+    monkeypatch.setattr(
+        paint_service,
+        "genai_types",
+        SimpleNamespace(
+            GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            Part=SimpleNamespace(
+                from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
+                from_text=lambda text: SimpleNamespace(text=text),
+            ),
+            HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
         ),
-        HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
-    ))
+    )
 
     result = await paint_service.paint("a landscape")
 
@@ -205,6 +221,7 @@ async def test_paint_gemini_api_key_falls_back_to_google_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_paint_gemini_safety_filter(monkeypatch):
     """安全过滤时返回 None。"""
+
     class DummyAioModels:
         async def generate_content(self, **kwargs):
             finish_reason = SimpleNamespace(name="SAFETY")
@@ -219,15 +236,19 @@ async def test_paint_gemini_safety_filter(monkeypatch):
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "https://generativelanguage.googleapis.com")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr("sk-key"))
     monkeypatch.setattr(paint_service, "genai", SimpleNamespace(Client=lambda **kw: SimpleNamespace(aio=DummyAio())))
-    monkeypatch.setattr(paint_service, "genai_types", SimpleNamespace(
-        GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        Part=SimpleNamespace(
-            from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
-            from_text=lambda text: SimpleNamespace(text=text),
+    monkeypatch.setattr(
+        paint_service,
+        "genai_types",
+        SimpleNamespace(
+            GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            Part=SimpleNamespace(
+                from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
+                from_text=lambda text: SimpleNamespace(text=text),
+            ),
+            HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
         ),
-        HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
-    ))
+    )
 
     result = await paint_service.paint("something inappropriate")
 
@@ -237,6 +258,7 @@ async def test_paint_gemini_safety_filter(monkeypatch):
 @pytest.mark.asyncio
 async def test_paint_gemini_no_candidates(monkeypatch):
     """空 candidates 时返回 None。"""
+
     class DummyAioModels:
         async def generate_content(self, **kwargs):
             return SimpleNamespace(candidates=[])
@@ -249,15 +271,19 @@ async def test_paint_gemini_no_candidates(monkeypatch):
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr("sk-key"))
     monkeypatch.setattr(paint_service, "genai", SimpleNamespace(Client=lambda **kw: SimpleNamespace(aio=DummyAio())))
-    monkeypatch.setattr(paint_service, "genai_types", SimpleNamespace(
-        GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        Part=SimpleNamespace(
-            from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
-            from_text=lambda text: SimpleNamespace(text=text),
+    monkeypatch.setattr(
+        paint_service,
+        "genai_types",
+        SimpleNamespace(
+            GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            Part=SimpleNamespace(
+                from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
+                from_text=lambda text: SimpleNamespace(text=text),
+            ),
+            HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
         ),
-        HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
-    ))
+    )
 
     result = await paint_service.paint("a prompt")
 
@@ -281,15 +307,19 @@ async def test_paint_gemini_client_error(monkeypatch):
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_BASE_URL", "")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_API_KEY", SecretStr("sk-key"))
     monkeypatch.setattr(paint_service, "genai", SimpleNamespace(Client=lambda **kw: SimpleNamespace(aio=DummyAio())))
-    monkeypatch.setattr(paint_service, "genai_types", SimpleNamespace(
-        GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
-        Part=SimpleNamespace(
-            from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
-            from_text=lambda text: SimpleNamespace(text=text),
+    monkeypatch.setattr(
+        paint_service,
+        "genai_types",
+        SimpleNamespace(
+            GenerateContentConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            ImageConfig=lambda **kw: SimpleNamespace(kwargs=kw),
+            Part=SimpleNamespace(
+                from_bytes=lambda data, mime_type: SimpleNamespace(data=data, mime_type=mime_type),
+                from_text=lambda text: SimpleNamespace(text=text),
+            ),
+            HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
         ),
-        HttpOptions=lambda **kw: SimpleNamespace(kwargs=kw),
-    ))
+    )
 
     result = await paint_service.paint("a prompt")
 

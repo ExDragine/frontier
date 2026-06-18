@@ -29,17 +29,37 @@ API_HEADERS = {
 TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 
 DANZU_GROUPS = {
-    1: "巨灵组", 2: "两栖组", 3: "昆虫组", 4: "天空组",
-    5: "动物组", 6: "妖精组", 7: "植物组", 8: "拟人组",
-    9: "软体组", 10: "大地组", 11: "魔力组", 12: "海洋组",
-    13: "龙组", 14: "机械组",
+    1: "巨灵组",
+    2: "两栖组",
+    3: "昆虫组",
+    4: "天空组",
+    5: "动物组",
+    6: "妖精组",
+    7: "植物组",
+    8: "拟人组",
+    9: "软体组",
+    10: "大地组",
+    11: "魔力组",
+    12: "海洋组",
+    13: "龙组",
+    14: "机械组",
 }
 
 DANZU_COLORS = {
-    1: "#607D8B", 2: "#2196F3", 3: "#8BC34A", 4: "#00BCD4",
-    5: "#FF9800", 6: "#E91E63", 7: "#4CAF50", 8: "#9C27B0",
-    9: "#FF5722", 10: "#795548", 11: "#3F51B5", 12: "#03A9F4",
-    13: "#F44336", 14: "#607D8B",
+    1: "#607D8B",
+    2: "#2196F3",
+    3: "#8BC34A",
+    4: "#00BCD4",
+    5: "#FF9800",
+    6: "#E91E63",
+    7: "#4CAF50",
+    8: "#9C27B0",
+    9: "#FF5722",
+    10: "#795548",
+    11: "#3F51B5",
+    12: "#03A9F4",
+    13: "#F44336",
+    14: "#607D8B",
 }
 
 httpx_client = get_http_client("nrc_eggs_groups")
@@ -48,9 +68,7 @@ httpx_client = get_http_client("nrc_eggs_groups")
 async def _fetch_pet_by_name(name: str) -> dict | None:
     """通过名称查询单个精灵信息，返回 API 返回的第一条记录。"""
     try:
-        resp = await httpx_client.get(
-            API1_URL, params={"name": name}, headers=API_HEADERS
-        )
+        resp = await httpx_client.get(API1_URL, params={"name": name}, headers=API_HEADERS)
         resp.raise_for_status()
         payload = resp.json()
         if isinstance(payload, dict) and payload.get("code") == 0:
@@ -67,9 +85,7 @@ async def _fetch_pet_by_name(name: str) -> dict | None:
 async def _fetch_pets_by_danzu(danzu: str) -> list[dict]:
     """通过蛋组编号查询该蛋组下所有精灵。"""
     try:
-        resp = await httpx_client.get(
-            API2_URL, params={"danzu": danzu}, headers=API_HEADERS
-        )
+        resp = await httpx_client.get(API2_URL, params={"danzu": danzu}, headers=API_HEADERS)
         resp.raise_for_status()
         payload = resp.json()
         if isinstance(payload, dict) and payload.get("code") == 0:
@@ -285,4 +301,7 @@ async def get_nrc_eggs_groups(action: str, name1: str, name2: str = "") -> tuple
             return result_text, None
 
     else:
-        return f"不支持的操作类型：{action}，请使用 compare（比较两只精灵）或 find_matches（查找可当配偶孵蛋的精灵）", None
+        return (
+            f"不支持的操作类型：{action}，请使用 compare（比较两只精灵）或 find_matches（查找可当配偶孵蛋的精灵）",
+            None,
+        )

@@ -122,7 +122,9 @@ def _endpoint_profile(endpoint: str | None) -> dict:
 def _normalize_capabilities(capabilities: object) -> set[str]:
     if not isinstance(capabilities, list):
         return set()
-    return {capability.strip().lower() for capability in capabilities if isinstance(capability, str) and capability.strip()}
+    return {
+        capability.strip().lower() for capability in capabilities if isinstance(capability, str) and capability.strip()
+    }
 
 
 def _model_specific_capabilities(model: str) -> set[str]:

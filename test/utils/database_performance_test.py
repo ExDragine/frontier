@@ -255,8 +255,6 @@ async def test_search_messages_can_sort_fts_results_by_relevance(tmp_path: Path,
     assert by_relevance[0].msg_id == 10
 
 
-
-
 def test_cleanup_task_execution_history_applies_day_and_per_job_retention(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
     engine = db_module.get_engine()
@@ -290,8 +288,8 @@ def test_cleanup_task_execution_history_applies_day_and_per_job_retention(tmp_pa
     deleted = db_module.cleanup_task_execution_history(engine, older_than=1500, keep_per_job=1)
 
     with engine.connect() as conn:
-        remaining = conn.execute(
-            text("SELECT id FROM taskexecutionhistory ORDER BY job_id, execution_time")
-        ).scalars().all()
+        remaining = (
+            conn.execute(text("SELECT id FROM taskexecutionhistory ORDER BY job_id, execution_time")).scalars().all()
+        )
     assert deleted == 3
     assert remaining == [3, 5]

@@ -31,8 +31,6 @@ class _AsyncIter:
 # ── 测试 ──────────────────────────────────────────────
 
 
-
-
 class _FakeStream:
     """Minimal astream_events v3 return-object mock — exposes .output() async method."""
 
@@ -485,7 +483,9 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
     monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
     monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
     monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(agents.FrontierCognitive, "load_system_prompt", staticmethod(lambda *_args, **_kwargs: "base prompt"))
+    monkeypatch.setattr(
+        agents.FrontierCognitive, "load_system_prompt", staticmethod(lambda *_args, **_kwargs: "base prompt")
+    )
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
@@ -621,8 +621,13 @@ class TestProgressEvent:
         from utils.agents import ProgressEvent
 
         valid_types = [
-            "thinking", "tool_call", "tool_result",
-            "subagent_start", "subagent_done", "text_delta", "done",
+            "thinking",
+            "tool_call",
+            "tool_result",
+            "subagent_start",
+            "subagent_done",
+            "text_delta",
+            "done",
         ]
         for t in valid_types:
             event = ProgressEvent(type=t, message="test")
@@ -706,10 +711,7 @@ class TestCollectProgress:
 
         await _collect_progress(stream, reporter)
 
-        thinking_calls = [
-            c for c in reporter.call_args_list
-            if c[0][0].type == "thinking"
-        ]
+        thinking_calls = [c for c in reporter.call_args_list if c[0][0].type == "thinking"]
         assert len(thinking_calls) == 1
 
     @pytest.mark.asyncio
@@ -726,10 +728,7 @@ class TestCollectProgress:
 
         await _collect_progress(stream, reporter)
 
-        subagent_calls = [
-            c for c in reporter.call_args_list
-            if c[0][0].type == "subagent_start"
-        ]
+        subagent_calls = [c for c in reporter.call_args_list if c[0][0].type == "subagent_start"]
         assert len(subagent_calls) == 1
         assert subagent_calls[0][0][0].detail["name"] == "research"
 
@@ -747,10 +746,7 @@ class TestCollectProgress:
 
         await _collect_progress(stream, reporter)
 
-        tool_calls = [
-            c for c in reporter.call_args_list
-            if c[0][0].type == "tool_call"
-        ]
+        tool_calls = [c for c in reporter.call_args_list if c[0][0].type == "tool_call"]
         assert len(tool_calls) == 1
         assert tool_calls[0][0][0].detail["tool_name"] == "web_search"
 
@@ -775,10 +771,7 @@ class TestCollectProgress:
 
         await _collect_progress(stream, reporter)
 
-        tool_calls = [
-            c for c in reporter.call_args_list
-            if c[0][0].type == "tool_call"
-        ]
+        tool_calls = [c for c in reporter.call_args_list if c[0][0].type == "tool_call"]
         assert len(tool_calls) == 2, f"Expected 2 unique tool calls, got {len(tool_calls)}"
         assert tool_calls[0][0][0].detail["tool_name"] == "search"
         assert tool_calls[1][0][0].detail["tool_name"] == "execute"
@@ -802,10 +795,7 @@ class TestCollectProgress:
 
         await _collect_progress(stream, reporter)
 
-        subagent_calls = [
-            c for c in reporter.call_args_list
-            if c[0][0].type == "subagent_start"
-        ]
+        subagent_calls = [c for c in reporter.call_args_list if c[0][0].type == "subagent_start"]
         assert len(subagent_calls) == 2, f"Expected 2 unique subagent events, got {len(subagent_calls)}"
         assert subagent_calls[0][0][0].detail["name"] == "coder"
         assert subagent_calls[1][0][0].detail["name"] == "reviewer"
@@ -835,10 +825,7 @@ class TestCollectProgress:
         # 不应抛异常，thinking 事件仍应被发出
         await agents_mod._collect_progress(stream, reporter)
 
-        thinking_calls = [
-            c for c in reporter.call_args_list
-            if c[0][0].type == "thinking"
-        ]
+        thinking_calls = [c for c in reporter.call_args_list if c[0][0].type == "thinking"]
         assert len(thinking_calls) == 1, "thinking event should still emit even if tool_calls fails"
 
     @pytest.mark.asyncio
@@ -861,10 +848,7 @@ class TestCollectProgress:
 
         await _collect_progress(stream, reporter)
 
-        text_delta_calls = [
-            c for c in reporter.call_args_list
-            if c[0][0].type == "text_delta"
-        ]
+        text_delta_calls = [c for c in reporter.call_args_list if c[0][0].type == "text_delta"]
         assert len(text_delta_calls) == 2, f"Expected 2 text_delta events, got {len(text_delta_calls)}"
         assert text_delta_calls[0][0][0].message == "段落一"
         assert text_delta_calls[1][0][0].message == "段落二"
@@ -887,10 +871,7 @@ class TestCollectProgress:
 
         await _collect_progress(stream, reporter)
 
-        text_delta_calls = [
-            c for c in reporter.call_args_list
-            if c[0][0].type == "text_delta"
-        ]
+        text_delta_calls = [c for c in reporter.call_args_list if c[0][0].type == "text_delta"]
         assert len(text_delta_calls) == 0, "Trailing text should be buffered, not emitted"
 
 
@@ -906,13 +887,15 @@ class TestChatAgentStreaming:
 
         # Mock create_deep_agent 返回的 agent
         mock_stream = MagicMock()
-        mock_stream.output = AsyncMock(return_value={
-            "messages": [
-                type("FakeAIMsg", (), {"type": "ai", "text": "hello", "content": "hello"})(),
-            ],
-            "user_id": "123",
-            "group_id": None,
-        })
+        mock_stream.output = AsyncMock(
+            return_value={
+                "messages": [
+                    type("FakeAIMsg", (), {"type": "ai", "text": "hello", "content": "hello"})(),
+                ],
+                "user_id": "123",
+                "group_id": None,
+            }
+        )
 
         mock_agent = MagicMock()
         mock_agent.astream_events = AsyncMock(return_value=mock_stream)
@@ -955,6 +938,7 @@ class TestChatAgentStreaming:
         }
 
         mock_stream = MagicMock()
+
         # output 现在是 async method；用 async def 函数直接赋值
         async def _delayed_output():
             await asyncio.sleep(0)

@@ -74,8 +74,12 @@ def install_all_third_party_stubs():
     install_stub("langchain_community.document_loaders", BiliBiliLoader=object)
     install_stub("langchain_core.documents", Document=object)
 
-    install_stub("langchain_quickjs", CodeInterpreterMiddleware=type("CodeInterpreterMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}))
-    install_stub("tools.agent_tools",
+    install_stub(
+        "langchain_quickjs",
+        CodeInterpreterMiddleware=type("CodeInterpreterMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
+    )
+    install_stub(
+        "tools.agent_tools",
         all_tools=[],
         main_tools=[],
         web_tools=[],

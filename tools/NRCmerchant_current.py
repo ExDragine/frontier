@@ -69,14 +69,16 @@ def _build_items(items: list[dict]) -> list[dict]:
     for item in items:
         rarity = item.get("rarity", "common")
         img = item.get("image", "")
-        result.append({
-            "name": item.get("name", ""),
-            "image_full": IMAGE_BASE + img if (img and not img.startswith("http")) else img,
-            "purchase_limit": item.get("purchase_limit", 0),
-            "price_fmt": _fmt_price(item.get("price", 0)),
-            "rarity": rarity,
-            "rarity_cn": _RARITY_CN.get(rarity, "普通"),
-        })
+        result.append(
+            {
+                "name": item.get("name", ""),
+                "image_full": IMAGE_BASE + img if (img and not img.startswith("http")) else img,
+                "purchase_limit": item.get("purchase_limit", 0),
+                "price_fmt": _fmt_price(item.get("price", 0)),
+                "rarity": rarity,
+                "rarity_cn": _RARITY_CN.get(rarity, "普通"),
+            }
+        )
     return result
 
 

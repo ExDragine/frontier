@@ -39,7 +39,7 @@ def _config_group_id(config: RunnableConfig | None) -> int | None:
         return None
     try:
         return int(raw_group_id)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

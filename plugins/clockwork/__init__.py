@@ -17,6 +17,7 @@ task_executor = TaskExecutor(task_manager)
 task_manager.set_job_func(task_executor.execute)
 
 driver = get_driver()
+_REMOVED_STRUCTURED_MEMORY_TASK_ID = "dreaming_daily_v3"
 
 # 导入命令和处理器（必须在 task_manager 创建之后）
 from . import agent_task_handler, task_commands, task_handlers  # noqa: E402, F401, I001
@@ -37,6 +38,14 @@ async def init_task_system():
     ScheduledTaskMetadata.metadata.create_all(engine)
     task_manager.ensure_schema()
     logger.info("数据库表创建完成")
+
+    # 移除旧版结构化记忆后台整理任务，避免历史数据库配置在启动时重新注册。
+    if await task_manager.get_task(_REMOVED_STRUCTURED_MEMORY_TASK_ID):
+        try:
+            await task_manager.delete_task(_REMOVED_STRUCTURED_MEMORY_TASK_ID)
+            logger.info("已删除旧版结构化记忆后台整理任务")
+        except Exception as exc:
+            logger.warning(f"删除旧版结构化记忆后台整理任务失败: {exc}")
 
     # 2. 迁移旧提醒并读取所有任务配置
     await task_manager.migrate_legacy_reminders()
@@ -70,7 +79,9 @@ async def init_task_system():
                 job_id="nrc_merchant_alert",
                 owner_user_id="system",
                 target_type="group",
-                target_id=",".join(str(g) for g in EnvConfig.NRC_MERCHANT_GROUP_ID) if EnvConfig.NRC_MERCHANT_GROUP_ID else "0",
+                target_id=",".join(str(g) for g in EnvConfig.NRC_MERCHANT_GROUP_ID)
+                if EnvConfig.NRC_MERCHANT_GROUP_ID
+                else "0",
                 prompt="",
                 created_from="system",
             ),
@@ -78,16 +89,6 @@ async def init_task_system():
         logger.info("NRC 远行商人商品提醒推送已注册（cron: 8,12,16,20:15 Asia/Shanghai）")
     except Exception as exc:
         logger.warning(f"注册 NRC 远行商人任务失败（可能已存在）: {exc}")
-
-    # 6. 注册 V3 Dreaming 记忆整理（每天凌晨 4:00）
-    try:
-        from utils.dreaming_pipeline import build_dreaming_task_config
-
-        dreaming_config = build_dreaming_task_config(engine)
-        await task_manager.register_task(**dreaming_config)
-        logger.info("V3 Dreaming 记忆整理已注册（cron: 4:00 Asia/Shanghai）")
-    except Exception as exc:
-        logger.error(f"注册 Dreaming 任务失败: {exc}")
 
     logger.info("定时任务管理系统初始化完成！")
 

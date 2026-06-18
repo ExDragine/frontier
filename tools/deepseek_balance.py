@@ -11,7 +11,6 @@ DEFAULT_BALANCE_URL = "https://api.deepseek.com/user/balance"
 httpx_client = get_http_client("deepseek_balance")
 
 
-
 def _api_key_value() -> str:
     return EnvConfig.DEEPSEEK_API_KEY.get_secret_value().strip()
 

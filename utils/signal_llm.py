@@ -69,9 +69,7 @@ class SignalLLM:
         model_kwargs: dict | None = None,
         extra_body: dict | None = None,
     ) -> Any:
-        llm = create_llm(
-            **self._llm_kwargs(temperature=temperature, model_kwargs=model_kwargs, extra_body=extra_body)
-        )
+        llm = create_llm(**self._llm_kwargs(temperature=temperature, model_kwargs=model_kwargs, extra_body=extra_body))
         structured_llm = llm.with_structured_output(schema, method=method)
         return await structured_llm.ainvoke(
             [

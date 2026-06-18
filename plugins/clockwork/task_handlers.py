@@ -505,7 +505,9 @@ async def nrc_merchant_alert(**kwargs):
     for group in EnvConfig.NRC_MERCHANT_GROUP_ID:
         try:
             if hits:
-                await UniMessage.text(f"⚠️ 远行商人上架提醒：{hit_names} 已上架！").send(target=Target.group(str(group)))
+                await UniMessage.text(f"⚠️ 远行商人上架提醒：{hit_names} 已上架！").send(
+                    target=Target.group(str(group))
+                )
             await UniMessage.image(raw=image).send(target=Target.group(str(group)))
             groups_sent.append(int(group))
         except Exception as e:

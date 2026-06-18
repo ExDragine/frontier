@@ -28,7 +28,8 @@ from tools import agent_tools
 from utils.configs import EnvConfig, information
 from utils.llm_factory import create_llm, model_supports
 from utils.message import extract_message_text
-from utils.progress_messages import subagent_message as _subagent_message, tool_message as _tool_message
+from utils.progress_messages import subagent_message as _subagent_message
+from utils.progress_messages import tool_message as _tool_message
 from utils.staged_artifacts import extract_staged_artifact_ids, load_staged_artifact, strip_staged_artifact_handoffs
 
 UniMessage = None
@@ -509,15 +510,6 @@ class FrontierCognitive:
         backend = _build_agent_backend(working_dir, workspace_key)
         workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
         system_prompt = self.load_system_prompt(group_id, wake_word)
-        # ── 注入 V3 长期记忆到 system prompt ──
-        try:
-            from utils.memory_v3 import get_memory_manager
-
-            v3_context = get_memory_manager().build_context_injection(int(user_id) if user_id else 0, group_id)
-            if v3_context:
-                system_prompt = f"{system_prompt}\n\n{v3_context}"
-        except Exception as exc:
-            logger.debug("V3 memory context injection skipped: %s: %s", type(exc).__name__, exc)
         # ── 提取 PTC 工具名列表 ──
         ptc_tool_names: list = [tool.name for tool in self.tools] if self.tools else []
         middleware: list = []

@@ -246,7 +246,7 @@ async def search_messages(  # noqa: C901
     try:
         current_user_id = int(raw_user_id) if raw_user_id not in (None, "") else None
         group_id = int(raw_group_id) if raw_group_id is not None else None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return "用户上下文错误，无法搜索聊天记录。"
 
     if group_id is None and current_user_id is None:
@@ -265,7 +265,6 @@ async def search_messages(  # noqa: C901
             start_time=start_ms,
             end_time=end_ms,
             limit=query_limit,
-
         )
     except Exception as e:
         logger.error(f"消息搜索失败: {e}")
