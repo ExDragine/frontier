@@ -13,6 +13,14 @@ from utils.alconna import UniMessage
 from utils.browser_capture import record_video, screenshot
 from utils.tool_helpers import tool_timer
 
+# ── 模式编号 → 中文名 ──
+_MODE_NAMES = {1: "大气", 2: "海洋", 3: "大气化学", 4: "颗粒物", 5: "空间天气", 6: "生物"}
+
+_NULLSCHOOL_LOADING_WAIT = (
+    "(function(){var l=document.getElementById('load');if(!l)return true;"
+    "var s=window.getComputedStyle(l);return s.display==='none'||s.visibility==='hidden';})()"
+)
+
 # ── 参数映射表 ──
 
 _MODE = {1: "wind", 2: "ocean", 3: "chem", 4: "particulates", 5: "space", 6: "bio"}
@@ -129,6 +137,17 @@ def _parse_time(raw: str) -> str:
     return f"#{m[1]}/{m[2]}/{m[3]}/{m[4]}{m[5]}Z"
 
 
+def _format_time_text(time: str) -> str:
+    """将 URL 时间片段转为用户可读文本。"""
+    if time == "#current":
+        return "现在"
+    m = re.match(r"^#(\d{4})/(\d{2})/(\d{2})/(\d{2})(\d{2})Z$", time)
+    if m:
+        y, mo, d, h, mi = m.groups()
+        return f"{y}年{int(mo)}月{int(d)}日{h}:{mi}"
+    return time
+
+
 async def run_ens_professional(
     p1: int = 1,
     p2: int = 0,
@@ -169,11 +188,13 @@ async def run_ens_professional(
                 return f"无效生物注释编号: {bio_annot}（0-1）", None
 
         # 坐标解析：支持数字经纬度或城市名
+        location_text: str  # 用于返回消息
         try:
             lon = float(p6)
             lat = float(p7)
             if lon == 0 and lat == 0:
                 return "请提供有效的经纬度坐标或城市名（如：北京、广州）", None
+            location_text = f"({lon}, {lat})"
         except ValueError:
             # 非数字 → 作为城市名查找。优先用 ens_normal 字典，测试环境 fallback 小字典
             try:
@@ -186,6 +207,7 @@ async def run_ens_professional(
             location = p6.strip()
             if not location:
                 return "请提供有效的经纬度坐标或城市名", None
+            location_text = location
             if location in _coords:
                 lon, lat = _coords[location]
             else:
@@ -193,6 +215,7 @@ async def run_ens_professional(
                 for city, coords in sorted(_coords.items(), key=lambda x: -len(x[0])):
                     if city in location or location in city:
                         matched = coords
+                        location_text = city
                         break
                 if matched:
                     lon, lat = matched
@@ -217,12 +240,8 @@ async def run_ens_professional(
             paused=paused,
         )
 
-        desc = f"模式={mode}"
-        if overlay:
-            desc += f", 叠加层={overlay}"
-        if annot:
-            desc += f", 注释={annot}"
-        desc += f", 坐标=({lon},{lat}), zoom={zoom}"
+        mode_name = _MODE_NAMES.get(p1, mode)
+        time_text = _format_time_text(time)
 
         if paused:
             image_bytes = await screenshot(
@@ -232,10 +251,12 @@ async def run_ens_professional(
                 wait_until="networkidle",
                 timeout=60000,
                 wait_selector="canvas",
-                post_wait_ms=1500,
+                wait_function=_NULLSCHOOL_LOADING_WAIT,
+                post_wait_ms=5000,
                 hard_wait=True,
+                ready_timeout=30000,
             )
-            return f"✅ Earth Nullschool 专业模式 - {desc}（静态截图）", UniMessage.image(raw=image_bytes)
+            return f"你要的{location_text}{time_text}的{mode_name}数据已返回", UniMessage.image(raw=image_bytes)
         else:
             video_bytes = await record_video(
                 url=url,
@@ -245,10 +266,12 @@ async def run_ens_professional(
                 wait_until="networkidle",
                 timeout=60000,
                 wait_selector="canvas",
-                post_wait_ms=1500,
+                wait_function=_NULLSCHOOL_LOADING_WAIT,
+                post_wait_ms=5000,
                 hard_wait=True,
+                ready_timeout=30000,
             )
-            return f"✅ Earth Nullschool 专业模式 - {desc}（10秒视频）", UniMessage.video(raw=video_bytes)
+            return f"你要的{location_text}{time_text}的{mode_name}数据已返回", UniMessage.video(raw=video_bytes)
     except Exception as e:
         logger.error(f"ens_professional 失败: {e}")
         return f"获取失败: {e}", None
