@@ -57,6 +57,9 @@ _TOOL_MESSAGE_EXACT: dict[str, str] = {
     "get_wikipedia_pages": "正在查询维基百科…",
     # API
     "get_deepseek_api_balance": "正在查询 API 余额…",
+    # 浏览器捕获
+    "webpage_screenshot": "正在截取网页截图…",
+    "webpage_recording": "正在录制网页视频…",
 }
 
 # ── 前缀模式 ──────────────────────────────────────────────────────────────

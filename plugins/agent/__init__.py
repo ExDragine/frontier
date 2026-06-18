@@ -150,6 +150,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         wake_word=triggered_wake or None,
         group_member_role=_group_member_role(context.event),
         progress_reporter=_private_chat_reporter if context.group_id is None else None,
+        user_text=context.text,
     )
 
     if not isinstance(result, dict) or "response" not in result:
