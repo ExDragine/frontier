@@ -237,6 +237,13 @@ def load_tool_module():
         try:
             sys.modules[unique_name] = module
             spec.loader.exec_module(module)
+            # 重置 ENS 缓存 + 放行门控，避免测试间互相影响
+            if hasattr(module, "_ens_cache"):
+                module._ens_cache.clear()
+            if hasattr(module, "_ens_caller_allowed"):
+                module._ens_caller_allowed.set(True)
+            from utils.ens_gate import _ens_session_store, clear_ens_session_store
+            _ens_session_store.clear()
             return module
         finally:
             if old_alconna is None:
