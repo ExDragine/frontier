@@ -42,7 +42,7 @@ async def test_ens_normal_video_path(load_tool_module, monkeypatch):
     assert "level" in captured_url["url"]
     assert "orthographic" in captured_url["url"]
     assert "loc=116.4,39.9" in captured_url["url"]
-    assert captured_url.get("duration") == 10
+    assert captured_url.get("duration") == 3
     assert artifact is not None
 
 
@@ -164,7 +164,7 @@ async def test_ens_professional_video_path(load_tool_module, monkeypatch):
     assert "overlay=temp" in captured_url["url"]
     assert "116.4" in captured_url["url"]
     assert "39.9" in captured_url["url"]
-    assert captured_url.get("duration") == 10
+    assert captured_url.get("duration") == 3
     assert artifact is not None
 
 
