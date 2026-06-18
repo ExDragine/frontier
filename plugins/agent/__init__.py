@@ -191,6 +191,13 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
 
 @driver.on_shutdown
 async def on_shutdown():
+    from tools.ens_normal import clear_ens_cache as clear_ens_normal_cache
+    from tools.ens_professional import clear_ens_cache as clear_ens_professional_cache
+    from utils.ens_gate import clear_ens_session_store
+
+    clear_ens_normal_cache()
+    clear_ens_professional_cache()
+    clear_ens_session_store()
     from utils.browser_capture import close_browser
     from utils.http_client import aclose_all
 
@@ -346,6 +353,12 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         videos=videos,
     )
     thread_id = _agent_thread_id(user_id, group_id)
+    # 硬门控：仅 ve/vep 前缀消息允许调用 ENS 工具
+    from utils.ens_gate import _ens_caller_allowed
+
+    cleaned = text.strip().lstrip("/")
+    is_ens_msg = cleaned[:3].lower() == "vep" or cleaned[:2].lower() == "ve"
+    _ens_caller_allowed.set(is_ens_msg)
     await run_serialized(str(thread_id), _process_agent_request(context, messages))
     if group_id:
         try:
