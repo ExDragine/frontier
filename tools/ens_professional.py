@@ -6,13 +6,25 @@
 
 import asyncio
 import re
+import time as _time
 
 from langchain_core.tools import tool
 from nonebot import logger
 
+from utils.ens_gate import _ens_caller_allowed, _write_ens_session
 from utils.alconna import UniMessage
 from utils.browser_capture import record_video, screenshot
 from utils.tool_helpers import tool_timer
+
+# 内存缓存：同一 URL 在 TTL 内直接返回，避免重复生成视频/截图。
+_ens_cache: dict = {}
+_ENS_CACHE_TTL = 60  # 秒
+
+
+def clear_ens_cache():
+    """清理 ENS 专业模式内存缓存，由 shutdown hook 调用。"""
+    _ens_cache.clear()
+    logger.info("ENS 专业模式缓存已清理")
 
 # ── 模式编号 → 中文名 ──
 _MODE_NAMES = {1: "大气", 2: "海洋", 3: "大气化学", 4: "颗粒物", 5: "空间天气", 6: "生物"}
@@ -149,6 +161,42 @@ def _format_time_text(time: str) -> str:
     return time
 
 
+def _get_thread_id() -> str:
+    """从 LangChain config 中提取当前会话 thread_id。"""
+    try:
+        from langchain_core.runnables.config import var_child_runnable_config
+    except Exception:
+        return "unknown"
+    try:
+        cfg = var_child_runnable_config.get()
+        if cfg:
+            return str(cfg["configurable"]["thread_id"])
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _build_return_text(location_text: str, time_text: str, mode_name: str, page_data: dict) -> str:
+    """构建返回给 Agent 的自然语言文本，Agent 可直接用于回复无需再调工具。"""
+    coords_str = f"（{page_data['coords']}）" if page_data.get("coords") else ""
+
+    values = []
+    if page_data.get("spotB.value"):
+        label = page_data.get("spotB.label", "")
+        values.append(f"{label} {page_data['spotB.value']}" if label else page_data["spotB.value"])
+    if page_data.get("spotA.value"):
+        label = page_data.get("spotA.label", "")
+        values.append(f"{label} {page_data['spotA.value']}" if label else page_data["spotA.value"])
+    data_str = "，".join(values) if values else "数据已返回"
+
+    time_str = f"，数据时间 {page_data['time']}" if page_data.get("time") else ""
+
+    return (
+        f"{location_text}{coords_str}{time_text}的{mode_name}：{data_str}{time_str}"
+        f" [本工具只返回{mode_name}数据，其他场景请让用户发新的vep查询]"
+    )
+
+
 async def run_ens_professional(
     p1: int = 1,
     p2: int = 0,
@@ -163,6 +211,15 @@ async def run_ens_professional(
     bio_annot: int = 0,
 ) -> tuple[str, UniMessage | None]:
     """专业模式核心逻辑。"""
+    # 硬门控：非 vep 消息触发的调用直接拒绝
+    if not _ens_caller_allowed.get():
+        logger.info("ens_professional 被非 vep 消息触发，拒绝执行")
+        return (
+            "ENS 已锁定。请直接从对话历史中引用之前返回的地球可视化数据回答用户。"
+            "如需新数据，告知用户发送 ve/vep 前缀的新消息。",
+            None,
+        )
+
     try:
         mode = _MODE.get(p1)
         if mode is None:
@@ -244,11 +301,18 @@ async def run_ens_professional(
         mode_name = _MODE_NAMES.get(p1, mode)
         time_text = _format_time_text(time)
 
+        # 检查内存缓存：同一 URL 在 TTL 内直接返回
+        cached = _ens_cache.get(url)
+        if cached and (_time.time() - cached[2]) < _ENS_CACHE_TTL:
+            logger.info(f"ens_professional 缓存命中: {url}")
+            return cached[0], cached[1]  # type: ignore[return-value]
+
         async def _delayed_progress():
             await asyncio.sleep(3)
             await UniMessage.text("🌐 正在获取数据中...").send()
 
         progress_task = asyncio.create_task(_delayed_progress())
+        page_data: dict = {}
 
         if paused:
             image_bytes = await screenshot(
@@ -262,9 +326,16 @@ async def run_ens_professional(
                 post_wait_ms=5000,
                 hard_wait=True,
                 ready_timeout=30000,
+                page_data_out=page_data,
             )
             progress_task.cancel()
-            return f"你要的{location_text}{time_text}的{mode_name}数据已返回", UniMessage.image(raw=image_bytes)
+            text = _build_return_text(location_text, time_text, mode_name, page_data)
+            artifact = UniMessage.image(raw=image_bytes)
+            _ens_cache[url] = (text, artifact, _time.time())
+            tid = _get_thread_id()
+            if tid != "unknown":
+                _write_ens_session(tid, text, "image", image_bytes)
+            return text, artifact
         else:
             video_bytes = await record_video(
                 url=url,
@@ -278,9 +349,16 @@ async def run_ens_professional(
                 post_wait_ms=5000,
                 hard_wait=True,
                 ready_timeout=30000,
+                page_data_out=page_data,
             )
             progress_task.cancel()
-            return f"你要的{location_text}{time_text}的{mode_name}数据已返回", UniMessage.video(raw=video_bytes)
+            text = _build_return_text(location_text, time_text, mode_name, page_data)
+            artifact = UniMessage.video(raw=video_bytes)
+            _ens_cache[url] = (text, artifact, _time.time())
+            tid = _get_thread_id()
+            if tid != "unknown":
+                _write_ens_session(tid, text, "video", video_bytes)
+            return text, artifact
     except Exception as e:
         logger.error(f"ens_professional 失败: {e}")
         return f"获取失败: {e}", None
