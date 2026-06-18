@@ -34,6 +34,7 @@ _TOOL_MODULE_GROUPS = {
     "earthquake": "earth",
     "ens_normal": "earth",
     "ens_professional": "earth",
+    "ens_read_cache": "earth",
     "radar": "earth",
     "weather": "earth",
     "paint": "main",
