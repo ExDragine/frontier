@@ -43,8 +43,11 @@ async def ens_read_cache(return_artifact: bool = False) -> tuple[str, UniMessage
     当用户追问要求重看视频/截图时（如"视频再发一下"、"图呢"），
     调用本工具并传 return_artifact=True。
 
-    本工具只读取缓存，不会触发浏览器操作。如果缓存为空或已过期，
+    本工具只读取缓存，不会触发浏览器操作。如果缓存为空，
     告知用户发送 ve/vep 前缀的新消息来查询。
+
+    禁止在 ens_normal / ens_professional 同一轮对话的回复中再次调用本工具。
+    用户发起新一轮 ve/vep 查询时已有新的视频返回，不需要再读缓存重发。
 
     Args:
         return_artifact: 是否同时返回缓存的视频/截图。用户只想看数据时传 False，
@@ -59,12 +62,12 @@ async def ens_read_cache(return_artifact: bool = False) -> tuple[str, UniMessage
             None,
         )
 
-    text = entry["text"]
+    text = f"[缓存可用] {entry['text']}"
     if return_artifact:
         artifact_type = entry.get("artifact_type", "video")
         artifact_bytes = entry.get("artifact_bytes")
         if artifact_bytes is None:
-            return f"{text}\n[缓存的媒体已过期，请用户重新发 ve/vep 查询]", None
+            return f"{text}\n[缓存媒体暂不可用，请用户重新发 ve/vep 查询]", None
         if artifact_type == "image":
             return text, UniMessage.image(raw=artifact_bytes)
         return text, UniMessage.video(raw=artifact_bytes)
