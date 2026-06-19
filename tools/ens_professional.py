@@ -215,8 +215,8 @@ async def run_ens_professional(
     if not _ens_caller_allowed.get():
         logger.info("ens_professional 被非 vep 消息触发，拒绝执行")
         return (
-            "ENS 已锁定。请直接从对话历史中引用之前返回的地球可视化数据回答用户。"
-            "如需新数据，告知用户发送 ve/vep 前缀的新消息。",
+            "本次消息未带 vep 前缀，不执行。请告知用户发送 vep + 参数来查询，"
+            "参数菜单可通过 /vehelp 命令查看。",
             None,
         )
 
