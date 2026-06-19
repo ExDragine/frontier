@@ -43,7 +43,9 @@ async def _get_vep_menu() -> bytes:
     if _vep_menu_cache is not None:
         return _vep_menu_cache
     html = (_TEMPLATES_DIR / "vep_menu.html").read_text(encoding="utf-8")
-    image = await html_to_image(html, width=480)
+    css_path = _TEMPLATES_DIR / "vep_menu.css"
+    css = css_path.read_text(encoding="utf-8") if css_path.exists() else None
+    image = await html_to_image(html, css=css, width=480)
     _vep_menu_cache = image
     logger.info("vep 菜单已渲染并缓存")
     return image
@@ -301,7 +303,7 @@ async def handle_restart(event: MessageEvent):
 
 
 @vehelp_cmd.handle()
-async def handle_vehelp():
+async def handle_vehelp(event: MessageEvent):
     """返回 vep 专业模式参数菜单截图（首次渲染后缓存）。"""
     try:
         image = await _get_vep_menu()
