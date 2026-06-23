@@ -426,10 +426,14 @@ class FrontierCognitive:
                 logger.debug("Wake word injection skipped: %s: %s", type(exc).__name__, exc)
 
         try:
-            return toml_prompt.format(name=name)
+            prompt = toml_prompt.format(name=name)
         except KeyError as e:
             logger.error(f"❌ system prompt 模板变量缺失: {e}")
             return f"You are {name}, a helpful assistant. [配置错误: 模板变量缺失]"
+
+        # 气象查询规则（硬编码，与 prompts/ens_rules.md 同步维护）
+        prompt += "\n\n【气象查询规则】用户要查新的气象数据 → 调 ens_normal(no_video=True)。用户追问/评价/对比之前查过的数据（含 BAA/珊瑚白化等）→ 先用 get_history_messages 或 search_messages 翻聊天记录，数据已翻成中文在记录里，直接引用评价，禁止重调 ens_normal。记录里找不到才调工具。用户要看视频 → 翻记录找参数 → ens_normal(no_video=False)。多地点用 queries。"
+        return prompt
 
     @staticmethod
     def _uni_message_cls():
@@ -569,12 +573,10 @@ class FrontierCognitive:
                     logger.info(f"用户明确请求浏览器捕获工具，已暴露: {rt.name}")
         else:
             logger.debug("用户未请求截图/录屏，restricted 工具未暴露")
-        # ── 硬门控：仅 ve/vep 前缀消息暴露 ENS 工具 ──
-        from utils.ens_gate import _ens_prefix  # noqa: E402
-        if _ens_prefix.get():
-            for rt in agent_tools.restricted_tools:
-                if rt.name in ("ens_normal", "ens_professional"):
-                    effective_tools.append(rt)
+        # ENS 工具始终可用（具体调用场景由 system prompt 规则控制）
+        for rt in agent_tools.restricted_tools:
+            if rt.name in ("ens_normal", "ens_professional"):
+                effective_tools.append(rt)
         # ── 提取 PTC 工具名列表 ──
         ptc_tool_names: list = [tool.name for tool in effective_tools] if effective_tools else []
         middleware: list = []
