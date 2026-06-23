@@ -94,23 +94,10 @@ async def _private_chat_reporter(event: ProgressEvent) -> None:
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
     messages = list(history_messages or [])
-    # 非 ve/vep 消息的 ENS 提示注入
-    cleaned_for_hint = context.text.strip().lstrip("/")
-    is_ve = cleaned_for_hint[:2].lower() == "ve" and cleaned_for_hint[:3].lower() != "vep"
-    is_vep = cleaned_for_hint[:3].lower() == "vep"
-    ens_context_note = ""
-    if not is_ve and not is_vep:
-        ens_context_note = (
-            "\n\n[系统提示：本条不带 ve/vep 前缀，地球可视化工具不可用。"
-            "用户如果要重看之前的视频/截图/数据，让他翻聊天记录。"
-            "用户如果要查新的地球数据，告知用 ve 或 vep 前缀重发。"
-            "不调替代工具、不说工具不支持。]"
-        )
-
     messages += [
         {
             "role": "user",
-            "content": ("以上是对话历史，仅用于理解上下文。" + ens_context_note),
+            "content": "以上是对话历史，仅用于理解上下文。",
         },
         {
             "role": "user",
@@ -205,9 +192,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
 
 @driver.on_shutdown
 async def on_shutdown():
-    from tools.ens_normal import clear_ens_cache as clear_ens_normal_cache
     from tools.ens_professional import clear_ens_cache as clear_ens_professional_cache
-    clear_ens_normal_cache()
     clear_ens_professional_cache()
     from utils.browser_capture import close_browser
     from utils.http_client import aclose_all
