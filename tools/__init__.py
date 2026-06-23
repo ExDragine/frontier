@@ -33,9 +33,9 @@ _TOOL_MODULE_GROUPS = {
     "satellite": "astro",
     "space_weather": "astro",
     "earthquake": "earth",
-    "ens_normal": "earth",
-    "ens_professional": "earth",
-    "ens_read_cache": "earth",
+    "ens_normal": "restricted",
+    "ens_professional": "restricted",
+
     "radar": "earth",
     "weather": "earth",
     "paint": "main",
