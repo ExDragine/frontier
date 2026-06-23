@@ -21,7 +21,7 @@ _TOOL_MESSAGE_EXACT: dict[str, str] = {
     "summarize_messages": "正在总结聊天记录…",
     "search_messages": "正在搜索历史消息…",
     # 天气 / 地球
-    "ens_normal": "🌐 正在普通地构建地球可视化数据中…",
+    "ens_normal": "🌐 正在查询…",
     "ens_professional": "🌐 正在专业地构建地球可视化数据中…",
     "mars_weather": "正在获取火星天气…",
     "get_wind_map": "正在获取风向图…",
