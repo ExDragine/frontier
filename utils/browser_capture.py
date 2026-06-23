@@ -189,6 +189,12 @@ async def _extract_page_data(page) -> dict:
                 const t = (el.textContent || '').trim();
                 if (/^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2} Local$/.test(t)) r.time = t;
             });
+            // 数据异常状态
+            const statusCard = document.querySelector('[data-name="status-card"]');
+            if (statusCard && statusCard.style.display !== 'none') {
+                const field = statusCard.querySelector('.field');
+                if (field) r.status_error = field.textContent.trim();
+            }
             return r;
         }"""
     )
