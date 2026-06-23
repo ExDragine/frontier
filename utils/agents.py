@@ -569,6 +569,12 @@ class FrontierCognitive:
                     logger.info(f"用户明确请求浏览器捕获工具，已暴露: {rt.name}")
         else:
             logger.debug("用户未请求截图/录屏，restricted 工具未暴露")
+        # ── 硬门控：仅 ve/vep 前缀消息暴露 ENS 工具 ──
+        from utils.ens_gate import _ens_prefix  # noqa: E402
+        if _ens_prefix.get():
+            for rt in agent_tools.restricted_tools:
+                if rt.name in ("ens_normal", "ens_professional"):
+                    effective_tools.append(rt)
         # ── 提取 PTC 工具名列表 ──
         ptc_tool_names: list = [tool.name for tool in effective_tools] if effective_tools else []
         middleware: list = []
