@@ -18,7 +18,7 @@ from utils.tool_helpers import tool_timer
 
 # 内存缓存：同一 URL 在 TTL 内直接返回，避免重复生成视频/截图。
 _ens_cache: dict = {}
-_ENS_CACHE_TTL = 60  # 秒
+_ENS_CACHE_TTL = 1800  # 30 分钟
 
 
 def clear_ens_cache():
@@ -29,7 +29,7 @@ def clear_ens_cache():
 # ── 模式编号 → 中文名 ──
 _MODE_NAMES = {1: "大气", 2: "海洋", 3: "大气化学", 4: "颗粒物", 5: "空间天气", 6: "生物"}
 
-_NULLSCHOOL_LOADING_WAIT = (
+_EARTH_LOADING_WAIT = (
     "(function(){var l=document.getElementById('load');if(!l)return true;"
     "var s=window.getComputedStyle(l);return s.display==='none'||s.visibility==='hidden';})()"
 )
@@ -305,7 +305,7 @@ async def run_ens_professional(
                 wait_until="networkidle",
                 timeout=60000,
                 wait_selector="canvas",
-                wait_function=_NULLSCHOOL_LOADING_WAIT,
+                wait_function=_EARTH_LOADING_WAIT,
                 post_wait_ms=5000,
                 hard_wait=True,
                 ready_timeout=30000,
@@ -324,7 +324,7 @@ async def run_ens_professional(
                 wait_until="networkidle",
                 timeout=60000,
                 wait_selector="canvas",
-                wait_function=_NULLSCHOOL_LOADING_WAIT,
+                wait_function=_EARTH_LOADING_WAIT,
                 post_wait_ms=5000,
                 hard_wait=True,
                 ready_timeout=30000,
