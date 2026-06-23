@@ -8,6 +8,7 @@
 """
 
 import asyncio
+import json
 import math
 import re
 import time as _time
@@ -34,7 +35,7 @@ _BAA_LEVEL_MEANING: dict[str, str] = {
 
 # 已移除的场景及说明（用于明确拒绝，防止 Agent 回退到其他工具）
 # 内存缓存：同一 URL 在 TTL 内直接返回，避免重复生成视频/截图。
-# key=url, value=(text, artifact, timestamp)
+# key=url, value=(text, raw_bytes, is_video, timestamp)
 _ens_cache: dict = {}
 _ENS_CACHE_TTL = 60  # 秒
 
@@ -943,30 +944,90 @@ def _build_return_text(location: str, time_text: str, scenario: str, page_data: 
     )
 
 
-async def run_ens_normal(
+async def _execute_single_query(
     scenario: str,
     location: str,
     time: str = "#current",
     lon: float | None = None,
     lat: float | None = None,
     zoom: int | None = None,
-) -> tuple[str, UniMessage | None]:
-    """普通模式核心逻辑。"""
+) -> tuple[str, bytes, bool]:
+    """执行单个 ENS 查询，返回 (text, raw_bytes, is_video)。"""
     scenario = _normalize_scenario(scenario)
 
     params = SCENARIO_MAP.get(scenario)
     if params is None:
         valid = "、".join(SCENARIO_MAP.keys())
-        return f"未知场景「{scenario}」。可用场景: {valid}", None
+        raise ValueError(f"未知场景「{scenario}」。可用场景: {valid}")
 
-    # 全球视角拒绝
     if scenario.startswith("全球"):
-        return (
-            f"不支持全球视角查询。请指定具体海域或区域来查看{scenario.replace('全球', '')}数据，"
-            "如'南海'、'波斯湾'、'广州沿海'等。",
-            None,
+        raise ValueError(
+            f"不支持全球视角查询。请指定具体区域来查看{scenario.replace('全球', '')}数据。"
         )
 
+    from_global_sea = False
+    if lon is not None and lat is not None:
+        resolved_lon, resolved_lat = lon, lat
+    elif params["mode"] == "ocean" or params.get("overlay") == "bleaching_alert_area":
+        resolved_lon, resolved_lat = _resolve_sea_coords(location)
+        from_global_sea = location.strip() in _GLOBAL_SEA_COORDS
+    else:
+        resolved_lon, resolved_lat = _resolve_coords(location)
+
+    if zoom is not None:
+        params = {**params, "zoom": zoom}
+
+    url = _build_earth_url(params, resolved_lon, resolved_lat, time)
+
+    cached = _ens_cache.get(url)
+    if cached and (_time.time() - cached[3]) < _ENS_CACHE_TTL:
+        logger.info(f"ens_normal 缓存命中: {url}")
+        return cached[0], cached[1], cached[2]
+
+    page_data: dict = {}
+    vw, vh = 1920, 1080
+
+    if params.get("anim_state") == "off":
+        image_bytes = await screenshot(
+            url=url, width=vw, height=vh, wait_until="networkidle",
+            timeout=60000, wait_selector="canvas",
+            wait_function=_NULLSCHOOL_LOADING_WAIT,
+            post_wait_ms=5000, hard_wait=True, ready_timeout=30000,
+            page_data_out=page_data,
+        )
+        time_text = _format_time_text(time)
+        text = _build_return_text(location, time_text, scenario, page_data)
+        if from_global_sea:
+            text += f"（此为{location.strip()}监测点数据）"
+        _ens_cache[url] = (text, image_bytes, False, _time.time())
+        return text, image_bytes, False
+    else:
+        video_bytes = await record_video(
+            url=url, duration=3, width=vw, height=vh,
+            wait_until="networkidle", timeout=60000,
+            wait_selector="canvas",
+            wait_function=_NULLSCHOOL_LOADING_WAIT,
+            post_wait_ms=5000, hard_wait=True, ready_timeout=30000,
+            page_data_out=page_data,
+        )
+        time_text = _format_time_text(time)
+        text = _build_return_text(location, time_text, scenario, page_data)
+        if from_global_sea:
+            text += f"（此为{location.strip()}监测点数据）"
+        _ens_cache[url] = (text, video_bytes, True, _time.time())
+        return text, video_bytes, True
+
+
+async def run_ens_normal(
+    scenario: str = "",
+    location: str = "",
+    time: str = "#current",
+    lon: float | None = None,
+    lat: float | None = None,
+    zoom: int | None = None,
+    queries: list[dict] | None = None,
+) -> tuple[str, UniMessage | None]:
+    """普通模式核心逻辑。"""
     # 硬门控：非 ve 前缀消息触发的调用直接拒绝
     if _ens_prefix.get() != "ve":
         logger.info("ens_normal 被非 ve 前缀触发，拒绝执行")
@@ -976,73 +1037,53 @@ async def run_ens_normal(
             None,
         )
 
+    # ── 多地点分支 ──
+    if queries is not None:
+        if len(queries) > 3:
+            return f"最多支持同时查询 3 个地点，当前传入了 {len(queries)} 个。请精简后重试。", None
+        if len(queries) == 0:
+            return "查询列表为空，请提供至少一个地点。", None
+
+        texts: list[str] = []
+        raw_parts: list[tuple[bytes, bool]] = []
+
+        for q in queries:
+            q_scenario = q.get("scenario", "")
+            q_location = q.get("location", "")
+            label = f"{q_location}{q_scenario}"
+            try:
+                t, raw, is_video = await _execute_single_query(q_scenario, q_location, time)
+                texts.append(t)
+                raw_parts.append((raw, is_video))
+            except Exception as e:
+                logger.error(f"ens_normal 多地点失败 [{label}]: {e}")
+                texts.append(f"[{label}获取失败: {e}]")
+
+        if raw_parts:
+            first_bytes, first_is_video = raw_parts[0]
+            artifact: UniMessage | None = (
+                UniMessage.video(raw=first_bytes) if first_is_video
+                else UniMessage.image(raw=first_bytes)
+            )
+            for raw, is_video in raw_parts[1:]:
+                if is_video:
+                    artifact.video(raw=raw)
+                else:
+                    artifact.image(raw=raw)
+        else:
+            artifact = None
+
+        summary = "\n\n".join(texts)
+        summary += "\n\n——以上为本次多地点查询的全部结果。"
+        return summary, artifact
+
+    # ── 单地点分支（向后兼容）──
     try:
-        from_global_sea = False
-        if lon is not None and lat is not None:
-            resolved_lon, resolved_lat = lon, lat
-        elif params["mode"] == "ocean" or params.get("overlay") == "bleaching_alert_area":
-            resolved_lon, resolved_lat = _resolve_sea_coords(location)
-            from_global_sea = location.strip() in _GLOBAL_SEA_COORDS
-        else:
-            resolved_lon, resolved_lat = _resolve_coords(location)
-
-        if zoom is not None:
-            params = {**params, "zoom": zoom}
-
-        url = _build_earth_url(params, resolved_lon, resolved_lat, time)
-
-        # 检查内存缓存：同一 URL 60s 内直接返回
-        cached = _ens_cache.get(url)
-        if cached and (_time.time() - cached[2]) < _ENS_CACHE_TTL:
-            logger.info(f"ens_normal 缓存命中: {url}")
-            return cached[0], cached[1]  # type: ignore[return-value]
-
-        page_data: dict = {}
-        vw, vh = 1920, 1080
-
-        if params.get("anim_state") == "off":
-            image_bytes = await screenshot(
-                url=url,
-                width=vw,
-                height=vh,
-                wait_until="networkidle",
-                timeout=60000,
-                wait_selector="canvas",
-                wait_function=_NULLSCHOOL_LOADING_WAIT,
-                post_wait_ms=5000,
-                hard_wait=True,
-                ready_timeout=30000,
-                page_data_out=page_data,
-            )
-            time_text = _format_time_text(time)
-            text = _build_return_text(location, time_text, scenario, page_data)
-            if from_global_sea:
-                text += f"（此为{location.strip()}监测点数据）"
-            artifact = UniMessage.image(raw=image_bytes)
-            _ens_cache[url] = (text, artifact, _time.time())
-            return text, artifact
-        else:
-            video_bytes = await record_video(
-                url=url,
-                duration=3,
-                width=vw,
-                height=vh,
-                wait_until="networkidle",
-                timeout=60000,
-                wait_selector="canvas",
-                wait_function=_NULLSCHOOL_LOADING_WAIT,
-                post_wait_ms=5000,
-                hard_wait=True,
-                ready_timeout=30000,
-                page_data_out=page_data,
-            )
-            time_text = _format_time_text(time)
-            text = _build_return_text(location, time_text, scenario, page_data)
-            if from_global_sea:
-                text += f"（此为{location.strip()}监测点数据）"
-            artifact = UniMessage.video(raw=video_bytes)
-            _ens_cache[url] = (text, artifact, _time.time())
-            return text, artifact
+        text, raw_bytes, is_video = await _execute_single_query(
+            scenario, location, time, lon, lat, zoom,
+        )
+        artifact = UniMessage.video(raw=raw_bytes) if is_video else UniMessage.image(raw=raw_bytes)
+        return text, artifact
     except Exception as e:
         logger.error(f"ens_normal 失败 [{scenario}/{location}]: {e}")
         return f"获取失败: {e}", None
@@ -1050,8 +1091,9 @@ async def run_ens_normal(
 
 @tool(response_format="content_and_artifact")
 async def ens_normal(
-    scenario: str,
-    location: str,
+    scenario: str = "",
+    location: str = "",
+    queries: str | list | None = None,
     time: str = "#current",
     lon: float | None = None,
     lat: float | None = None,
@@ -1060,6 +1102,10 @@ async def ens_normal(
     """地球可视化——将气象/海洋/化学等数据以动画呈现在三维地球上，返回视频或截图。
 
     ⚠️ 仅在用户消息以 "ve" 开头时调用。严禁在用户未发送 ve 前缀消息时推荐本工具。
+
+    多地点查询：用户可一次查询多个地点的同/不同要素，如"ve北京、广州的PM2.5，上海的体感温度"。
+    此时传入 queries 参数（JSON 数组），每个元素含 scenario 和 location。最多 3 组，超限提醒用户精简。
+    单地点查询仍使用 scenario + location 参数，行为不变。
 
     本工具的定位是地球数据可视化，不是常规气象查询。温度、风力、PM2.5 等
     常规数值优先用网络搜索获取，不要主动推荐 ENS。
@@ -1087,8 +1133,9 @@ async def ens_normal(
     生物：珊瑚白化、活跃火点
 
     Args:
-        scenario: 场景中文名，必须从上方清单中精确选取
-        location: 位置描述，国内城市/海域走内置坐标，国外由 Agent 搜坐标后传入
+        scenario: 场景中文名（单地点模式），必须从上方清单中精确选取
+        location: 位置描述（单地点模式），国内城市/海域走内置坐标
+        queries: 多地点查询 JSON 数组（多地点模式），如 [{"scenario":"PM2.5","location":"北京"}]
         time: 时间，默认 #current
         lon: 经度，传入后跳过坐标查询
         lat: 纬度
@@ -1097,7 +1144,19 @@ async def ens_normal(
     Returns:
         tuple[str, UniMessage | None]: (文字摘要, 视频或截图)
     """
-    async with tool_timer("ens_normal", {"scenario": scenario, "location": location, "time": time}):
+    parsed_queries: list[dict] | None = None
+    if queries is not None:
+        if isinstance(queries, list):
+            parsed_queries = queries
+        elif isinstance(queries, str):
+            try:
+                parsed_queries = json.loads(queries)
+            except json.JSONDecodeError:
+                return f"queries 参数 JSON 解析失败: {queries}", None
+        else:
+            return f"queries 参数类型不支持（需要 JSON 字符串或数组），收到: {type(queries)}", None
+
+    async with tool_timer("ens_normal", {"scenario": scenario, "location": location, "queries": parsed_queries, "time": time}):
         return await run_ens_normal(
             scenario=scenario,
             location=location,
@@ -1105,4 +1164,5 @@ async def ens_normal(
             lon=lon,
             lat=lat,
             zoom=zoom,
+            queries=parsed_queries,
         )
