@@ -3,47 +3,41 @@
 预设场景方案，LLM 匹配场景名 + 提取位置/时间 → 拼接 URL → 截图或录屏返回。
 动画播放时返回视频，动画暂停时（空间天气等）返回截图。
 
-触发方式：消息以 "ve" 开头（如 "ve看看广州PM2.5"），LLM 自动路由到本工具。
+触发方式：用户直接问气象数据即可（如"北京PM2.5多少"），LLM 自动路由到本工具。
 国内城市走内置坐标字典，国外/特殊位置由 LLM 搜索经纬度后直接传入 lon/lat。
 """
 
-import asyncio
 import json
 import math
 import re
-import time as _time
 
 from langchain_core.tools import tool
 from nonebot import logger
 
-from utils.ens_gate import _ens_prefix
 from utils.alconna import UniMessage
-from utils.browser_capture import record_video, screenshot
+from utils.browser_capture import fetch_data_only, record_video, screenshot
 from utils.tool_helpers import tool_timer
 
 # BAA 等级含义（用于 tool 返回时附带说明，Agent 可据此解读）
 _BAA_LEVEL_MEANING: dict[str, str] = {
     "无压力": "海温正常，未超过珊瑚耐热阈值，珊瑚健康无白化风险",
+    "No Stress": "海温正常，未超过珊瑚耐热阈值，珊瑚健康无白化风险",
     "珊瑚白化监测": "海温开始偏高，预计未来几周内可能达到白化阈值，需密切关注",
+    "Bleaching Watch": "海温开始偏高，预计未来几周内可能达到白化阈值，需密切关注",
     "珊瑚白化警报": "海温已接近或略微超过白化阈值，白化即将或刚开始发生",
+    "Bleaching Warning": "海温已接近或略微超过白化阈值，白化即将或刚开始发生",
     "警报等级 1": "海温显著超标，白化正在发生但珊瑚尚可存活（DHW≥4）",
+    "Alert Level 1": "海温显著超标，白化正在发生但珊瑚尚可存活（DHW≥4）",
     "警报等级 2": "更严重热应力，广泛白化且部分珊瑚开始死亡（DHW≥8）",
+    "Alert Level 2": "更严重热应力，广泛白化且部分珊瑚开始死亡（DHW≥8）",
     "警报等级 3": "严重白化，大量珊瑚死亡（DHW≥12）",
+    "Alert Level 3": "严重白化，大量珊瑚死亡（DHW≥12）",
     "警报等级 4": "极严重白化，多数珊瑚死亡（DHW≥16）",
+    "Alert Level 4": "极严重白化，多数珊瑚死亡（DHW≥16）",
     "警报等级 5": "灾难级白化，近乎全部珊瑚死亡（DHW≥20）",
+    "Alert Level 5": "灾难级白化，近乎全部珊瑚死亡（DHW≥20）",
 }
 
-# 已移除的场景及说明（用于明确拒绝，防止 Agent 回退到其他工具）
-# 内存缓存：同一 URL 在 TTL 内直接返回，避免重复生成视频/截图。
-# key=url, value=(text, raw_bytes, is_video, timestamp)
-_ens_cache: dict = {}
-_ENS_CACHE_TTL = 60  # 秒
-
-
-def clear_ens_cache():
-    """清理 ENS 工具内存缓存，由 shutdown hook 调用。"""
-    _ens_cache.clear()
-    logger.info("ENS 缓存已清理")
 
 # ── 场景映射表 ──
 # key 为中文场景名，LLM 通过 docstring 中列出的清单做精确匹配。
@@ -213,6 +207,14 @@ SCENARIO_MAP: dict[str, dict] = {
         "zoom": 4000,
     },
     "洋流珊瑚白化": {
+        "mode": "ocean",
+        "height": "surface",
+        "overlay": "bleaching_alert_area",
+        "animation": "currents",
+        "projection": "orthographic",
+        "zoom": 4000,
+    },
+    "BAA": {
         "mode": "ocean",
         "height": "surface",
         "overlay": "bleaching_alert_area",
@@ -888,7 +890,7 @@ def _build_earth_url(params: dict, lon: float, lat: float, time: str) -> str:
     return url
 
 
-_NULLSCHOOL_LOADING_WAIT = (
+_EARTH_LOADING_WAIT = (
     "(function(){var l=document.getElementById('load');if(!l)return true;"
     "var s=window.getComputedStyle(l);return s.display==='none'||s.visibility==='hidden';})()"
 )
@@ -951,9 +953,13 @@ async def _execute_single_query(
     lon: float | None = None,
     lat: float | None = None,
     zoom: int | None = None,
+    no_video: bool = False,
 ) -> tuple[str, bytes, bool]:
-    """执行单个 ENS 查询，返回 (text, raw_bytes, is_video)。"""
+    """执行单个 ENS 查询。no_video=True 时仅提取数据不录制，返回空 bytes。"""
     scenario = _normalize_scenario(scenario)
+
+    if scenario == "活跃火点":
+        no_video = False
 
     params = SCENARIO_MAP.get(scenario)
     if params is None:
@@ -979,10 +985,16 @@ async def _execute_single_query(
 
     url = _build_earth_url(params, resolved_lon, resolved_lat, time)
 
-    cached = _ens_cache.get(url)
-    if cached and (_time.time() - cached[3]) < _ENS_CACHE_TTL:
-        logger.info(f"ens_normal 缓存命中: {url}")
-        return cached[0], cached[1], cached[2]
+    if no_video:
+        page_data = await fetch_data_only(
+            url=url, wait_selector="canvas",
+            wait_function=_EARTH_LOADING_WAIT,
+        )
+        time_text = _format_time_text(time)
+        text = _build_return_text(location, time_text, scenario, page_data)
+        if from_global_sea:
+            text += f"（此为{location.strip()}监测点数据）"
+        return text, b"", False
 
     page_data: dict = {}
     vw, vh = 1920, 1080
@@ -991,7 +1003,7 @@ async def _execute_single_query(
         image_bytes = await screenshot(
             url=url, width=vw, height=vh, wait_until="networkidle",
             timeout=60000, wait_selector="canvas",
-            wait_function=_NULLSCHOOL_LOADING_WAIT,
+            wait_function=_EARTH_LOADING_WAIT,
             post_wait_ms=5000, hard_wait=True, ready_timeout=30000,
             page_data_out=page_data,
         )
@@ -999,14 +1011,13 @@ async def _execute_single_query(
         text = _build_return_text(location, time_text, scenario, page_data)
         if from_global_sea:
             text += f"（此为{location.strip()}监测点数据）"
-        _ens_cache[url] = (text, image_bytes, False, _time.time())
         return text, image_bytes, False
     else:
         video_bytes = await record_video(
             url=url, duration=3, width=vw, height=vh,
             wait_until="networkidle", timeout=60000,
             wait_selector="canvas",
-            wait_function=_NULLSCHOOL_LOADING_WAIT,
+            wait_function=_EARTH_LOADING_WAIT,
             post_wait_ms=5000, hard_wait=True, ready_timeout=30000,
             page_data_out=page_data,
         )
@@ -1014,7 +1025,6 @@ async def _execute_single_query(
         text = _build_return_text(location, time_text, scenario, page_data)
         if from_global_sea:
             text += f"（此为{location.strip()}监测点数据）"
-        _ens_cache[url] = (text, video_bytes, True, _time.time())
         return text, video_bytes, True
 
 
@@ -1026,16 +1036,9 @@ async def run_ens_normal(
     lat: float | None = None,
     zoom: int | None = None,
     queries: list[dict] | None = None,
+    no_video: bool = False,
 ) -> tuple[str, UniMessage | None]:
     """普通模式核心逻辑。"""
-    # 硬门控：非 ve 前缀消息触发的调用直接拒绝
-    if _ens_prefix.get() != "ve":
-        logger.info("ens_normal 被非 ve 前缀触发，拒绝执行")
-        return (
-            "本次消息未带 ve 前缀，不执行。如需已有数据请传 read_cache=True，"
-            "如需新数据请告知用户发送 ve 前缀的新消息。",
-            None,
-        )
 
     # ── 多地点分支 ──
     if queries is not None:
@@ -1050,18 +1053,21 @@ async def run_ens_normal(
         for q in queries:
             q_scenario = q.get("scenario", "")
             q_location = q.get("location", "")
-            label = f"{q_location}{q_scenario}"
             try:
-                t, raw, is_video = await _execute_single_query(q_scenario, q_location, time)
+                t, raw, is_video = await _execute_single_query(
+                    q_scenario, q_location, time, no_video=no_video,
+                )
                 texts.append(t)
-                raw_parts.append((raw, is_video))
+                if not no_video:
+                    raw_parts.append((raw, is_video))
             except Exception as e:
-                logger.error(f"ens_normal 多地点失败 [{label}]: {e}")
-                texts.append(f"[{label}获取失败: {e}]")
+                logger.error(f"ens_normal 多地点失败 [{q_location}{q_scenario}]: {e}")
+                texts.append(f"[{q_location}{q_scenario}获取失败: {e}]")
 
-        if raw_parts:
+        artifact: UniMessage | None = None
+        if not no_video and raw_parts:
             first_bytes, first_is_video = raw_parts[0]
-            artifact: UniMessage | None = (
+            artifact = (
                 UniMessage.video(raw=first_bytes) if first_is_video
                 else UniMessage.image(raw=first_bytes)
             )
@@ -1070,18 +1076,18 @@ async def run_ens_normal(
                     artifact.video(raw=raw)
                 else:
                     artifact.image(raw=raw)
-        else:
-            artifact = None
 
         summary = "\n\n".join(texts)
         summary += "\n\n——以上为本次多地点查询的全部结果。"
         return summary, artifact
 
-    # ── 单地点分支（向后兼容）──
+    # ── 单地点分支 ──
     try:
         text, raw_bytes, is_video = await _execute_single_query(
-            scenario, location, time, lon, lat, zoom,
+            scenario, location, time, lon, lat, zoom, no_video=no_video,
         )
+        if no_video:
+            return text, None
         artifact = UniMessage.video(raw=raw_bytes) if is_video else UniMessage.image(raw=raw_bytes)
         return text, artifact
     except Exception as e:
@@ -1094,37 +1100,27 @@ async def ens_normal(
     scenario: str = "",
     location: str = "",
     queries: str | list | None = None,
+    no_video: bool = False,
     time: str = "#current",
     lon: float | None = None,
     lat: float | None = None,
     zoom: int | None = None,
 ) -> tuple[str, UniMessage | None]:
-    """地球可视化——将气象/海洋/化学等数据以动画呈现在三维地球上，返回视频或截图。
+    """地球气象数据查询。
 
-    ⚠️ 仅在用户消息以 "ve" 开头时调用。严禁在用户未发送 ve 前缀消息时推荐本工具。
+    默认文字模式：用户问"北京PM2.5""广州体感温度"等 → 直接调用，no_video=True，只返文字。
+    多地点：queries 参数传 JSON 数组（最多3个）。
+    用户要看视频/动画时 no_video=False，会录制视频返回。
 
-    多地点查询：用户可一次查询多个地点的同/不同要素，如"ve北京、广州的PM2.5，上海的体感温度"。
-    此时传入 queries 参数（JSON 数组），每个元素含 scenario 和 location。最多 3 组，超限提醒用户精简。
-    单地点查询仍使用 scenario + location 参数，行为不变。
-
-    本工具的定位是地球数据可视化，不是常规气象查询。温度、风力、PM2.5 等
-    常规数值优先用网络搜索获取，不要主动推荐 ENS。
-
-    不支持全球视角查询。用户说"全世界""全球"等，告知不支持并引导其指定具体海域或区域。
-
-    海洋场景要求位置在海上。Agent 确认目标位置是否沿海，内陆直接告知用户。
-
-    ve 前缀消息触发后，直接调用本工具即可，无需在此之前用 Wikipedia 等搜索地理信息。
-
-    用户询问功能或使用方法，告知发送 /vehelp 命令查看菜单。
-    ⚠️ 用户追问历史 ENS 数据时，禁止调本工具。直接回复让其翻聊天记录。
+    不支持全球视角。地点不在字典时 Agent 搜经纬度用 lon/lat 重调。用户问功能 → /vehelp。
+    活跃火点只能看图，no_video 无效始终返回视频。
 
     可用场景清单（scenario 参数必须精确匹配下列名称之一）：
     大气：风速、温度、体感温度、相对湿度、3小时降水、平均海平面压力、
     紫外线指数、CAPE、水汽含量、露点温度、湿球温度、总云水量、
     风功率密度、大气无叠加
     海洋：洋流、有效浪高、波峰周期、海面温度、海面温度异常、
-    洋流波峰周期、洋流珊瑚白化、洋流无叠加、
+    洋流波峰周期、洋流珊瑚白化（别名BAA）、洋流无叠加、
     波浪、波浪有效浪高、波浪海面温度、波浪海面温度异常、
     波浪珊瑚白化、波浪无叠加
     化学：一氧化碳浓度、二氧化碳浓度、二氧化硫质量、二氧化氮浓度
@@ -1136,6 +1132,8 @@ async def ens_normal(
         scenario: 场景中文名（单地点模式），必须从上方清单中精确选取
         location: 位置描述（单地点模式），国内城市/海域走内置坐标
         queries: 多地点查询 JSON 数组（多地点模式），如 [{"scenario":"PM2.5","location":"北京"}]
+        no_video: 用户明确说不要视频/只要数据时设为 True，只返回文字不返回媒体
+        cache_only: 缓存复用场景设为 True，缓存未命中直接返回过期提示而不重新录制
         time: 时间，默认 #current
         lon: 经度，传入后跳过坐标查询
         lat: 纬度
@@ -1156,7 +1154,7 @@ async def ens_normal(
         else:
             return f"queries 参数类型不支持（需要 JSON 字符串或数组），收到: {type(queries)}", None
 
-    async with tool_timer("ens_normal", {"scenario": scenario, "location": location, "queries": parsed_queries, "time": time}):
+    async with tool_timer("ens_normal", {"scenario": scenario, "location": location, "queries": parsed_queries, "no_video": no_video, "time": time}):
         return await run_ens_normal(
             scenario=scenario,
             location=location,
@@ -1165,4 +1163,5 @@ async def ens_normal(
             lat=lat,
             zoom=zoom,
             queries=parsed_queries,
+            no_video=no_video,
         )
