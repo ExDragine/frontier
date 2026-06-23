@@ -407,6 +407,44 @@ async def record_video(
     return await _run_with_crash_retry(_do_record)
 
 
+async def fetch_data_only(
+    url: str,
+    *,
+    width: int = 1920,
+    height: int = 1080,
+    wait_until: str = "networkidle",
+    timeout: int = 60000,
+    wait_selector: str | None = None,
+    wait_function: str | None = None,
+    post_wait_ms: int = 5000,
+    hard_wait: bool = True,
+    ready_timeout: int = 30000,
+) -> dict:
+    """仅导航到 URL 并提取页面数据，不截图不录屏。no_video 模式专用。"""
+
+    async def _do_fetch() -> dict:
+        logger.info(f"正在获取页面数据: {url}")
+        browser = await _get_browser()
+        page = await browser.new_page(viewport={"width": width, "height": height})
+        try:
+            await page.goto(url, wait_until=wait_until, timeout=timeout)
+            await _wait_for_page_ready(
+                page,
+                wait_selector=wait_selector,
+                post_wait_ms=post_wait_ms,
+                hard_wait=hard_wait,
+                ready_timeout=ready_timeout,
+                wait_function=wait_function,
+            )
+            data = await _extract_page_data(page)
+            logger.info(f"页面数据提取完成: {url}")
+            return data
+        finally:
+            await page.close()
+
+    return await _run_with_crash_retry(_do_fetch)
+
+
 async def close_browser():
     """清理全局浏览器实例（进程退出时调用）。"""
     global _browser, _playwright
