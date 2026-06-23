@@ -11,7 +11,7 @@ import time as _time
 from langchain_core.tools import tool
 from nonebot import logger
 
-from utils.ens_gate import _ens_caller_allowed, _write_ens_session
+from utils.ens_gate import _ens_prefix
 from utils.alconna import UniMessage
 from utils.browser_capture import record_video, screenshot
 from utils.tool_helpers import tool_timer
@@ -97,7 +97,7 @@ _OVERLAY = {
 
 _BIO_ANNOT = {0: None, 1: "fires"}
 
-_ZOOM_DEFAULT = {"wind": 4500, "ocean": 300, "chem": 4500, "particulates": 4500, "space": 800, "bio": 1500}
+_ZOOM_DEFAULT = {"wind": 5000, "ocean": 4000, "chem": 5000, "particulates": 5000, "space": 1000, "bio": 4000}
 
 # 测试环境无法跨文件导入 _CITY_COORDS 时的 fallback
 _CITY_COORDS_FALLBACK: dict[str, tuple[float, float]] = {
@@ -124,7 +124,10 @@ def _build_professional_url(
     paused: bool = False,
 ) -> str:
     """拼接 hash-fragment URL。"""
-    segments = [time, mode, height, animation]
+    if animation == "primary/waves":
+        segments = [time, mode, animation]
+    else:
+        segments = [time, mode, height, animation]
 
     if annot:
         segments.append(f"annot={annot}")
@@ -159,21 +162,6 @@ def _format_time_text(time: str) -> str:
         y, mo, d, h, mi = m.groups()
         return f"{y}年{int(mo)}月{int(d)}日{h}:{mi}"
     return time
-
-
-def _get_thread_id() -> str:
-    """从 LangChain config 中提取当前会话 thread_id。"""
-    try:
-        from langchain_core.runnables.config import var_child_runnable_config
-    except Exception:
-        return "unknown"
-    try:
-        cfg = var_child_runnable_config.get()
-        if cfg:
-            return str(cfg["configurable"]["thread_id"])
-    except Exception:
-        pass
-    return "unknown"
 
 
 def _build_return_text(location_text: str, time_text: str, mode_name: str, page_data: dict) -> str:
@@ -211,9 +199,9 @@ async def run_ens_professional(
     bio_annot: int = 0,
 ) -> tuple[str, UniMessage | None]:
     """专业模式核心逻辑。"""
-    # 硬门控：非 vep 消息触发的调用直接拒绝
-    if not _ens_caller_allowed.get():
-        logger.info("ens_professional 被非 vep 消息触发，拒绝执行")
+    # 硬门控：非 vep 前缀消息触发的调用直接拒绝
+    if _ens_prefix.get() != "vep":
+        logger.info("ens_professional 被非 vep 前缀触发，拒绝执行")
         return (
             "本次消息未带 vep 前缀，不执行。请告知用户发送 vep + 参数来查询，"
             "参数菜单可通过 /vehelp 命令查看。",
@@ -307,11 +295,6 @@ async def run_ens_professional(
             logger.info(f"ens_professional 缓存命中: {url}")
             return cached[0], cached[1]  # type: ignore[return-value]
 
-        async def _delayed_progress():
-            await asyncio.sleep(3)
-            await UniMessage.text("🌐 正在获取数据中...").send()
-
-        progress_task = asyncio.create_task(_delayed_progress())
         page_data: dict = {}
 
         if paused:
@@ -328,13 +311,9 @@ async def run_ens_professional(
                 ready_timeout=30000,
                 page_data_out=page_data,
             )
-            progress_task.cancel()
             text = _build_return_text(location_text, time_text, mode_name, page_data)
             artifact = UniMessage.image(raw=image_bytes)
             _ens_cache[url] = (text, artifact, _time.time())
-            tid = _get_thread_id()
-            if tid != "unknown":
-                _write_ens_session(tid, text, "image", image_bytes)
             return text, artifact
         else:
             video_bytes = await record_video(
@@ -351,13 +330,9 @@ async def run_ens_professional(
                 ready_timeout=30000,
                 page_data_out=page_data,
             )
-            progress_task.cancel()
             text = _build_return_text(location_text, time_text, mode_name, page_data)
             artifact = UniMessage.video(raw=video_bytes)
             _ens_cache[url] = (text, artifact, _time.time())
-            tid = _get_thread_id()
-            if tid != "unknown":
-                _write_ens_session(tid, text, "video", video_bytes)
             return text, artifact
     except Exception as e:
         logger.error(f"ens_professional 失败: {e}")
@@ -413,15 +388,7 @@ async def ens_professional(
     """
     async with tool_timer("ens_professional", {"p1": p1, "p4": p4, "p6": p6, "p7": p7}):
         return await run_ens_professional(
-            p1=p1,
-            p2=p2,
-            p3=p3,
-            p4=p4,
-            p5=p5,
-            p6=p6,
-            p7=p7,
-            p8=p8,
-            p9=p9,
-            p10=p10,
+            p1=p1, p2=p2, p3=p3, p4=p4, p5=p5,
+            p6=p6, p7=p7, p8=p8, p9=p9, p10=p10,
             bio_annot=bio_annot,
         )
