@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台风 {{ name }} 信息</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>{{ css_content }}</style>
+</head>
+<body>
+    <div id="typhoon-card">
+        <!-- 右侧地图面板（全屏） -->
+        <div class="right-panel">
+            <div id="map"></div>
+        </div>
+
+        <!-- 左侧信息面板（悬浮） -->
+        <div class="left-panel">
+            <!-- 基础信息卡 -->
+            <div class="info-card basic-card">
+                <div class="typhoon-name" style="color: {{ level_color }}">
+                    {{ name }}
+                    <span class="level-badge" style="background: {{ level_color }}">{{ level_display }}</span>
+                </div>
+                <div class="typhoon-ename">{{ ename }}</div>
+                <div class="info-row">
+                    <span class="info-label">编号</span>
+                    <span class="info-value">{{ tfbh }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">生成时间</span>
+                    <span class="info-value">{{ begin_time }}</span>
+                </div>
+            </div>
+
+            <!-- 当前位置信息卡 -->
+            <div class="info-card position-card">
+                <div class="info-row">
+                    <span class="info-label">观测时间</span>
+                    <div class="pos-value">
+                        <div>{{ time_line1 }}</div>
+                        <div class="pos-sub">{{ time_line2 }}</div>
+                    </div>
+                </div>
+                <div class="pos-row">
+                    <span class="pos-label">中心位置</span>
+                    <div class="pos-value">
+                        <div>{{ pos_coords }}</div>
+                        <div class="pos-sub">{{ pos_desc }}</div>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">中心风力</span>
+                    <span class="info-value"><span class="info-num">{{ power }}</span> 级（<span class="info-num">{{ speed }}</span> 米/秒）</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">中心气压</span>
+                    <span class="info-value"><span class="info-num">{{ pressure_val }}</span> 百帕</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">移动速度</span>
+                    <span class="info-value">{% if move_speed_val is not none %}<span class="info-num">{{ move_speed_val }}</span> 公里/小时{% else %}—{% endif %}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 图例 -->
+        <div class="map-legend" id="legend">
+            <div class="map-legend-title">强度分级</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#1afa29;border-color:#0ea82b"></span>热带低压</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#1296db;border-color:#0d6ea3"></span>热带风暴</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#f4ea2a;border-color:#c4b91e"></span>强热带风暴</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#FFB300;border-color:#c48800"></span>台风</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#FB8C00;border-color:#c46b00"></span>强台风</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#E53935;border-color:#b22b2a"></span>超强台风</div>
+            <div class="legend-item" style="margin-top:4px"><span class="legend-line" style="background:#00BFFF"></span>实际路径</div>
+            <div class="legend-item"><span class="legend-line legend-line-dashed" style="border-color:#FF0000"></span>预报路径</div>
+            <div class="legend-item" style="margin-top:4px"><span class="legend-wind" style="background:#00CC00"></span>七级风圈</div>
+            <div class="legend-item"><span class="legend-wind" style="background:#FFD600"></span>十级风圈</div>
+            <div class="legend-item"><span class="legend-wind" style="background:#FF1744"></span>十二级风圈</div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    (function () {
+        var data = {{ typhoon_data | tojson }};
+
+        var map = L.map('map', {
+            attributionControl: false,
+            zoomControl: false
+        });
+
+        L.tileLayer('https://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}', {
+            maxZoom: 18
+        }).addTo(map);
+
+        // 收集所有轨迹坐标点（用于后续聚焦视野）
+        var typhoonPoints = [];
+
+        // ==== 1. 绘制历史轨迹线（天蓝色实线）====
+        if (data.historyPolyline && data.historyPolyline.length > 0) {
+            var histLatLngs = data.historyPolyline.map(function (p) { return [p[1], p[0]]; });
+            histLatLngs.forEach(function (ll) { typhoonPoints.push(ll); });
+
+            L.polyline(histLatLngs, {
+                color: '#00BFFF',
+                weight: 3,
+                opacity: 0.8
+            }).addTo(map);
+        }
+
+        // ==== 2. 绘制历史轨迹点（按强度着色）====
+        if (data.historyPoints) {
+            data.historyPoints.forEach(function (pt) {
+                var ll = [pt.lat, pt.lng];
+                typhoonPoints.push(ll);
+                L.circleMarker(ll, {
+                    radius: 5,
+                    fillColor: pt.color,
+                    color: '#333',
+                    weight: 1,
+                    fillOpacity: 0.9
+                }).addTo(map);
+            });
+        }
+
+        // ==== 3. 绘制预报路径（各机构虚线）====
+        if (data.forecastPaths) {
+            data.forecastPaths.forEach(function (path) {
+                if (!path.points || path.points.length < 2) return;
+                var fcLatLngs = path.points.map(function (p) {
+                    return [p[1], p[0]];
+                });
+                L.polyline(fcLatLngs, {
+                    color: path.color,
+                    weight: 2.5,
+                    opacity: 0.75,
+                    dashArray: '8, 6'
+                }).addTo(map);
+            });
+        }
+
+        // ==== 4. 风圈（仅当前点，象限非对称多边形）====
+        if (data.currentPos) {
+            var curLatLng = [data.currentPos[0], data.currentPos[1]];
+            typhoonPoints.push(curLatLng);
+
+            /** 从中心出发沿 bearing 方向走 radiusKm 公里到达的点 */
+            function qPt(center, bearing, radiusKm) {
+                var R = 6371;
+                var lat1 = center[0] * Math.PI / 180;
+                var lng1 = center[1] * Math.PI / 180;
+                var b = bearing * Math.PI / 180;
+                var d = radiusKm / R;
+                var lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(b));
+                var lng2 = lng1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+                return [lat2 * 180 / Math.PI, lng2 * 180 / Math.PI];
+            }
+
+            /** 绘制单个风圈：有象限数据时画非对称多边形，否则回退标准圆 */
+            function drawWindRing(center, quad, simpleRadius, color) {
+                if (quad && quad.ne != null && quad.nw != null && quad.se != null && quad.sw != null) {
+                    var steps = 10;
+                    var pts = [];
+                    // NE: 0° (北) → 90° (东)
+                    for (var i = 0; i <= steps; i++) pts.push(qPt(center, (i / steps) * 90, quad.ne));
+                    // SE: 90° (东) → 180° (南)
+                    for (var i = 0; i <= steps; i++) pts.push(qPt(center, 90 + (i / steps) * 90, quad.se));
+                    // SW: 180° (南) → 270° (西)
+                    for (var i = 0; i <= steps; i++) pts.push(qPt(center, 180 + (i / steps) * 90, quad.sw));
+                    // NW: 270° (西) → 360° (北)
+                    for (var i = 0; i <= steps; i++) pts.push(qPt(center, 270 + (i / steps) * 90, quad.nw));
+                    L.polygon(pts, {
+                        color: color,
+                        fillColor: color,
+                        fillOpacity: 0.12,
+                        weight: 1,
+                        opacity: 0.4
+                    }).addTo(map);
+                } else if (simpleRadius && simpleRadius > 0) {
+                    L.circle(center, {
+                        radius: simpleRadius * 1000,
+                        color: color,
+                        fillColor: color,
+                        fillOpacity: 0.15,
+                        weight: 1.5,
+                        opacity: 0.4
+                    }).addTo(map);
+                }
+            }
+
+            drawWindRing(curLatLng, data.windRadius7Quad, data.windRadius7, '#00CC00');
+            drawWindRing(curLatLng, data.windRadius10Quad, data.windRadius10, '#FFD600');
+            drawWindRing(curLatLng, data.windRadius12Quad, data.windRadius12, '#FF1744');
+
+            // ==== 5. 当前点 — 自定义图标 ====
+            if (data.iconBase64) {
+                var iconSize = 44;
+
+                var iconHtml = '<img src="' + data.iconBase64 + '" style="'
+                    + 'width:' + iconSize + 'px;height:' + iconSize + 'px;'
+                    + 'filter:drop-shadow(0 0 6px rgba(255,255,255,0.95)) drop-shadow(0 0 3px rgba(255,255,255,0.8));'
+                    + '">';
+
+                var customIcon = L.divIcon({
+                    className: '',
+                    html: iconHtml,
+                    iconSize: [iconSize, iconSize],
+                    iconAnchor: [iconSize / 2, iconSize / 2]
+                });
+
+                L.marker(curLatLng, { icon: customIcon }).addTo(map);
+            } else {
+                // 无图标时的 fallback
+                L.circleMarker(curLatLng, {
+                    radius: 9,
+                    fillColor: data.currentColor || '#FB8C00',
+                    color: '#fff',
+                    weight: 2.5,
+                    fillOpacity: 1
+                }).addTo(map);
+            }
+        }
+
+        // ==== 6. 聚焦台风路径（自动避开悬浮面板和图例）====
+        /**
+         * 根据台风轨迹点计算并聚焦视野，自适应避开左侧悬浮面板和右下角图例。
+         * @param {L.Map} map - Leaflet 地图实例
+         * @param {L.LatLngExpression[]} typhoonPoints - 台风轨迹坐标点数组
+         */
+        function focusTyphoonPath(map, typhoonPoints) {
+            if (!typhoonPoints || typhoonPoints.length === 0) {
+                map.setView([20, 125], 5);
+                return;
+            }
+
+            var bounds = L.latLngBounds(typhoonPoints);
+            if (!bounds.isValid()) {
+                map.setView([20, 125], 5);
+                return;
+            }
+
+            // 读取地图容器实际宽高
+            var container = map.getContainer();
+            var mapWidth = container.clientWidth || 1200;
+            // 地图高度仅用于有需要的逻辑，这里预留给后续调参
+            void (container.clientHeight);
+
+            // 读取悬浮面板的边界矩形
+            var leftPanel = document.querySelector('.left-panel');
+            var legend = document.querySelector('.map-legend');
+
+            // 左侧安全区：右半屏专用，至少地图宽度 52%，轨迹完整落在右半边
+            var leftSafe = mapWidth * 0.52;
+            if (leftPanel) {
+                var panelRect = leftPanel.getBoundingClientRect();
+                leftSafe = Math.max(panelRect.right + 24, mapWidth * 0.52);
+            }
+
+            // 上偏移：将轨迹中心拉到容器中下部（300px 约对应中心偏下三分之一）
+            var topBias = 300;
+
+            // 右侧安全区：让开图例宽度
+            var rightSafe = 24;
+            if (legend) {
+                var legendRect = legend.getBoundingClientRect();
+                rightSafe = legendRect.width + 24;
+            }
+
+            // 底部安全区：仅微量偏移，过大会把轨迹顶回上方
+            var bottomSafe = 30;
+            if (legend) {
+                var legendRect = legend.getBoundingClientRect();
+                bottomSafe = Math.min(legendRect.height * 0.4, 50);
+            }
+
+            map.fitBounds(bounds, {
+                paddingTopLeft: L.point(leftSafe, topBias),
+                paddingBottomRight: L.point(rightSafe, bottomSafe),
+                maxZoom: 9,
+                animate: false
+            });
+        }
+
+        focusTyphoonPath(map, typhoonPoints);
+    })();
+    </script>
+</body>
+</html>
