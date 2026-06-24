@@ -1,0 +1,206 @@
+@import url('https://font.sec.miui.com/font/css?family=MiSans:400,500,600,700,800,900:MiSans');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: #f0f2f5;
+    font-family: "MiSans", -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: fit-content;
+}
+
+/* ── 主卡片容器（全屏，地图铺满）── */
+#typhoon-card {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    min-height: 700px;
+    background: #f0f2f5;
+    overflow: hidden;
+}
+
+/* ── 左侧信息面板（悬浮在地图上方）── */
+.left-panel {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+    width: 350px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+}
+
+.info-card {
+    background: rgba(255,255,255,0.95);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+
+/* ── 基础信息卡（上） ── */
+.typhoon-name {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
+}
+
+.typhoon-ename {
+    font-size: 16px;
+    font-weight: 500;
+    color: #666;
+    letter-spacing: 0.05em;
+    margin-bottom: 14px;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 16px;
+}
+
+.info-row:last-child { border-bottom: none; }
+
+.info-label {
+    color: #888;
+    font-weight: 500;
+    font-size: 16px;
+}
+
+.info-value {
+    color: #333;
+    font-weight: 600;
+    text-align: right;
+    font-size: 16px;
+}
+
+/* 数字相关的值加大字号 */
+.info-num {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.level-badge {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 9999px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+}
+
+/* ── 当前位置卡（下） ── */
+.pos-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 16px;
+}
+
+.pos-row:last-child { border-bottom: none; }
+
+.pos-label {
+    color: #888;
+    font-weight: 500;
+    flex-shrink: 0;
+    margin-right: 8px;
+    font-size: 16px;
+}
+
+.pos-value {
+    color: #333;
+    font-weight: 600;
+    text-align: right;
+    font-size: 16px;
+}
+
+.pos-sub {
+    font-size: 14px;
+    color: #888;
+    font-weight: 400;
+    margin-top: 2px;
+}
+
+/* ── 右侧地图面板（全屏铺满）── */
+.right-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+#map {
+    width: 100%;
+    height: 100%;
+    min-height: 700px;
+}
+
+/* ── 地图图例 ── */
+.map-legend {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    background: rgba(255,255,255,0.92);
+    border-radius: 8px;
+    padding: 10px 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    font-size: 12px;
+    line-height: 1.6;
+    max-width: 200px;
+}
+
+.map-legend-title {
+    font-weight: 700;
+    font-size: 12px;
+    margin-bottom: 4px;
+    color: #444;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-line {
+    display: inline-block;
+    width: 24px;
+    height: 3px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.legend-line-dashed {
+    border-top: 3px dashed;
+    height: 0;
+}
+
+.legend-circle {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid #555;
+    flex-shrink: 0;
+}
+
+.legend-wind {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    opacity: 0.4;
+    flex-shrink: 0;
+}
