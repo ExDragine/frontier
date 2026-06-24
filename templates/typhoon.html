@@ -132,12 +132,28 @@
                 var fcLatLngs = path.points.map(function (p) {
                     return [p[1], p[0]];
                 });
+                // 从当前台风位置连线到预报路径，避免断开
+                if (data.currentPos) {
+                    fcLatLngs.unshift([data.currentPos[0], data.currentPos[1]]);
+                }
+                // 预报路径虚线（含连接段）
                 L.polyline(fcLatLngs, {
                     color: path.color,
                     weight: 2.5,
                     opacity: 0.75,
                     dashArray: '8, 6'
                 }).addTo(map);
+                // 预报节点圆点（跳过当前台风位置，仅渲染预报节点）
+                for (var i = data.currentPos ? 1 : 0; i < fcLatLngs.length; i++) {
+                    L.circleMarker(fcLatLngs[i], {
+                        radius: 4,
+                        fillColor: '#fff',
+                        color: path.color,
+                        weight: 2,
+                        fillOpacity: 1,
+                        opacity: 0.85
+                    }).addTo(map);
+                }
             });
         }
 
@@ -223,11 +239,12 @@
             }
         }
 
-        // ==== 6. 聚焦台风路径（自动避开悬浮面板和图例）====
+        // ==== 6. 地理膨胀聚焦 ====
         /**
-         * 根据台风轨迹点计算并聚焦视野，自适应避开左侧悬浮面板和右下角图例。
-         * @param {L.Map} map - Leaflet 地图实例
-         * @param {L.LatLngExpression[]} typhoonPoints - 台风轨迹坐标点数组
+         * 在原始 bounds 西侧和北侧膨胀经纬度，利用 fitBounds 的居中行为
+         * 将真实轨迹自然挤到右下角。与像素调参不同，膨胀比例对所有台风通用。
+         * @param {L.Map} map
+         * @param {L.LatLngExpression[]} typhoonPoints
          */
         function focusTyphoonPath(map, typhoonPoints) {
             if (!typhoonPoints || typhoonPoints.length === 0) {
@@ -241,44 +258,36 @@
                 return;
             }
 
-            // 读取地图容器实际宽高
-            var container = map.getContainer();
-            var mapWidth = container.clientWidth || 1200;
-            // 地图高度仅用于有需要的逻辑，这里预留给后续调参
-            void (container.clientHeight);
+            // 原始经纬度跨度
+            var lngSpan = bounds.getEast() - bounds.getWest();
+            var latSpan = bounds.getNorth() - bounds.getSouth();
 
-            // 读取悬浮面板的边界矩形
-            var leftPanel = document.querySelector('.left-panel');
+            // 西侧膨胀 80% lngSpan → 真实轨迹挤到右侧
+            // 北侧膨胀 50% latSpan → 真实轨迹下沉
+            var expandedWest = bounds.getWest() - lngSpan * 0.8;
+            var expandedNorth = bounds.getNorth() + latSpan * 0.5;
+            var expandedSouth = bounds.getSouth();
+            var expandedEast = bounds.getEast();
+
+            var expandedBounds = L.latLngBounds([
+                [expandedSouth, expandedWest],
+                [expandedNorth, expandedEast]
+            ]);
+
+            // 右下角图例轻度避让
             var legend = document.querySelector('.map-legend');
-
-            // 左侧安全区：右半屏专用，至少地图宽度 52%，轨迹完整落在右半边
-            var leftSafe = mapWidth * 0.52;
-            if (leftPanel) {
-                var panelRect = leftPanel.getBoundingClientRect();
-                leftSafe = Math.max(panelRect.right + 24, mapWidth * 0.52);
-            }
-
-            // 上偏移：将轨迹中心拉到容器中下部（300px 约对应中心偏下三分之一）
-            var topBias = 300;
-
-            // 右侧安全区：让开图例宽度
-            var rightSafe = 24;
+            var rightPad = 24;
+            var bottomPad = 20;
             if (legend) {
-                var legendRect = legend.getBoundingClientRect();
-                rightSafe = legendRect.width + 24;
+                var lr = legend.getBoundingClientRect();
+                rightPad = lr.width + 16;
+                bottomPad = Math.min(lr.height * 0.3, 40);
             }
 
-            // 底部安全区：仅微量偏移，过大会把轨迹顶回上方
-            var bottomSafe = 30;
-            if (legend) {
-                var legendRect = legend.getBoundingClientRect();
-                bottomSafe = Math.min(legendRect.height * 0.4, 50);
-            }
-
-            map.fitBounds(bounds, {
-                paddingTopLeft: L.point(leftSafe, topBias),
-                paddingBottomRight: L.point(rightSafe, bottomSafe),
-                maxZoom: 9,
+            map.fitBounds(expandedBounds, {
+                paddingTopLeft: [0, 0],
+                paddingBottomRight: [rightPad, bottomPad],
+                maxZoom: 4,
                 animate: false
             });
         }
