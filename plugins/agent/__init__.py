@@ -2,7 +2,6 @@
 
 import base64
 import os
-import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,15 +42,6 @@ driver = get_driver()
 common = on_message(priority=10)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-_PROCESSING_MESSAGES = [
-    "收到👌",
-    "🤔 让我想想…",
-    "👀 等一下，正在看…",
-    "⚡ 好，稍等片刻…",
-    "✨ 嗯，在处理了…",
-]
-
 
 @dataclass(slots=True)
 class AgentRequestContext:
@@ -300,10 +290,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     if not await message_gateway(event, messages):
         await common.finish()
 
-    # ── 私聊：网关通过后立即给反馈，覆盖媒体下载前的静默等待 ──
-    if group_id is None:
-        await UniMessage.text(random.choice(_PROCESSING_MESSAGES)).send()
-
     # ── Phase 3: 网关通过后才下载图片/音频/视频 ──
     images, _audio, videos = await download_media(image_downloaders, audio_downloaders, video_downloaders)
 
@@ -349,7 +335,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         videos=videos,
     )
     thread_id = _agent_thread_id(user_id, group_id)
-    # 硬门控：仅 ve/vep 前缀消息允许调用 ENS 工具
     from utils.ens_gate import _ens_caller_allowed, _ens_prefix
 
     cleaned = text.strip().lstrip("/")
