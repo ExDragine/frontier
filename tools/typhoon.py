@@ -1,11 +1,10 @@
 """台风信息查询工具。
 
-API 数据 → 内存缓存（TTL 可配置）→ Jinja2 渲染 HTML → Playwright 截图 → QQ 发送。
+API 数据 → Jinja2 渲染 HTML → Playwright 截图 → QQ 发送。
 """
 
 import base64
 import secrets
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -35,16 +34,6 @@ API_HEADERS = {
 }
 
 httpx_client = get_http_client("typhoon")
-
-# ── 缓存 ──
-_cache: dict[str, Any] = {}
-
-try:
-    from utils.configs import config as _typhoon_cfg
-
-    _cache_ttl = int(_typhoon_cfg.get("typhoon", {}).get("cache_ttl_seconds", 600))
-except Exception:
-    _cache_ttl = 600
 
 # ── 强度等级 ──
 _INTENSITY_KEYS = ["超强台风", "强台风", "台风", "强热带风暴", "热带风暴", "热带低压"]
@@ -104,38 +93,12 @@ def _get_icon_base64(level_key: str) -> str:
 
 
 # ═══════════════════════════════════════════════
-#  缓存
-# ═══════════════════════════════════════════════
-
-def _is_cache_valid() -> bool:
-    if not _cache:
-        return False
-    return (time.time() - _cache.get("fetch_time", 0)) < _cache_ttl
-
-
-def _get_cached_data() -> list[dict] | None:
-    if _is_cache_valid():
-        return _cache.get("data")
-    return None
-
-
-def _set_cache(data: list[dict]) -> None:
-    _cache["data"] = data
-    _cache["fetch_time"] = time.time()
-
-
-def clear_typhoon_cache() -> None:
-    _cache.clear()
-    logger.info("台风缓存已清空")
-
-
-# ═══════════════════════════════════════════════
 #  API 请求
 # ═══════════════════════════════════════════════
 
 async def _fetch_typhoon_data() -> list[dict] | None:
     try:
-        ts = int(time.time() * 1000)
+        ts = int(datetime.now().timestamp() * 1000)
         resp = await httpx_client.get(API_URL, headers=API_HEADERS, params={"v": ts})
         resp.raise_for_status()
         data = resp.json()
@@ -149,15 +112,7 @@ async def _fetch_typhoon_data() -> list[dict] | None:
 
 
 async def _get_typhoon_data() -> list[dict] | None:
-    cached = _get_cached_data()
-    if cached is not None:
-        logger.debug("台风数据命中缓存 (TTL=%ds)", _cache_ttl)
-        return cached
-    data = await _fetch_typhoon_data()
-    if data is not None:
-        _set_cache(data)
-        logger.debug("台风数据已刷新缓存")
-    return data
+    return await _fetch_typhoon_data()
 
 
 # ═══════════════════════════════════════════════
@@ -358,7 +313,7 @@ async def get_typhoon_info(typhoon_name: str | None = None) -> tuple[str, UniMes
     """查询当前活跃的台风信息。
 
     当用户询问「现在有什么台风」「台风路径」「xx台风」时调用此工具。
-    返回带地图路径和信息面板的截图图片。有多个活跃台风时依次展示。
+    返回带地图路径和信息面板的截图图片，路径详情已包含在图片中，无需额外引导。
 
     Args:
         typhoon_name: 可选，台风名称（中文或英文，如「米克拉」或「MEKKHALA」）。
@@ -400,12 +355,12 @@ async def get_typhoon_info(typhoon_name: str | None = None) -> tuple[str, UniMes
     if not images:
         return "台风信息渲染失败，请稍后再试", None
 
-    # 拼接文字摘要
+    # 拼接文字摘要（路径详情已包含在图片中）
     if len(active) == 1:
-        summary = f"🌀台风「{active[0]['name']}」信息如下"
+        summary = f"当前活跃台风「{active[0]['name']}」，路径情况如下："
     else:
         names_str = "、".join(t.get("name", "?") for t in active)
-        summary = f"当前活跃台风：{names_str}"
+        summary = f"当前活跃台风有 {names_str}，路径情况如下："
 
     # 拼接所有图片
     result_msg = images[0]
