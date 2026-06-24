@@ -47,6 +47,7 @@ _TOOL_MODULE_GROUPS = {
     "NRCeggs_details": "main",
     "NRCeggs_groups": "main",
     "NRCevent_calendar": "main",
+    "typhoon": "main",
     "iching": "divination",
     "tarot": "divination",
 }
