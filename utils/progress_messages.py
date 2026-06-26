@@ -64,6 +64,11 @@ _TOOL_MESSAGE_EXACT: dict[str, str] = {
     # 浏览器捕获
     "webpage_screenshot": "正在截取网页截图…",
     "webpage_recording": "正在录制网页视频…",
+    # NRC / 洛克王国
+    "get_nrc_merchant_current": "🛒正在打开远行商人货架…",
+    "get_nrc_eggs_details": "🥚正在感受精灵蛋…",
+    "get_nrc_eggs_groups": "📚正在查询精灵蛋组手册…",
+    "get_nrc_event_calendar": "🚪正在踹开魔方大门…",
 }
 
 # ── 前缀模式 ──────────────────────────────────────────────────────────────
