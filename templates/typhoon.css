@@ -204,3 +204,12 @@ body {
     opacity: 0.4;
     flex-shrink: 0;
 }
+
+.legend-overlay-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: #7B1FA2;
+    flex-shrink: 0;
+}
