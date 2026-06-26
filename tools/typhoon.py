@@ -33,6 +33,15 @@ API_HEADERS = {
     "Accept": "application/json",
 }
 
+# 图片下载专用头，不设 Accept 避免 CDN 返回 406
+IMG_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+}
+
 httpx_client = get_http_client("typhoon")
 
 # ── 强度等级 ──
@@ -60,6 +69,20 @@ _FORECAST_COLORS: dict[str, str] = {
 
 # ── 图标缓存 ──
 _icon_cache: dict[str, str] = {}
+
+# ── 图层叠加 ──
+_OVERLAY_CONFIG = {
+    "cloud": {
+        "api_url": "https://p.wztf121.com/product/Redar/cloud_zjwater_t_12.json",
+        "bounds": [[0.02, 80.02], [60.01, 179.96]],
+        "label": "卫星云图",
+    },
+    "radar": {
+        "api_url": "https://p.wztf121.com/product/Redar/radar_sc_tran_1x_12.json",
+        "bounds": [[15.54, 71.97], [54.01, 148.70]],
+        "label": "雷达拼图",
+    },
+}
 
 
 # ═══════════════════════════════════════════════
@@ -113,6 +136,48 @@ async def _fetch_typhoon_data() -> list[dict] | None:
 
 async def _get_typhoon_data() -> list[dict] | None:
     return await _fetch_typhoon_data()
+
+
+async def _fetch_latest_overlay(overlay_type: str) -> dict[str, Any] | None:
+    """获取最新图层图片，下载到内存 base64 编码为 data URL，返回嵌入 HTML 所需数据。"""
+    config = _OVERLAY_CONFIG.get(overlay_type)
+    if not config:
+        return None
+    try:
+        # 1. 从 JSON API 获取最新图片的元信息
+        resp = await httpx_client.get(config["api_url"], headers=API_HEADERS)
+        resp.raise_for_status()
+        data = resp.json()
+        if not isinstance(data, list) or len(data) == 0:
+            return None
+        latest = data[-1]
+        img_url: str = latest["url"]
+        name: str = latest["name"]
+
+        # 2. 下载图片到内存
+        img_resp = await httpx_client.get(img_url, headers=IMG_HEADERS)
+        img_resp.raise_for_status()
+        img_bytes = img_resp.content
+
+        # 3. base64 编码为 data URL，彻底消除浏览器端跨域/混合内容问题
+        b64 = base64.b64encode(img_bytes).decode("ascii")
+        data_url = f"data:image/png;base64,{b64}"
+        logger.info(
+            "图层 {} 下载完成: {} bytes → data URL {} chars",
+            overlay_type, len(img_bytes), len(data_url),
+        )
+
+        time_str = name.replace(".png", "")
+        dt = datetime.strptime(time_str, "%Y%m%d%H%M")
+        return {
+            "imageUrl": data_url,
+            "time": dt.strftime("%m-%d %H:%M"),
+            "bounds": config["bounds"],
+            "label": config["label"],
+        }
+    except Exception as e:
+        logger.error(f"获取图层 {overlay_type} 失败: {e}")
+        return None
 
 
 # ═══════════════════════════════════════════════
@@ -176,7 +241,7 @@ def _load_css() -> str:
     return (TEMPLATES_DIR / "typhoon.css").read_text(encoding="utf-8")
 
 
-def _build_template_data(typhoon: dict, pos_desc: str) -> dict[str, Any]:
+def _build_template_data(typhoon: dict, pos_desc: str, overlay_data: dict[str, Any] | None = None) -> dict[str, Any]:
     points = _get_valid_points(typhoon.get("points", []))
     if not points:
         raise ValueError("台风轨迹点数据为空")
@@ -220,6 +285,8 @@ def _build_template_data(typhoon: dict, pos_desc: str) -> dict[str, Any]:
         "windRadius12": radius12,
         "windRadius12Quad": current.get("radius12_quad"),
         "iconBase64": icon_base64,
+        "overlayData": overlay_data,  # 云图/雷达图层叠加数据
+        "debug": False,  # 调试模式：为 True 时前端显示轨迹安全展示区矩形
     }
 
     return {
@@ -239,6 +306,7 @@ def _build_template_data(typhoon: dict, pos_desc: str) -> dict[str, Any]:
         "pressure_val": current.get('pressure', '?'),
         "move_speed_val": move_speed,
         "typhoon_data": typhoon_data_json,
+        "overlay_data": overlay_data,  # 模板图例使用
     }
 
 
@@ -259,6 +327,7 @@ async def _screenshot_card(html: str) -> bytes:
 
     browser = await _get_browser()
     page = await browser.new_page(viewport={"width": 1200, "height": 800})
+    page.on("pageerror", lambda exc: logger.error("[台风渲染 JS 错误] {}", exc))
     try:
         await page.goto(f"file://{Path(cache_file).resolve()}")
         await page.wait_for_load_state("networkidle")
@@ -280,14 +349,14 @@ async def _screenshot_card(html: str) -> bytes:
             logger.warning("删除临时文件失败: %s", e)
 
 
-async def _render_single_typhoon(target: dict) -> bytes | None:
+async def _render_single_typhoon(target: dict, overlay_data: dict[str, Any] | None = None) -> bytes | None:
     """渲染单个台风信息为 PNG 字节。"""
     points = _get_valid_points(target.get("points", []))
     if not points:
         return None
     current = points[-1]
     pos_desc = await reverse_geocode(current["lat"], current["lng"])
-    tmpl_data = _build_template_data(target, pos_desc)
+    tmpl_data = _build_template_data(target, pos_desc, overlay_data)
     html = _render_html(tmpl_data)
     return await _screenshot_card(html)
 
@@ -309,11 +378,21 @@ def _find_typhoon_by_name(data: list[dict], name: str) -> dict | None:
 
 
 @tool(response_format="content_and_artifact")
-async def get_typhoon_info(typhoon_name: str | None = None) -> tuple[str, UniMessage | None]:
+async def get_typhoon_info(
+    typhoon_name: str | None = None, overlay: str | None = None
+) -> tuple[str, UniMessage | None]:
     """查询当前活跃的台风信息。
 
     当用户询问「现在有什么台风」「台风路径」「xx台风」时调用此工具。
     返回带地图路径、预报路径和信息面板的截图图片。
+
+    用户可在查询台风的同时叠加一个图层：
+    - 说「叠加雷达」「雷达图层」「看看雷达」→ overlay="radar"
+    - 说「叠加云图」「卫星云图」「看看云图」→ overlay="cloud"
+    - 不指定则不加图层。
+    **硬性规则：一次只能叠加一种图层（雷达或云图二选一）。如果用户同时要求
+    雷达图和云图，必须引导用户修改需求、只选其中一个重新提交，绝对不要
+    分别调用两次或自作主张挑一个。**
 
     注意：图片已包含所有路径详情，绝对不要追问用户「需要看具体哪个」「要看路径吗」
     之类的问题。直接展示图片即可。
@@ -321,7 +400,17 @@ async def get_typhoon_info(typhoon_name: str | None = None) -> tuple[str, UniMes
     Args:
         typhoon_name: 可选，台风名称（中文或英文，如「米克拉」或「MEKKHALA」）。
                       不传或为空时返回所有活跃台风的信息。
+        overlay: 可选，叠加图层类型。"cloud" 为卫星云图，"radar" 为雷达拼图。
+                 不传则不加图层。一次只接受一个值，传入多个视为无效。
     """
+    # 代码层校验：overlay 只接受单值
+    if overlay is not None and overlay not in ("radar", "cloud"):
+        return (
+            "一次只能叠加一种图层，雷达或云图二选一。"
+            "请明确指定 overlay=\"radar\" 或 overlay=\"cloud\"，不要同时传两个。",
+            None,
+        )
+
     data = await _get_typhoon_data()
     if data is None:
         return "获取台风数据失败，请稍后再试", None
@@ -340,11 +429,20 @@ async def get_typhoon_info(typhoon_name: str | None = None) -> tuple[str, UniMes
     else:
         targets = active
 
+    # 获取图层叠加数据（如果需要）
+    overlay_data = None
+    if overlay:
+        overlay_data = await _fetch_latest_overlay(overlay)
+        if overlay_data:
+            logger.info("叠加图层 {} 已就绪，传入模板渲染", overlay)
+        else:
+            logger.warning("叠加图层 {} 获取失败，将不叠加", overlay)
+
     # 并发渲染
     import asyncio
 
     results = await asyncio.gather(
-        *[_render_single_typhoon(t) for t in targets], return_exceptions=True
+        *[_render_single_typhoon(t, overlay_data) for t in targets], return_exceptions=True
     )
 
     images: list[UniMessage] = []
@@ -359,11 +457,15 @@ async def get_typhoon_info(typhoon_name: str | None = None) -> tuple[str, UniMes
         return "台风信息渲染失败，请稍后再试", None
 
     # 拼接文字摘要（路径详情已包含在图片中）
+    overlay_hint = ""
+    if overlay_data:
+        overlay_hint = f"（已叠加{overlay_data['label']} {overlay_data['time']}）"
+
     if len(active) == 1:
-        summary = f"当前活跃台风「{active[0]['name']}」，路径情况如下："
+        summary = f"当前活跃台风「{active[0]['name']}」{overlay_hint}，路径情况如下："
     else:
         names_str = "、".join(t.get("name", "?") for t in active)
-        summary = f"当前活跃台风有 {names_str}，路径情况如下："
+        summary = f"当前活跃台风有 {names_str}{overlay_hint}，路径情况如下："
 
     # 拼接所有图片
     result_msg = images[0]
