@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>台风 {{ name }} 信息</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css" />
     <style>{{ css_content }}</style>
 </head>
 <body>
@@ -78,221 +78,298 @@
             <div class="legend-item" style="margin-top:4px"><span class="legend-wind" style="background:#00CC00"></span>七级风圈</div>
             <div class="legend-item"><span class="legend-wind" style="background:#FFD600"></span>十级风圈</div>
             <div class="legend-item"><span class="legend-wind" style="background:#FF1744"></span>十二级风圈</div>
+            {% if overlay_data %}
+            <div class="legend-item" style="margin-top:4px"><span class="legend-overlay-dot"></span>{{ overlay_data.label }} {{ overlay_data.time }}</div>
+            {% endif %}
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js"></script>
     <script>
     (function () {
         var data = {{ typhoon_data | tojson }};
 
-        var map = L.map('map', {
-            attributionControl: false,
-            zoomControl: false
+        // ── 地图初始化 ──
+        var view = new ol.View({
+            center: ol.proj.fromLonLat([125, 20]),
+            zoom: 5
         });
 
-        L.tileLayer('https://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}', {
-            maxZoom: 18
-        }).addTo(map);
+        var map = new ol.Map({
+            target: 'map',
+            controls: [],
+            view: view,
+        });
 
-        // 收集所有轨迹坐标点（用于后续聚焦视野）
-        var typhoonPoints = [];
+        map.addLayer(new ol.layer.Tile({
+            source: new ol.source.XYZ({
+                url: 'https://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',
+                maxZoom: 18
+            })
+        }));
 
-        // ==== 1. 绘制历史轨迹线（天蓝色实线）====
-        if (data.historyPolyline && data.historyPolyline.length > 0) {
-            var histLatLngs = data.historyPolyline.map(function (p) { return [p[1], p[0]]; });
-            histLatLngs.forEach(function (ll) { typhoonPoints.push(ll); });
-
-            L.polyline(histLatLngs, {
-                color: '#00BFFF',
-                weight: 3,
-                opacity: 0.8
-            }).addTo(map);
-        }
-
-        // ==== 2. 绘制历史轨迹点（按强度着色）====
-        if (data.historyPoints) {
-            data.historyPoints.forEach(function (pt) {
-                var ll = [pt.lat, pt.lng];
-                typhoonPoints.push(ll);
-                L.circleMarker(ll, {
-                    radius: 5,
-                    fillColor: pt.color,
-                    color: '#333',
-                    weight: 1,
-                    fillOpacity: 0.9
-                }).addTo(map);
+        // ── 坐标转换捷径 ──
+        function to3857(lngLat) { return ol.proj.fromLonLat(lngLat); }
+        function fStyle(opts) { return new ol.style.Style(opts); }
+        function circleStyle(radius, fillColor, strokeColor, strokeWidth) {
+            return fStyle({
+                image: new ol.style.Circle({
+                    radius: radius,
+                    fill: new ol.style.Fill({ color: fillColor }),
+                    stroke: new ol.style.Stroke({ color: strokeColor, width: strokeWidth || 1 })
+                })
             });
         }
 
-        // ==== 3. 绘制预报路径（各机构虚线）====
+        // ==== 1. 历史轨迹线（天蓝色实线）====
+        if (data.historyPolyline && data.historyPolyline.length > 0) {
+            var histCoords = data.historyPolyline.map(function (p) { return to3857(p); });
+            var histLine = new ol.Feature({ geometry: new ol.geom.LineString(histCoords) });
+            histLine.setStyle(fStyle({
+                stroke: new ol.style.Stroke({ color: '#00BFFF', width: 3, opacity: 0.8 })
+            }));
+            var histLineSrc = new ol.source.Vector({ features: [histLine] });
+            map.addLayer(new ol.layer.Vector({ source: histLineSrc }));
+        }
+
+        // ==== 2. 历史轨迹点（按强度着色）====
+        if (data.historyPoints) {
+            var histPtSrc = new ol.source.Vector();
+            data.historyPoints.forEach(function (pt) {
+                var f = new ol.Feature({ geometry: new ol.geom.Point(to3857([pt.lng, pt.lat])) });
+                f.setStyle(circleStyle(5, pt.color, '#333', 1));
+                histPtSrc.addFeature(f);
+            });
+            map.addLayer(new ol.layer.Vector({ source: histPtSrc }));
+        }
+
+        // ==== 3. 预报路径（各机构虚线）+ 预报节点 ====
         if (data.forecastPaths) {
+            var fcLineSrc = new ol.source.Vector();
+            var fcPtSrc = new ol.source.Vector();
             data.forecastPaths.forEach(function (path) {
                 if (!path.points || path.points.length < 2) return;
-                var fcLatLngs = path.points.map(function (p) {
-                    return [p[1], p[0]];
-                });
-                // 从当前台风位置连线到预报路径，避免断开
+                var pts = path.points.slice(); // [lng, lat]
                 if (data.currentPos) {
-                    fcLatLngs.unshift([data.currentPos[0], data.currentPos[1]]);
+                    pts.unshift([data.currentPos[1], data.currentPos[0]]);
                 }
-                // 预报路径虚线（含连接段）
-                L.polyline(fcLatLngs, {
-                    color: path.color,
-                    weight: 2.5,
-                    opacity: 0.75,
-                    dashArray: '8, 6'
-                }).addTo(map);
-                // 预报节点圆点（跳过当前台风位置，仅渲染预报节点）
-                for (var i = data.currentPos ? 1 : 0; i < fcLatLngs.length; i++) {
-                    L.circleMarker(fcLatLngs[i], {
-                        radius: 4,
-                        fillColor: '#fff',
-                        color: path.color,
-                        weight: 2,
-                        fillOpacity: 1,
-                        opacity: 0.85
-                    }).addTo(map);
+                var coords = pts.map(function (p) { return to3857(p); });
+                var line = new ol.Feature({ geometry: new ol.geom.LineString(coords) });
+                line.setStyle(fStyle({
+                    stroke: new ol.style.Stroke({ color: path.color, width: 2.5, opacity: 0.75, lineDash: [8, 6] })
+                }));
+                fcLineSrc.addFeature(line);
+
+                // 预报节点（跳过连接段起点，仅渲染预报节点本身）
+                for (var i = data.currentPos ? 1 : 0; i < coords.length; i++) {
+                    var pf = new ol.Feature({ geometry: new ol.geom.Point(coords[i]) });
+                    pf.setStyle(circleStyle(4, '#fff', path.color, 2));
+                    fcPtSrc.addFeature(pf);
                 }
             });
+            map.addLayer(new ol.layer.Vector({ source: fcLineSrc }));
+            map.addLayer(new ol.layer.Vector({ source: fcPtSrc }));
         }
 
-        // ==== 4. 风圈（仅当前点，象限非对称多边形）====
+        // ==== 4. 风圈 + 当前点 ====
         if (data.currentPos) {
-            var curLatLng = [data.currentPos[0], data.currentPos[1]];
-            typhoonPoints.push(curLatLng);
+            var clng = data.currentPos[1];
+            var clat = data.currentPos[0];
+            var cur3857 = to3857([clng, clat]);
 
-            /** 从中心出发沿 bearing 方向走 radiusKm 公里到达的点 */
-            function qPt(center, bearing, radiusKm) {
+            /** 从中心沿 bearing 走 radiusKm 公里返回 [lng, lat] */
+            function qPtLngLat(centerLng, centerLat, bearing, radiusKm) {
                 var R = 6371;
-                var lat1 = center[0] * Math.PI / 180;
-                var lng1 = center[1] * Math.PI / 180;
+                var lat1 = centerLat * Math.PI / 180;
+                var lng1 = centerLng * Math.PI / 180;
                 var b = bearing * Math.PI / 180;
                 var d = radiusKm / R;
                 var lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(b));
                 var lng2 = lng1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
-                return [lat2 * 180 / Math.PI, lng2 * 180 / Math.PI];
+                return [lng2 * 180 / Math.PI, lat2 * 180 / Math.PI];
             }
 
-            /** 绘制单个风圈：有象限数据时画非对称多边形，否则回退标准圆 */
-            function drawWindRing(center, quad, simpleRadius, color) {
+            function drawWindRing(centerLng, centerLat, quad, simpleRadius, color) {
                 if (quad && quad.ne != null && quad.nw != null && quad.se != null && quad.sw != null) {
                     var steps = 10;
                     var pts = [];
-                    // NE: 0° (北) → 90° (东)
-                    for (var i = 0; i <= steps; i++) pts.push(qPt(center, (i / steps) * 90, quad.ne));
-                    // SE: 90° (东) → 180° (南)
-                    for (var i = 0; i <= steps; i++) pts.push(qPt(center, 90 + (i / steps) * 90, quad.se));
-                    // SW: 180° (南) → 270° (西)
-                    for (var i = 0; i <= steps; i++) pts.push(qPt(center, 180 + (i / steps) * 90, quad.sw));
-                    // NW: 270° (西) → 360° (北)
-                    for (var i = 0; i <= steps; i++) pts.push(qPt(center, 270 + (i / steps) * 90, quad.nw));
-                    L.polygon(pts, {
-                        color: color,
-                        fillColor: color,
-                        fillOpacity: 0.12,
-                        weight: 1,
-                        opacity: 0.4
-                    }).addTo(map);
+                    // NE: 0°(北) → 90°(东)
+                    for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, (i / steps) * 90, quad.ne));
+                    // SE: 90°(东) → 180°(南)
+                    for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, 90 + (i / steps) * 90, quad.se));
+                    // SW: 180°(南) → 270°(西)
+                    for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, 180 + (i / steps) * 90, quad.sw));
+                    // NW: 270°(西) → 360°(北)
+                    for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, 270 + (i / steps) * 90, quad.nw));
+                    // 闭合环：首尾相接
+                    pts.push(pts[0].slice());
+                    var ringCoords = pts.map(function (p) { return to3857(p); });
+                    var poly = new ol.Feature({ geometry: new ol.geom.Polygon([ringCoords]) });
+                    poly.setStyle(fStyle({
+                        fill: new ol.style.Fill({ color: color + '1F' }),
+                        stroke: new ol.style.Stroke({ color: color + '66', width: 1 }),
+                    }));
+                    var src = new ol.source.Vector({ features: [poly] });
+                    map.addLayer(new ol.layer.Vector({ source: src }));
                 } else if (simpleRadius && simpleRadius > 0) {
-                    L.circle(center, {
-                        radius: simpleRadius * 1000,
-                        color: color,
-                        fillColor: color,
-                        fillOpacity: 0.15,
-                        weight: 1.5,
-                        opacity: 0.4
-                    }).addTo(map);
+                    var circ = new ol.Feature({ geometry: new ol.geom.Circle(cur3857, simpleRadius * 1000) });
+                    circ.setStyle(fStyle({
+                        fill: new ol.style.Fill({ color: color + '26' }),
+                        stroke: new ol.style.Stroke({ color: color + '66', width: 1.5 }),
+                    }));
+                    var src = new ol.source.Vector({ features: [circ] });
+                    map.addLayer(new ol.layer.Vector({ source: src }));
                 }
             }
 
-            drawWindRing(curLatLng, data.windRadius7Quad, data.windRadius7, '#00CC00');
-            drawWindRing(curLatLng, data.windRadius10Quad, data.windRadius10, '#FFD600');
-            drawWindRing(curLatLng, data.windRadius12Quad, data.windRadius12, '#FF1744');
+            drawWindRing(clng, clat, data.windRadius7Quad, data.windRadius7, '#00CC00');
+            drawWindRing(clng, clat, data.windRadius10Quad, data.windRadius10, '#FFD600');
+            drawWindRing(clng, clat, data.windRadius12Quad, data.windRadius12, '#FF1744');
 
             // ==== 5. 当前点 — 自定义图标 ====
             if (data.iconBase64) {
                 var iconSize = 44;
-
-                var iconHtml = '<img src="' + data.iconBase64 + '" style="'
-                    + 'width:' + iconSize + 'px;height:' + iconSize + 'px;'
-                    + 'filter:drop-shadow(0 0 6px rgba(255,255,255,0.95)) drop-shadow(0 0 3px rgba(255,255,255,0.8));'
-                    + '">';
-
-                var customIcon = L.divIcon({
-                    className: '',
-                    html: iconHtml,
-                    iconSize: [iconSize, iconSize],
-                    iconAnchor: [iconSize / 2, iconSize / 2]
-                });
-
-                L.marker(curLatLng, { icon: customIcon }).addTo(map);
+                var markerEl = document.createElement('div');
+                var img = document.createElement('img');
+                img.src = data.iconBase64;
+                img.style.cssText =
+                    'width:' + iconSize + 'px;height:' + iconSize + 'px;' +
+                    'filter:drop-shadow(0 0 6px rgba(255,255,255,0.95)) drop-shadow(0 0 3px rgba(255,255,255,0.8));';
+                markerEl.appendChild(img);
+                map.addOverlay(new ol.Overlay({
+                    position: cur3857,
+                    positioning: 'center-center',
+                    element: markerEl,
+                    stopEvent: false
+                }));
             } else {
-                // 无图标时的 fallback
-                L.circleMarker(curLatLng, {
-                    radius: 9,
-                    fillColor: data.currentColor || '#FB8C00',
-                    color: '#fff',
-                    weight: 2.5,
-                    fillOpacity: 1
-                }).addTo(map);
+                var fallback = new ol.Feature({ geometry: new ol.geom.Point(cur3857) });
+                fallback.setStyle(circleStyle(9, data.currentColor || '#FB8C00', '#fff', 2.5));
+                var fbSrc = new ol.source.Vector({ features: [fallback] });
+                map.addLayer(new ol.layer.Vector({ source: fbSrc }));
             }
         }
 
-        // ==== 6. 地理膨胀聚焦 ====
-        /**
-         * 在原始 bounds 西侧和北侧膨胀经纬度，利用 fitBounds 的居中行为
-         * 将真实轨迹自然挤到右下角。与像素调参不同，膨胀比例对所有台风通用。
-         * @param {L.Map} map
-         * @param {L.LatLngExpression[]} typhoonPoints
-         */
-        function focusTyphoonPath(map, typhoonPoints) {
-            if (!typhoonPoints || typhoonPoints.length === 0) {
-                map.setView([20, 125], 5);
-                return;
-            }
+        // ═══════════════════════════════════════════════
+        //  视野控制
+        // ═══════════════════════════════════════════════
 
-            var bounds = L.latLngBounds(typhoonPoints);
-            if (!bounds.isValid()) {
-                map.setView([20, 125], 5);
-                return;
-            }
+        /** 计算"轨迹安全展示区"——屏幕像素坐标的矩形区域。 */
+        function getTyphoonSafeRect(map) {
+            var sz = map.getSize();
+            if (!sz) return null;
+            var mw = sz[0], mh = sz[1];
 
-            // 原始经纬度跨度
-            var lngSpan = bounds.getEast() - bounds.getWest();
-            var latSpan = bounds.getNorth() - bounds.getSouth();
+            var panel = document.querySelector('.left-panel');
+            var left = panel ? panel.getBoundingClientRect().right + 24 : 394;
 
-            // 西侧膨胀 80% lngSpan → 真实轨迹挤到右侧
-            // 北侧膨胀 50% latSpan → 真实轨迹下沉
-            var expandedWest = bounds.getWest() - lngSpan * 0.8;
-            var expandedNorth = bounds.getNorth() + latSpan * 0.5;
-            var expandedSouth = bounds.getSouth();
-            var expandedEast = bounds.getEast();
-
-            var expandedBounds = L.latLngBounds([
-                [expandedSouth, expandedWest],
-                [expandedNorth, expandedEast]
-            ]);
-
-            // 右下角图例轻度避让
             var legend = document.querySelector('.map-legend');
-            var rightPad = 24;
-            var bottomPad = 20;
-            if (legend) {
-                var lr = legend.getBoundingClientRect();
-                rightPad = lr.width + 16;
-                bottomPad = Math.min(lr.height * 0.3, 40);
-            }
+            var right = legend ? legend.getBoundingClientRect().left - 24 : mw - 24;
 
-            map.fitBounds(expandedBounds, {
-                paddingTopLeft: [0, 0],
-                paddingBottomRight: [rightPad, bottomPad],
-                maxZoom: 4,
-                animate: false
-            });
+            var top = 80;
+
+            // 底部不受图例影响
+            var bottom = mh - 24;
+
+            return { left: left, right: right, top: top, bottom: bottom };
         }
 
-        focusTyphoonPath(map, typhoonPoints);
+        /** 收集所有需要可见的地理点，构建 EPSG:4326 extent [minLng, minLat, maxLng, maxLat] */
+        function createDisplayExtent(data) {
+            var ext = ol.extent.createEmpty();
+
+            if (data.historyPolyline) {
+                data.historyPolyline.forEach(function (p) { ol.extent.extendCoordinate(ext, p); });
+            }
+            if (data.forecastPaths) {
+                data.forecastPaths.forEach(function (path) {
+                    if (!path.points) return;
+                    path.points.forEach(function (p) { ol.extent.extendCoordinate(ext, p); });
+                });
+            }
+            if (data.currentPos) {
+                ol.extent.extendCoordinate(ext, [data.currentPos[1], data.currentPos[0]]);
+            }
+
+            if (ol.extent.isEmpty(ext)) return null;
+            return ol.extent.buffer(ext, 0.3);
+        }
+
+        /** 画调试矩形（仅 debug 模式）。 */
+        function drawDebugRect(data, safeRect) {
+            if (!data.debug) return;
+            var div = document.createElement('div');
+            div.style.cssText =
+                'position:absolute;z-index:9999;border:2px dashed #ff1744;' +
+                'background:rgba(255,23,68,0.08);pointer-events:none;' +
+                'left:' + safeRect.left + 'px;top:' + safeRect.top + 'px;' +
+                'width:' + (safeRect.right - safeRect.left) + 'px;' +
+                'height:' + (safeRect.bottom - safeRect.top) + 'px;';
+            var label = document.createElement('span');
+            label.textContent = '安全展示区';
+            label.style.cssText =
+                'position:absolute;top:4px;left:8px;font-size:11px;color:#ff1744;' +
+                'font-family:monospace;white-space:nowrap;';
+            div.appendChild(label);
+            document.getElementById('typhoon-card').appendChild(div);
+        }
+
+        /** 统一入口：计算安全区 → 将 extent fit 到安全区像素矩形。 */
+        function focusTyphoonPath(map, data) {
+            map.updateSize();
+
+            var ext4326 = createDisplayExtent(data);
+            if (!ext4326) {
+                view.setCenter(ol.proj.fromLonLat([125, 20]));
+                view.setZoom(5);
+                return;
+            }
+
+            var safeRect = getTyphoonSafeRect(map);
+            if (!safeRect) return;
+            drawDebugRect(data, safeRect);
+
+            var sz = map.getSize();
+            if (!sz) return;
+            var padding = [
+                safeRect.top,                    // 上
+                sz[0] - safeRect.right,          // 右
+                sz[1] - safeRect.bottom,         // 下
+                safeRect.left                     // 左
+            ];
+
+            var ext3857 = ol.proj.transformExtent(ext4326, 'EPSG:4326', 'EPSG:3857');
+            view.fit(ext3857, { padding: padding, maxZoom: 10, duration: 0 });
+
+            // fit 之后手动把地图 center 向左偏移，让路径在屏幕视觉上靠右
+            // 左侧留出空间让 overlay（云图/雷达）多露一些
+            var safeW = safeRect.right - safeRect.left;
+            var mapCenterPx = map.getPixelFromCoordinate(view.getCenter());
+            if (!mapCenterPx) return;
+            var leftShift = safeW * 0.15;
+            var newCenter = map.getCoordinateFromPixel([mapCenterPx[0] - leftShift, mapCenterPx[1]]);
+            view.setCenter(newCenter);
+        }
+
+        // 所有图层渲染完成后，最后一环聚焦视野
+        try {
+            focusTyphoonPath(map, data);
+        } catch (e) {
+            // 地图未就绪时 focus 可能失败，保持默认视图，不影响叠加层
+        }
+
+        // ==== 6. 图层叠加（云图 / 雷达）====
+        if (data.overlayData) {
+            var ov = data.overlayData;
+            var ovExtent4326 = [ov.bounds[0][1], ov.bounds[0][0], ov.bounds[1][1], ov.bounds[1][0]];
+            map.addLayer(new ol.layer.Image({
+                source: new ol.source.ImageStatic({
+                    url: ov.imageUrl,
+                    imageExtent: ol.proj.transformExtent(ovExtent4326, 'EPSG:4326', 'EPSG:3857'),
+                }),
+                opacity: 0.65
+            }));
+        }
     })();
     </script>
 </body>
