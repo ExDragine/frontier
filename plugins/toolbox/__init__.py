@@ -283,12 +283,10 @@ async def handle_setting(event: MessageEvent):
     text = text.replace("/model", "")
     if not text:
         await UniMessage.text(
-            f"""
-            当前默认使用的模型为: {EnvConfig.ADVAN_MODEL}\n
-            当前辅助模型为:{EnvConfig.BASIC_MODEL}\n
-            当前绘图模型为:{EnvConfig.PAINT_MODEL}\n
-            当前视频模型为:{EnvConfig.VIDEO_MODEL}
-            """
+            f"当前默认模型为: {EnvConfig.ADVAN_MODEL}\n"
+            f"当前辅助模型为: {EnvConfig.BASIC_MODEL}\n"
+            f"当前绘图模型为: {EnvConfig.PAINT_MODEL}\n"
+            f"当前视频模型为: {EnvConfig.VIDEO_MODEL}"
         ).send()
 
 
