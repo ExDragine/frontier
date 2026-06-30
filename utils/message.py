@@ -15,7 +15,7 @@ from nonebot.exception import ActionFailed
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from utils.alconna import UniMessage
+from utils.alconna import Image, UniMessage, Video
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
 from utils.database import MessageDatabase
@@ -558,23 +558,34 @@ async def message_extract(  # noqa: C901
 
 
 async def send_artifacts(artifacts):
-    """发送提取到的工件（并行发送）"""
+    """发送提取到的工件。多段媒体 UniMessage 拆分为独立消息串行发送。"""
 
-    tasks = []
+    parallel_tasks = []
+    serial_artifacts: list[UniMessage] = []
+
     for artifact in artifacts:
         if isinstance(artifact, UniMessage):
-            try:
-                tasks.append(asyncio.create_task(artifact.send()))
-            except Exception as e:
-                logger.exception("创建发送任务失败: %s", e)
+            media_segs = [s for s in artifact if isinstance(s, (Image, Video))]
+            if len(media_segs) > 1:
+                # 多段媒体：拆为独立 UniMessage，串行发送以保证顺序
+                serial_artifacts.extend(UniMessage([seg]) for seg in media_segs)
+                continue
+        try:
+            parallel_tasks.append(asyncio.create_task(artifact.send()))
+        except Exception as e:
+            logger.exception("创建发送任务失败: %s", e)
 
-    if not tasks:
-        return
+    if parallel_tasks:
+        results = await asyncio.gather(*parallel_tasks, return_exceptions=True)
+        for res in results:
+            if isinstance(res, Exception):
+                logger.exception("发送工件时发生错误: %s", res)
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    for res in results:
-        if isinstance(res, Exception):
-            logger.exception("发送工件时发生错误: %s", res)
+    for single in serial_artifacts:
+        try:
+            await single.send()
+        except Exception as e:
+            logger.exception("发送多段工件时发生错误: %s", e)
 
 
 def outgoing_message_content(raw: Any) -> str:

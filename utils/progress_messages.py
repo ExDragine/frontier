@@ -21,6 +21,8 @@ _TOOL_MESSAGE_EXACT: dict[str, str] = {
     "summarize_messages": "正在总结聊天记录…",
     "search_messages": "正在搜索历史消息…",
     # 天气 / 地球
+    "ens_normal": "🌐 正在查询…",
+    "ens_professional": "🌐 正在专业地构建地球可视化数据中…",
     "mars_weather": "正在获取火星天气…",
     "get_wind_map": "正在获取风向图…",
     "get_static_china_radar": "正在获取雷达图…",
@@ -57,6 +59,16 @@ _TOOL_MESSAGE_EXACT: dict[str, str] = {
     "get_wikipedia_pages": "正在查询维基百科…",
     # API
     "get_deepseek_api_balance": "正在查询 API 余额…",
+    # 台风
+    "get_typhoon_info": "🌀 正在查询台风信息…",
+    # 浏览器捕获
+    "webpage_screenshot": "正在截取网页截图…",
+    "webpage_recording": "正在录制网页视频…",
+    # NRC / 洛克王国
+    "get_nrc_merchant_current": "🛒正在打开远行商人货架…",
+    "get_nrc_eggs_details": "🥚正在感受精灵蛋…",
+    "get_nrc_eggs_groups": "📚正在查询精灵蛋组手册…",
+    "get_nrc_event_calendar": "🚪正在踹开魔方大门…",
 }
 
 # ── 前缀模式 ──────────────────────────────────────────────────────────────

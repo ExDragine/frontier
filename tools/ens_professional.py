@@ -1,17 +1,38 @@
-"""Earth Nullschool 专业模式工具。
+"""地球可视化数据 专业模式工具。
 
 数字参数接口：用户通过编号选择选项，LLM/用户按 "vep" 触发。
 所有模式默认播放动画，用户可传 animoff 暂停。
 """
 
+import asyncio
 import re
+import time as _time
 
 from langchain_core.tools import tool
 from nonebot import logger
 
+from utils.ens_gate import _ens_prefix
 from utils.alconna import UniMessage
 from utils.browser_capture import record_video, screenshot
 from utils.tool_helpers import tool_timer
+
+# 内存缓存：同一 URL 在 TTL 内直接返回，避免重复生成视频/截图。
+_ens_cache: dict = {}
+_ENS_CACHE_TTL = 1800  # 30 分钟
+
+
+def clear_ens_cache():
+    """清理 ENS 专业模式内存缓存，由 shutdown hook 调用。"""
+    _ens_cache.clear()
+    logger.info("ENS 专业模式缓存已清理")
+
+# ── 模式编号 → 中文名 ──
+_MODE_NAMES = {1: "大气", 2: "海洋", 3: "大气化学", 4: "颗粒物", 5: "空间天气", 6: "生物"}
+
+_EARTH_LOADING_WAIT = (
+    "(function(){var l=document.getElementById('load');if(!l)return true;"
+    "var s=window.getComputedStyle(l);return s.display==='none'||s.visibility==='hidden';})()"
+)
 
 # ── 参数映射表 ──
 
@@ -76,7 +97,7 @@ _OVERLAY = {
 
 _BIO_ANNOT = {0: None, 1: "fires"}
 
-_ZOOM_DEFAULT = {"wind": 4500, "ocean": 300, "chem": 4500, "particulates": 4500, "space": 800, "bio": 1500}
+_ZOOM_DEFAULT = {"wind": 5000, "ocean": 4000, "chem": 5000, "particulates": 5000, "space": 1000, "bio": 4000}
 
 # 测试环境无法跨文件导入 _CITY_COORDS 时的 fallback
 _CITY_COORDS_FALLBACK: dict[str, tuple[float, float]] = {
@@ -103,7 +124,10 @@ def _build_professional_url(
     paused: bool = False,
 ) -> str:
     """拼接 hash-fragment URL。"""
-    segments = [time, mode, height, animation]
+    if animation == "primary/waves":
+        segments = [time, mode, animation]
+    else:
+        segments = [time, mode, height, animation]
 
     if annot:
         segments.append(f"annot={annot}")
@@ -129,6 +153,38 @@ def _parse_time(raw: str) -> str:
     return f"#{m[1]}/{m[2]}/{m[3]}/{m[4]}{m[5]}Z"
 
 
+def _format_time_text(time: str) -> str:
+    """将 URL 时间片段转为用户可读文本。"""
+    if time == "#current":
+        return "现在"
+    m = re.match(r"^#(\d{4})/(\d{2})/(\d{2})/(\d{2})(\d{2})Z$", time)
+    if m:
+        y, mo, d, h, mi = m.groups()
+        return f"{y}年{int(mo)}月{int(d)}日{h}:{mi}"
+    return time
+
+
+def _build_return_text(location_text: str, time_text: str, mode_name: str, page_data: dict) -> str:
+    """构建返回给 Agent 的自然语言文本，Agent 可直接用于回复无需再调工具。"""
+    coords_str = f"（{page_data['coords']}）" if page_data.get("coords") else ""
+
+    values = []
+    if page_data.get("spotB.value"):
+        label = page_data.get("spotB.label", "")
+        values.append(f"{label} {page_data['spotB.value']}" if label else page_data["spotB.value"])
+    if page_data.get("spotA.value"):
+        label = page_data.get("spotA.label", "")
+        values.append(f"{label} {page_data['spotA.value']}" if label else page_data["spotA.value"])
+    data_str = "，".join(values) if values else "数据已返回"
+
+    time_str = f"，数据时间 {page_data['time']}" if page_data.get("time") else ""
+
+    return (
+        f"{location_text}{coords_str}{time_text}的{mode_name}：{data_str}{time_str}"
+        f" [本工具只返回{mode_name}数据，其他场景请让用户发新的vep查询]"
+    )
+
+
 async def run_ens_professional(
     p1: int = 1,
     p2: int = 0,
@@ -143,6 +199,15 @@ async def run_ens_professional(
     bio_annot: int = 0,
 ) -> tuple[str, UniMessage | None]:
     """专业模式核心逻辑。"""
+    # 硬门控：非 vep 前缀消息触发的调用直接拒绝
+    if _ens_prefix.get() != "vep":
+        logger.info("ens_professional 被非 vep 前缀触发，拒绝执行")
+        return (
+            "本次消息未带 vep 前缀，不执行。请告知用户发送 vep + 参数来查询，"
+            "参数菜单可通过 /vehelp 命令查看。",
+            None,
+        )
+
     try:
         mode = _MODE.get(p1)
         if mode is None:
@@ -169,11 +234,13 @@ async def run_ens_professional(
                 return f"无效生物注释编号: {bio_annot}（0-1）", None
 
         # 坐标解析：支持数字经纬度或城市名
+        location_text: str  # 用于返回消息
         try:
             lon = float(p6)
             lat = float(p7)
             if lon == 0 and lat == 0:
                 return "请提供有效的经纬度坐标或城市名（如：北京、广州）", None
+            location_text = f"({lon}, {lat})"
         except ValueError:
             # 非数字 → 作为城市名查找。优先用 ens_normal 字典，测试环境 fallback 小字典
             try:
@@ -186,6 +253,7 @@ async def run_ens_professional(
             location = p6.strip()
             if not location:
                 return "请提供有效的经纬度坐标或城市名", None
+            location_text = location
             if location in _coords:
                 lon, lat = _coords[location]
             else:
@@ -193,6 +261,7 @@ async def run_ens_professional(
                 for city, coords in sorted(_coords.items(), key=lambda x: -len(x[0])):
                     if city in location or location in city:
                         matched = coords
+                        location_text = city
                         break
                 if matched:
                     lon, lat = matched
@@ -217,12 +286,16 @@ async def run_ens_professional(
             paused=paused,
         )
 
-        desc = f"模式={mode}"
-        if overlay:
-            desc += f", 叠加层={overlay}"
-        if annot:
-            desc += f", 注释={annot}"
-        desc += f", 坐标=({lon},{lat}), zoom={zoom}"
+        mode_name = _MODE_NAMES.get(p1, mode)
+        time_text = _format_time_text(time)
+
+        # 检查内存缓存：同一 URL 在 TTL 内直接返回
+        cached = _ens_cache.get(url)
+        if cached and (_time.time() - cached[2]) < _ENS_CACHE_TTL:
+            logger.info(f"ens_professional 缓存命中: {url}")
+            return cached[0], cached[1]  # type: ignore[return-value]
+
+        page_data: dict = {}
 
         if paused:
             image_bytes = await screenshot(
@@ -232,23 +305,35 @@ async def run_ens_professional(
                 wait_until="networkidle",
                 timeout=60000,
                 wait_selector="canvas",
-                post_wait_ms=1500,
+                wait_function=_EARTH_LOADING_WAIT,
+                post_wait_ms=5000,
                 hard_wait=True,
+                ready_timeout=30000,
+                page_data_out=page_data,
             )
-            return f"✅ Earth Nullschool 专业模式 - {desc}（静态截图）", UniMessage.image(raw=image_bytes)
+            text = _build_return_text(location_text, time_text, mode_name, page_data)
+            artifact = UniMessage.image(raw=image_bytes)
+            _ens_cache[url] = (text, artifact, _time.time())
+            return text, artifact
         else:
             video_bytes = await record_video(
                 url=url,
-                duration=10,
+                duration=3,
                 width=1920,
                 height=1080,
                 wait_until="networkidle",
                 timeout=60000,
                 wait_selector="canvas",
-                post_wait_ms=1500,
+                wait_function=_EARTH_LOADING_WAIT,
+                post_wait_ms=5000,
                 hard_wait=True,
+                ready_timeout=30000,
+                page_data_out=page_data,
             )
-            return f"✅ Earth Nullschool 专业模式 - {desc}（10秒视频）", UniMessage.video(raw=video_bytes)
+            text = _build_return_text(location_text, time_text, mode_name, page_data)
+            artifact = UniMessage.video(raw=video_bytes)
+            _ens_cache[url] = (text, artifact, _time.time())
+            return text, artifact
     except Exception as e:
         logger.error(f"ens_professional 失败: {e}")
         return f"获取失败: {e}", None
@@ -268,10 +353,13 @@ async def ens_professional(
     p10: str = "0",
     bio_annot: int = 0,
 ) -> tuple[str, UniMessage | None]:
-    """Earth Nullschool 专业模式——数字参数方式查看地球可视化数据。
+    """地球可视化数据 专业模式——数字参数方式查看地球数据。
 
-    触发关键词：vep、专业模式
-    用户消息以 "vep" 开头时优先匹配本工具（如 "vep 1,0,1,0,1,116.4,39.9,1850"）。
+    ⚠️ 仅在用户消息以 "vep" 开头时调用（如 "vep 1,0,1,0,1,116.4,39.9,1850"）。
+
+    以下情况绝对不要调用：
+    - 用户消息不以 "vep" 开头
+    - 用户只是聊到大气/海洋/天气等话题但没明确要求地球可视化
 
     参数（按顺序，逗号/空格分隔均可）：
     p1 - 观察模式：1=大气 2=海洋 3=大气化学 4=颗粒物 5=空间天气 6=生物
@@ -300,15 +388,7 @@ async def ens_professional(
     """
     async with tool_timer("ens_professional", {"p1": p1, "p4": p4, "p6": p6, "p7": p7}):
         return await run_ens_professional(
-            p1=p1,
-            p2=p2,
-            p3=p3,
-            p4=p4,
-            p5=p5,
-            p6=p6,
-            p7=p7,
-            p8=p8,
-            p9=p9,
-            p10=p10,
+            p1=p1, p2=p2, p3=p3, p4=p4, p5=p5,
+            p6=p6, p7=p7, p8=p8, p9=p9, p10=p10,
             bio_annot=bio_annot,
         )

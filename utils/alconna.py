@@ -7,6 +7,6 @@
 （NoneBot 插件发现阶段），不在本模块中调用。
 """
 
-from nonebot_plugin_alconna import At, Image, Target, Text, UniMessage  # noqa: E402
+from nonebot_plugin_alconna import At, Image, Target, Text, UniMessage, Video  # noqa: E402
 
-__all__ = ["At", "Image", "Target", "Text", "UniMessage"]
+__all__ = ["At", "Image", "Target", "Text", "UniMessage", "Video"]

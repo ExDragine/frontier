@@ -247,3 +247,10 @@ body {
     font: var(--font-label-sm);
     color: var(--outline);
 }
+
+.merchant-disclaimer {
+    text-align: center;
+    padding: 0;
+    font: var(--font-label-sm);
+    color: var(--outline);
+}

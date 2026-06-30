@@ -10,7 +10,8 @@ from .mcp_client import mcp_get_tools
 _EXCLUDED_MODULES = {"__init__", "mcp_client", "artifact_bridge"}
 
 _SUBAGENT_GROUPS = ("research", "astro", "earth", "media", "memory", "divination", "external")
-_ALL_TOOL_GROUPS = ("main", *_SUBAGENT_GROUPS)
+_RESTRICTED_GROUPS = ("restricted",)
+_ALL_TOOL_GROUPS = ("main", *_SUBAGENT_GROUPS, *_RESTRICTED_GROUPS)
 
 _TOOL_MODULE_GROUPS = {
     "adapter": "main",
@@ -32,19 +33,21 @@ _TOOL_MODULE_GROUPS = {
     "satellite": "astro",
     "space_weather": "astro",
     "earthquake": "earth",
-    "ens_normal": "earth",
-    "ens_professional": "earth",
+    "ens_normal": "restricted",
+    "ens_professional": "restricted",
+
     "radar": "earth",
     "weather": "earth",
     "paint": "main",
     "video": "main",
     "memory": "memory",
     "NRCmerchant_current": "main",
-    "webpage_screenshot": "main",
-    "webpage_recording": "main",
+    "webpage_screenshot": "restricted",
+    "webpage_recording": "restricted",
     "NRCeggs_details": "main",
     "NRCeggs_groups": "main",
     "NRCevent_calendar": "main",
+    "typhoon": "main",
     "iching": "divination",
     "tarot": "divination",
 }
@@ -103,6 +106,10 @@ class ModuleTools:
             for tool_obj in self._mcp_tools:
                 self.tool_metadata[tool_obj.name] = {"module": "mcp", "group": "external"}
         return self._mcp_tools
+
+    @property
+    def restricted_tools(self):
+        return self.subagent_tools.get("restricted", [])
 
     @property
     def main_tools(self):
