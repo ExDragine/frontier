@@ -385,9 +385,12 @@ async def on_bot_connect():
             lock_info = read_update_lock(f.read())
         os.remove(".lock")
         for group_id in EnvConfig.ANNOUNCE_GROUP_ID:
-            await UniMessage.text(f"✅ 更新完成！ 用时{int(time.time() - lock_info.start_time)}秒").send(
-                target=Target.group(str(group_id))
-            )
+            try:
+                await UniMessage.text(f"✅ 更新完成！ 用时{int(time.time() - lock_info.start_time)}秒").send(
+                    target=Target.group(str(group_id))
+                )
+            except Exception as e:
+                logger.warning(f"发送更新完成通知到群 {group_id} 失败: {e}")
         await send_pending_update_changelog(lock_info)
 
 

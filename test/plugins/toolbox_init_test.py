@@ -243,6 +243,46 @@ async def test_on_bot_connect_sends_pending_changelog_to_trigger_group(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_on_bot_connect_sends_changelog_when_announce_group_send_fails(monkeypatch):
+    changelog_targets = []
+
+    class DummyMessage:
+        async def send(self, *args, **kwargs):
+            raise RuntimeError("announce send failed")
+
+    class DummyUniMessage:
+        @classmethod
+        def text(cls, _text):
+            return DummyMessage()
+
+    commits = [toolbox.CommitInfo(short_hash="1234567", subject="add changelog", body="")]
+
+    async def fake_summarize_update_commits(received_commits):
+        assert received_commits == commits
+        return "- 新增更新日志"
+
+    async def fake_send_update_changelog(group_id, changelog):
+        changelog_targets.append((group_id, changelog))
+
+    (toolbox.Path(".") / ".lock").write_text(
+        '{"start_time": 100, "old_head": "old", "trigger_group_id": 123}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(toolbox.EnvConfig, "ANNOUNCE_GROUP_ID", [456])
+    monkeypatch.setattr(toolbox.time, "time", lambda: 110)
+    monkeypatch.setattr(toolbox, "Repo", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(toolbox, "_current_head", lambda _repo: "new")
+    monkeypatch.setattr(toolbox, "collect_update_commits", lambda old, new: commits)
+    monkeypatch.setattr(toolbox, "summarize_update_commits", fake_summarize_update_commits)
+    monkeypatch.setattr(toolbox, "send_update_changelog", fake_send_update_changelog)
+
+    await toolbox.on_bot_connect()
+
+    assert changelog_targets == [(123, "- 新增更新日志")]
+
+
+@pytest.mark.asyncio
 async def test_handle_updater_skips_changelog_without_group(monkeypatch):
     class DummyMessage:
         async def send(self, *args, **kwargs):
