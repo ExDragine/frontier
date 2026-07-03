@@ -1,9 +1,11 @@
 # ruff: noqa: E402
 
+import json
 import os
 import shutil
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from signal import SIGINT
 
@@ -31,10 +33,25 @@ restart = on_command("restart", priority=3, block=True, aliases={"重启"}, perm
 
 SKILL_CREATOR_URL = "https://gh-proxy.org/https://github.com/anthropics/skills.git"
 SKILL_CREATOR_PATH = os.path.join(".", "cache", "sandbox", "skills", "skill-creator")
+MAX_UPDATE_CHANGELOG_COMMITS = 20
 
 # vehelp 菜单缓存（内存级，bot 停止自动释放）
 _vep_menu_cache: bytes | None = None
 _TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
+
+
+@dataclass(frozen=True)
+class CommitInfo:
+    short_hash: str
+    subject: str
+    body: str
+
+
+@dataclass(frozen=True)
+class UpdateLockInfo:
+    start_time: float
+    old_head: str = ""
+    trigger_group_id: int | None = None
 
 
 async def _get_vep_menu() -> bytes:
@@ -66,6 +83,122 @@ def _is_group_admin_or_owner(event: MessageEvent) -> bool:
 
 def _group_settings() -> GroupSettingsManager:
     return GroupSettingsManager(get_engine())
+
+
+def _current_head(repo: Repo) -> str:
+    return str(repo.head.commit.hexsha)
+
+
+def _commit_body(commit) -> str:
+    message = str(getattr(commit, "message", "") or "")
+    lines = message.splitlines()
+    if not lines:
+        return ""
+    return "\n".join(lines[1:]).strip()
+
+
+def collect_update_commits(old_head: str, new_head: str) -> list[CommitInfo]:
+    """Collect commits introduced by the latest update range."""
+    if not old_head or not new_head or old_head == new_head:
+        return []
+    try:
+        repo = Repo(".")
+        commits = repo.iter_commits(f"{old_head}..{new_head}", max_count=MAX_UPDATE_CHANGELOG_COMMITS)
+        return [
+            CommitInfo(
+                short_hash=str(commit.hexsha)[:7],
+                subject=str(getattr(commit, "summary", "") or "").strip(),
+                body=_commit_body(commit),
+            )
+            for commit in commits
+        ]
+    except Exception as e:
+        logger.warning(f"收集更新提交记录失败: {e}")
+        return []
+
+
+async def _call_assistant_agent(*args, **kwargs):
+    from utils.agents import assistant_agent
+
+    return await assistant_agent(*args, **kwargs)
+
+
+def _format_commits_for_prompt(commits: list[CommitInfo]) -> str:
+    blocks = []
+    for commit in commits[:MAX_UPDATE_CHANGELOG_COMMITS]:
+        body = f"\n{commit.body}" if commit.body else ""
+        blocks.append(f"- {commit.short_hash} {commit.subject}{body}")
+    return "\n".join(blocks)
+
+
+async def summarize_update_commits(commits: list[CommitInfo]) -> str | None:
+    if not commits:
+        return None
+    system_prompt = (
+        "你是 Frontier QQ Bot 的更新日志编辑。"
+        "只根据用户提供的 Git 提交记录，写一份发到群里的简短中文更新日志。"
+        "输出 3-6 条短 bullet，语气轻量自然，不要编造提交记录外的信息，"
+        "不要暴露密钥、配置值或内部敏感细节。"
+    )
+    user_prompt = f"请总结这次更新包含的变化：\n\n{_format_commits_for_prompt(commits)}"
+    try:
+        result = await _call_assistant_agent(system_prompt, user_prompt, tools=None, temperature=0)
+    except Exception as e:
+        logger.warning(f"生成更新日志失败: {e}")
+        return None
+    if not result:
+        return None
+    return str(result).strip() or None
+
+
+async def send_update_changelog(group_id: int, changelog: str) -> None:
+    if not group_id or not changelog:
+        return
+    await UniMessage.text(f"📦 本次小更新：\n{changelog}").send(target=Target.group(str(group_id)))
+
+
+def _event_group_id(event: MessageEvent) -> int | None:
+    group = getattr(getattr(event, "data", None), "group", None)
+    group_id = getattr(group, "group_id", None)
+    return int(group_id) if group_id else None
+
+
+def write_update_lock(start_time: float, old_head: str, trigger_group_id: int | None) -> None:
+    payload = {
+        "start_time": start_time,
+        "old_head": old_head,
+        "trigger_group_id": trigger_group_id,
+    }
+    with open(".lock", "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False)
+
+
+def read_update_lock(raw: str) -> UpdateLockInfo:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return UpdateLockInfo(start_time=float(raw))
+    if not isinstance(payload, dict):
+        return UpdateLockInfo(start_time=float(raw))
+    trigger_group_id = payload.get("trigger_group_id")
+    return UpdateLockInfo(
+        start_time=float(payload.get("start_time", 0)),
+        old_head=str(payload.get("old_head") or ""),
+        trigger_group_id=int(trigger_group_id) if trigger_group_id else None,
+    )
+
+
+async def send_pending_update_changelog(lock_info: UpdateLockInfo) -> None:
+    if not lock_info.old_head or not lock_info.trigger_group_id:
+        return
+    try:
+        new_head = _current_head(Repo("."))
+        commits = collect_update_commits(lock_info.old_head, new_head)
+        changelog = await summarize_update_commits(commits) if commits else None
+        if changelog:
+            await send_update_changelog(lock_info.trigger_group_id, changelog)
+    except Exception as e:
+        logger.warning(f"启动后发送更新日志失败: {e}")
 
 
 # ── /set wake ──────────────────────────────────────────────
@@ -114,7 +247,7 @@ async def _set_wake_clear(group_id: int) -> str:
 
 
 @set_cmd.handle()
-async def handle_set(event: MessageEvent):
+async def handle_set(event: MessageEvent):  # noqa: C901
     text, *_ = await message_extract(event.data.segments)
     text = text.removeprefix("/set").removeprefix("设置").strip()
 
@@ -249,12 +382,13 @@ async def on_startup():
 async def on_bot_connect():
     if os.path.exists(".lock"):
         with open(".lock", encoding="utf-8") as f:
-            start_time = f.read()
+            lock_info = read_update_lock(f.read())
         os.remove(".lock")
         for group_id in EnvConfig.ANNOUNCE_GROUP_ID:
-            await UniMessage.text(f"✅ 更新完成！ 用时{int(time.time() - float(start_time))}秒").send(
+            await UniMessage.text(f"✅ 更新完成！ 用时{int(time.time() - lock_info.start_time)}秒").send(
                 target=Target.group(str(group_id))
             )
+        await send_pending_update_changelog(lock_info)
 
 
 @updater.handle()
@@ -262,11 +396,11 @@ async def handle_updater(event: MessageEvent):
     """处理更新命令"""
     try:
         logger.info("开始执行更新操作...")
-        with open(".lock", "w", encoding="utf-8") as f:
-            f.write(str(time.time()))
         await UniMessage.text("🔄 开始更新...").send()
 
         repo = Repo(".")
+        old_head = _current_head(repo)
+        write_update_lock(time.time(), old_head, _event_group_id(event))
         repo.git.checkout()
         pull_result = repo.git.pull(rebase=True)
         logger.info(f"Git pull 结果: {pull_result}")
@@ -275,6 +409,8 @@ async def handle_updater(event: MessageEvent):
         exit(1)
 
     except Exception as e:
+        if os.path.exists(".lock"):
+            os.remove(".lock")
         logger.error(f"更新失败: {e}")
         await UniMessage.text(f"❌ 更新失败: {str(e)}").send()
 
