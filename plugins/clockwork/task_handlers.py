@@ -8,7 +8,6 @@ import zoneinfo
 from dataclasses import dataclass
 from pathlib import Path
 
-import httpx
 from jinja2 import Environment, FileSystemLoader
 from nonebot import get_bot, logger
 from nonebot_plugin_alconna import Image, Target, Text, UniMessage
@@ -18,7 +17,7 @@ from tools import agent_tools
 from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 from utils.database import EventDatabase
-from utils.http_client import get_http_client
+from utils.http_client import HTTPError, get_http_client
 from utils.markdown_render import html_to_image, playwright_render
 
 from .task_models import TaskRunResult
@@ -283,7 +282,7 @@ async def earth_now(**kwargs):
         response.raise_for_status()
         # 确保完整读取响应体
         content = await response.aread()
-    except httpx.HTTPError as e:
+    except HTTPError as e:
         logger.warning(f"获取Earth Now图片失败: {e}", "准备重试...")
     if not content:
         return

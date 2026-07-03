@@ -8,9 +8,10 @@ import types
 from pathlib import Path
 from types import SimpleNamespace
 
-import httpx
 import pytest
 from pydantic import SecretStr
+
+from utils.http_client import ConnectError
 
 
 @pytest.mark.asyncio
@@ -188,7 +189,7 @@ async def test_deepseek_balance_tool_reports_http_error(load_tool_module, monkey
 
     class DummyClient:
         async def get(self, url, headers):
-            raise httpx.ConnectError("network down")
+            raise ConnectError("network down")
 
     monkeypatch.setattr(mod, "httpx_client", DummyClient())
 

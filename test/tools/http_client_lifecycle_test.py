@@ -3,6 +3,17 @@
 import pytest
 
 
+def test_http_client_uses_httpx2_backend_and_exports_compatibility_types():
+    """HTTP 后端切到 httpx2，但业务侧只依赖本地兼容导出。"""
+    from utils import http_client as registry
+
+    assert registry.HTTP_BACKEND_NAME == "httpx2"
+    assert registry.AsyncClient.__module__.startswith("httpx2")
+    assert registry.AsyncHTTPTransport.__module__.startswith("httpx2")
+    assert registry.HTTPError.__module__.startswith("httpx2")
+    assert registry.ConnectError.__module__.startswith("httpx2")
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("client_name", "client_attr"),
