@@ -326,45 +326,27 @@ async def test_paint_gemini_client_error(monkeypatch):
     assert result is None
 
 
-# ── Pollinations 回退测试 ──────────────────────────────────────────
+# ── 空绘画模型配置测试 ─────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_paint_uses_pollinations_when_paint_model_empty(monkeypatch):
-    """PAINT_MODEL 为空时直接使用 Pollinations。"""
-    pollinations_called = False
-
-    async def mock_pollinations(prompt):
-        nonlocal pollinations_called
-        pollinations_called = True
-        return b"pollinations-generated-image"
-
+async def test_paint_returns_none_when_paint_model_empty_without_fallback(monkeypatch):
+    """PAINT_MODEL 为空时直接失败，不再使用备用绘画服务。"""
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "")
-    monkeypatch.setattr(paint_service, "_paint_with_pollinations", mock_pollinations)
 
     result = await paint_service.paint("a crystal fox")
 
-    assert pollinations_called
-    assert result == b"pollinations-generated-image"
+    assert result is None
 
 
 @pytest.mark.asyncio
-async def test_paint_skips_pollinations_with_reference_images_when_model_empty(monkeypatch):
-    """PAINT_MODEL 为空且有参考图片时跳过 Pollinations（不支持参考图片）。"""
-    pollinations_called = False
-
-    async def mock_pollinations(prompt):
-        nonlocal pollinations_called
-        pollinations_called = True
-        return b"should-not-be-returned"
-
+async def test_paint_with_reference_images_returns_none_when_model_empty(monkeypatch):
+    """PAINT_MODEL 为空且有参考图片时也直接失败。"""
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "")
-    monkeypatch.setattr(paint_service, "_paint_with_pollinations", mock_pollinations)
 
     result = await paint_service.paint("turn it into watercolor", [_tiny_png_bytes()])
 
     assert result is None
-    assert not pollinations_called
 
 
 # ── 限流器测试（保持不变）──────────────────────────────────────────

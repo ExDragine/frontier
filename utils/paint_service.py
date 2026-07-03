@@ -3,9 +3,7 @@ import io
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from urllib.parse import quote
 
-import httpx
 from google import genai
 from google.genai import types as genai_types
 from google.genai.errors import ClientError
@@ -108,7 +106,7 @@ async def _paint_with_gemini(prompt: str, reference_images: list[bytes]) -> byte
     config = genai_types.GenerateContentConfig(
         response_modalities=["TEXT", "IMAGE"],
         image_config=genai_types.ImageConfig(
-            # aspect_ratio=_paint_aspect_ratio(),
+            aspect_ratio=_paint_aspect_ratio(),
             image_size=_paint_image_size(),
         ),
     )
@@ -135,6 +133,10 @@ async def _paint_with_gemini(prompt: str, reference_images: list[bytes]) -> byte
     finally:
         await _close_genai_client(client)
 
+    return _extract_image_from_gemini_response(response)
+
+
+def _extract_image_from_gemini_response(response) -> bytes | None:
     if not response.candidates:
         logger.warning("Gemini 图片 API 返回空 candidates（可能被安全过滤）")
         return None
@@ -163,33 +165,6 @@ async def _paint_with_gemini(prompt: str, reference_images: list[bytes]) -> byte
     return None
 
 
-# ── Pollinations 回退 ──────────────────────────────────────────────
-
-POLLINATIONS_IMAGE_URL = "https://image.pollinations.ai/prompt"
-POLLINATIONS_FALLBACK_MODEL = "flux"
-
-
-async def _paint_with_pollinations(prompt: str) -> bytes | None:
-    encoded_prompt = quote(prompt, safe="")
-    url = f"{POLLINATIONS_IMAGE_URL}/{encoded_prompt}"
-    params = {
-        "model": POLLINATIONS_FALLBACK_MODEL,
-        "nologo": "true",
-        "width": 1024,
-        "height": 1024,
-    }
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.get(url, params=params)
-        if response.status_code != 200:
-            logger.warning(f"Pollinations fallback API 返回非 200: {response.status_code}")
-            return None
-        content_type = response.headers.get("content-type", "")
-        if "image" not in content_type:
-            logger.warning(f"Pollinations fallback 返回非图片内容: {content_type}")
-            return None
-        return response.content
-
-
 # ── 主入口 ─────────────────────────────────────────────────────────
 
 
@@ -197,18 +172,8 @@ async def paint(prompt: str, reference_images: list[bytes] | None = None) -> byt
     reference_images = reference_images or []
 
     if not EnvConfig.PAINT_MODEL:
-        if reference_images:
-            logger.warning("Pollinations 不支持参考图片，跳过")
-            return None
-        logger.info(f"🎨 PAINT_MODEL 未配置，使用 Pollinations ({POLLINATIONS_FALLBACK_MODEL})")
-        try:
-            result = await _paint_with_pollinations(prompt)
-            if result:
-                logger.info("✅ Pollinations 绘图成功")
-            return result
-        except Exception as e:
-            logger.exception(f"💥 Pollinations 绘图失败: {e}")
-            return None
+        logger.warning("PAINT_MODEL 未配置，绘画请求失败")
+        return None
 
     logger.info(
         f"🎨 调用 Gemini Nano Banana, model={EnvConfig.PAINT_MODEL}, "
