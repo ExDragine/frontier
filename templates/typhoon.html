@@ -62,6 +62,38 @@
                     <span class="info-value">{% if move_speed_val is not none %}<span class="info-num">{{ move_speed_val }}</span> 公里/小时{% else %}—{% endif %}</span>
                 </div>
             </div>
+
+            <!-- 登陆信息卡 -->
+            {% if land_points %}
+            <div class="info-card land-card">
+                <div class="info-card-title">登陆信息</div>
+                {% if land_points|length >= 2 %}
+                {% for lp in land_points|reverse %}
+                <div class="land-item{% if not loop.last %} land-item-border{% endif %}">
+                    <div class="land-row">
+                        <span class="land-time">{{ lp.land_time }}</span>
+                        <span class="land-sep">·</span>
+                        <span class="land-pos">{{ lp.position }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                {% for lp in land_points %}
+                <div class="land-item">
+                    <div class="land-position">{{ lp.position }}</div>
+                    <div class="info-row">
+                        <span class="info-label">登陆时间</span>
+                        <span class="info-value">{{ lp.land_time }}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">经纬度</span>
+                        <span class="info-value">{{ "%.1f"|format(lp.lng) }}°E, {{ "%.1f"|format(lp.lat) }}°N</span>
+                    </div>
+                </div>
+                {% endfor %}
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
 
         <!-- 图例 -->
@@ -250,6 +282,29 @@
             }
         }
 
+        // ==== 6. 登陆点标记 ====
+        if (data.landPoints && data.landPoints.length > 0 && data.landIconBase64) {
+            var landIconSize = 32;
+            data.landPoints.forEach(function(lp) {
+                if (lp.lng == null || lp.lat == null) return;
+                var landPos = to3857([lp.lng, lp.lat]);
+                var landEl = document.createElement('div');
+                var landImg = document.createElement('img');
+                landImg.src = data.landIconBase64;
+                landImg.style.cssText =
+                    'width:' + landIconSize + 'px;height:' + landIconSize + 'px;' +
+                    'filter:drop-shadow(0 0 4px rgba(255,255,255,0.9));';
+                landImg.title = lp.position + '  ' + lp.land_time;
+                landEl.appendChild(landImg);
+                map.addOverlay(new ol.Overlay({
+                    position: landPos,
+                    positioning: 'center-center',
+                    element: landEl,
+                    stopEvent: false
+                }));
+            });
+        }
+
         // ═══════════════════════════════════════════════
         //  视野控制
         // ═══════════════════════════════════════════════
@@ -289,6 +344,13 @@
             }
             if (data.currentPos) {
                 ol.extent.extendCoordinate(ext, [data.currentPos[1], data.currentPos[0]]);
+            }
+            if (data.landPoints) {
+                data.landPoints.forEach(function (lp) {
+                    if (lp.lng != null && lp.lat != null) {
+                        ol.extent.extendCoordinate(ext, [lp.lng, lp.lat]);
+                    }
+                });
             }
 
             if (ol.extent.isEmpty(ext)) return null;

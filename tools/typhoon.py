@@ -272,6 +272,29 @@ def _build_template_data(typhoon: dict, pos_desc: str, overlay_data: dict[str, A
     # 当前等级图标
     icon_base64 = _get_icon_base64(level_key)
 
+    # 登陆点数据
+    land_raw = typhoon.get("land") or []
+    land_points = []
+    for lp in land_raw:
+        lp_time = lp.get("land_time", "")
+        try:
+            lp_dt = datetime.strptime(lp_time, "%Y-%m-%dT%H:%M:%S")
+            lp_time_fmt = lp_dt.strftime("%m月%d日 %H:%M")
+        except ValueError:
+            lp_time_fmt = lp_time
+        land_points.append({
+            "position": lp.get("position", ""),
+            "land_time": lp_time_fmt,
+            "lng": lp.get("lng"),
+            "lat": lp.get("lat"),
+        })
+
+    # 登陆点图标
+    land_icon_base64 = ""
+    land_icon_path = IMAGES_DIR / "台风登陆点.png"
+    if land_icon_path.exists():
+        land_icon_base64 = "data:image/png;base64," + base64.b64encode(land_icon_path.read_bytes()).decode("ascii")
+
     typhoon_data_json = {
         "historyPoints": history_points,
         "historyPolyline": history_polyline,
@@ -286,6 +309,8 @@ def _build_template_data(typhoon: dict, pos_desc: str, overlay_data: dict[str, A
         "windRadius12Quad": current.get("radius12_quad"),
         "iconBase64": icon_base64,
         "overlayData": overlay_data,  # 云图/雷达图层叠加数据
+        "landPoints": land_points,
+        "landIconBase64": land_icon_base64,
         "debug": False,  # 调试模式：为 True 时前端显示轨迹安全展示区矩形
     }
 
@@ -305,6 +330,7 @@ def _build_template_data(typhoon: dict, pos_desc: str, overlay_data: dict[str, A
         "speed": current.get('speed', '?'),
         "pressure_val": current.get('pressure', '?'),
         "move_speed_val": move_speed,
+        "land_points": land_points,
         "typhoon_data": typhoon_data_json,
         "overlay_data": overlay_data,  # 模板图例使用
     }
@@ -456,16 +482,41 @@ async def get_typhoon_info(
     if not images:
         return "台风信息渲染失败，请稍后再试", None
 
-    # 拼接文字摘要（路径详情已包含在图片中）
+    # 拼接文字摘要
     overlay_hint = ""
     if overlay_data:
         overlay_hint = f"（已叠加{overlay_data['label']} {overlay_data['time']}）"
 
+    def _build_land_summary(typhoon_dict):
+        land = typhoon_dict.get("land") or []
+        if not land:
+            return ""
+        parts = []
+        for lp in land:
+            pos = lp.get("position", "未知")
+            lt = lp.get("land_time", "")
+            try:
+                dt = datetime.strptime(lt, "%Y-%m-%dT%H:%M:%S")
+                lt_fmt = dt.strftime("%m月%d日 %H:%M")
+            except ValueError:
+                lt_fmt = lt
+            parts.append(f"{lt_fmt}在{pos}登陆")
+        return "，".join(parts)
+
+    land_parts = []
+    for t in targets:
+        ls = _build_land_summary(t)
+        if ls:
+            land_parts.append(f"「{t.get('name', '?')}」{ls}")
+    land_text = "；".join(land_parts)
+    if land_text:
+        land_text = f"（{land_text}）"
+
     if len(active) == 1:
-        summary = f"当前活跃台风「{active[0]['name']}」{overlay_hint}，路径情况如下："
+        summary = f"当前活跃台风「{active[0]['name']}」{land_text}{overlay_hint}，路径情况如下："
     else:
         names_str = "、".join(t.get("name", "?") for t in active)
-        summary = f"当前活跃台风有 {names_str}{overlay_hint}，路径情况如下："
+        summary = f"当前活跃台风有 {names_str}，{land_text}{overlay_hint}路径情况如下："
 
     # 拼接所有图片
     result_msg = images[0]
