@@ -2,195 +2,256 @@
 
 ## Project Overview
 
-Frontier 是基于 NoneBot2 + Milky 适配器的 AI QQ 聊天机器人。核心能力：Deep Agent（LangGraph `create_deep_agent`）驱动对话，文件系统后端执行代码，33+ 工具收发消息、检索网络、生成媒体，长期记忆和定时任务。
+Frontier 是一个基于 NoneBot2 + Milky 适配器的 AI QQ 聊天机器人。核心路径是：Milky 消息事件进入 NoneBot 插件，经过消息归一化、存储、门控和内容安全检查后，由 `deepagents.create_deep_agent()` 驱动对话、工具调用、文件系统后端和媒体工件回复。
 
-**技术栈**: NoneBot2 → Milky 事件 → deepagents (LangGraph) → 工具调用 → UniMessage 回复
-**配置**: 所有配置集中在 `env.toml`，通过 `utils/configs.py` 的 `EnvConfig` 数据类读取。
+**技术栈**: Python 3.14+、NoneBot2/FastAPI、nonebot-adapter-milky、nonebot_plugin_alconna、LangChain/LangGraph/deepagents、SQLModel/SQLite FTS、APScheduler、Playwright、Pillow。
+
+**配置入口**: `env.toml` 是应用配置源，`utils/configs.py` 在模块 import 时读取并暴露 `EnvConfig`。测试会在临时目录生成自己的 `env.toml`。
+
+**运行入口**: `pyproject.toml` 声明 `plugins/` 为 NoneBot 插件目录；`run.sh` / `run.ps1` 最终通过 `uv run nb run` 启动。
 
 ---
 
-## Request Lifecycle（一条消息的完整路径）
+## Request Lifecycle
+
+一条普通 QQ 消息的主要路径在 `plugins/agent/__init__.py`：
 
 ```
-QQ 消息 → NoneBot2 on_message(priority=10)
+Milky MessageEvent → NoneBot on_message(priority=10)
   │
-  ├─ Phase 1: 文本提取 (message_extract → normalize_segments → reply_context)
-  │    不下载媒体，只解析文本 + 引用上下文 + 文件路径
+  ├─ Phase 1: 快速提取文本和结构化消息段
+  │    message_extract → normalize_segments → reply_context
+  │    只收集 lazy 媒体下载器和文件信息，不下载图片/视频
   │
-  ├─ Phase 2: 消息存储 + 网关 (messages_db.insert → message_gateway)
-  │    先存 DB，再判断是否触发 Agent 回复（黑/白名单、关键词、Signal LLM）
-  │    网关不通过 → common.finish()，后续阶段不执行
+  ├─ Phase 2: 消息存储 + 回复网关
+  │    MessageDatabase.insert / replace_derived_messages
+  │    prepare_message 构造历史上下文
+  │    message_gateway 判断黑白名单、to_me、唤醒词、Signal LLM 辅助回复
+  │    网关不通过 → common.finish()
   │
-  ├─ Phase 3: 媒体下载 (download_media)
-  │    只有网关通过才下载，避免浪费带宽
+  ├─ Phase 3: 媒体下载和附件索引
+  │    download_media 并行解析 lazy 媒体
+  │    insert_images 将图片写入 cache/sandbox/memory/{workspace}/images
   │
-  ├─ Phase 4: 内容安全 (message_check → risk_check → 表情反应)
-  │    文本 + 图片审核，Safe / Controversial / Unsafe 三级
+  ├─ Phase 4: 内容安全和群反应
+  │    message_check 返回 Safe / Controversial / Unsafe
   │
-  └─ Agent 执行 (run_serialized → _process_agent_request → chat_agent)
-        asyncio.Lock 按 (user_id, group_id) 序列化，同一对话内互斥、不同对话并发
-        chat_agent → create_deep_agent → 工具调用 → extract_uni_messages → send_messages
+  └─ Agent 执行
+       run_serialized(thread_id) 按会话互斥
+       _process_agent_request → FrontierCognitive.chat_agent
+       create_deep_agent → 工具调用 → extract_uni_messages → send_artifacts/send_messages
 ```
 
 关键边界：
-- 网关在消息存储**之后**、媒体下载**之前**，减少重试下载的成本
-- 同一群聊/私聊的消息通过 `asyncio.Lock` 串行执行，避免两个 Agent 并发读写同一 workspace/memory
-- `UniMessage` 是 nonebot_plugin_alconna 的通用消息类型，延迟加载（`require()`）
+- 网关在媒体下载前执行，避免未触发回复的图片/视频下载成本。
+- 当前消息写入 DB 后再准备历史，但 `prepare_message(..., before_time=msg_time)` 会排除当前消息，只把历史作为上下文。
+- 同一 `(user_id, group_id)` 对话通过 `asyncio.Lock` 串行执行，不同会话可并发。
+- 私聊会消费 Agent progress 事件并发送“正在思考/调用工具”等进度消息；群聊不发进度消息。
 
 ---
 
 ## Module Map
 
-### plugins/ — NoneBot2 插件（事件入口）
+### `plugins/` — NoneBot 事件入口
 
-| 模块 | 文件数 | 职责 |
-|------|--------|------|
-| `plugins/agent` | 1 (`__init__.py` 360行) | 核心对话引擎：消息处理、网关、Agent 调度、回复渲染。项目的中枢 |
-| `plugins/clockwork` | 7 文件 | 定时任务：提醒、每日新闻、天文图片、地震预警。基于 task_manager 的 cron/interval/date 调度 |
-| `plugins/dashboard` | 7 文件 | Web 管理面板：JWT 鉴权、消息浏览、配置、任务管理。FastAPI 集成 |
-| `plugins/playground` | 1 (`__init__.py`) | 媒体生成入口：`/paint` AI 绘图、`/video` AI 视频、戳一戳回复 |
-| `plugins/toolbox` | 1 (`__init__.py`) | 管理命令：`/update` 热更新、`/model` 查看模型、技能沙箱初始化 |
+| 模块 | 职责 |
+|------|------|
+| `plugins/agent` | 核心对话入口：消息提取、引用上下文、文件暂存、DB 写入、回复门控、内容安全、Agent 调度、回复发送 |
+| `plugins/clockwork` | APScheduler 定时任务系统：内置任务、用户自动任务、提醒迁移、任务命令、执行历史 |
+| `plugins/dashboard` | FastAPI Dashboard：`/api/dashboard/*` API、`/dashboard` 静态前端、JWT 鉴权、状态/消息/设置/任务管理 |
+| `plugins/playground` | `/paint`、`/video` 命令和戳一戳响应；直接调用共享图片/视频服务 |
+| `plugins/toolbox` | 管理命令：`/update`、`/restart`、`/model`、`/set wake`、`/vehelp`，以及技能沙箱初始化 |
 
-### utils/ — 共享基础设施
+### `utils/` — 共享基础设施
 
-| 文件 | 行数 | 职责 |
-|------|------|------|
-| `agents.py` | 498 | **心脏**：`FrontierCognitive` 类 + `assistant_agent()` + 模型路由。创建 Deep Agent、组装 backend/middleware/tools |
-| `database.py` | 1470 | **巨兽**：SQLite 消息存储、FTS 全文搜索、附件管理、Session 工具。`MessageDatabase` + `async_session_scope` |
-| `message.py` | 734 | 消息提取/网管/安全/发送。`message_extract`, `message_gateway`, `message_check`, `send_messages` |
-| `configs.py` | 322 | `EnvConfig`：从 `env.toml` 读取所有配置、模型端点、API keys |
-| `llm_factory.py` | 177 | 多模型路由：自动识别 provider (OpenAI/Google/Anthropic/DeepSeek)，`create_llm()` + `model_supports()` |
-| `reply_context.py` | 323 | 构建回复引用上下文 |
-| `staged_artifacts.py` | 316 | 暂存生成媒体（图片/视频），支持 ID 引用 |
-| `markdown_render.py` | 268 | Markdown → Pil 图片渲染，兼容 QQ 的最低渲染 |
-| `milky_tools.py` | 244 | Milky 协议专用工具（底层 API 封装） |
-| `paint_service.py` | 227 | AI 绘图服务（对接 `/paint` 后端） |
-| `video_service.py` | 249 | AI 视频服务 |
-| `user_profile.py` | 216 | 长期用户画像：静默提取 → 积累 → 注入 system prompt |
-| `signal_llm.py` | 102 | 轻量 LLM 辅助决策调用 |
-| `message_normalizer.py` | 142 | 长消息拆分/归一化 |
-| `http_client.py` | 40 | httpx 单例客户端池 |
-| `context_check.py` | 61 | 内容安全检查封装 |
+| 文件 | 职责 |
+|------|------|
+| `agents.py` | `assistant_agent()`、`FrontierCognitive`、Deep Agent backend/middleware/tools 组装、进度事件、会话锁 |
+| `database.py` | SQLite/SQLModel、消息/附件/群设置模型、WAL/FTS/索引、历史上下文构造、检索和维护 |
+| `message.py` | 消息段提取、文件暂存、媒体下载、回复网关、内容安全、Markdown/图片回复渲染 |
+| `configs.py` | `EnvConfig`：从 `env.toml` 读取模型、端点、密钥、功能开关、Dashboard、内容安全配置 |
+| `llm_factory.py` | OpenAI-compatible / Google / Anthropic / DeepSeek 模型路由，endpoint profile，能力判断 |
+| `signal_llm.py` | 轻量结构化 LLM 调用，用于回复门控、浏览器捕获意图等判断 |
+| `reply_context.py` | 引用消息解析、Milky 原消息获取、引用图片下载、转发消息重建 |
+| `message_normalizer.py` | 消息段归一化，展开合并转发 derived messages |
+| `staged_artifacts.py` | 将工具产出的媒体工件暂存到 `cache/staged_artifacts` 并支持 ID 回传 |
+| `markdown_render.py` | Markdown/HTML → 图片，普通文本降级，适配 QQ 文本/图片发送 |
+| `browser_capture.py` | Playwright 截图/录屏/页面数据提取，带浏览器重启和超时处理 |
+| `paint_service.py` / `video_service.py` | 共享图片和视频生成服务，供命令和 Agent 工具复用 |
+| `milky_tools.py` | Milky API 参数解析、路径/URL/base64 输入处理、结果格式化 |
+| `http_client.py` | 命名 httpx2 AsyncClient 注册表，统一关闭生命周期 |
+| `tool_helpers.py` | LangChain tool state/config 解析，提取用户、群、图片/视频输入 |
+| `ens_gate.py` | ENS 气象工具上下文门控 |
 
-### tools/ — Agent 可调用工具
+### `tools/` — Agent 可调用工具
 
-每个 `.py` 文件是一个或多个 `@tool` 装饰的 LangChain BaseTool。`tools/__init__.py` 自动扫描注册。
+`tools/__init__.py` 会扫描 `tools/*.py` 中的 LangChain `BaseTool` 对象。当前源码静态统计约 125 个 `@tool` 入口，按模块分到以下组：
 
-| 分组 | 工具 | 说明 |
-|------|------|------|
-| **main** | `adapter`, `milky_*`, `paint`, `video`, `memory`, `reminder`, `scheduled_task`, `deepseek_balance` | 平台操作、媒体生成、记忆、定时任务 |
-| **research** | `wikipedia`, `arxiv`, `bilibili` | 网络搜索与学术检索 |
-| **astro** | `aurora`, `comet`, `heavens_above`, `rocket`, `satellite`, `space_weather` | 星空/天文/卫星/火箭 |
-| **earth** | `earthquake`, `radar`, `weather` | 地震、雷达、天气 |
-| **memory** | `memory` | 长期记忆读写 |
-| **divination** | `iching` (825行), `tarot` (341行) | 易经占卜、塔罗牌 |
+| 分组 | 代表模块 | 说明 |
+|------|----------|------|
+| `main` | `adapter`, `milky_*`, `paint`, `video`, `reminder`, `scheduled_task`, `deepseek_balance`, `NRC*`, `typhoon` | QQ 平台操作、媒体生成、提醒/自动任务、游戏/业务工具 |
+| `research` | `wikipedia`, `arxiv`, `bilibili` | 资料、论文、视频信息 |
+| `astro` | `aurora`, `comet`, `heavens_above`, `rocket`, `satellite`, `space_weather` | 天文、卫星、空间天气 |
+| `earth` | `earthquake`, `radar`, `weather` | 地震、雷达、天气 |
+| `memory` | `memory` | 聊天记录搜索和总结 |
+| `divination` | `iching`, `tarot` | 易经、塔罗 |
+| `restricted` | `ens_normal`, `ens_professional`, `webpage_screenshot`, `webpage_recording` | 受控工具：ENS 在 Agent 中显式追加；网页截图/录屏需 Signal LLM 判断用户明确要求 |
+| `external` | MCP tools | `mcp.json` 定义的外部工具，首次访问 `agent_tools.mcp_tools` 时懒加载 |
 
 工具注册约定：
-- 每个 `tools/*.py` 模块中，用 `@tool` 装饰的函数自动被 `_discover_tools()` 收集
-- `_TOOL_MODULE_GROUPS` 字典控制模块 → 分组映射
-- 新工具只需：创建 `tools/xxx.py` → 用 `@tool` 装饰 → 在 `_TOOL_MODULE_GROUPS` 注册
+- 新工具模块要放在 `tools/` 下，用 `@tool` 装饰函数。
+- 如需指定分组，更新 `tools/__init__.py` 的 `_TOOL_MODULE_GROUPS`。
+- `response_format="content_and_artifact"` 的工具可返回 `UniMessage` 工件，最终由 `extract_uni_messages()` 和 `send_artifacts()` 发送。
+- `artifact_bridge.py` 被自动扫描排除，不要误以为所有测试工具都会暴露给主 Agent。
 
-### prompts/ — Agent 行为指令
+---
 
-| 文件 | 用途 |
-|------|------|
-| `AGENTS.md` | **活跃的 Agent system prompt 模板**。加载时通过 `{name}` 注入 bot 名称/唤醒词 |
+## Agent Construction
 
-System prompt 加载链：`FrontierCognitive.load_system_prompt()` → 读取 `env.toml` 的 `information.system_prompt` → 用 `{name}` 格式化 → 注入长期用户画像 → 传给 `create_deep_agent()`
+`FrontierCognitive.chat_agent()` 的关键行为：
+- 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，Signal 判断使用 `EnvConfig.SIGNAL_MODEL`。
+- 当 `*_use_responses_api` 为 true 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；Chat Completions 路径会跳过这些参数。
+- 根据模型/endpoint 的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
+- 构建 `CompositeBackend`：
+  - default: `cache/sandbox/workspaces/{workspace_key}`，`LocalShellBackend`
+  - `/skills/`: `cache/sandbox/skills`
+  - `/memory/{workspace_key}/`: `cache/sandbox/memory/{workspace_key}`
+- 对每个 workspace，如果缺少 memory `AGENTS.md`，会从 `prompts/AGENTS.md` 初始化一份。
+- middleware 顺序是 `PII → ToolRetry → ModelRetry → FilesystemFileSearch → CodeInterpreter`。
+- `interrupt_on` 对 read/write/edit/execute 均关闭，Agent 工具执行不走人工确认。
 
-### test/ — 测试
+Prompt 加载链：
+- 主 system prompt 来自 `env.toml` 的 `[information].system_prompt`，由 `FrontierCognitive.load_system_prompt()` 用 `{name}` 注入 bot 名称或当前唤醒词。
+- `prompts/AGENTS.md` 是每个 Agent memory workspace 的基础操作规范模板，不是主对话 system prompt。
+- `prompts/reply_check.md` 用于群聊是否应主动回复的 Signal LLM 判断。
+- `prompts/daily_news.md` 用于每日新闻任务。
+- ENS 规则在 `utils/agents.py` 中有硬编码追加，并与 `prompts/ens_rules.md` 同步维护。
 
-| 文件/目录 | 覆盖范围 |
-|-----------|----------|
-| `plugins/agent_image_memory_test.py` | 核心 Agent 消息处理全流程（~60 个测试） |
-| `utils/agents_test.py` | `FrontierCognitive`, `assistant_agent`, `chat_agent` |
-| `utils/message_test.py` | 消息提取、网关、回复检查 |
-| `tools/` | 各工具模块单元测试 |
-| `plugins/clockwork_test.py` | 定时任务 |
-| `stubs/dummies.py` | 共享 mock 工具 |
+---
+
+## Data & Persistence
+
+默认数据库是 `sqlite:///frontier.db`。`utils/database.py` 会：
+- 开启 SQLite WAL、busy timeout、cache/mmap、FTS5 支持和面向查询形状的索引。
+- 将同步 DB 操作包进 `asyncio.to_thread()`，避免阻塞事件循环；内存库例外。
+- 存储普通消息、合并转发 derived messages、图片/附件索引、群级 key-value 设置。
+- 通过 `prepare_message()` 将历史消息格式化为 JSON metadata + content，并把可用历史图片重新注入为 `image_url`。
+
+附件和 Agent 文件路径：
+- 消息图片和上传文件保存在 `cache/sandbox/memory/{workspace_key}/...`。
+- Agent 默认工作区在 `cache/sandbox/workspaces/{workspace_key}`。
+- 工具和回复里暴露给 Agent 的虚拟路径通常是 `/memory/{workspace_key}/...` 或 `/skills/...`。
+
+---
+
+## Config Notes
+
+`env.toml.example` 是配置项参考。代码中不要硬编码模型名、provider、base URL 或 API key，使用 `EnvConfig`。
+
+模型路由规则：
+- 显式 `*_model_provider` 优先。
+- `*_model_endpoint` 可指向 `[llm_endpoints.<name>]`，覆盖 provider/base_url/api_key/capabilities。
+- 没有显式 provider 时，`llm_factory.py` 会根据模型名前缀推断：`deepseek*`、`gemini-*`、`claude-*`，其余走 OpenAI-compatible。
+
+Dashboard 配置：
+- 默认密码和默认 JWT secret 会在启动时打印安全警告。
+- Dashboard settings API 会对敏感值做 mask，并在 masked value 未修改时保留原值。
 
 ---
 
 ## Key Patterns & Conventions
 
 ### 延迟 import 避免循环依赖
-`tools/memory.py` 和 `plugins/agent/__init__.py` 中有模式的延迟 import：
+
+`utils/agents.py` 会 import `tools.agent_tools`，而部分工具需要调用 `assistant_agent()`。这类回引必须放在函数体内：
+
 ```python
-from utils.agents import assistant_agent  # 延迟导入避免循环依赖
+from utils.agents import assistant_agent  # 放在函数内，避免循环依赖
 ```
-因为 `utils/agents.py` → `tools/` → `tools/memory.py` → 回引 `utils/agents.py` 会循环。**不要在 utils/agents.py 层 import tools 层的东西。**
+
+不要在 `utils/agents.py` 顶层 import 具体 tool 模块。
 
 ### UniMessage 延迟加载
-`FrontierCognitive._uni_message_cls()` 用 `require("nonebot_plugin_alconna")` 延迟加载，因为加载在 NoneBot 事件循环启动之前会失败。
+
+`FrontierCognitive._uni_message_cls()` 用 `require("nonebot_plugin_alconna")` 延迟加载 `UniMessage`。测试中经常 monkeypatch `nonebot.require`，不要把 alconna 加载提前到不必要的模块顶层。
 
 ### Agent 返回值约定
-`chat_agent()` 返回 `dict`：
+
+`chat_agent()` 返回：
+
 ```python
 {
-    "response": {"messages": [AIMessage(...)]},  # 回复消息列表
-    "total_time": float,                         # 处理耗时（秒）
-    "uni_messages": list[UniMessage],            # 媒体工件（图片/视频）
+    "response": {"messages": [AIMessage(...)]},
+    "total_time": float,
+    "uni_messages": list[UniMessage],
+    "error": str | None,  # 仅错误路径
 }
 ```
-`_process_agent_request()` 返回 `bool`：`True` 表示已发送回复（总是 True——Agent 不再有沉默路径）。
 
-### 工具输出 → UniMessage 传递
-媒体生成工具（`get_paint`, `get_video`）通过 agent 响应的 `artifact` 属性返回 UniMessage，再经由 `extract_uni_messages()` 提取 → `send_artifacts()` 发送。
+`_process_agent_request()` 负责落库 assistant 回复、内容安全清洗、发送媒体工件和最终文本/图片回复。
 
-### 文件系统后端
-`_build_agent_backend()` 创建三层 CompositeBackend：
-- **default** (`workspaces/`): 每个用户/群聊的独立工作区，代码执行沙箱
-- `/skills`: 共享技能目录（只读）
-- `/memory/{key}/`: 群聊/用户独享的长期记忆（AGENTS.md 自动生成）
+### 输出发送规则
+
+- 短文本优先走 QQ 文本。
+- 长文本、Markdown 表格、LaTeX、Mermaid 等难以纯文本表达的内容走 Markdown → 图片。
+- 文本发送失败时会尝试图片回退。
+- 多段媒体工件会拆分并串行发送，避免 QQ 消息顺序混乱。
+
+### 权限与高影响操作
+
+Milky 群管理工具会读取 `RunnableConfig.configurable.group_member_role` 做权限判断。新增群管或平台写操作时，需要复用现有权限/上下文解析模式，不要只靠模型自觉。
 
 ---
 
 ## Gotchas
 
-1. **`utils/database.py` 是 1470 行的巨兽**。修改时要小心：SQLite FTS 表、消息归一化的 derived_messages 机制、线程池调度（`_run_in_thread`）都耦合在这里。不要在没有充分理解的情况下重构。
+1. `utils/database.py` 耦合了 schema migration、索引、FTS、附件文件、derived messages 和线程调度。修改前先读相关测试，避免破坏历史注入和搜索性能。
 
-2. **`env.toml` 是唯一配置源**。`EnvConfig` 在模块加载时立即读取，所以配置变更需要重启。不要在代码里硬编码 model/provider 名——走 `EnvConfig.*`。
+2. `EnvConfig` 在 import 时读取 `env.toml`。运行时 Dashboard 能调用 `EnvConfig.reload()` 更新部分配置，但普通代码不要假设配置文件变更会自动生效。
 
-3. **Middlewares 顺序敏感**。`chat_agent()` 中 middleware 按 `PII → ToolRetry → ModelRetry → FilesystemFileSearch → CodeInterpreter` 的顺序执行。修改顺序可能破坏重试行为。
+3. `message_gateway()` 在媒体下载前运行。不要在网关前引入必须下载媒体的逻辑。
 
-4. **Model route 逻辑在 `_configured_model_route()`**。`BASIC_MODEL` 用于 `assistant_agent`（工具类调用），`ADVAN_MODEL` 用于 `chat_agent`（对话），`SIGNAL_MODEL` 用于网关辅助决策。
+4. Browser capture 工具不是普通兜底工具。`webpage_screenshot` / `webpage_recording` 只有在 Signal LLM 判断用户明确要求网页外观/录屏时才暴露。
 
-5. **测试用 monkeypatch + Dummy**。测试模式是 monkeypatch 替换模块级对象（`f_cognitive`, `messages_db`, `run_serialized`）然后用 `nonebug.App.test_matcher()` 模拟事件。
+5. `prompts/AGENTS.md` 是 memory 模板；主 system prompt 在 `env.toml`。更新角色行为时先确认要改的是哪一层。
 
-6. **循环依赖禁区**: `utils/agents.py` 和 `tools/` 包之间不能直接 import。`tools/memory.py` 里 `from utils.agents import assistant_agent` 是函数内延迟 import，不要把它提到模块顶部。
+6. 测试依赖 monkeypatch 和第三方 stub。插件测试通常先 patch `nonebot.require`，再延迟 import `plugins.agent`。
+
+7. 本地可能存在真实 `env.toml`、`.env`、`frontier.db`、`cache/`。做文档或代码变更时不要读取或泄露其中的密钥和私聊数据，除非用户明确要求。
 
 ---
 
 ## Testing
 
+优先使用项目自己的 uv 环境：
+
 ```bash
-pytest test/ -x -v                    # 全部测试，首个失败停
-pytest test/utils/agents_test.py -x   # 单文件
+uv run pytest test/ -x -v
+uv run pytest test/utils/agents_test.py -x
+uv run pytest --collect-only -q
+uv run ruff check .
 ```
 
-测试基础架构：
-- **nonebug**: NoneBot 的 pytest 插件，提供 `App.test_matcher()` 模拟消息事件
-- **monkeypatch**: 替换模块级依赖（run_serialized, f_cognitive, messages_db）
-- **IncomingMessage + MessageEvent**: 构造模拟 QQ 消息
+当前测试收集规模约 444 个测试，覆盖：
+- Agent 消息主流程和图片/文件记忆
+- `FrontierCognitive`、LLM 路由、进度事件
+- 消息提取、网关、内容安全、Markdown 渲染
+- SQLite schema、索引、FTS、附件清理、历史检索
+- Milky 平台工具、媒体工具、ENS/天气/天文/占卜工具
+- clockwork 定时任务和 Dashboard API
 
 写测试时的惯例：
-- 使用 `monkeypatch.setattr(nonebot, "require", lambda *args, **kwargs: None)` 绕过 alconna 加载
-- 在测试函数内 `from plugins import agent` 做延迟 import，确保 monkeypatch 先生效
-- Dummy 类模拟外部依赖（DummyCognitive, DummyMessagesDb, DummyBot）
+- 使用 `nonebug` 的 `App.test_matcher()` 模拟 NoneBot 事件。
+- 使用 `monkeypatch` 替换模块级对象，如 `f_cognitive`、`messages_db`、`run_serialized`。
+- 测试 fixture 会生成临时 `env.toml`，不要依赖仓库根目录的真实配置。
 
 ---
 
 ## Engineering Practice
 
-- 读周围代码再改。遵循项目已有的模式、helpers、测试和模块边界
-- 代码保持 Pythonic：清晰命名、直接控制流、内聚函数、惯用 stdlib
-- 不要创建很多琐碎的 helper 函数。只在复用、隔离真实复杂度、代表有意义的领域边界、或实质提升可测试性时才抽 helper
-- 简单的逻辑保持内联，抽走只会让读者跳转却不减少复杂度
-- 变更范围限定在请求的行为内。避免无关重构、格式化 churn 或 API 变更
-- 保留同事已在工作区中的修改，不要未经要求 revert
-
-## Verification
-
-- 行为变更时添加/更新针对性测试，尤其是共享工具、Agent 连接、工具注册、用户面向的流程
-- 完成前运行最窄有效的 lint 和测试命令。注明未运行的命令
-- 警告和 flaky 失败不是噪音，是需要调查的证据
+- 先读周围代码和相关测试，再改。
+- 变更范围限定在请求行为内，避免无关重构和格式化 churn。
+- 新增工具优先复用 `utils/milky_tools.py`、`utils/tool_helpers.py`、`utils/http_client.py` 的既有模式。
+- 行为变更要补针对性测试；共享工具、消息主流程、DB schema、权限逻辑尤其需要测试。
+- 完成前运行最窄有效测试或 lint；没跑的命令要说明。
+- 保留用户或同事已有的工作区修改，不要未经要求 revert。
