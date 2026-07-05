@@ -32,6 +32,6 @@ RUN mkdir -p /app/cache /app/cache/sandbox /app/cache/chroma \
 USER frontier
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8080/api/dashboard/status').raise_for_status()" || exit 1
+    CMD python -c "import httpx2; httpx2.get('http://localhost:8080/api/dashboard/status').raise_for_status()" || exit 1
 
 ENTRYPOINT [ "uv","run","nb","run" ]

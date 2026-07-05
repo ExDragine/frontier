@@ -19,6 +19,7 @@ async def webpage_screenshot(
     selector: str | None = None,
     wait_until: str = "networkidle",
     timeout: int = 30000,
+    ready_timeout: int = 15000,
 ) -> tuple[str, UniMessage | None]:
     """对指定网页进行截图并返回图片。
 
@@ -52,6 +53,7 @@ async def webpage_screenshot(
             selector=selector,
             wait_until=wait_until,
             timeout=timeout,
+            ready_timeout=ready_timeout,
         )
         summary = f"网页截图完成: {url}"
         if selector:

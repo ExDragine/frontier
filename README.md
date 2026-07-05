@@ -1,131 +1,197 @@
 # Frontier
 
-基于 [NoneBot2](https://nonebot.dev/) 的 AI 驱动 QQ 聊天机器人，具备人格化对话、深度 Agent 推理、多模态交互和长期记忆能力。
+Frontier 是一个基于 [NoneBot2](https://nonebot.dev/) 和 Milky 适配器的 AI QQ 聊天机器人。它把 QQ 消息接入 LangGraph/deepagents 驱动的 Deep Agent，支持多模型路由、工具调用、文件系统工作区、图片/视频生成、聊天记录检索、定时任务和 Web 管理面板。
 
 ## 核心架构
 
 ```
-消息 → message_gateway（门控）→ FrontierCognitive Deep Agent → 工具调用 → 回复生成
-         │                        │
-         ├─ 访问控制（黑白名单）
-         ├─ @提及 / 机器人名触发    ├─ 文件系统后端（代码执行/数据分析）
-         ├─ reply_check 规则匹配    └─ 多工具调用（33 个工具）
-         └─ Signal LLM 辅助决策
+QQ / Milky MessageEvent
+  ↓
+plugins/agent on_message(priority=10)
+  ↓
+文本/消息段提取 → 消息归一化 → 引用上下文 → DB 存储
+  ↓
+message_gateway 门控（黑白名单 / @ / 唤醒词 / Signal LLM）
+  ↓
+媒体下载 + 内容安全检查
+  ↓
+FrontierCognitive.chat_agent()
+  ↓
+deepagents.create_deep_agent()
+  ↓
+工具调用 / 文件系统后端 / memory / code interpreter
+  ↓
+UniMessage 文本、图片、视频或文件回复
 ```
 
-- **消息门控**：基于访问控制、@提及、关键词匹配和 Signal LLM 辅助决策，判断是否触发 Agent 回复
-- **Deep Agent**：基于 LangGraph `deepagents`，具备文件系统后端、技能加载和长期记忆
-- **内容安全**：文本 + 图片审核，Safe/Controversial/Unsafe 三级分级，通过表情反应标识
-- **多模型路由**：[`llm_factory.py`](utils/llm_factory.py) 根据模型名自动识别 provider（OpenAI / Google Gemini / Anthropic Claude / DeepSeek）
+主要设计点：
+- **先存储、后门控、再下载媒体**：未触发回复的图片/视频不会被下载。
+- **会话串行**：同一用户/群聊线程通过 `asyncio.Lock` 串行执行，不同线程可并发。
+- **多模型路由**：OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek 统一由 `utils/llm_factory.py` 创建。
+- **文件系统工作区**：每个私聊或群聊拥有独立 `cache/sandbox/workspaces/{id}` 和 `/memory/{id}`。
+- **媒体工件直发**：工具返回的 `UniMessage` artifact 会被提取并直接发送到 QQ。
 
 ## 功能模块
 
-### 插件系统
-
 | 插件 | 功能 |
 |------|------|
-| `agent` | 核心对话引擎：消息门控、Agent 调度、内容安全检测、回复渲染（文本/图片） |
-| `clockwork` | 定时任务：提醒、每日新闻、APOD 天文图片、地震预警、新闻摘要 |
-| `dashboard` | Web 管理面板：消息浏览、配置管理、任务管理、JWT 鉴权 |
-| `toolbox` | 管理命令：`/update` 热更新、`/model` 查看模型配置、技能沙箱初始化 |
-| `playground` | 媒体生成：`/paint` AI 绘图、`/video` AI 视频、戳一戳回复 |
+| `plugins/agent` | 核心对话引擎：消息处理、回复门控、内容安全、Deep Agent 调度、回复渲染 |
+| `plugins/clockwork` | APScheduler 定时任务：提醒、用户自动任务、每日新闻、APOD、地震/NRC 等推送 |
+| `plugins/dashboard` | Web 管理面板：JWT 登录、状态、消息浏览、配置管理、任务管理 |
+| `plugins/playground` | `/paint` 图片生成、`/video` 视频生成、戳一戳响应 |
+| `plugins/toolbox` | `/update`、`/restart`、`/model`、`/set wake`、`/vehelp` 等管理命令 |
 
-### Agent 工具能力（33 个）
+## Agent 工具能力
 
-| 类别 | 工具 |
+`tools/` 下的 LangChain 工具会被自动发现并按组注册。当前源码约有 125 个 `@tool` 入口，覆盖：
+
+| 类别 | 示例 |
 |------|------|
-| **平台操作** | 消息发送、文件上传、好友/群组管理、系统信息 |
-| **网络检索** | Wikipedia、ArXiv 论文、Bilibili 视频、网页爬取 |
-| **天文空间** | 极光、彗星、卫星过境、火箭发射、空间天气 |
-| **地球信息** | 地震速报、雷达云图、天气预报 |
-| **记忆** | 聊天记录全文检索 |
-| **占卜** | 易经、塔罗牌 |
-| **媒体** | AI 图像生成、AI 视频生成 |
-| **扩展** | MCP 协议动态加载外部工具 |
+| 平台操作 | 发送消息/图片/视频/文件，好友、群组、群文件、公告、精华、反应、戳一戳 |
+| 记忆检索 | 聊天记录搜索、按时间段总结 |
+| 媒体生成 | AI 绘图、图片编辑、AI 视频 |
+| 自动任务 | 创建、列出、暂停、恢复、取消用户自动任务 |
+| 网络与资料 | Wikipedia、ArXiv、Bilibili、MCP 外部工具 |
+| 天文空间 | 极光、彗星、卫星图、火箭发射、空间天气 |
+| 地球与天气 | 地震、雷达、风场图、台风、ENS 气象 |
+| 游戏/业务工具 | NRC 远行商人、精灵蛋、活动日历等 |
+| 占卜 | 易经、塔罗 |
+
+部分工具是受限工具：网页截图/录屏只有在用户明确要求查看网页外观或录制页面时才暴露；ENS 专业气象工具有独立前缀和门控规则。
 
 ## 技术栈
 
 | 层面 | 技术 |
 |------|------|
-| **运行时** | Python 3.14+ / Node.js（Playwright MCP） |
-| **框架** | NoneBot2 + FastAPI / milky 适配器（QQ 协议） |
-| **Agent** | LangChain + LangGraph / deepagents / 多模型路由 |
-| **存储** | SQLite（SQLModel + FTS 全文搜索） |
-| **渲染** | Playwright 无头浏览器 / markdown-it-py / Pillow |
-| **任务** | APScheduler |
-| **部署** | Docker / uv 包管理 |
+| 运行时 | Python 3.14+、uv |
+| Bot 框架 | NoneBot2、FastAPI driver、nonebot-adapter-milky、nonebot_plugin_alconna |
+| Agent | LangChain、LangGraph、deepagents、langchain-quickjs |
+| 模型 | OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek |
+| 存储 | SQLite、SQLModel、FTS5、WAL |
+| 渲染/浏览器 | Playwright、markdown-it-py、Pillow |
+| 定时任务 | nonebot-plugin-apscheduler / APScheduler |
+| 部署 | Docker、docker compose、uv |
 
 ## 快速开始
 
 ### 环境要求
 
 - Python 3.14+
-- [uv](https://docs.astral.sh/uv/) 包管理器
-- Node.js（如需 npx 方式的 MCP 工具）
-- Playwright 浏览器（Markdown 渲染和网页爬取）
+- [uv](https://docs.astral.sh/uv/)
+- Playwright 浏览器依赖
+- 可用的 Milky 服务和对应 NoneBot 配置
+- 至少一个可用 LLM API key
 
-### 安装步骤
+### 安装
 
 ```bash
-# 1. 安装依赖
 uv sync
+uv run playwright install
 
-# 2. 激活虚拟环境
-source .venv/bin/activate  # Linux / macOS
-# .venv\Scripts\activate.ps1  # Windows
-
-# 3. 安装 Playwright 浏览器
-playwright install
-
-# 4. 配置
-cp .env.example .env        # NoneBot 环境变量
-cp env.toml.example env.toml  # 应用配置（API Key 等）
-
-# 5. 启动
-bash run.sh  # Linux / macOS
-# ./run.ps1  # Windows
+cp .env.example .env
+cp env.toml.example env.toml
 ```
 
-### Docker 部署
+编辑 `.env` 和 `env.toml` 后启动：
+
+```bash
+bash run.sh
+```
+
+Windows:
+
+```powershell
+.\run.ps1
+```
+
+`run.sh` 会设置默认 `HF_ENDPOINT`，然后循环执行 `uv run nb run`。
+
+### Docker
 
 ```bash
 docker compose up -d
 ```
 
-## 配置说明
+## 配置
 
 | 文件 | 用途 |
 |------|------|
-| `.env` | NoneBot2 环境变量（驱动、端口、超级用户等） |
-| `env.toml` | 应用配置（LLM 端点、API Key、功能开关、速率限制等） |
-| `mcp.json` | MCP 服务器定义（Agent 外部工具扩展） |
+| `.env` | NoneBot 环境变量，如 driver、端口、超级用户、适配器连接配置 |
+| `env.toml` | Frontier 应用配置：bot 名称、system prompt、模型、API key、功能开关、速率限制、任务群组、Dashboard |
+| `mcp.json` | MCP 外部工具服务器定义 |
 
-详细配置项参考 `.env.example` 和 `env.toml.example`。
+`env.toml` 的关键部分：
+- `[information]`: `name` 和主 system prompt。
+- `[endpoint]`: basic/signal/advan/paint/video 模型及 provider、endpoint、capabilities。
+- `[llm_endpoints.*]`: 可复用 LLM endpoint profile，用于覆盖 provider/base_url/api_key/capabilities。
+- `[function]`: Agent、绘图、视频、黑白名单、速率限制、超时。
+- `[dashboard]`: 管理面板密码、JWT secret、过期时间。
+- `[content_check]`: 文本/图片内容安全开关。
+
+`utils/configs.py` 在 import 时读取 `env.toml`。普通配置变更通常需要重启；Dashboard settings API 会调用运行时 reload 更新一部分配置。
+
+## Dashboard
+
+启动后 Dashboard 挂载到：
+
+```text
+http://localhost:8080/dashboard
+```
+
+API 前缀：
+
+```text
+/api/dashboard
+```
+
+现有 API 分组包括 auth、status、tasks、messages、settings。首次部署请修改 Dashboard 默认密码和 JWT secret。
 
 ## 项目结构
 
 ```
 frontier/
-├── plugins/            # NoneBot2 插件
-│   ├── agent/          #   核心对话 Agent
-│   ├── clockwork/      #   定时任务
-│   ├── dashboard/      #   Web 管理面板
-│   ├── toolbox/        #   管理命令
-│   └── playground/     #   媒体生成
-├── tools/              # LangChain 工具（33 个）
-├── utils/              # 核心工具库
-│   ├── agents.py       #   FrontierCognitive Agent
-│   ├── message.py      #   消息门控与处理管道
-│   ├── database.py     #   SQLite 数据库（SQLModel + FTS）
-│   ├── llm_factory.py  #   多模型路由工厂
-│   ├── signal_llm.py   #   轻量 Signal LLM 封装
-│   ├── configs.py      #   配置加载
-│   └── ...
-├── templates/          # HTML/CSS 消息模板
-├── prompts/            # Agent 系统提示词
-├── data/               # 静态数据（易经、塔罗牌）
+├── plugins/
+│   ├── agent/          # 核心消息入口和 Agent 调度
+│   ├── clockwork/      # 定时任务系统
+│   ├── dashboard/      # FastAPI Dashboard
+│   ├── playground/     # /paint 和 /video
+│   └── toolbox/        # 管理命令
+├── tools/              # LangChain Agent 工具
+├── utils/              # Agent、消息、DB、LLM、渲染、HTTP、Milky helper
+├── prompts/            # prompt 模板和 Agent memory 基础模板
+├── templates/          # HTML/CSS 渲染模板
+├── data/               # 易经、塔罗等静态数据
 ├── scripts/            # 维护脚本
-├── test/               # 测试套件
-├── docs/               # 设计文档
-└── sandbox/            # Agent 技能与文件系统沙箱
+├── test/               # pytest / nonebug 测试
+├── docs/               # 设计文档和实现计划
+├── cache/              # 运行时缓存、sandbox、staged artifacts
+├── frontier.db         # 默认 SQLite 数据库
+├── env.toml.example
+├── mcp.json.example
+└── pyproject.toml
 ```
+
+## 测试与维护
+
+```bash
+uv run pytest --collect-only -q
+uv run pytest test/ -x -v
+uv run pytest test/utils/agents_test.py -x
+uv run ruff check .
+```
+
+数据库维护脚本：
+
+```bash
+uv run python scripts/database_maintenance.py
+```
+
+测试使用 nonebug、pytest-asyncio 和第三方 stub；测试 fixture 会生成临时 `env.toml`，不依赖本地真实配置。
+
+## 开发提示
+
+- 新工具：在 `tools/xxx.py` 中添加 `@tool`，必要时在 `tools/__init__.py` 的 `_TOOL_MODULE_GROUPS` 注册分组。
+- 新插件：放入 `plugins/`，NoneBot 会按 `pyproject.toml` 的 `plugin_dirs` 加载。
+- 不要在 `utils/agents.py` 顶层 import 具体工具模块，容易触发循环依赖。
+- `UniMessage` 和 alconna 相关 import 尽量延迟到 NoneBot 环境就绪后。
+- 涉及消息主流程、DB schema、工具权限、Agent backend、LLM 路由的改动需要补针对性测试。

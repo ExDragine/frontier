@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台风 {{ name }} 信息</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css" />
+    <style>{{ css_content }}</style>
+</head>
+<body>
+    <div id="typhoon-card">
+        <!-- 右侧地图面板（全屏） -->
+        <div class="right-panel">
+            <div id="map"></div>
+        </div>
+
+        <!-- 左侧信息面板（悬浮） -->
+        <div class="left-panel">
+            <!-- 基础信息卡 -->
+            <div class="info-card basic-card">
+                <div class="typhoon-name" style="color: {{ level_color }}">
+                    {{ name }}
+                    <span class="level-badge" style="background: {{ level_color }}">{{ level_display }}</span>
+                </div>
+                <div class="typhoon-ename">{{ ename }}</div>
+                <div class="info-row">
+                    <span class="info-label">编号</span>
+                    <span class="info-value">{{ tfbh }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">生成时间</span>
+                    <span class="info-value">{{ begin_time }}</span>
+                </div>
+            </div>
+
+            <!-- 当前位置信息卡 -->
+            <div class="info-card position-card">
+                <div class="info-row">
+                    <span class="info-label">观测时间</span>
+                    <div class="pos-value">
+                        <div>{{ time_line1 }}</div>
+                        <div class="pos-sub">{{ time_line2 }}</div>
+                    </div>
+                </div>
+                <div class="pos-row">
+                    <span class="pos-label">中心位置</span>
+                    <div class="pos-value">
+                        <div>{{ pos_coords }}</div>
+                        <div class="pos-sub">{{ pos_desc }}</div>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">中心风力</span>
+                    <span class="info-value"><span class="info-num">{{ power }}</span> 级（<span class="info-num">{{ speed }}</span> 米/秒）</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">中心气压</span>
+                    <span class="info-value"><span class="info-num">{{ pressure_val }}</span> 百帕</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">移动速度</span>
+                    <span class="info-value">{% if move_speed_val is not none %}<span class="info-num">{{ move_speed_val }}</span> 公里/小时{% else %}—{% endif %}</span>
+                </div>
+            </div>
+
+            <!-- 登陆信息卡 -->
+            {% if land_points %}
+            <div class="info-card land-card">
+                <div class="info-card-title">登陆信息</div>
+                {% if land_points|length >= 2 %}
+                {% for lp in land_points|reverse %}
+                <div class="land-item{% if not loop.last %} land-item-border{% endif %}">
+                    <div class="land-row">
+                        <span class="land-time">{{ lp.land_time }}</span>
+                        <span class="land-sep">·</span>
+                        <span class="land-pos">{{ lp.position }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                {% for lp in land_points %}
+                <div class="land-item">
+                    <div class="land-position">{{ lp.position }}</div>
+                    <div class="info-row">
+                        <span class="info-label">登陆时间</span>
+                        <span class="info-value">{{ lp.land_time }}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">经纬度</span>
+                        <span class="info-value">{{ "%.1f"|format(lp.lng) }}°E, {{ "%.1f"|format(lp.lat) }}°N</span>
+                    </div>
+                </div>
+                {% endfor %}
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 图例 -->
+        <div class="map-legend" id="legend">
+            <div class="map-legend-title">强度分级</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#1afa29;border-color:#0ea82b"></span>热带低压</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#1296db;border-color:#0d6ea3"></span>热带风暴</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#f4ea2a;border-color:#c4b91e"></span>强热带风暴</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#FFB300;border-color:#c48800"></span>台风</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#FB8C00;border-color:#c46b00"></span>强台风</div>
+            <div class="legend-item"><span class="legend-circle" style="background:#E53935;border-color:#b22b2a"></span>超强台风</div>
+            <div class="legend-item" style="margin-top:4px"><span class="legend-line" style="background:#00BFFF"></span>实际路径</div>
+            <div class="legend-item"><span class="legend-line legend-line-dashed" style="border-color:#FF0000"></span>预报路径</div>
+            <div class="legend-item" style="margin-top:4px"><span class="legend-wind" style="background:#00CC00"></span>七级风圈</div>
+            <div class="legend-item"><span class="legend-wind" style="background:#FFD600"></span>十级风圈</div>
+            <div class="legend-item"><span class="legend-wind" style="background:#FF1744"></span>十二级风圈</div>
+            {% if overlay_data %}
+            <div class="legend-item" style="margin-top:4px"><span class="legend-overlay-dot"></span>{{ overlay_data.label }} {{ overlay_data.time }}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js"></script>
+    <script>
+    (function () {
+        var data = {{ typhoon_data | tojson }};
+
+        // ── 地图初始化 ──
+        var view = new ol.View({
+            center: ol.proj.fromLonLat([125, 20]),
+            zoom: 5
+        });
+
+        var map = new ol.Map({
+            target: 'map',
+            controls: [],
+            view: view,
+        });
+
+        map.addLayer(new ol.layer.Tile({
+            source: new ol.source.XYZ({
+                url: 'https://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',
+                maxZoom: 18
+            })
+        }));
+
+        // ── 坐标转换捷径 ──
+        function to3857(lngLat) { return ol.proj.fromLonLat(lngLat); }
+        function fStyle(opts) { return new ol.style.Style(opts); }
+        function circleStyle(radius, fillColor, strokeColor, strokeWidth) {
+            return fStyle({
+                image: new ol.style.Circle({
+                    radius: radius,
+                    fill: new ol.style.Fill({ color: fillColor }),
+                    stroke: new ol.style.Stroke({ color: strokeColor, width: strokeWidth || 1 })
+                })
+            });
+        }
+
+        // ==== 1. 历史轨迹线（天蓝色实线）====
+        if (data.historyPolyline && data.historyPolyline.length > 0) {
+            var histCoords = data.historyPolyline.map(function (p) { return to3857(p); });
+            var histLine = new ol.Feature({ geometry: new ol.geom.LineString(histCoords) });
+            histLine.setStyle(fStyle({
+                stroke: new ol.style.Stroke({ color: '#00BFFF', width: 3, opacity: 0.8 })
+            }));
+            var histLineSrc = new ol.source.Vector({ features: [histLine] });
+            map.addLayer(new ol.layer.Vector({ source: histLineSrc }));
+        }
+
+        // ==== 2. 历史轨迹点（按强度着色）====
+        if (data.historyPoints) {
+            var histPtSrc = new ol.source.Vector();
+            data.historyPoints.forEach(function (pt) {
+                var f = new ol.Feature({ geometry: new ol.geom.Point(to3857([pt.lng, pt.lat])) });
+                f.setStyle(circleStyle(5, pt.color, '#333', 1));
+                histPtSrc.addFeature(f);
+            });
+            map.addLayer(new ol.layer.Vector({ source: histPtSrc }));
+        }
+
+        // ==== 3. 预报路径（各机构虚线）+ 预报节点 ====
+        if (data.forecastPaths) {
+            var fcLineSrc = new ol.source.Vector();
+            var fcPtSrc = new ol.source.Vector();
+            data.forecastPaths.forEach(function (path) {
+                if (!path.points || path.points.length < 2) return;
+                var pts = path.points.slice(); // [lng, lat]
+                if (data.currentPos) {
+                    pts.unshift([data.currentPos[1], data.currentPos[0]]);
+                }
+                var coords = pts.map(function (p) { return to3857(p); });
+                var line = new ol.Feature({ geometry: new ol.geom.LineString(coords) });
+                line.setStyle(fStyle({
+                    stroke: new ol.style.Stroke({ color: path.color, width: 2.5, opacity: 0.75, lineDash: [8, 6] })
+                }));
+                fcLineSrc.addFeature(line);
+
+                // 预报节点（跳过连接段起点，仅渲染预报节点本身）
+                for (var i = data.currentPos ? 1 : 0; i < coords.length; i++) {
+                    var pf = new ol.Feature({ geometry: new ol.geom.Point(coords[i]) });
+                    pf.setStyle(circleStyle(4, '#fff', path.color, 2));
+                    fcPtSrc.addFeature(pf);
+                }
+            });
+            map.addLayer(new ol.layer.Vector({ source: fcLineSrc }));
+            map.addLayer(new ol.layer.Vector({ source: fcPtSrc }));
+        }
+
+        // ==== 4. 风圈 + 当前点 ====
+        if (data.currentPos) {
+            var clng = data.currentPos[1];
+            var clat = data.currentPos[0];
+            var cur3857 = to3857([clng, clat]);
+
+            /** 从中心沿 bearing 走 radiusKm 公里返回 [lng, lat] */
+            function qPtLngLat(centerLng, centerLat, bearing, radiusKm) {
+                var R = 6371;
+                var lat1 = centerLat * Math.PI / 180;
+                var lng1 = centerLng * Math.PI / 180;
+                var b = bearing * Math.PI / 180;
+                var d = radiusKm / R;
+                var lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(b));
+                var lng2 = lng1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+                return [lng2 * 180 / Math.PI, lat2 * 180 / Math.PI];
+            }
+
+            function drawWindRing(centerLng, centerLat, quad, simpleRadius, color) {
+                if (quad && quad.ne != null && quad.nw != null && quad.se != null && quad.sw != null) {
+                    var steps = 10;
+                    var pts = [];
+                    // NE: 0°(北) → 90°(东)
+                    for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, (i / steps) * 90, quad.ne));
+                    // SE: 90°(东) → 180°(南)
+                    for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, 90 + (i / steps) * 90, quad.se));
+                    // SW: 180°(南) → 270°(西)
+                    for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, 180 + (i / steps) * 90, quad.sw));
+                    // NW: 270°(西) → 360°(北)
+                    for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, 270 + (i / steps) * 90, quad.nw));
+                    // 闭合环：首尾相接
+                    pts.push(pts[0].slice());
+                    var ringCoords = pts.map(function (p) { return to3857(p); });
+                    var poly = new ol.Feature({ geometry: new ol.geom.Polygon([ringCoords]) });
+                    poly.setStyle(fStyle({
+                        fill: new ol.style.Fill({ color: color + '1F' }),
+                        stroke: new ol.style.Stroke({ color: color + '66', width: 1 }),
+                    }));
+                    var src = new ol.source.Vector({ features: [poly] });
+                    map.addLayer(new ol.layer.Vector({ source: src }));
+                } else if (simpleRadius && simpleRadius > 0) {
+                    var circ = new ol.Feature({ geometry: new ol.geom.Circle(cur3857, simpleRadius * 1000) });
+                    circ.setStyle(fStyle({
+                        fill: new ol.style.Fill({ color: color + '26' }),
+                        stroke: new ol.style.Stroke({ color: color + '66', width: 1.5 }),
+                    }));
+                    var src = new ol.source.Vector({ features: [circ] });
+                    map.addLayer(new ol.layer.Vector({ source: src }));
+                }
+            }
+
+            drawWindRing(clng, clat, data.windRadius7Quad, data.windRadius7, '#00CC00');
+            drawWindRing(clng, clat, data.windRadius10Quad, data.windRadius10, '#FFD600');
+            drawWindRing(clng, clat, data.windRadius12Quad, data.windRadius12, '#FF1744');
+
+            // ==== 5. 当前点 — 自定义图标 ====
+            if (data.iconBase64) {
+                var iconSize = 44;
+                var markerEl = document.createElement('div');
+                var img = document.createElement('img');
+                img.src = data.iconBase64;
+                img.style.cssText =
+                    'width:' + iconSize + 'px;height:' + iconSize + 'px;' +
+                    'filter:drop-shadow(0 0 6px rgba(255,255,255,0.95)) drop-shadow(0 0 3px rgba(255,255,255,0.8));';
+                markerEl.appendChild(img);
+                map.addOverlay(new ol.Overlay({
+                    position: cur3857,
+                    positioning: 'center-center',
+                    element: markerEl,
+                    stopEvent: false
+                }));
+            } else {
+                var fallback = new ol.Feature({ geometry: new ol.geom.Point(cur3857) });
+                fallback.setStyle(circleStyle(9, data.currentColor || '#FB8C00', '#fff', 2.5));
+                var fbSrc = new ol.source.Vector({ features: [fallback] });
+                map.addLayer(new ol.layer.Vector({ source: fbSrc }));
+            }
+        }
+
+        // ==== 6. 登陆点标记 ====
+        if (data.landPoints && data.landPoints.length > 0 && data.landIconBase64) {
+            var landIconSize = 32;
+            data.landPoints.forEach(function(lp) {
+                if (lp.lng == null || lp.lat == null) return;
+                var landPos = to3857([lp.lng, lp.lat]);
+                var landEl = document.createElement('div');
+                var landImg = document.createElement('img');
+                landImg.src = data.landIconBase64;
+                landImg.style.cssText =
+                    'width:' + landIconSize + 'px;height:' + landIconSize + 'px;' +
+                    'filter:drop-shadow(0 0 4px rgba(255,255,255,0.9));';
+                landImg.title = lp.position + '  ' + lp.land_time;
+                landEl.appendChild(landImg);
+                map.addOverlay(new ol.Overlay({
+                    position: landPos,
+                    positioning: 'center-center',
+                    element: landEl,
+                    stopEvent: false
+                }));
+            });
+        }
+
+        // ═══════════════════════════════════════════════
+        //  视野控制
+        // ═══════════════════════════════════════════════
+
+        /** 计算"轨迹安全展示区"——屏幕像素坐标的矩形区域。 */
+        function getTyphoonSafeRect(map) {
+            var sz = map.getSize();
+            if (!sz) return null;
+            var mw = sz[0], mh = sz[1];
+
+            var panel = document.querySelector('.left-panel');
+            var left = panel ? panel.getBoundingClientRect().right + 24 : 394;
+
+            var legend = document.querySelector('.map-legend');
+            var right = legend ? legend.getBoundingClientRect().left - 24 : mw - 24;
+
+            var top = 80;
+
+            // 底部不受图例影响
+            var bottom = mh - 24;
+
+            return { left: left, right: right, top: top, bottom: bottom };
+        }
+
+        /** 收集所有需要可见的地理点，构建 EPSG:4326 extent [minLng, minLat, maxLng, maxLat] */
+        function createDisplayExtent(data) {
+            var ext = ol.extent.createEmpty();
+
+            if (data.historyPolyline) {
+                data.historyPolyline.forEach(function (p) { ol.extent.extendCoordinate(ext, p); });
+            }
+            if (data.forecastPaths) {
+                data.forecastPaths.forEach(function (path) {
+                    if (!path.points) return;
+                    path.points.forEach(function (p) { ol.extent.extendCoordinate(ext, p); });
+                });
+            }
+            if (data.currentPos) {
+                ol.extent.extendCoordinate(ext, [data.currentPos[1], data.currentPos[0]]);
+            }
+            if (data.landPoints) {
+                data.landPoints.forEach(function (lp) {
+                    if (lp.lng != null && lp.lat != null) {
+                        ol.extent.extendCoordinate(ext, [lp.lng, lp.lat]);
+                    }
+                });
+            }
+
+            if (ol.extent.isEmpty(ext)) return null;
+            return ol.extent.buffer(ext, 0.3);
+        }
+
+        /** 画调试矩形（仅 debug 模式）。 */
+        function drawDebugRect(data, safeRect) {
+            if (!data.debug) return;
+            var div = document.createElement('div');
+            div.style.cssText =
+                'position:absolute;z-index:9999;border:2px dashed #ff1744;' +
+                'background:rgba(255,23,68,0.08);pointer-events:none;' +
+                'left:' + safeRect.left + 'px;top:' + safeRect.top + 'px;' +
+                'width:' + (safeRect.right - safeRect.left) + 'px;' +
+                'height:' + (safeRect.bottom - safeRect.top) + 'px;';
+            var label = document.createElement('span');
+            label.textContent = '安全展示区';
+            label.style.cssText =
+                'position:absolute;top:4px;left:8px;font-size:11px;color:#ff1744;' +
+                'font-family:monospace;white-space:nowrap;';
+            div.appendChild(label);
+            document.getElementById('typhoon-card').appendChild(div);
+        }
+
+        /** 统一入口：计算安全区 → 将 extent fit 到安全区像素矩形。 */
+        function focusTyphoonPath(map, data) {
+            map.updateSize();
+
+            var ext4326 = createDisplayExtent(data);
+            if (!ext4326) {
+                view.setCenter(ol.proj.fromLonLat([125, 20]));
+                view.setZoom(5);
+                return;
+            }
+
+            var safeRect = getTyphoonSafeRect(map);
+            if (!safeRect) return;
+            drawDebugRect(data, safeRect);
+
+            var sz = map.getSize();
+            if (!sz) return;
+            var padding = [
+                safeRect.top,                    // 上
+                sz[0] - safeRect.right,          // 右
+                sz[1] - safeRect.bottom,         // 下
+                safeRect.left                     // 左
+            ];
+
+            var ext3857 = ol.proj.transformExtent(ext4326, 'EPSG:4326', 'EPSG:3857');
+            view.fit(ext3857, { padding: padding, maxZoom: 10, duration: 0 });
+
+            // fit 之后手动把地图 center 向左偏移，让路径在屏幕视觉上靠右
+            // 左侧留出空间让 overlay（云图/雷达）多露一些
+            var safeW = safeRect.right - safeRect.left;
+            var mapCenterPx = map.getPixelFromCoordinate(view.getCenter());
+            if (!mapCenterPx) return;
+            var leftShift = safeW * 0.15;
+            var newCenter = map.getCoordinateFromPixel([mapCenterPx[0] - leftShift, mapCenterPx[1]]);
+            view.setCenter(newCenter);
+        }
+
+        // 所有图层渲染完成后，最后一环聚焦视野
+        try {
+            focusTyphoonPath(map, data);
+        } catch (e) {
+            // 地图未就绪时 focus 可能失败，保持默认视图，不影响叠加层
+        }
+
+        // ==== 6. 图层叠加（云图 / 雷达）====
+        if (data.overlayData) {
+            var ov = data.overlayData;
+            var ovExtent4326 = [ov.bounds[0][1], ov.bounds[0][0], ov.bounds[1][1], ov.bounds[1][0]];
+            map.addLayer(new ol.layer.Image({
+                source: new ol.source.ImageStatic({
+                    url: ov.imageUrl,
+                    imageExtent: ol.proj.transformExtent(ovExtent4326, 'EPSG:4326', 'EPSG:3857'),
+                }),
+                opacity: 0.65
+            }));
+        }
+    })();
+    </script>
+</body>
+</html>

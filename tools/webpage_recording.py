@@ -7,7 +7,7 @@ from langchain_core.tools import tool
 from nonebot import logger
 
 from utils.alconna import UniMessage
-from utils.browser_capture import record_video
+from utils.browser_capture import PageLoadTimeoutError, record_video
 
 
 @tool(response_format="content_and_artifact")
@@ -18,6 +18,7 @@ async def webpage_recording(
     height: int = 1080,
     wait_until: str = "networkidle",
     timeout: int = 30000,
+    ready_timeout: int = 15000,
 ) -> tuple[str, UniMessage | None]:
     """录制网页视频（mp4），不是截图、不是拍照、不是快照。
 
@@ -41,6 +42,7 @@ async def webpage_recording(
         height: 视口高度（像素），默认 1080
         wait_until: 页面加载等待策略（load / domcontentloaded / networkidle），默认 networkidle
         timeout: 导航超时毫秒数，默认 30000
+        ready_timeout: 页面就绪超时毫秒数，默认 15000
 
     Returns:
         tuple[str, UniMessage | None]: (文字摘要, 录屏视频)
@@ -53,9 +55,13 @@ async def webpage_recording(
             height=height,
             wait_until=wait_until,
             timeout=timeout,
+            ready_timeout=ready_timeout,
         )
         summary = f"网页录屏完成: {url} (时长 {duration}s)"
         return summary, UniMessage.video(raw=video_bytes)
+    except PageLoadTimeoutError as e:
+        logger.warning(f"网页加载超时 [{url}]: {e}")
+        return f"网站加载超时，以下是当前状态截图: {url}", UniMessage.image(raw=e.screenshot_bytes)
     except Exception as e:
         logger.error(f"网页录屏失败 [{url}]: {e}")
         return f"网页录屏失败: {e}", None

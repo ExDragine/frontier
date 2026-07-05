@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 
-import httpx
+from utils.http_client import AsyncClient, HTTPError
 
 # 当前文件所在目录（绝对路径）
 current_dir = Path(__file__).resolve().parent
@@ -20,7 +20,7 @@ async def fetch_earth_image():
     url = "https://www.storm-chasers.cn/wp-content/uploads/satimgs/Composite_TVIS_FDLK.jpg"
     content = None
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with AsyncClient(timeout=30) as client:
         for attempt in range(3):
             try:
                 print(f"[尝试第 {attempt + 1} 次] 正在获取图片...")
@@ -39,7 +39,7 @@ async def fetch_earth_image():
                 print(f"✅ 下载完成，大小: {len(content)} 字节")
                 break
 
-            except httpx.HTTPError as e:
+            except HTTPError as e:
                 print(f"❌ 获取图片失败: {e}")
                 await asyncio.sleep(1)  # 间隔重试
                 continue

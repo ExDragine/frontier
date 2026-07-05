@@ -22,7 +22,7 @@ from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_quickjs import CodeInterpreterMiddleware
 from nonebot import logger
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from tools import agent_tools
 from utils.configs import EnvConfig, information
@@ -61,6 +61,56 @@ class ProgressEvent:
 VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 SKILLS_BACKEND_PATH = "/skills"
 MEMORY_BACKEND_PATH = "/memory"
+
+# 截图/录屏工具硬门控：通过 Signal LLM 判断用户原始意图，仅当用户明确想"看网页外观"时才暴露对应工具
+class BrowserCaptureIntent(BaseModel):
+    """Signal LLM 对用户消息的截图/录屏意图判断结果。"""
+
+    screenshot: bool = Field(description="用户是否要求查看某个网页的可视化外观（截图/拍照/快照/看看长啥样/打开看看等）")
+    recording: bool = Field(description="用户是否要求录制网页视频（录屏/录制/录视频等）")
+
+
+async def _detect_browser_capture_intent(user_text: str | None) -> set[str]:
+    """使用 Signal LLM 检测用户消息是否明确请求截图或录屏。
+
+    仅判断用户的原始意图 —— 用户没说要"看网页长什么样"，工具就不暴露。
+    Agent 无法在工作流中把截图/录屏当作其他工具失败后的"兜底方案"。
+    """
+    if not user_text:
+        return set()
+    from utils.signal_llm import signal_structured
+
+    try:
+        result: BrowserCaptureIntent = await signal_structured(
+            system_prompt=(
+                "判断用户消息是否明确表达了\"想看到某个网页的可视化外观\"的意图。\n\n"
+                "以下情况 screenshot 应为 True：\n"
+                "- 明确说截图、拍照、快照、截屏、screenshot\n"
+                "- \"来张XX看看\"、\"打开XX看看\"、\"看看XX长啥样\"、\"XX首页什么样的\"\n"
+                "- \"帮我打开XX网站\"、\"访问XX页面\"并带有查看意图\n\n"
+                "以下情况 recording 应为 True：\n"
+                "- 明确说录屏、录制、录视频、record/recording\n"
+                "- \"把XX录下来\"、\"录一段XX\"\n\n"
+                "以下情况应返回 False：\n"
+                "- 用户只是提到\"截图\"但不是要求截图（如\"你看这个截图\"、\"截图里的内容\"）\n"
+                "- 普通问答、搜索、查数据、天气等不涉及网页外观的请求\n"
+                "- 模糊回应如\"好\"、\"可以\"、\"行\"\n"
+                "- 台风、雷达图、云图、卫星云图、天气图等气象数据可视化请求——这些是数据产品，不是网页截图\n"
+                "- \"叠加雷达\"\"叠加云图\"\"看看雷达\"\"看看云图\"等台风工具内的图层叠加选项"
+            ),
+            user_prompt=user_text,
+            schema=BrowserCaptureIntent,
+        )
+    except Exception:
+        logger.warning("Signal LLM 截图/录屏意图检测失败，默认不暴露工具")
+        return set()
+
+    tools: set[str] = set()
+    if result.screenshot:
+        tools.add("webpage_screenshot")
+    if result.recording:
+        tools.add("webpage_recording")
+    return tools
 
 
 def _configured_model_route(model: str) -> dict[str, str]:
@@ -378,10 +428,14 @@ class FrontierCognitive:
                 logger.debug("Wake word injection skipped: %s: %s", type(exc).__name__, exc)
 
         try:
-            return toml_prompt.format(name=name)
+            prompt = toml_prompt.format(name=name)
         except KeyError as e:
             logger.error(f"❌ system prompt 模板变量缺失: {e}")
             return f"You are {name}, a helpful assistant. [配置错误: 模板变量缺失]"
+
+        # 气象查询规则（硬编码，与 prompts/ens_rules.md 同步维护）
+        prompt += "\n\n【气象查询规则】用户要查新的气象数据 → 调 ens_normal(no_video=True)。用户追问/评价/对比之前查过的数据（含 BAA/珊瑚白化等）→ 先用 get_history_messages 或 search_messages 翻聊天记录，数据已翻成中文在记录里，直接引用评价，禁止重调 ens_normal。记录里找不到才调工具。用户要看视频 → 翻记录找参数 → ens_normal(no_video=False)。多地点用 queries（最多3个），超过3个告知用户精简。"
+        return prompt
 
     @staticmethod
     def _uni_message_cls():
@@ -483,6 +537,7 @@ class FrontierCognitive:
         wake_word: str | None = None,
         group_member_role: str | None = None,
         progress_reporter: ProgressReporter | None = None,
+        user_text: str | None = None,
     ):
         model_kwargs: dict = {
             "model": EnvConfig.ADVAN_MODEL,
@@ -510,8 +565,22 @@ class FrontierCognitive:
         backend = _build_agent_backend(working_dir, workspace_key)
         workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
         system_prompt = self.load_system_prompt(group_id, wake_word)
+        # ── 硬门控：仅当用户明确请求截图/录屏时才暴露对应工具 ──
+        effective_tools = list(self.tools)
+        allowed_capture_tools = await _detect_browser_capture_intent(user_text)
+        if allowed_capture_tools:
+            for rt in agent_tools.restricted_tools:
+                if rt.name in allowed_capture_tools:
+                    effective_tools.append(rt)
+                    logger.info(f"用户明确请求浏览器捕获工具，已暴露: {rt.name}")
+        else:
+            logger.debug("用户未请求截图/录屏，restricted 工具未暴露")
+        # ENS 工具始终可用（具体调用场景由 system prompt 规则控制）
+        for rt in agent_tools.restricted_tools:
+            if rt.name in ("ens_normal", "ens_professional"):
+                effective_tools.append(rt)
         # ── 提取 PTC 工具名列表 ──
-        ptc_tool_names: list = [tool.name for tool in self.tools] if self.tools else []
+        ptc_tool_names: list = [tool.name for tool in effective_tools] if effective_tools else []
         middleware: list = []
         middleware.extend(
             [
@@ -530,7 +599,7 @@ class FrontierCognitive:
             name=EnvConfig.BOT_NAME,
             model=model,
             system_prompt=system_prompt,
-            tools=self.tools,
+            tools=effective_tools,
             middleware=middleware,
             skills=[SKILLS_BACKEND_PATH],
             memory=[f"/memory/{workspace_key}/AGENTS.md"],

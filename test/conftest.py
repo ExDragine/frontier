@@ -1,6 +1,7 @@
 # ruff: noqa: S101
 
 import importlib
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import pytest
 from .stubs.install import install_all_third_party_stubs
 
 install_all_third_party_stubs()
+_tools_dir = Path(__file__).resolve().parents[1] / "tools"
 
 
 def pytest_configure(config):
@@ -125,6 +127,28 @@ jwt_expire_hours = 1
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
+
+
+@pytest.fixture
+def load_tool_module():
+    """Load a single tools/*.py module without triggering tools/__init__.py discovery."""
+    tools_pkg = sys.modules.setdefault("tools", importlib.util.module_from_spec(importlib.machinery.ModuleSpec("tools", None)))
+    tools_pkg.__path__ = [str(_tools_dir)]
+
+    def _load(module_name: str):
+        qualified_name = f"tools.{module_name}"
+        module_path = _tools_dir / f"{module_name}.py"
+        spec = importlib.util.spec_from_file_location(qualified_name, module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot load tool module {module_name!r} from {module_path}")
+        sys.modules.pop(qualified_name, None)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[qualified_name] = module
+        setattr(tools_pkg, module_name, module)
+        spec.loader.exec_module(module)
+        return module
+
+    return _load
 
 
 @pytest.fixture(autouse=True)

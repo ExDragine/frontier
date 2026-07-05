@@ -43,7 +43,6 @@ common = on_message(priority=10)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-
 @dataclass(slots=True)
 class AgentRequestContext:
     bot: Any
@@ -88,7 +87,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
     messages += [
         {
             "role": "user",
-            "content": ("以上是对话历史，仅用于理解上下文。"),
+            "content": "以上是对话历史，仅用于理解上下文。",
         },
         {
             "role": "user",
@@ -141,6 +140,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         wake_word=triggered_wake or None,
         group_member_role=_group_member_role(context.event),
         progress_reporter=_private_chat_reporter if context.group_id is None else None,
+        user_text=context.text,
     )
 
     if not isinstance(result, dict) or "response" not in result:
@@ -182,8 +182,12 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
 
 @driver.on_shutdown
 async def on_shutdown():
+    from tools.ens_professional import clear_ens_cache as clear_ens_professional_cache
+    clear_ens_professional_cache()
+    from utils.browser_capture import close_browser
     from utils.http_client import aclose_all
 
+    await close_browser()
     await aclose_all()
 
 
@@ -331,6 +335,17 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         videos=videos,
     )
     thread_id = _agent_thread_id(user_id, group_id)
+    from utils.ens_gate import _ens_caller_allowed, _ens_prefix
+
+    cleaned = text.strip().lstrip("/")
+    is_ens_msg = cleaned[:3].lower() == "vep" or cleaned[:2].lower() == "ve"
+    _ens_caller_allowed.set(is_ens_msg)
+    if cleaned[:3].lower() == "vep":
+        _ens_prefix.set("vep")
+    elif cleaned[:2].lower() == "ve":
+        _ens_prefix.set("ve")
+    else:
+        _ens_prefix.set("")
     await run_serialized(str(thread_id), _process_agent_request(context, messages))
     if group_id:
         try:

@@ -4,18 +4,24 @@
 shutdown 时调用 aclose_all() 统一关闭所有客户端。
 """
 
-import httpx
+import httpx2
 from nonebot import logger
 
-_clients: dict[str, httpx.AsyncClient] = {}
+HTTP_BACKEND_NAME = "httpx2"
+AsyncClient = httpx2.AsyncClient
+AsyncHTTPTransport = httpx2.AsyncHTTPTransport
+HTTPError = httpx2.HTTPError
+ConnectError = httpx2.ConnectError
+
+_clients: dict[str, AsyncClient] = {}
 _aclose_all_called: bool = False
 
 
-def get_http_client(name: str, *, timeout: float = 30.0) -> httpx.AsyncClient:
+def get_http_client(name: str, *, timeout: float = 30.0) -> AsyncClient:
     """获取或创建命名的 HTTP 客户端。同名多次调用返回同一实例。"""
     if name not in _clients:
-        transport = httpx.AsyncHTTPTransport(http2=True, retries=3)
-        _clients[name] = httpx.AsyncClient(transport=transport, timeout=timeout)
+        transport = AsyncHTTPTransport(http2=True, retries=3)
+        _clients[name] = AsyncClient(transport=transport, timeout=timeout)
     return _clients[name]
 
 
