@@ -556,7 +556,7 @@ async def nrc_merchant_alert(**kwargs):
             first_failure_notified = True
             for group in EnvConfig.NRC_MERCHANT_GROUP_ID:
                 try:
-                    await UniMessage.text("当前已和访问到远行商人失去链接").send(
+                    await UniMessage.text("😭当前已和远行商人失去链接").send(
                         target=Target.group(str(group))
                     )
                 except Exception as e:
