@@ -12,13 +12,13 @@ from langchain.messages import AIMessage
 from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.exception import ActionFailed
-from PIL import Image
+from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 
 from utils.alconna import Image, UniMessage, Video
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
-from utils.database import MessageDatabase
+from utils.database import GroupSettingsManager, MessageDatabase, get_engine
 from utils.http_client import get_http_client
 from utils.markdown_render import markdown_to_image, markdown_to_text
 from utils.signal_llm import signal_structured
@@ -27,6 +27,7 @@ httpx_client = get_http_client("message")
 messages_db = MessageDatabase()
 text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
 image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
+PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
 MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
 MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
@@ -69,6 +70,63 @@ REPLY_CHECK_QUESTION_KEYWORDS = (
     "哪个",
     "咋",
 )
+ACTIVE_TRIGGER_STOP_KEYWORDS = (
+    "别回",
+    "不要回",
+    "不用回",
+    "无需回复",
+    "别说话",
+    "不要说话",
+    "别理",
+    "闭嘴",
+    "停止回复",
+    "别回复",
+)
+ACTIVE_TRIGGER_LOW_INFO_PHRASES = {
+    "h",
+    "hh",
+    "hhh",
+    "哈哈",
+    "哈哈哈",
+    "哈哈哈哈",
+    "笑死",
+    "草",
+    "乐",
+    "好",
+    "好的",
+    "收到",
+    "嗯",
+    "嗯嗯",
+    "哦",
+    "噢",
+    "啊",
+    "诶",
+    "在吗",
+    "在不在",
+}
+ACTIVE_TRIGGER_REQUEST_KEYWORDS = (
+    "查",
+    "搜",
+    "搜索",
+    "找",
+    "看",
+    "看看",
+    "分析",
+    "解释",
+    "总结",
+    "翻译",
+    "写",
+    "改",
+    "画",
+    "生成",
+    "提醒",
+    "创建",
+    "设置",
+    "算",
+    "评价",
+    "对比",
+)
+ACTIVE_TRIGGER_STRIP_CHARS = " \t\r\n:：,，.。!！?？~～…、/\\|[]()（）【】"
 _reply_check_last_checked_at: dict[int, float] = {}
 _BLOCK_MATH_RE = re.compile(r"(?<!\\)\$\$(?!\$).+?(?<!\\)\$\$", re.DOTALL)
 _INLINE_MATH_RE = re.compile(r"(?<!\\)\$(?![\s\d$])[^$\n]+?(?<!\\)\$(?!\w)")
@@ -189,6 +247,35 @@ def _looks_like_reply_check_candidate(text: str, *, active_group: bool) -> bool:
     return any(keyword in compact_text for keyword in REPLY_CHECK_QUESTION_KEYWORDS)
 
 
+def _active_trigger_content(plaintext: str, wake_words: list[str]) -> str:
+    text = plaintext.strip()
+    for wake_word in sorted((word for word in wake_words if word), key=len, reverse=True):
+        if text.startswith(wake_word):
+            return text[len(wake_word) :].strip(ACTIVE_TRIGGER_STRIP_CHARS)
+    return text.strip(ACTIVE_TRIGGER_STRIP_CHARS)
+
+
+def _compact_active_trigger_text(text: str) -> str:
+    return re.sub(r"[\W_]+", "", text.lower())
+
+
+def _active_trigger_has_stop_intent(compact_text: str) -> bool:
+    return any(keyword in compact_text for keyword in ACTIVE_TRIGGER_STOP_KEYWORDS)
+
+
+def _active_trigger_is_low_information(compact_text: str) -> bool:
+    return compact_text in ACTIVE_TRIGGER_LOW_INFO_PHRASES
+
+
+def _looks_like_clear_active_request(text: str) -> bool:
+    compact_text = _compact_active_trigger_text(text)
+    return (
+        any(keyword in text for keyword in REPLY_CHECK_QUESTION_KEYWORDS)
+        or any(keyword in compact_text for keyword in REPLY_CHECK_STRONG_KEYWORDS)
+        or any(keyword in compact_text for keyword in ACTIVE_TRIGGER_REQUEST_KEYWORDS)
+    )
+
+
 def _message_gateway_user_id(event: MessageEvent) -> int | str:
     user_id_raw = event.get_user_id()
     try:
@@ -241,6 +328,34 @@ async def _reply_check_should_reply(group_id: int, plaintext: str, messages: lis
     with open("prompts/reply_check.md", encoding="utf-8") as f:
         system_prompt = f.read().format(name=EnvConfig.BOT_NAME)
     reply_check: ReplyCheck = await signal_structured(system_prompt, plain_conv, ReplyCheck)
+    return reply_check.should_reply == "true" and reply_check.confidence > 0.5
+
+
+async def _active_trigger_should_reply(plaintext: str, messages: list, wake_words: list[str]) -> bool:
+    trigger_text = _active_trigger_content(plaintext, wake_words)
+    compact_text = _compact_active_trigger_text(trigger_text)
+    if not compact_text:
+        return False
+    if _active_trigger_has_stop_intent(compact_text):
+        return False
+    if _active_trigger_is_low_information(compact_text):
+        return False
+    if _looks_like_clear_active_request(trigger_text):
+        return True
+
+    reply_check_messages = [
+        *messages,
+        {"role": "user", "content": str({"metadata": {}, "content": trigger_text})},
+    ]
+    temp_conv: list[dict] = reply_check_messages[-5:]
+    plain_conv = "\n".join(_reply_check_content_text(conv.get("content", "")) for conv in temp_conv)
+    with open(PROMPTS_DIR / "active_reply_check.md", encoding="utf-8") as f:
+        system_prompt = f.read().format(name=EnvConfig.BOT_NAME)
+    try:
+        reply_check: ReplyCheck = await signal_structured(system_prompt, plain_conv, ReplyCheck)
+    except Exception as exc:
+        logger.warning("主动触发回复判断失败，群聊显式触发默认放行: %s: %s", type(exc).__name__, exc)
+        return True
     return reply_check.should_reply == "true" and reply_check.confidence > 0.5
 
 
@@ -699,11 +814,14 @@ async def message_gateway(event: MessageEvent, messages: list) -> bool:
     user_id = _message_gateway_user_id(event)
     if _message_gateway_blocked_by_access_policy(group_id, user_id):
         return False
-    if event.is_tome() or event.to_me:
+    if group_id == 0 and (event.is_tome() or event.to_me):
         return True
     plaintext = event.get_plaintext().strip()
     wake_words = _get_wake_words(group_id)
-    if any(plaintext.startswith(w) for w in wake_words):
+    active_triggered = event.is_tome() or event.to_me or any(plaintext.startswith(w) for w in wake_words)
+    if active_triggered:
+        if group_id != 0:
+            return await _active_trigger_should_reply(plaintext, messages, wake_words)
         return True
     if group_id != 0:
         return await _reply_check_should_reply(group_id, plaintext, messages)
@@ -712,8 +830,6 @@ async def message_gateway(event: MessageEvent, messages: list) -> bool:
 
 def _get_wake_words(group_id: int) -> list[str]:
     """获取群级别的唤醒词列表。数据库中有自定义唤醒词时返回，否则 fallback 到 BOT_NAME。"""
-    from utils.database import GroupSettingsManager, get_engine
-
     if group_id == 0:
         return [EnvConfig.BOT_NAME]
     words = GroupSettingsManager(get_engine()).get(group_id, "wake_word")
@@ -731,7 +847,7 @@ async def message_check(text: str | None, images: list[bytes] | None) -> Literal
         return safe_label
     if images:
         for image in images:
-            image = Image.open(BytesIO(image))
+            image = PILImage.open(BytesIO(image))
             det_result = await image_det.predict(image)
             if det_result == "nsfw":
                 return "Unsafe"

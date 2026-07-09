@@ -39,20 +39,37 @@ class DummyResponse:
 
 
 class DummyTestGroupEvent:
-    def __init__(self, plaintext="hello"):
+    def __init__(self, plaintext="hello", *, is_tome=False, to_me=False):
         self.data = types.SimpleNamespace(group=types.SimpleNamespace(group_id=5))
         self.plaintext = plaintext
+        self._is_tome = is_tome
+        self.to_me = to_me
 
     def get_user_id(self):
         return "12345"
 
     def is_tome(self):
-        return False
+        return self._is_tome
 
     def get_plaintext(self):
         return self.plaintext
 
-    to_me = False
+
+class DummyDmEvent:
+    def __init__(self, plaintext="hello", *, is_tome=True, to_me=True):
+        self.data = types.SimpleNamespace(group=None)
+        self.plaintext = plaintext
+        self._is_tome = is_tome
+        self.to_me = to_me
+
+    def get_user_id(self):
+        return "12345"
+
+    def is_tome(self):
+        return self._is_tome
+
+    def get_plaintext(self):
+        return self.plaintext
 
 
 class DummyReplyCheckFalse:
@@ -93,7 +110,7 @@ def patch_reply_check_prompt(monkeypatch, prompt_text: str) -> None:
             return prompt_text
 
     def fake_open(path, *args, **kwargs):
-        if str(path).endswith("reply_check.md"):
+        if str(path).endswith(("reply_check.md", "active_reply_check.md")):
             return DummyPromptFile()
         return original_open(path, *args, **kwargs)
 
@@ -106,6 +123,15 @@ def clear_reply_check_state(monkeypatch):
     message_module._reply_check_last_checked_at.clear()
     yield
     message_module._reply_check_last_checked_at.clear()
+
+
+@pytest.fixture
+def memory_engine():
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    yield engine
+    engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -403,7 +429,7 @@ async def test_message_gateway_whitelist_numeric_id(monkeypatch):
             return True
 
         def get_plaintext(self):
-            return "hello"
+            return "这个报错怎么解决？"
 
         to_me = True
 
@@ -441,6 +467,93 @@ async def test_message_gateway_whitelist_dm_allowed(monkeypatch):
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     result = await message_module.message_gateway(DummyEvent(), [])
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_group_active_trigger_can_stay_silent_for_low_info(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("low-information active trigger should not call Signal LLM")
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
+
+    result = await message_module.message_gateway(DummyTestGroupEvent("哈哈哈", is_tome=True, to_me=True), [])
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_group_wake_word_only_can_stay_silent(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("empty wake-word trigger should not call Signal LLM")
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module, "_get_wake_words", lambda _group_id: ["Frontier"])
+    monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
+
+    result = await message_module.message_gateway(DummyTestGroupEvent("Frontier"), [])
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_group_active_trigger_allows_clear_request(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("clear active request should not need Signal LLM")
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
+
+    result = await message_module.message_gateway(
+        DummyTestGroupEvent("这个报错怎么解决？", is_tome=True, to_me=True),
+        [],
+    )
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_group_active_trigger_uses_signal_for_ambiguous_message(monkeypatch):
+    captured = {}
+
+    async def fake_signal_structured(system_prompt, user_prompt, *_args, **_kwargs):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        return DummyReplyCheckFalse()
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "Frontier")
+    monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
+    patch_reply_check_prompt(monkeypatch, "active bot={name}")
+
+    result = await message_module.message_gateway(DummyTestGroupEvent("Frontier 那个", is_tome=False), [])
+
+    assert result is False
+    assert captured["system_prompt"] == "active bot=Frontier"
+    assert "那个" in captured["user_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_private_active_trigger_is_not_silenced(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("private chat should not use active group reply gate")
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
+
+    result = await message_module.message_gateway(DummyDmEvent("哈哈哈"), [])
+
     assert result is True
 
 

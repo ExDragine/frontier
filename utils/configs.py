@@ -69,7 +69,7 @@ class EnvConfig:
     PAINT_BASE_URL: str = endpoint.get("paint_base_url") or OPENAI_BASE_URL
     PAINT_ASPECT_RATIO: str = endpoint.get("paint_aspect_ratio", "1:1")
     PAINT_IMAGE_SIZE: str = endpoint.get("paint_image_size", "1K")
-    VIDEO_MODEL: str = endpoint.get("video_model", "")
+    VIDEO_MODEL: str = endpoint.get("video_model", "alibaba/happyhorse-1.0")
     VIDEO_BASE_URL: str = endpoint.get("video_base_url") or "https://zenmux.ai/api/vertex-ai"
     BASIC_MODEL_USE_RESPONSES_API: bool = endpoint.get("basic_model_use_responses_api", True)
     ADVAN_MODEL_USE_RESPONSES_API: bool = endpoint.get("advan_model_use_responses_api", True)
@@ -112,6 +112,7 @@ class EnvConfig:
     NEWS_SUMMARY_GROUP_ID: list = message.get("news_summary_group_id", [])
     EARTHQUAKE_GROUP_ID: list = message.get("earthquake_group_id", [])
     NRC_MERCHANT_GROUP_ID: list = message.get("nrc_merchant_group_id", [])
+    TEST_GROUP_ID: list = message.get("test_group_id", [])
 
     QUERY_MESSAGE_NUMBERS: int = database["query_message_numbers"]
 
@@ -267,6 +268,7 @@ class EnvConfig:
         cls.NEWS_SUMMARY_GROUP_ID = msg.get("news_summary_group_id", [])
         cls.EARTHQUAKE_GROUP_ID = msg.get("earthquake_group_id", [])
         cls.NRC_MERCHANT_GROUP_ID = msg.get("nrc_merchant_group_id", [])
+        cls.TEST_GROUP_ID = msg.get("test_group_id", [])
 
         # ── 杂项 ──
         cls.QUERY_MESSAGE_NUMBERS = config.get("database", {}).get("query_message_numbers", cls.QUERY_MESSAGE_NUMBERS)
