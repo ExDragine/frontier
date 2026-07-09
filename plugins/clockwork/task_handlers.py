@@ -481,40 +481,96 @@ async def happy_new_year(**kwargs):
 
 
 async def nrc_merchant_alert(**kwargs):
-    """远行商人商品提醒推送 - 每天8:00、12:00、16:00、20:00推送。
+    """远行商人商品提醒推送 - 每天8:10、12:10、16:10、20:10触发首次访问。
 
-    每次推送货架图片；检测到目标商品上架时，先发提醒文本再发图片。
+    每个时段（4小时）内若两个 API 均返回无效商品数据，每30分钟重试直至时段结束。
+    首次判定双 API 均无效时向配置群发送失联提示，后续重试失败静默。
     """
-    from tools.NRCmerchant_current import ALERT_TARGET_ITEMS, _load_css, _render_html, fetch_merchant_data
+    from tools.NRCmerchant_current import (
+        ALERT_TARGET_ITEMS,
+        _load_css,
+        _render_html,
+        fetch_merchant_data_with_fallback,
+    )
 
-    data = await fetch_merchant_data()
-    if not data:
-        logger.debug("NRC 商人提醒推送：API 无数据")
+    tz = zoneinfo.ZoneInfo("Asia/Shanghai")
+    now = datetime.datetime.now(tz)
+
+    period_starts = [8, 12, 16, 20]
+    current_hour = now.hour
+    period_end_hour = None
+    for h in period_starts:
+        if h <= current_hour < h + 4:
+            period_end_hour = h + 4
+            break
+
+    if period_end_hour is None:
+        logger.debug(f"NRC 商人提醒：当前时间 {now.strftime('%H:%M')} 不在任何推送时段内")
         return
 
-    items = data.get("items", [])
-    hits = [item for item in items if item.get("name") in ALERT_TARGET_ITEMS]
-    hit_names = "、".join(item["name"] for item in hits) if hits else ""
+    if period_end_hour == 24:
+        period_end = now.replace(hour=0, minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
+    else:
+        period_end = now.replace(hour=period_end_hour, minute=0, second=0, microsecond=0)
 
-    html = _render_html(data)
-    css = _load_css()
-    image = await html_to_image(html, css=css, width=480)
+    first_failure_notified = False
 
-    groups_sent: list[int] = []
-    for group in EnvConfig.NRC_MERCHANT_GROUP_ID:
-        try:
-            if hits:
-                await UniMessage.text(f"⚠️ 远行商人上架提醒：{hit_names} 已上架！").send(
-                    target=Target.group(str(group))
-                )
-            await UniMessage.image(raw=image).send(target=Target.group(str(group)))
-            groups_sent.append(int(group))
-        except Exception as e:
-            logger.error(f"NRC 商人提醒推送推送到群 {group} 失败: {e}")
+    while True:
+        now = datetime.datetime.now(tz)
+        if now >= period_end:
+            logger.debug(f"NRC 商人提醒：已超出时段 {period_end.strftime('%H:%M')}，停止重试")
+            break
 
-    msg_count = len(groups_sent) * (2 if hits else 1)
-    return TaskRunResult(
-        groups_sent=groups_sent,
-        messages_sent=msg_count,
-        output_summary=f"nrc_merchant_alert → {hit_names or '无目标'} ({groups_sent})",
-    )
+        data, source = await fetch_merchant_data_with_fallback()
+
+        if data and data.get("items"):
+            items = data.get("items", [])
+            hits = [item for item in items if item.get("name") in ALERT_TARGET_ITEMS]
+            hit_names = "、".join(item["name"] for item in hits) if hits else ""
+
+            html = _render_html(data)
+            css = _load_css()
+            image = await html_to_image(html, css=css, width=480)
+
+            groups_sent: list[int] = []
+            for group in EnvConfig.NRC_MERCHANT_GROUP_ID:
+                try:
+                    if hits:
+                        await UniMessage.text(f"⚠️ 远行商人上架提醒：{hit_names} 已上架！").send(
+                            target=Target.group(str(group))
+                        )
+                    await UniMessage.image(raw=image).send(target=Target.group(str(group)))
+                    groups_sent.append(int(group))
+                except Exception as e:
+                    logger.error(f"NRC 商人提醒推送到群 {group} 失败: {e}")
+
+            msg_count = len(groups_sent) * (2 if hits else 1)
+            return TaskRunResult(
+                groups_sent=groups_sent,
+                messages_sent=msg_count,
+                output_summary=f"nrc_merchant_alert [{source}] → {hit_names or '无目标'} ({groups_sent})",
+            )
+
+        # 双 API 均无效
+        if not first_failure_notified:
+            first_failure_notified = True
+            for group in EnvConfig.NRC_MERCHANT_GROUP_ID:
+                try:
+                    await UniMessage.text("😭当前已和远行商人失去链接").send(
+                        target=Target.group(str(group))
+                    )
+                except Exception as e:
+                    logger.error(f"NRC 商人失联消息推送到群 {group} 失败: {e}")
+
+        next_retry = datetime.datetime.now(tz) + datetime.timedelta(minutes=30)
+        if next_retry >= period_end:
+            logger.debug(
+                f"NRC 商人提醒：下次重试 {next_retry.strftime('%H:%M')} 超出时段 {period_end.strftime('%H:%M')}，停止"
+            )
+            break
+
+        logger.info(
+            f"NRC 商人提醒：30分钟后重试 "
+            f"(当前 {datetime.datetime.now(tz).strftime('%H:%M:%S')}, 时段结束 {period_end.strftime('%H:%M')})"
+        )
+        await asyncio.sleep(30 * 60)
