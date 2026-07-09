@@ -110,7 +110,7 @@ def patch_reply_check_prompt(monkeypatch, prompt_text: str) -> None:
             return prompt_text
 
     def fake_open(path, *args, **kwargs):
-        if str(path).endswith(("reply_check.md", "active_reply_check.md")):
+        if str(path).endswith("reply_check.md"):
             return DummyPromptFile()
         return original_open(path, *args, **kwargs)
 
@@ -520,26 +520,60 @@ async def test_message_gateway_group_active_trigger_allows_clear_request(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_message_gateway_group_active_trigger_uses_signal_for_ambiguous_message(monkeypatch):
-    captured = {}
+async def test_message_gateway_group_active_trigger_allows_short_image_edit_request(monkeypatch):
+    calls = 0
 
-    async def fake_signal_structured(system_prompt, user_prompt, *_args, **_kwargs):
-        captured["system_prompt"] = system_prompt
-        captured["user_prompt"] = user_prompt
+    async def fake_signal_structured(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
         return DummyReplyCheckFalse()
 
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "Frontier")
     monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
-    patch_reply_check_prompt(monkeypatch, "active bot={name}")
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("Frontier 那个", is_tome=False), [])
+    result = await message_module.message_gateway(DummyTestGroupEvent("P一下", is_tome=True, to_me=True), [])
+
+    assert result is True
+    assert calls == 0
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_group_active_trigger_allows_non_low_info_without_signal(monkeypatch):
+    calls = 0
+
+    async def fake_signal_structured(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return DummyReplyCheckFalse()
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module, "_get_wake_words", lambda _group_id: ["Frontier"])
+    monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
+
+    result = await message_module.message_gateway(DummyTestGroupEvent("Frontier 那个"), [])
+
+    assert result is True
+    assert calls == 0
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_group_active_trigger_blocks_stop_intent(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("stop-intent active trigger should not call Signal LLM")
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module, "_get_wake_words", lambda _group_id: ["Frontier"])
+    monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
+
+    result = await message_module.message_gateway(DummyTestGroupEvent("Frontier 别回了"), [])
 
     assert result is False
-    assert captured["system_prompt"] == "active bot=Frontier"
-    assert "那个" in captured["user_prompt"]
 
 
 @pytest.mark.asyncio
