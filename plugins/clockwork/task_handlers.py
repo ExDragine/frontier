@@ -6,11 +6,13 @@ import json
 import traceback
 import zoneinfo
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 from nonebot import get_bot, logger
 from nonebot_plugin_alconna import Image, Target, Text, UniMessage
+from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 
 from tools import agent_tools
@@ -286,6 +288,16 @@ async def earth_now(**kwargs):
         logger.warning(f"获取Earth Now图片失败: {e}", "准备重试...")
     if not content:
         return
+
+    with PILImage.open(BytesIO(content)) as image:
+        resized = image.resize(
+            (max(1, image.width // 4), max(1, image.height // 4)),
+            PILImage.Resampling.LANCZOS,
+        ).convert("RGB")
+        output = BytesIO()
+        resized.save(output, format="JPEG", quality=90)
+        content = output.getvalue()
+
     messages: list[UniMessage] = [
         UniMessage(
             Text("来看看半个钟前的地球吧"),
