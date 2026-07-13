@@ -907,11 +907,6 @@ def _format_time_text(time: str) -> str:
     return time
 
 
-def _normalize_scenario(name: str) -> str:
-    """将用户自然表达标准化为场景名。"""
-    return name.replace("全世界", "全球").replace("世界", "全球")
-
-
 def _build_return_text(location: str, time_text: str, scenario: str, page_data: dict) -> str:
     """构建返回给 Agent 的自然语言文本。"""
     # 数据异常：结构化提示给 Agent，由 Agent 决定如何告知用户
@@ -956,7 +951,7 @@ async def _execute_single_query(
     no_video: bool = False,
 ) -> tuple[str, bytes, bool]:
     """执行单个 ENS 查询。no_video=True 时仅提取数据不录制，返回空 bytes。"""
-    scenario = _normalize_scenario(scenario)
+    scenario = scenario.replace("全世界", "全球").replace("世界", "全球")
 
     if scenario == "活跃火点":
         no_video = False

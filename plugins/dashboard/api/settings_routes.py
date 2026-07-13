@@ -46,12 +46,6 @@ def _read_toml() -> dict:
         return tomllib.load(f)
 
 
-def _read_tomlkit() -> tomlkit.TOMLDocument:
-    """使用 tomlkit 读取以保留注释和格式"""
-    with open(TOML_PATH, encoding="utf-8") as f:
-        return tomlkit.load(f)
-
-
 def _sanitize_config(config: dict) -> dict:
     """对敏感字段进行脱敏"""
     result = {}
@@ -154,7 +148,8 @@ class SectionUpdate(BaseModel):
 @router.put("/{section}")
 async def update_section(section: str, body: SectionUpdate, user: dict = AUTH_DEPENDENCY):
     """更新单个配置段"""
-    doc = _read_tomlkit()
+    with open(TOML_PATH, encoding="utf-8") as f:
+        doc = tomlkit.load(f)
 
     if section not in doc:
         raise HTTPException(status_code=404, detail=f"配置段 '{section}' 不存在")

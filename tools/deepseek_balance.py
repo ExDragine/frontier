@@ -11,10 +11,6 @@ DEFAULT_BALANCE_URL = "https://api.deepseek.com/user/balance"
 httpx_client = get_http_client("deepseek_balance")
 
 
-def _api_key_value() -> str:
-    return EnvConfig.DEEPSEEK_API_KEY.get_secret_value().strip()
-
-
 def _balance_url() -> str:
     raw_base = (EnvConfig.DEEPSEEK_API_BASE or "").strip()
     if not raw_base:
@@ -52,7 +48,7 @@ def _format_balance(data: dict) -> str:
 @tool(response_format="content")
 async def get_deepseek_api_balance() -> str:
     """查询 DeepSeek API 账户余额。"""
-    api_key = _api_key_value()
+    api_key = EnvConfig.DEEPSEEK_API_KEY.get_secret_value().strip()
     if not api_key:
         return "未配置 DeepSeek API Key：请在 env.toml 的 [key].deepseek_api_key 中填写。"
 

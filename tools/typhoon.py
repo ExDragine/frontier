@@ -96,10 +96,6 @@ def _get_level_key(strong: str) -> str:
     return "热带低压"
 
 
-def _get_level_color(strong: str) -> str:
-    return _INTENSITY_COLORS.get(_get_level_key(strong), "#888888")
-
-
 def _get_icon_base64(level_key: str) -> str:
     """读取对应等级的 PNG 图标并缓存为 base64 data URL。"""
     if level_key not in _icon_cache:
@@ -132,10 +128,6 @@ async def _fetch_typhoon_data() -> list[dict] | None:
     except Exception as e:
         logger.error(f"台风 API 请求失败: {e}")
         return None
-
-
-async def _get_typhoon_data() -> list[dict] | None:
-    return await _fetch_typhoon_data()
 
 
 async def _fetch_latest_overlay(overlay_type: str) -> dict[str, Any] | None:
@@ -254,7 +246,11 @@ def _build_template_data(typhoon: dict, pos_desc: str, overlay_data: dict[str, A
 
     # 历史轨迹
     history_points = [
-        {"lat": p["lat"], "lng": p["lng"], "color": _get_level_color(p.get("strong", ""))}
+        {
+            "lat": p["lat"],
+            "lng": p["lng"],
+            "color": _INTENSITY_COLORS.get(_get_level_key(p.get("strong", "")), "#888888"),
+        }
         for p in points
     ]
     history_polyline = [[p["lng"], p["lat"]] for p in points]
@@ -437,7 +433,7 @@ async def get_typhoon_info(
             None,
         )
 
-    data = await _get_typhoon_data()
+    data = await _fetch_typhoon_data()
     if data is None:
         return "获取台风数据失败，请稍后再试", None
 

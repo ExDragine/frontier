@@ -203,11 +203,6 @@ def _message_should_render_as_image(content: str) -> bool:
     return len(content) >= MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD
 
 
-def _reply_check_on_cooldown(group_id: int, now: float) -> bool:
-    last_checked_at = _reply_check_last_checked_at.get(group_id)
-    return last_checked_at is not None and now - last_checked_at < REPLY_CHECK_GROUP_COOLDOWN_SECONDS
-
-
 def _looks_like_reply_check_candidate(text: str, *, active_group: bool) -> bool:
     compact_text = "".join(text.lower().split())
     if not compact_text:
@@ -232,18 +227,6 @@ def _active_trigger_content(plaintext: str, wake_words: list[str]) -> str:
     return text.strip(ACTIVE_TRIGGER_STRIP_CHARS)
 
 
-def _compact_active_trigger_text(text: str) -> str:
-    return re.sub(r"[\W_]+", "", text.lower())
-
-
-def _active_trigger_has_stop_intent(compact_text: str) -> bool:
-    return any(keyword in compact_text for keyword in ACTIVE_TRIGGER_STOP_KEYWORDS)
-
-
-def _active_trigger_is_low_information(compact_text: str) -> bool:
-    return compact_text in ACTIVE_TRIGGER_LOW_INFO_PHRASES
-
-
 def _message_gateway_user_id(event: MessageEvent) -> int | str:
     user_id_raw = event.get_user_id()
     try:
@@ -260,14 +243,6 @@ def _message_gateway_blocked_by_access_policy(group_id: int, user_id: int | str)
     if EnvConfig.AGENT_WHITELIST_MODE and user_id not in EnvConfig.AGENT_WHITELIST_PERSON_LIST:
         return True
     return user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST
-
-
-def _auto_reply_group_allowed(group_id: int) -> bool:
-    if group_id in EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST:
-        return False
-    if EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE:
-        return group_id in EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST
-    return True
 
 
 async def _reply_check_group_is_active(group_id: int, now_ms: int) -> bool:
@@ -291,7 +266,8 @@ async def _reply_check_should_reply(group_id: int, plaintext: str, messages: lis
         return False
     if await _reply_check_assistant_recently_replied(group_id, now_ms):
         return False
-    if _reply_check_on_cooldown(group_id, now):
+    last_checked_at = _reply_check_last_checked_at.get(group_id)
+    if last_checked_at is not None and now - last_checked_at < REPLY_CHECK_GROUP_COOLDOWN_SECONDS:
         return False
     _reply_check_last_checked_at[group_id] = now
 
@@ -309,12 +285,12 @@ async def _reply_check_should_reply(group_id: int, plaintext: str, messages: lis
 
 async def _active_trigger_should_reply(plaintext: str, wake_words: list[str]) -> bool:
     trigger_text = _active_trigger_content(plaintext, wake_words)
-    compact_text = _compact_active_trigger_text(trigger_text)
+    compact_text = re.sub(r"[\W_]+", "", trigger_text.lower())
     if not compact_text:
         return False
-    if _active_trigger_has_stop_intent(compact_text):
+    if any(keyword in compact_text for keyword in ACTIVE_TRIGGER_STOP_KEYWORDS):
         return False
-    if _active_trigger_is_low_information(compact_text):
+    if compact_text in ACTIVE_TRIGGER_LOW_INFO_PHRASES:
         return False
     return True
 
@@ -783,7 +759,11 @@ async def message_gateway(event: MessageEvent, messages: list) -> bool:
         if group_id != 0:
             return await _active_trigger_should_reply(plaintext, wake_words)
         return True
-    if group_id != 0 and _auto_reply_group_allowed(group_id):
+    auto_reply_allowed = group_id not in EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST and (
+        not EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE
+        or group_id in EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST
+    )
+    if group_id != 0 and auto_reply_allowed:
         return await _reply_check_should_reply(group_id, plaintext, messages)
     return False
 

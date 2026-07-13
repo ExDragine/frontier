@@ -134,10 +134,6 @@ def _normalize_group_request_type(notification_type: str) -> str | None:
     return notification_type if notification_type in _GROUP_REQUEST_TYPES else None
 
 
-def _normalize_reaction_type(reaction_type: str) -> str | None:
-    return reaction_type if reaction_type in _REACTION_TYPES else None
-
-
 @tool(response_format="content")
 async def set_group_name(
     new_group_name: str,
@@ -446,8 +442,7 @@ async def send_group_message_reaction(
         is_add: True 添加回应，False 移除回应
         group_id: 可选群号，未传时使用当前群聊
     """
-    normalized_reaction_type = _normalize_reaction_type(reaction_type)
-    if normalized_reaction_type is None:
+    if reaction_type not in _REACTION_TYPES:
         return "reaction_type 仅支持 face 或 emoji。"
     resolved_group_id, error = resolve_group_id(group_id, config)
     if error:
@@ -456,11 +451,11 @@ async def send_group_message_reaction(
         group_id=resolved_group_id,
         message_seq=message_seq,
         reaction=reaction,
-        reaction_type=normalized_reaction_type,
+        reaction_type=reaction_type,
         is_add=is_add,
     )
     action = "添加" if is_add else "移除"
-    return f"已{action}群 {resolved_group_id} 消息 {message_seq} 的 {normalized_reaction_type} 表情回应 {reaction}"
+    return f"已{action}群 {resolved_group_id} 消息 {message_seq} 的 {reaction_type} 表情回应 {reaction}"
 
 
 @tool(response_format="content")

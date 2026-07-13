@@ -157,12 +157,6 @@ async def send_update_changelog(group_id: int, changelog: str) -> None:
     await UniMessage.text(f"📦 本次小更新：\n{changelog}").send(target=Target.group(str(group_id)))
 
 
-def _event_group_id(event: MessageEvent) -> int | None:
-    group = getattr(getattr(event, "data", None), "group", None)
-    group_id = getattr(group, "group_id", None)
-    return int(group_id) if group_id else None
-
-
 def write_update_lock(start_time: float, old_head: str, trigger_group_id: int | None) -> None:
     payload = {
         "start_time": start_time,
@@ -403,7 +397,9 @@ async def handle_updater(event: MessageEvent):
 
         repo = Repo(".")
         old_head = _current_head(repo)
-        write_update_lock(time.time(), old_head, _event_group_id(event))
+        group = getattr(getattr(event, "data", None), "group", None)
+        group_id = getattr(group, "group_id", None)
+        write_update_lock(time.time(), old_head, int(group_id) if group_id else None)
         repo.git.checkout()
         pull_result = repo.git.pull(rebase=True)
         logger.info(f"Git pull 结果: {pull_result}")

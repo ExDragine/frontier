@@ -40,10 +40,6 @@ async def handle_notice(bot: Bot, event: FriendNudgeEvent | GroupNudgeEvent):
             await bot.send_group_nudge(group_id=event.data.group_id, user_id=sender_id)
 
 
-def _event_group_id(event: MessageEvent) -> int | None:
-    return event.data.group.group_id if event.data.group else None
-
-
 def _contains_id(values: list, target: int | str | None) -> bool:
     if target is None:
         return False
@@ -53,7 +49,7 @@ def _contains_id(values: list, target: int | str | None) -> bool:
 
 def _has_media_permission(event: MessageEvent) -> bool:
     user_id = event.get_user_id()
-    group_id = _event_group_id(event)
+    group_id = event.data.group.group_id if event.data.group else None
 
     if _contains_id(EnvConfig.PAINT_BLACKLIST_PERSON_LIST, user_id):
         return False

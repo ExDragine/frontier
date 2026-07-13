@@ -24,15 +24,6 @@ class MediaReference:
     mime_type: str
 
 
-def _video_base_url() -> str:
-    return EnvConfig.VIDEO_BASE_URL
-
-
-def _video_api_key() -> str:
-    configured_key = EnvConfig.VIDEO_API_KEY.get_secret_value()
-    return configured_key or os.getenv("ZENMUX_API_KEY", "")
-
-
 def _guess_image_mime_type(data: bytes) -> str:
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
@@ -185,10 +176,6 @@ def _get_video_operation(client, operation):
     raise AttributeError("google genai operations API has no supported polling method")
 
 
-def _video_operation_response(operation):
-    return getattr(operation, "response", None) or getattr(operation, "result", None)
-
-
 def _close_genai_client(client) -> None:
     close = getattr(client, "close", None)
     if callable(close):
@@ -203,10 +190,11 @@ def _generate_video_sync(
     image: MediaReference | bytes | None = None,
     video: MediaReference | bytes | None = None,
 ) -> VideoGenerationResult | None:
+    configured_key = EnvConfig.VIDEO_API_KEY.get_secret_value()
     client = genai.Client(
-        api_key=_video_api_key(),
+        api_key=configured_key or os.getenv("ZENMUX_API_KEY", ""),
         vertexai=True,
-        http_options=genai_types.HttpOptions(api_version="v1", base_url=_video_base_url()),
+        http_options=genai_types.HttpOptions(api_version="v1", base_url=EnvConfig.VIDEO_BASE_URL),
     )
     try:
         operation = client.models.generate_videos(
@@ -227,7 +215,7 @@ def _generate_video_sync(
             logger.warning(f"HappyHorse 视频生成失败: {error}")
             return None
 
-        response = _video_operation_response(operation)
+        response = getattr(operation, "response", None) or getattr(operation, "result", None)
         generated_videos = getattr(response, "generated_videos", None) or []
         if not generated_videos:
             logger.warning("HappyHorse 视频API返回空 generated_videos")
