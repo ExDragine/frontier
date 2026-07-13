@@ -120,6 +120,9 @@ def patch_reply_check_prompt(monkeypatch, prompt_text: str) -> None:
 @pytest.fixture(autouse=True)
 def clear_reply_check_state(monkeypatch):
     monkeypatch.setattr(message_module, "messages_db", DummyReplyCheckDb())
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST", [])
     message_module._reply_check_last_checked_at.clear()
     yield
     message_module._reply_check_last_checked_at.clear()
@@ -467,6 +470,107 @@ async def test_message_gateway_whitelist_dm_allowed(monkeypatch):
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     result = await message_module.message_gateway(DummyEvent(), [])
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_auto_reply_blacklist_skips_reply_check(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("auto reply blacklist should skip reply check")
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST", [5])
+    monkeypatch.setattr(message_module, "_reply_check_should_reply", fail_if_called)
+
+    result = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_auto_reply_whitelist_controls_reply_check(monkeypatch):
+    checked_groups = []
+
+    async def fake_reply_check(group_id, *_args, **_kwargs):
+        checked_groups.append(group_id)
+        return True
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_MODE", True)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST", [5])
+    monkeypatch.setattr(message_module, "_reply_check_should_reply", fake_reply_check)
+
+    allowed = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
+    message_module.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST = [6]
+    denied = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
+
+    assert allowed is True
+    assert denied is False
+    assert checked_groups == [5]
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_auto_reply_blacklist_takes_precedence(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("auto reply blacklist should take precedence")
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_MODE", True)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST", [5])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST", [5])
+    monkeypatch.setattr(message_module, "_reply_check_should_reply", fail_if_called)
+
+    result = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_auto_reply_policy_does_not_block_active_trigger(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("active trigger should not use automatic reply check")
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_MODE", True)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST", [5])
+    monkeypatch.setattr(message_module, "_reply_check_should_reply", fail_if_called)
+
+    mentioned = await message_module.message_gateway(
+        DummyTestGroupEvent("这个报错怎么解决？", is_tome=True, to_me=False),
+        [],
+    )
+    marked_to_me = await message_module.message_gateway(
+        DummyTestGroupEvent("帮我看看这个报错", is_tome=False, to_me=True),
+        [],
+    )
+    monkeypatch.setattr(message_module, "_get_wake_words", lambda _group_id: ["Frontier"])
+    wake_word = await message_module.message_gateway(DummyTestGroupEvent("Frontier 帮我看看这个报错"), [])
+
+    assert mentioned is True
+    assert marked_to_me is True
+    assert wake_word is True
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_auto_reply_policy_does_not_block_private_chat(monkeypatch):
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_MODE", True)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST", [0])
+
+    result = await message_module.message_gateway(DummyDmEvent("帮我看看这个报错"), [])
+
     assert result is True
 
 

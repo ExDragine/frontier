@@ -262,6 +262,14 @@ def _message_gateway_blocked_by_access_policy(group_id: int, user_id: int | str)
     return user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST
 
 
+def _auto_reply_group_allowed(group_id: int) -> bool:
+    if group_id in EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST:
+        return False
+    if EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE:
+        return group_id in EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST
+    return True
+
+
 async def _reply_check_group_is_active(group_id: int, now_ms: int) -> bool:
     since_time = now_ms - REPLY_CHECK_ACTIVE_GROUP_WINDOW_SECONDS * 1000
     message_count = await messages_db.count_group_messages_since(group_id=group_id, since_time=since_time)
@@ -775,7 +783,7 @@ async def message_gateway(event: MessageEvent, messages: list) -> bool:
         if group_id != 0:
             return await _active_trigger_should_reply(plaintext, wake_words)
         return True
-    if group_id != 0:
+    if group_id != 0 and _auto_reply_group_allowed(group_id):
         return await _reply_check_should_reply(group_id, plaintext, messages)
     return False
 

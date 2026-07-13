@@ -92,6 +92,9 @@ class EnvConfig:
     AGENT_WHITELIST_GROUP_LIST: list = function_list["agent_whitelist_group_list"]
     AGENT_BLACKLIST_PERSON_LIST: list = function_list["agent_blacklist_person_list"]
     AGENT_BLACKLIST_GROUP_LIST: list = function_list["agent_blacklist_group_list"]
+    AGENT_AUTO_REPLY_WHITELIST_MODE: bool = function_list.get("agent_auto_reply_whitelist_mode", False)
+    AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST: list = function_list.get("agent_auto_reply_whitelist_group_list", [])
+    AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST: list = function_list.get("agent_auto_reply_blacklist_group_list", [])
     PAINT_WHITELIST_MODE: bool = function_list["paint_whitelist_mode"]
     PAINT_WHITELIST_PERSON_LIST: list = function_list["paint_whitelist_person_list"]
     PAINT_WHITELIST_GROUP_LIST: list = function_list["paint_whitelist_group_list"]
@@ -247,6 +250,10 @@ class EnvConfig:
                 attr = f"{policy.upper()}_{policy_field}"
                 key_name = f"{policy}_{policy_field.lower()}"
                 setattr(cls, attr, fn.get(key_name, getattr(cls, attr)))
+
+        cls.AGENT_AUTO_REPLY_WHITELIST_MODE = bool(fn.get("agent_auto_reply_whitelist_mode", False))
+        cls.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST = fn.get("agent_auto_reply_whitelist_group_list", [])
+        cls.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST = fn.get("agent_auto_reply_blacklist_group_list", [])
 
         # ── 限流/超时 ──
         for attr, key_name in (

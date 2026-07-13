@@ -89,6 +89,9 @@ jwt_secret = "secret"
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 900
     assert configs.EnvConfig.VIDEO_POLL_INTERVAL_SECONDS == 15
     assert configs.EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS == 900
+    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False
+    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == []
+    assert configs.EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == []
 
 
 def test_env_config_anthropic_base_url(tmp_path, monkeypatch):
@@ -204,6 +207,11 @@ jwt_secret = "secret"
 
     configs.EnvConfig.reload(
         {
+            "function": {
+                "agent_auto_reply_whitelist_mode": True,
+                "agent_auto_reply_whitelist_group_list": [1001],
+                "agent_auto_reply_blacklist_group_list": [1002],
+            },
             "image_memory": {"enabled": False, "ttl_days": 9, "auto_cleanup": False},
             "content_check": {"enabled": True},
         }
@@ -213,6 +221,15 @@ jwt_secret = "secret"
     assert configs.EnvConfig.IMAGE_TTL_DAYS == 9
     assert configs.EnvConfig.IMAGE_AUTO_CLEANUP is False
     assert configs.EnvConfig.CONTENT_CHECK_ENABLED is True
+    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is True
+    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == [1001]
+    assert configs.EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == [1002]
+
+    configs.EnvConfig.reload({"function": {}})
+
+    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False
+    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == []
+    assert configs.EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == []
 
 
 def test_env_config_llm_endpoint_profiles(tmp_path, monkeypatch):
