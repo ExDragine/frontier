@@ -327,7 +327,6 @@ mcp.json
 cache/
 sandbox/
 .lock
-uv.lock
 env.toml
 temp
 *.db-shm

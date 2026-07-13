@@ -25,8 +25,13 @@ from utils.signal_llm import signal_structured
 
 httpx_client = get_http_client("message")
 messages_db = MessageDatabase()
-text_det = TextCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
-image_det = ImageCheck() if EnvConfig.CONTENT_CHECK_ENABLED else None
+text_det: TextCheck | None = None
+image_det: ImageCheck | None = None
+_text_det_lock = asyncio.Lock()
+_image_det_lock = asyncio.Lock()
+_text_det_retry_at = 0.0
+_image_det_retry_at = 0.0
+CONTENT_CHECK_RETRY_COOLDOWN_SECONDS = 60.0
 OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
 MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
 MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
@@ -663,11 +668,16 @@ def outgoing_message_content(raw: Any) -> str:
 async def sanitize_outgoing_text(content: str | None) -> str | None:
     if not content or not EnvConfig.CONTENT_CHECK_ENABLED:
         return content
-    if text_det is None:
-        logger.warning("CONTENT_CHECK_ENABLED is True but text detector is None; allowing outgoing text")
+    detector = await _get_text_detector()
+    if detector is None:
         return content
 
-    safe_label, categories = await text_det.predict(content)
+    try:
+        safe_label, categories = await detector.predict(content)
+    except Exception as e:
+        _mark_text_detector_failed()
+        logger.exception(f"文本内容检查失败，已按放行策略处理: {type(e).__name__}: {e}")
+        return content
     if safe_label == "Unsafe":
         logger.warning(f"⚠️ 模型输出命中文本风险审核，已拦截: {categories}")
         return OUTPUT_RISK_BLOCKED_MESSAGE
@@ -776,19 +786,90 @@ def _get_wake_words(group_id: int) -> list[str]:
     return words if words else [EnvConfig.BOT_NAME]
 
 
+async def _get_text_detector() -> TextCheck | None:
+    global text_det, _text_det_retry_at
+    if not EnvConfig.CONTENT_CHECK_ENABLED:
+        return None
+    if text_det is not None:
+        return text_det
+    if time.monotonic() < _text_det_retry_at:
+        return None
+    async with _text_det_lock:
+        if text_det is not None:
+            return text_det
+        if time.monotonic() < _text_det_retry_at:
+            return None
+        try:
+            text_det = await asyncio.to_thread(TextCheck)
+        except Exception as e:
+            _text_det_retry_at = time.monotonic() + CONTENT_CHECK_RETRY_COOLDOWN_SECONDS
+            logger.exception(f"文本内容检查模型加载失败，已按放行策略处理: {type(e).__name__}: {e}")
+            return None
+        _text_det_retry_at = 0.0
+        return text_det
+
+
+async def _get_image_detector() -> ImageCheck | None:
+    global image_det, _image_det_retry_at
+    if not EnvConfig.CONTENT_CHECK_ENABLED:
+        return None
+    if image_det is not None:
+        return image_det
+    if time.monotonic() < _image_det_retry_at:
+        return None
+    async with _image_det_lock:
+        if image_det is not None:
+            return image_det
+        if time.monotonic() < _image_det_retry_at:
+            return None
+        try:
+            image_det = await asyncio.to_thread(ImageCheck)
+        except Exception as e:
+            _image_det_retry_at = time.monotonic() + CONTENT_CHECK_RETRY_COOLDOWN_SECONDS
+            logger.exception(f"图片内容检查模型加载失败，已按放行策略处理: {type(e).__name__}: {e}")
+            return None
+        _image_det_retry_at = 0.0
+        return image_det
+
+
+def _mark_text_detector_failed() -> None:
+    global text_det, _text_det_retry_at
+    text_det = None
+    _text_det_retry_at = time.monotonic() + CONTENT_CHECK_RETRY_COOLDOWN_SECONDS
+
+
+def _mark_image_detector_failed() -> None:
+    global image_det, _image_det_retry_at
+    image_det = None
+    _image_det_retry_at = time.monotonic() + CONTENT_CHECK_RETRY_COOLDOWN_SECONDS
+
+
 async def message_check(text: str | None, images: list[bytes] | None) -> Literal["Safe", "Controversial", "Unsafe"]:
     if not EnvConfig.CONTENT_CHECK_ENABLED:
         return "Safe"
-    if text_det is None or image_det is None:
-        logger.warning("CONTENT_CHECK_ENABLED is True but detectors are None; returning Safe")
-        return "Safe"
     if text:
-        safe_label, categories = await text_det.predict(text)
-        return safe_label
+        detector = await _get_text_detector()
+        if detector is None:
+            return "Safe"
+        try:
+            safe_label, _categories = await detector.predict(text)
+            return safe_label
+        except Exception as e:
+            _mark_text_detector_failed()
+            logger.exception(f"文本内容检查失败，已按放行策略处理: {type(e).__name__}: {e}")
+            return "Safe"
     if images:
+        detector = await _get_image_detector()
+        if detector is None:
+            return "Safe"
         for image in images:
-            image = PILImage.open(BytesIO(image))
-            det_result = await image_det.predict(image)
+            try:
+                image = PILImage.open(BytesIO(image))
+                det_result = await detector.predict(image)
+            except Exception as e:
+                _mark_image_detector_failed()
+                logger.exception(f"图片内容检查失败，已按放行策略处理: {type(e).__name__}: {e}")
+                return "Safe"
             if det_result == "nsfw":
                 return "Unsafe"
     return "Safe"

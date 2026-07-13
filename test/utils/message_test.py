@@ -1,7 +1,11 @@
 # ruff: noqa: S101
 
+import asyncio
 import importlib
+import subprocess
+import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -873,6 +877,149 @@ async def test_message_check_text(monkeypatch):
 
     result = await message_module.message_check("hello", None)
     assert result == "Safe"
+
+
+def test_importing_content_check_does_not_import_ml_runtime():
+    project_root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; import utils.context_check; "
+                "assert all(name not in sys.modules for name in ('torch', 'torchao', 'transformers'))"
+            ),
+        ],
+        cwd=project_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.asyncio
+async def test_message_check_initializes_text_detector_once_for_concurrent_calls(monkeypatch):
+    calls = 0
+
+    class FakeTextCheck:
+        def __init__(self):
+            nonlocal calls
+            calls += 1
+
+        async def predict(self, _text):
+            return "Safe", []
+
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", True)
+    monkeypatch.setattr(message_module, "TextCheck", FakeTextCheck)
+    monkeypatch.setattr(message_module, "text_det", None)
+    monkeypatch.setattr(message_module, "_text_det_retry_at", 0.0)
+
+    results = await asyncio.gather(
+        message_module.message_check("one", None),
+        message_module.message_check("two", None),
+    )
+
+    assert results == ["Safe", "Safe"]
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_message_check_only_initializes_detector_for_used_media(monkeypatch):
+    calls = {"text": 0, "image": 0}
+
+    class FakeTextCheck:
+        def __init__(self):
+            calls["text"] += 1
+
+    class FakeImageCheck:
+        def __init__(self):
+            calls["image"] += 1
+
+        async def predict(self, _image):
+            return "safe"
+
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", True)
+    monkeypatch.setattr(message_module, "TextCheck", FakeTextCheck)
+    monkeypatch.setattr(message_module, "ImageCheck", FakeImageCheck)
+    monkeypatch.setattr(message_module, "text_det", None)
+    monkeypatch.setattr(message_module, "image_det", None)
+    monkeypatch.setattr(message_module, "_image_det_retry_at", 0.0)
+    monkeypatch.setattr(message_module.PILImage, "open", lambda _image: object())
+
+    result = await message_module.message_check(None, [b"image"])
+
+    assert result == "Safe"
+    assert calls == {"text": 0, "image": 1}
+
+
+@pytest.mark.asyncio
+async def test_message_check_load_failure_is_rate_limited_and_fails_open(monkeypatch):
+    calls = 0
+    now = 100.0
+
+    class FailingTextCheck:
+        def __init__(self):
+            nonlocal calls
+            calls += 1
+            raise RuntimeError("load failed")
+
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", True)
+    monkeypatch.setattr(message_module, "TextCheck", FailingTextCheck)
+    monkeypatch.setattr(message_module, "text_det", None)
+    monkeypatch.setattr(message_module, "_text_det_retry_at", 0.0)
+    monkeypatch.setattr(message_module.time, "monotonic", lambda: now)
+
+    assert await message_module.message_check("one", None) == "Safe"
+    assert await message_module.message_check("two", None) == "Safe"
+    assert calls == 1
+
+    now += message_module.CONTENT_CHECK_RETRY_COOLDOWN_SECONDS
+    assert await message_module.message_check("three", None) == "Safe"
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_sanitize_outgoing_text_predict_failure_resets_detector_and_fails_open(monkeypatch):
+    class FailingDetector:
+        async def predict(self, _text):
+            raise RuntimeError("inference failed")
+
+    now = 200.0
+    detector = FailingDetector()
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", True)
+    monkeypatch.setattr(message_module, "text_det", detector)
+    monkeypatch.setattr(message_module, "_text_det_retry_at", 0.0)
+    monkeypatch.setattr(message_module.time, "monotonic", lambda: now)
+
+    assert await message_module.sanitize_outgoing_text("original") == "original"
+    assert message_module.text_det is None
+    assert message_module._text_det_retry_at == now + message_module.CONTENT_CHECK_RETRY_COOLDOWN_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_message_check_loads_after_content_check_is_enabled(monkeypatch):
+    calls = 0
+
+    class FakeTextCheck:
+        def __init__(self):
+            nonlocal calls
+            calls += 1
+
+        async def predict(self, _text):
+            return "Safe", []
+
+    monkeypatch.setattr(message_module, "TextCheck", FakeTextCheck)
+    monkeypatch.setattr(message_module, "text_det", None)
+    monkeypatch.setattr(message_module, "_text_det_retry_at", 0.0)
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    assert await message_module.message_check("disabled", None) == "Safe"
+    assert calls == 0
+
+    monkeypatch.setattr(message_module.EnvConfig, "CONTENT_CHECK_ENABLED", True)
+    assert await message_module.message_check("enabled", None) == "Safe"
+    assert calls == 1
 
 
 @pytest.mark.asyncio

@@ -51,7 +51,7 @@ UniMessage 文本、图片、视频或文件回复
 | 记忆检索 | 聊天记录搜索、按时间段总结 |
 | 媒体生成 | AI 绘图、图片编辑、AI 视频 |
 | 自动任务 | 创建、列出、暂停、恢复、取消用户自动任务 |
-| 网络与资料 | Wikipedia、ArXiv、Bilibili、MCP 外部工具 |
+| 网络与资料 | MCP 外部工具 |
 | 天文空间 | 极光、彗星、卫星图、火箭发射、空间天气 |
 | 地球与天气 | 地震、雷达、风场图、台风、ENS 气象 |
 | 游戏/业务工具 | NRC 远行商人、精灵蛋、活动日历等 |
@@ -92,6 +92,12 @@ cp .env.example .env
 cp env.toml.example env.toml
 ```
 
+内容检查模型默认不安装。需要在本机启用 `[content_check]` 时，安装 CPU-only 可选依赖：
+
+```bash
+uv sync --extra content-check
+```
+
 编辑 `.env` 和 `env.toml` 后启动：
 
 ```bash
@@ -108,9 +114,22 @@ Windows:
 
 ### Docker
 
+默认镜像不包含 Torch 和内容检查模型依赖：
+
 ```bash
 docker compose up -d
 ```
+
+需要启用 CPU 内容检查时，选择对应构建目标，并在 `env.toml` 中设置
+`[content_check].enabled = true`：
+
+```bash
+FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
+```
+
+容器会把 Hugging Face 和 Torch 缓存写入 `frontier_cache` volume。首次部署前需要准备
+`.env`、`env.toml`、`mcp.json` 和 `frontier.db`；这些运行时文件不会复制进镜像层。
+如果曾用旧 Dockerfile 构建过镜像，建议删除旧镜像并轮换本地配置中的外部服务凭据。
 
 ## 配置
 

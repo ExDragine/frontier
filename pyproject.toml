@@ -5,45 +5,65 @@ description = "A bot"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-  "nonebot2",
   "nonebot2[fastapi]",
+  "fastapi",
   "nonebot-plugin-alconna",
-  "nonebot-adapter-console",
   "nonebot-plugin-apscheduler",
+  "apscheduler",
   "nb-cli",
   "langchain",
-  "langchain-community",
+  "langchain-core",
   "langchain-openai",
   "langchain-mcp-adapters",
-  "langchain-huggingface",
-  "langchain-chroma",
   "langgraph",
   "deepagents",
-  "sentence-transformers",
-  "accelerate",
-  "torchvision",
-  "torchao",
   "beautifulsoup4",
   "playwright",
-  "websockets",
   "httpx2[http2]",
   "imageio-ffmpeg",
   "gitpython",
   "pypinyin",
   "sqlmodel",
+  "sqlalchemy",
   "markdown-it-py",
-  "mdit-py-plugins",
   "pillow",
+  "pydantic",
+  "jinja2",
+  "tomlkit",
+  "python-dotenv",
+  "bcrypt",
+  "pyjwt",
+  "jsonschema",
   "nonebot-adapter-milky",
   "langchain-google-genai",
+  "google-genai",
   "langchain-anthropic",
   "langchain-deepseek",
   "langchain-quickjs",
 ]
 
+[project.optional-dependencies]
+content-check = [
+  "accelerate",
+  "torch",
+  "torchao",
+  "transformers",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", marker = "sys_platform != 'darwin'" },
+  { index = "tencent", marker = "sys_platform == 'darwin'" },
+]
+
 [[tool.uv.index]]
 name = "tencent"
 url = "https://mirrors.cloud.tencent.com/pypi/simple/"
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 
 [tool.nonebot]
