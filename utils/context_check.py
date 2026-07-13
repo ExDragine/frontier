@@ -1,18 +1,14 @@
 import re
 from typing import Any, Literal
 
-import torch
-from torchao.quantization import Int8WeightOnlyConfig, quantize_
-from transformers import (
-    AutoModelForCausalLM,
-    AutoModelForImageClassification,
-    AutoTokenizer,
-    ViTImageProcessor,
-)
-
 
 class ImageCheck:
     def __init__(self, model_name: str = "Falconsai/nsfw_image_detection") -> None:
+        import torch
+        from torchao.quantization import Int8WeightOnlyConfig, quantize_
+        from transformers import AutoModelForImageClassification, ViTImageProcessor
+
+        self._torch = torch
         self.model = AutoModelForImageClassification.from_pretrained(model_name)
         self.processor = ViTImageProcessor.from_pretrained(model_name)
         self.model.eval()
@@ -21,7 +17,7 @@ class ImageCheck:
     async def predict(self, img):
         if img.mode != "RGB":
             img = img.convert("RGB")
-        with torch.inference_mode():
+        with self._torch.inference_mode():
             inputs = self.processor(images=img, return_tensors="pt")
             outputs = self.model(**inputs)
             logits = outputs.logits
@@ -31,6 +27,9 @@ class ImageCheck:
 
 class TextCheck:
     def __init__(self, model_name: str = "Qwen/Qwen3Guard-Gen-0.6B"):
+        from torchao.quantization import Int8WeightOnlyConfig, quantize_
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
         # load the tokenizer and the model
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto", device_map="auto")

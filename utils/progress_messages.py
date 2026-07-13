@@ -53,10 +53,6 @@ _TOOL_MESSAGE_EXACT: dict[str, str] = {
     # 媒体生成
     "get_paint": "正在生成绘图…",
     "get_video": "正在处理视频…",
-    # 搜索 / 百科
-    "get_arxiv_paper_info": "正在查询 ArXiv 论文…",
-    "get_bilibili_video_info": "正在获取 B 站视频…",
-    "get_wikipedia_pages": "正在查询维基百科…",
     # API
     "get_deepseek_api_balance": "正在查询 API 余额…",
     # 台风

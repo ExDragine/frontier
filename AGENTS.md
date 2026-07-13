@@ -90,7 +90,6 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | 分组 | 代表模块 | 说明 |
 |------|----------|------|
 | `main` | `adapter`, `milky_*`, `paint`, `video`, `reminder`, `scheduled_task`, `deepseek_balance`, `NRC*`, `typhoon` | QQ 平台操作、媒体生成、提醒/自动任务、游戏/业务工具 |
-| `research` | `wikipedia`, `arxiv`, `bilibili` | 资料、论文、视频信息 |
 | `astro` | `aurora`, `comet`, `heavens_above`, `rocket`, `satellite`, `space_weather` | 天文、卫星、空间天气 |
 | `earth` | `earthquake`, `radar`, `weather` | 地震、雷达、天气 |
 | `memory` | `memory` | 聊天记录搜索和总结 |

@@ -9,13 +9,12 @@ from .mcp_client import mcp_get_tools
 # 跳过不应暴露给 Agent 的模块
 _EXCLUDED_MODULES = {"__init__", "mcp_client", "artifact_bridge"}
 
-_SUBAGENT_GROUPS = ("research", "astro", "earth", "media", "memory", "divination", "external")
+_SUBAGENT_GROUPS = ("astro", "earth", "media", "memory", "divination", "external")
 _RESTRICTED_GROUPS = ("restricted",)
 _ALL_TOOL_GROUPS = ("main", *_SUBAGENT_GROUPS, *_RESTRICTED_GROUPS)
 
 _TOOL_MODULE_GROUPS = {
     "adapter": "main",
-    "calculator": "main",
     "milky_file": "main",
     "milky_friend": "main",
     "milky_group": "main",
@@ -23,9 +22,6 @@ _TOOL_MODULE_GROUPS = {
     "milky_system": "main",
     "deepseek_balance": "main",
     "reminder": "main",
-    "arxiv": "research",
-    "bilibili": "research",
-    "wikipedia": "research",
     "aurora": "astro",
     "comet": "astro",
     "heavens_above": "astro",
@@ -94,7 +90,7 @@ class ModuleTools:
         self.subagent_tools["main"].extend(self.subagent_tools["memory"])
 
         # 将所有子代理组的工具也暴露给主 Agent
-        for group in ("research", "astro", "earth", "divination", "media"):
+        for group in ("astro", "earth", "divination", "media"):
             self.subagent_tools["main"].extend(self.subagent_tools[group])
 
     @property
