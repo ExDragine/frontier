@@ -421,6 +421,39 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert captured["config"]["configurable"]["group_member_role"] == "owner"
 
 
+def test_build_agent_backend_recovers_non_utf8_memory(tmp_path):
+    working_dir = tmp_path / "sandbox"
+    memory_dir = working_dir / "memory" / "123"
+    memory_dir.mkdir(parents=True)
+    agents_md = memory_dir / "AGENTS.md"
+    corrupt_content = b"# Agent memory\n" + b"\x80binary"
+    agents_md.write_bytes(corrupt_content)
+
+    backend = agents._build_agent_backend(str(working_dir), "123")
+
+    assert agents_md.read_text(encoding="utf-8") == (
+        agents.PROJECT_ROOT / "prompts" / "AGENTS.md"
+    ).read_text(encoding="utf-8")
+    backups = list(memory_dir.glob("AGENTS.md.corrupt-*"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == corrupt_content
+    assert backend.routes["/memory/123/"].root_dir == str(memory_dir)
+
+
+def test_build_agent_backend_preserves_valid_utf8_memory(tmp_path):
+    working_dir = tmp_path / "sandbox"
+    memory_dir = working_dir / "memory" / "123"
+    memory_dir.mkdir(parents=True)
+    agents_md = memory_dir / "AGENTS.md"
+    custom_content = "# 自定义 Agent memory\n保留这段内容。"
+    agents_md.write_text(custom_content, encoding="utf-8")
+
+    agents._build_agent_backend(str(working_dir), "123")
+
+    assert agents_md.read_text(encoding="utf-8") == custom_content
+    assert list(memory_dir.glob("AGENTS.md.corrupt-*")) == []
+
+
 @pytest.mark.asyncio
 async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_path):
     import types

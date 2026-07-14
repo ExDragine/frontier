@@ -150,7 +150,17 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "milky_system": types.SimpleNamespace(get_login_info=FakeBaseTool("get_login_info")),
         "deepseek_balance": types.SimpleNamespace(get_deepseek_api_balance=FakeBaseTool("get_deepseek_api_balance")),
         "aurora": types.SimpleNamespace(aurora_live=FakeBaseTool("aurora_live")),
-        "earthquake": types.SimpleNamespace(get_china_earthquake=FakeBaseTool("get_china_earthquake")),
+        "satellite": types.SimpleNamespace(
+            get_fy4b_satellite_image=FakeBaseTool("get_fy4b_satellite_image"),
+        ),
+        "earthquake": types.SimpleNamespace(
+            get_china_earthquake=FakeBaseTool("get_china_earthquake"),
+            get_usgs_significant_earthquakes=FakeBaseTool("get_usgs_significant_earthquakes"),
+        ),
+        "radar": types.SimpleNamespace(
+            get_available_china_radar_areas=FakeBaseTool("get_available_china_radar_areas"),
+            get_static_china_radar=FakeBaseTool("get_static_china_radar"),
+        ),
         "paint": types.SimpleNamespace(get_paint=FakeBaseTool("get_paint")),
         "video": types.SimpleNamespace(get_video=FakeBaseTool("get_video")),
         "memory": types.SimpleNamespace(search_messages=FakeBaseTool("search_messages")),
@@ -201,12 +211,24 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "search_messages",
         "mystery_tool",
         "aurora_live",
+        "get_fy4b_satellite_image",
         "get_china_earthquake",
+        "get_usgs_significant_earthquakes",
+        "get_available_china_radar_areas",
+        "get_static_china_radar",
         "iching_divination",
     }
     assert "research" not in groups
-    assert {tool.name for tool in groups["astro"]} == {"aurora_live"}
-    assert {tool.name for tool in groups["earth"]} == {"get_china_earthquake"}
+    assert {tool.name for tool in groups["astro"]} == {
+        "aurora_live",
+        "get_fy4b_satellite_image",
+    }
+    assert {tool.name for tool in groups["earth"]} == {
+        "get_china_earthquake",
+        "get_usgs_significant_earthquakes",
+        "get_available_china_radar_areas",
+        "get_static_china_radar",
+    }
     assert {tool.name for tool in groups["media"]} == set()
     assert {tool.name for tool in groups["memory"]} == {"search_messages"}
     assert {tool.name for tool in groups["divination"]} == {"iching_divination"}

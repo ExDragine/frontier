@@ -1,6 +1,7 @@
 # ruff: noqa: S101
 
 import base64
+from types import SimpleNamespace
 
 import pytest
 
@@ -163,25 +164,129 @@ def test_get_paint_tool_schema_hides_injected_state(load_tool_module):
 
 
 @pytest.mark.asyncio
-async def test_earthquake_tools(load_tool_module, monkeypatch):
+async def test_china_earthquake_tool_returns_plain_text(load_tool_module, monkeypatch):
     mod = load_tool_module("earthquake")
 
-    async def cn_img():
-        return b"cn"
+    class FixedDateTime(mod.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 7, 14, 12, tzinfo=tz)
 
-    async def jp_img():
-        return b"jp"
+    class Response:
+        def raise_for_status(self):
+            return None
 
-    monkeypatch.setattr(mod, "cenc_eq_list_img", cn_img)
-    monkeypatch.setattr(mod, "jma_eq_list_img", jp_img)
+        def json(self):
+            return {
+                "message": "",
+                "code": 0,
+                "data": [
+                    {
+                        "oriTime": "2026-07-13 07:27:48",
+                        "locName": "四川宜宾市高县",
+                        "magnitude": 3.8,
+                        "focDepth": 5.0,
+                    },
+                    {
+                        "oriTime": "2026-07-13 05:02:08",
+                        "locName": "四川宜宾市高县",
+                        "magnitude": 3.9,
+                        "focDepth": 6.0,
+                    },
+                ],
+            }
 
-    text_cn, art_cn = await mod.get_china_earthquake()
-    text_jp, art_jp = await mod.get_japan_earthquake()
+    class Client:
+        async def get(self, url, *, params):
+            assert url == "https://www.cenc.ac.cn/prodlaunch-web-backend/open/data/catalogs"
+            assert params == {
+                "orderBy": "id",
+                "isAsc": "false",
+                "startMg": 3,
+                "endMg": 10,
+                "startTime": "2026-06-14 00:00:00",
+                "endTime": "2026-07-14 23:59:59",
+                "locationRange": 1,
+            }
+            return Response()
 
-    assert "中国地震" in text_cn
-    assert art_cn.content["raw"] == b"cn"
-    assert "日本地震" in text_jp
-    assert art_jp.content["raw"] == b"jp"
+    monkeypatch.setattr(mod, "datetime", FixedDateTime)
+    monkeypatch.setattr(mod, "httpx_client", Client())
+
+    result = await mod.get_china_earthquake()
+
+    assert result == (
+        "中国地震台网最近地震信息（2 条）：\n"
+        "1. 2026-07-13 07:27:48｜四川宜宾市高县｜M3.8｜深度 5 千米\n"
+        "2. 2026-07-13 05:02:08｜四川宜宾市高县｜M3.9｜深度 6 千米"
+    )
+    assert not hasattr(mod, "get_japan_earthquake")
+
+
+@pytest.mark.asyncio
+async def test_usgs_significant_earthquakes_returns_plain_text(load_tool_module, monkeypatch):
+    mod = load_tool_module("earthquake")
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "properties": {
+                            "mag": 6.3,
+                            "place": "southeast of the Loyalty Islands",
+                            "time": 0,
+                            "sig": 611,
+                            "alert": "green",
+                            "tsunami": 0,
+                        },
+                        "geometry": {"coordinates": [171.5, -22.8, 10]},
+                    },
+                    {
+                        "properties": {
+                            "mag": 7.5,
+                            "place": "20 km ESE of Yumare, Venezuela",
+                            "time": 1000,
+                            "sig": 2646,
+                            "alert": "red",
+                            "tsunami": 1,
+                        },
+                        "geometry": {"coordinates": [-68.5, 10.5, 7.55]},
+                    },
+                ],
+            }
+
+    class Client:
+        async def get(self, url):
+            assert url == mod.USGS_SIGNIFICANT_MONTH_URL
+            return Response()
+
+    monkeypatch.setattr(mod, "httpx_client", Client())
+
+    result = await mod.get_usgs_significant_earthquakes()
+
+    assert result == (
+        "USGS 过去一个月重大地震（2 条，时间均为北京时间）：\n"
+        "1. 1970-01-01 08:00:01｜20 km ESE of Yumare, Venezuela｜M7.5｜深度 7.55 千米｜"
+        "显著性 2646｜PAGER 红色｜海啸标记：有\n"
+        "2. 1970-01-01 08:00:00｜southeast of the Loyalty Islands｜M6.3｜深度 10 千米｜"
+        "显著性 611｜PAGER 绿色｜海啸标记：无"
+    )
+
+
+def test_available_china_radar_areas(load_tool_module):
+    mod = load_tool_module("radar")
+
+    result = mod.get_available_china_radar_areas()
+
+    assert result.startswith(f"可用雷达地区（{len(mod.areas)} 个）：")
+    assert "全国及分区：全国、华北、东北、华东、华中、华南、西南、西北" in result
+    assert "省、市及雷达站：" in result
+    assert all(area in result for area in mod.areas)
 
 
 @pytest.mark.asyncio
@@ -209,6 +314,15 @@ async def test_radar_tool(load_tool_module, monkeypatch):
 async def test_satellite_tools(load_tool_module, monkeypatch):
     mod = load_tool_module("satellite")
 
+    class FakeUniMessage:
+        @staticmethod
+        def image(**kwargs):
+            return SimpleNamespace(content={"type": "image", **kwargs})
+
+        @staticmethod
+        def video(**kwargs):
+            return SimpleNamespace(content={"type": "video", **kwargs})
+
     class DummyResp:
         content = b"video"
 
@@ -219,9 +333,25 @@ async def test_satellite_tools(load_tool_module, monkeypatch):
         async def get(self, *_args, **_kwargs):
             return DummyResp()
 
+    monkeypatch.setattr(mod, "UniMessage", FakeUniMessage)
     monkeypatch.setattr(mod, "httpx_client", DummyClient())
-    text, artifact = await mod.get_fy4b_cloud_map("china", "3h")
-    assert "成功获取" in text
+
+    image_text, image_artifact = await mod.get_fy4b_satellite_image("china")
+    assert image_text == "成功获取FY4B 中国区域真彩色云图"
+    assert image_artifact.content == {
+        "type": "image",
+        "url": "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_REGC_GCLR.JPG",
+    }
+
+    sandwich_text, sandwich_artifact = await mod.get_fy4b_satellite_image("sandwich")
+    assert sandwich_text == "成功获取FY4B 全盘三明治云图"
+    assert sandwich_artifact.content == {
+        "type": "image",
+        "url": "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/SWCI/FY4B_DISK_SWCI.JPG",
+    }
+
+    text, artifact = await mod.get_fy4b_cloud_map("china", "72h")
+    assert text == "成功获取china地区的卫星云图动画（最近72小时）"
     assert artifact.content["type"] == "video"
 
     text2, artifact2 = await mod.get_fy4b_geos_cloud_map("MOS", "24h")

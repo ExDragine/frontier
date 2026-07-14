@@ -8,12 +8,33 @@ from playwright.async_api import async_playwright
 from utils.alconna import UniMessage
 
 
+@tool(response_format="content")
+def get_available_china_radar_areas() -> str:
+    """获取静态中国雷达图支持的全部地区名称。
+
+    当不确定 get_static_china_radar 的 area 参数时，先调用本工具。
+
+    Returns:
+        str: 按类别和多行排列的可用地区名称
+    """
+    area_names = list(areas)
+    overview_areas = area_names[:8]
+    station_areas = area_names[8:]
+    lines = [
+        f"可用雷达地区（{len(area_names)} 个）：",
+        f"全国及分区：{'、'.join(overview_areas)}",
+        "省、市及雷达站：",
+    ]
+    lines.extend("、".join(station_areas[index : index + 16]) for index in range(0, len(station_areas), 16))
+    return "\n".join(lines)
+
+
 @tool(response_format="content_and_artifact")
 async def get_static_china_radar(area: str) -> tuple[Any, UniMessage | None]:
     """获取静态中国雷达图
 
     Args:
-        area: 查询的地区名称，为具体的城市或者地区名称，例如：北京、上海、广东、全国、华北等
+        area: 查询的地区名称，必须使用可用名称；不确定时先调用 get_available_china_radar_areas
 
     Returns:
         tuple[str, Optional[MessageSegment]]: (描述信息, 雷达图消息段)

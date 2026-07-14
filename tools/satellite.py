@@ -9,6 +9,39 @@ from utils.http_client import get_http_client
 
 httpx_client = get_http_client("satellite")
 
+FY4B_STATIC_IMAGE_PRODUCTS = {
+    "china": (
+        "FY4B 中国区域真彩色云图",
+        "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_REGC_GCLR.JPG",
+    ),
+    "sandwich": (
+        "FY4B 全盘三明治云图",
+        "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/SWCI/FY4B_DISK_SWCI.JPG",
+    ),
+}
+
+
+@tool(response_format="content_and_artifact")
+async def get_fy4b_satellite_image(
+    product: Literal["china", "sandwich"],
+) -> tuple[str, UniMessage | None]:
+    """获取风云四号 B 星最新静态卫星图像。
+
+    Args:
+        product: 图像产品，可选值：
+            - "china": 中国区域真彩色云图
+            - "sandwich": 全盘三明治云图
+
+    Returns:
+        tuple[str, UniMessage | None]: 描述信息和图片消息段
+    """
+    selected = FY4B_STATIC_IMAGE_PRODUCTS.get(product)
+    if selected is None:
+        return "不支持的FY4B卫星图像产品，可选值为 china、sandwich", None
+
+    description, url = selected
+    return f"成功获取{description}", UniMessage.image(url=url)
+
 
 @tool(response_format="content_and_artifact")
 async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, UniMessage | None]:
@@ -55,11 +88,13 @@ async def get_fy4b_cloud_map(area: str, t: str) -> tuple[str, UniMessage | None]
 
     try:
         url = f"https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/VIDEO/FY4B.{area}.{t}.mp4"
-        file = (await httpx_client.get(url)).content
+        response = await httpx_client.get(url)
+        response.raise_for_status()
+        file = response.content
         result = UniMessage.video(raw=file)
         end_time = time.time()
         logger.info(f"✅ 工具执行成功: get_fy4b_cloud_map (耗时: {end_time - start_time:.2f}s)")
-        return f"成功获取{area}地区的卫星云图动画（最近3小时）", result
+        return f"成功获取{area}地区的卫星云图动画（最近{t.removesuffix('h')}小时）", result
     except Exception as e:
         end_time = time.time()
         logger.error(f"💥 工具执行异常: get_fy4b_cloud_map - {str(e)} (耗时: {end_time - start_time:.2f}s)")
