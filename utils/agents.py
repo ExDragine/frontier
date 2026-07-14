@@ -7,6 +7,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from deepagents import create_deep_agent
@@ -60,6 +61,7 @@ class ProgressEvent:
 
 VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 SKILLS_BACKEND_PATH = "/skills"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MEMORY_BACKEND_PATH = "/memory"
 
 # 截图/录屏工具硬门控：通过 Signal LLM 判断用户原始意图，仅当用户明确想"看网页外观"时才暴露对应工具
@@ -381,9 +383,20 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
     skills_dir = _ensure_dir(os.path.join(working_dir, "skills"))
     memory_dir = _ensure_dir(os.path.join(working_dir, "memory", workspace_key))
     agents_md = os.path.join(memory_dir, "AGENTS.md")
+    if os.path.exists(agents_md):
+        try:
+            with open(agents_md, encoding="utf-8") as existing_memory:
+                existing_memory.read()
+        except UnicodeDecodeError as exc:
+            backup_path = f"{agents_md}.corrupt-{time.time_ns()}"
+            os.replace(agents_md, backup_path)
+            logger.warning(
+                f"检测到非 UTF-8 的 Agent memory，已备份并恢复模板: "
+                f"{agents_md} -> {backup_path} ({exc})"
+            )
     if not os.path.exists(agents_md):
         try:
-            with open("prompts/AGENTS.md", encoding="utf-8") as src:
+            with (PROJECT_ROOT / "prompts" / "AGENTS.md").open(encoding="utf-8") as src:
                 content = src.read()
         except FileNotFoundError:
             content = ""
