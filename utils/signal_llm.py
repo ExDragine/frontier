@@ -42,6 +42,7 @@ class SignalLLM:
             "timeout": self.timeout,
             "provider": self.provider,
             "endpoint": self.endpoint,
+            "use_responses_api": EnvConfig.SIGNAL_MODEL_USE_RESPONSES_API,
         }
         if temperature is not None:
             kwargs["temperature"] = temperature

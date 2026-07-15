@@ -77,6 +77,7 @@ jwt_secret = "secret"
     assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
     assert configs.EnvConfig.SIGNAL_MODEL_ENDPOINT == ""
     assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
+    assert configs.EnvConfig.SIGNAL_MODEL_USE_RESPONSES_API is False
     assert configs.EnvConfig.LLM_ENDPOINTS == {}
     assert isinstance(configs.EnvConfig.DEEPSEEK_API_KEY, SecretStr)
     assert configs.EnvConfig.DEEPSEEK_API_KEY.get_secret_value() == ""
@@ -214,6 +215,7 @@ jwt_secret = "secret"
             },
             "image_memory": {"enabled": False, "ttl_days": 9, "auto_cleanup": False},
             "content_check": {"enabled": True},
+            "endpoint": {"signal_model_use_responses_api": True},
         }
     )
 
@@ -224,12 +226,14 @@ jwt_secret = "secret"
     assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is True
     assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == [1001]
     assert configs.EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == [1002]
+    assert configs.EnvConfig.SIGNAL_MODEL_USE_RESPONSES_API is True
 
-    configs.EnvConfig.reload({"function": {}})
+    configs.EnvConfig.reload({"function": {}, "endpoint": {}})
 
     assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False
     assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == []
     assert configs.EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == []
+    assert configs.EnvConfig.SIGNAL_MODEL_USE_RESPONSES_API is False
 
 
 def test_env_config_llm_endpoint_profiles(tmp_path, monkeypatch):
@@ -250,6 +254,7 @@ signal_model = "deepseek-v4-flash"
 signal_model_provider = "deepseek"
 signal_model_endpoint = "deepseek_signal"
 signal_model_capabilities = ["text"]
+signal_model_use_responses_api = true
 advan_model = "advan"
 advan_model_provider = "openai"
 advan_model_endpoint = "openrouter"
@@ -325,6 +330,7 @@ jwt_secret = "secret"
     assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
     assert configs.EnvConfig.SIGNAL_MODEL_ENDPOINT == "deepseek_signal"
     assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
+    assert configs.EnvConfig.SIGNAL_MODEL_USE_RESPONSES_API is True
     assert configs.EnvConfig.LLM_ENDPOINTS["openrouter"]["api_key"] == "sk-openrouter"
     assert configs.EnvConfig.LLM_ENDPOINTS["openrouter"]["capabilities"] == ["text", "vision"]
     assert configs.EnvConfig.LLM_ENDPOINTS["anthropic_proxy"]["base_url"] == "https://anthropic-proxy.example.com"

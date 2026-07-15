@@ -33,6 +33,7 @@ async def test_signal_structured_uses_json_mode_and_signal_model_config(monkeypa
     monkeypatch.setattr(signal_llm.EnvConfig, "SIGNAL_MODEL", "deepseek-v4-flash")
     monkeypatch.setattr(signal_llm.EnvConfig, "SIGNAL_MODEL_PROVIDER", "deepseek")
     monkeypatch.setattr(signal_llm.EnvConfig, "SIGNAL_MODEL_ENDPOINT", "deepseek_signal")
+    monkeypatch.setattr(signal_llm.EnvConfig, "SIGNAL_MODEL_USE_RESPONSES_API", True)
 
     response = await signal_llm.signal_structured(
         system_prompt="Classify the gateway.",
@@ -52,6 +53,7 @@ async def test_signal_structured_uses_json_mode_and_signal_model_config(monkeypa
         "timeout": 30,
         "provider": "deepseek",
         "endpoint": "deepseek_signal",
+        "use_responses_api": True,
         "temperature": 0,
         "extra_body": {"thinking": {"type": "disabled"}},
     }

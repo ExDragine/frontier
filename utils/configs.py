@@ -61,6 +61,7 @@ class EnvConfig:
     SIGNAL_MODEL_PROVIDER: str = endpoint.get("signal_model_provider", "deepseek")
     SIGNAL_MODEL_ENDPOINT: str = endpoint.get("signal_model_endpoint", "")
     SIGNAL_MODEL_CAPABILITIES: list[str] = endpoint.get("signal_model_capabilities", ["text"])
+    SIGNAL_MODEL_USE_RESPONSES_API: bool = endpoint.get("signal_model_use_responses_api", False)
     ADVAN_MODEL: str = endpoint["advan_model"]
     ADVAN_MODEL_PROVIDER: str = endpoint.get("advan_model_provider", "")
     ADVAN_MODEL_ENDPOINT: str = endpoint.get("advan_model_endpoint", "")
@@ -217,6 +218,7 @@ class EnvConfig:
         cls.VIDEO_MODEL = ep.get("video_model") or cls.VIDEO_MODEL
         cls.VIDEO_BASE_URL = ep.get("video_base_url") or cls.VIDEO_BASE_URL
         cls.LLM_ENDPOINTS = config.get("llm_endpoints", {})
+        cls.SIGNAL_MODEL_USE_RESPONSES_API = ep.get("signal_model_use_responses_api", False)
 
         # ── API 密钥 ──
         cls.OPENAI_API_KEY = _SecretStr(key.get("openai_api_key", ""))
