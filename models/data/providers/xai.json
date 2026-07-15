@@ -1,0 +1,51 @@
+{
+  "provider": "xai",
+  "models": [
+    {
+      "id": "grok-4.5",
+      "display_name": "Grok 4.5",
+      "description": {
+        "en": "xAI's flagship model for coding, agentic tasks, and general knowledge work, with configurable reasoning and native tool use.",
+        "zh-CN": "xAI 面向编程、智能体任务与通用知识工作的旗舰模型，支持可配置推理与原生工具使用。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "responses"
+        ]
+      },
+      "context_window": 500000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2026-07-08",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.x.ai/developers/models/grok-4.5",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.x.ai/developers/grok-4-5",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.x.ai/developers/release-notes",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

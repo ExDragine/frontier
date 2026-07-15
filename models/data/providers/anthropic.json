@@ -1,0 +1,205 @@
+{
+  "provider": "anthropic",
+  "models": [
+    {
+      "id": "claude-fable-5",
+      "display_name": "Claude Fable 5",
+      "description": {
+        "en": "Anthropic's most capable broadly available model for demanding reasoning and long-running agent tasks.",
+        "zh-CN": "Anthropic 能力最强的广泛可用模型，面向高难度推理与长时间运行的智能体任务。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-01",
+      "released_at": "2026-06-09",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-4-8",
+      "display_name": "Claude Opus 4.8",
+      "description": {
+        "en": "Anthropic's model for complex agentic coding and enterprise work.",
+        "zh-CN": "Anthropic 面向复杂智能体编程与企业任务的模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-01",
+      "released_at": "2026-05-28",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "claude-sonnet-5",
+      "display_name": "Claude Sonnet 5",
+      "description": {
+        "en": "Anthropic's fast frontier model for coding, agents, and enterprise workflows at scale.",
+        "zh-CN": "Anthropic 面向规模化编程、智能体与企业工作流的快速前沿模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-01",
+      "released_at": "2026-06-30",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "claude-haiku-4-5-20251001",
+      "display_name": "Claude Haiku 4.5",
+      "description": {
+        "en": "Anthropic's fastest current model with near-frontier intelligence.",
+        "zh-CN": "Anthropic 当前速度最快、具备接近前沿智能的模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "messages"
+        ]
+      },
+      "context_window": 200000,
+      "max_output_tokens": 64000,
+      "knowledge_cutoff": "2025-02",
+      "released_at": "2025-10-15",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

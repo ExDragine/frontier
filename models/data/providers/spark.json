@@ -1,0 +1,63 @@
+{
+  "provider": "spark",
+  "models": [
+    {
+      "id": "xSparkX2",
+      "display_name": "Spark X2",
+      "description": {
+        "en": "iFLYTEK's flagship deep-reasoning model for mathematics, language understanding, coding, and agent tasks.",
+        "zh-CN": "科大讯飞面向数学、语言理解、编程与智能体任务的旗舰深度推理模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": null,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://www.xfyun.cn/doc/spark/X1http.html",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://www.xfyun.cn/doc/spark/TokenPlan.html",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "xSparkX2Flash",
+      "display_name": "Spark X2 Flash",
+      "description": {
+        "en": "A fast, cost-efficient Spark reasoning model with agent, coding, function-calling, and web-search support.",
+        "zh-CN": "兼顾速度与成本的星火推理模型，支持智能体、编程、函数调用和联网搜索。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "parallel_tool_calling", "web_search"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": 262144,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://www.xfyun.cn/doc/spark/X2-Flash.html",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://www.xfyun.cn/doc/spark/TokenPlan.html",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

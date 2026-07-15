@@ -1,0 +1,63 @@
+{
+  "provider": "xiaomimimo",
+  "models": [
+    {
+      "id": "mimo-v2.5-pro",
+      "display_name": "MiMo V2.5 Pro",
+      "description": {
+        "en": "Xiaomi MiMo's professional text model for demanding reasoning and agentic tasks, with a one-million-token context window.",
+        "zh-CN": "小米 MiMo 面向高要求推理与智能体任务的专业文本模型，支持百万 token 上下文。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 131072,
+      "released_at": "2026-04-23",
+      "knowledge_cutoff": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://mimo.mi.com/docs/en-US/quick-start/model",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/updates/model",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "mimo-v2.5",
+      "display_name": "MiMo V2.5",
+      "description": {
+        "en": "Xiaomi MiMo's current omni-modal general model, accepting text, images, audio, and video with a one-million-token context window.",
+        "zh-CN": "小米 MiMo 当前的全模态通用模型，支持文本、图像、音频、视频输入及百万 token 上下文。"
+      },
+      "capabilities": {
+        "input": ["text", "image", "audio", "video"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 131072,
+      "released_at": "2026-04-23",
+      "knowledge_cutoff": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://mimo.mi.com/docs/en-US/quick-start/model",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/updates/model",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

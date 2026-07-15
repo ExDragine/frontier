@@ -1,0 +1,97 @@
+{
+  "provider": "groq",
+  "models": [
+    {
+      "id": "groq/compound",
+      "display_name": "Groq Compound",
+      "description": {
+        "en": "Groq's full compound AI system for multi-step research and analysis with server-side web search, browsing, code execution, and computation.",
+        "zh-CN": "Groq 的完整复合 AI 系统，通过服务端网络搜索、网页访问、代码执行与计算完成多步骤研究和分析。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://console.groq.com/docs/compound",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://console.groq.com/docs/compound/systems",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://console.groq.com/docs/models",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://console.groq.com/docs/tool-use/overview",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "groq/compound-mini",
+      "display_name": "Groq Compound Mini",
+      "description": {
+        "en": "Groq's low-latency compound AI system for focused tasks needing one server-side search, browsing, code, or computation step.",
+        "zh-CN": "Groq 的低延迟复合 AI 系统，面向只需一次服务端搜索、网页访问、代码执行或计算步骤的聚焦任务。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://console.groq.com/docs/compound",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://console.groq.com/docs/compound/systems",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://console.groq.com/docs/models",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://console.groq.com/docs/tool-use/overview",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

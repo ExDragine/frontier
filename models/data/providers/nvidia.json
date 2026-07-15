@@ -1,0 +1,119 @@
+{
+  "provider": "nvidia",
+  "models": [
+    {
+      "id": "nvidia/nemotron-3-ultra-550b-a55b",
+      "display_name": "Nemotron 3 Ultra 550B A55B",
+      "description": {
+        "en": "NVIDIA's frontier-scale Nemotron model for complex agentic workflows, long-context analysis, coding, and high-accuracy reasoning.",
+        "zh-CN": "NVIDIA 的前沿规模 Nemotron 模型，面向复杂智能体工作流、长上下文分析、编程与高精度推理。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": "2026-05",
+      "released_at": "2026-06-04",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://build.nvidia.com/nvidia/nemotron-3-ultra-550b-a55b",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://build.nvidia.com/nvidia/nemotron-3-ultra-550b-a55b/modelcard",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "nvidia/nemotron-3-super-120b-a12b",
+      "display_name": "Nemotron 3 Super 120B A12B",
+      "description": {
+        "en": "NVIDIA's high-throughput Nemotron model for collaborative agents, long-context reasoning, tool use, and enterprise automation.",
+        "zh-CN": "NVIDIA 的高吞吐 Nemotron 模型，面向协作智能体、长上下文推理、工具使用与企业自动化。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": "2026-02",
+      "released_at": "2026-03-11",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://build.nvidia.com/nvidia/nemotron-3-super-120b-a12b",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://build.nvidia.com/nvidia/nemotron-3-super-120b-a12b/modelcard",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "nvidia/nemotron-3-nano-30b-a3b",
+      "display_name": "Nemotron 3 Nano 30B A3B",
+      "description": {
+        "en": "NVIDIA's compact Nemotron model unifying reasoning and general chat for efficient agents, coding, and RAG systems.",
+        "zh-CN": "NVIDIA 的紧凑型 Nemotron 模型，融合推理与通用对话，面向高效智能体、编程与 RAG 系统。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2025-11",
+      "released_at": "2025-12-15",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b/modelcard",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

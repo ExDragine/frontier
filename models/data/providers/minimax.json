@@ -1,0 +1,63 @@
+{
+  "provider": "minimax",
+  "models": [
+    {
+      "id": "MiniMax-M3",
+      "display_name": "MiniMax M3",
+      "description": {
+        "en": "MiniMax's latest general-purpose multimodal model, designed for complex reasoning and agentic workloads with a one-million-token total context window.",
+        "zh-CN": "MiniMax 最新通用多模态模型，面向复杂推理与智能体任务，总上下文窗口达一百万 token。"
+      },
+      "capabilities": {
+        "input": ["text", "image"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions", "responses", "messages"]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": null,
+      "released_at": "2026-06-01",
+      "knowledge_cutoff": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.minimaxi.com/docs/api-reference/api-overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.minimaxi.com/docs/release-notes/models",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "MiniMax-M2.7",
+      "display_name": "MiniMax M2.7",
+      "description": {
+        "en": "A current MiniMax general-purpose reasoning model for agentic workflows and tool use, with a 204,800-token total context window.",
+        "zh-CN": "MiniMax 当前的通用推理模型，面向智能体工作流与工具使用，总上下文窗口为 204,800 token。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions", "responses", "messages"]
+      },
+      "context_window": 204800,
+      "max_output_tokens": null,
+      "released_at": "2026-03-18",
+      "knowledge_cutoff": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.minimaxi.com/docs/api-reference/api-overview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.minimaxi.com/docs/release-notes/models",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

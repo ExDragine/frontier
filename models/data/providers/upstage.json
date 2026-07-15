@@ -1,0 +1,42 @@
+{
+  "provider": "upstage",
+  "models": [
+    {
+      "id": "solar-pro3",
+      "display_name": "Solar Pro 3",
+      "description": {
+        "en": "Upstage's current flagship language model for reasoning-heavy, agentic, and multilingual enterprise workflows, with particular strength in Korean.",
+        "zh-CN": "Upstage 当前旗舰语言模型，面向推理密集型、智能体与多语言企业工作流，尤其擅长韩语。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2026-03-24",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://console.upstage.ai/api-keys?api=chat-reasoning",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://www.upstage.ai/blog/en/solar-pro-3-0323",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

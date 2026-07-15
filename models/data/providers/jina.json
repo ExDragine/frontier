@@ -1,0 +1,42 @@
+{
+  "provider": "jina",
+  "models": [
+    {
+      "id": "jina-deepsearch-v1",
+      "display_name": "Jina DeepSearch v1",
+      "description": {
+        "en": "Jina AI's research agent that iteratively searches, reads, and reasons to produce precise, source-backed answers.",
+        "zh-CN": "Jina AI 的研究智能体，通过迭代搜索、阅读与推理生成精准且有来源依据的回答。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "file"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2025-02-02",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://jina.ai/deepsearch/",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

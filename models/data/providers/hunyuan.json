@@ -1,0 +1,63 @@
+{
+  "provider": "hunyuan",
+  "models": [
+    {
+      "id": "hy3",
+      "display_name": "Hy3",
+      "description": {
+        "en": "Tencent Hunyuan's production model for coding agents, long documents, and multi-step business workflows.",
+        "zh-CN": "腾讯混元面向编程智能体、长文档与多步骤业务工作流的正式版模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": "2026-07-07",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://cloud.tencent.com/document/product/1823/130051",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://cloud.tencent.com/document/product/1823/130079",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "hy3-preview",
+      "display_name": "Hy3 Preview",
+      "description": {
+        "en": "Tencent Hunyuan's preview reasoning model designed for coding, complex dialogue, and agent workloads.",
+        "zh-CN": "腾讯混元面向编程、复杂对话与智能体负载的预览推理模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": "2026-04-23",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://cloud.tencent.com/document/product/1823/130051",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://cloud.tencent.com/document/product/1823/130079",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+{
+  "provider": "mistral",
+  "models": [
+    {
+      "id": "mistral-medium-3-5",
+      "display_name": "Mistral Medium 3.5",
+      "description": {
+        "en": "Mistral AI's frontier-class multimodal model optimized for agentic and coding workloads.",
+        "zh-CN": "Mistral AI 面向智能体与编程工作负载优化的前沿级多模态模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 256000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2026-04-28",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.mistral.ai/models/model-cards/mistral-medium-3-5-26-04",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.mistral.ai/studio-api/conversations/reasoning",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.mistral.ai/resources/known-limitations",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "mistral-small-2603",
+      "display_name": "Mistral Small 4",
+      "description": {
+        "en": "Mistral AI's efficient multimodal model combining instruction following, reasoning, and coding in one general-purpose system.",
+        "zh-CN": "Mistral AI 的高效多模态模型，在一个通用系统中融合指令遵循、推理与编程能力。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 256000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2026-03-16",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.mistral.ai/models/model-cards/mistral-small-4-0-26-03",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.mistral.ai/resources/known-limitations",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "mistral-large-2512",
+      "display_name": "Mistral Large 3",
+      "description": {
+        "en": "Mistral AI's large open-weight general-purpose multimodal model for demanding chat and agent workflows.",
+        "zh-CN": "Mistral AI 面向高要求对话与智能体工作流的大型开放权重通用多模态模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 256000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2025-12-02",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.mistral.ai/models/model-cards/mistral-large-3-25-12",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.mistral.ai/resources/known-limitations",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

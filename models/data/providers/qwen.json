@@ -1,0 +1,139 @@
+{
+  "provider": "qwen",
+  "models": [
+    {
+      "id": "qwen3.7-max",
+      "display_name": "Qwen3.7 Max",
+      "description": {
+        "en": "Qwen's highest-capability general model for demanding reasoning, agent, and coding tasks.",
+        "zh-CN": "千问面向高难度推理、智能体与编程任务的最高能力通用模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "responses"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/text-generation-model",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/token-plan-tool",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "qwen3.7-plus",
+      "display_name": "Qwen3.7 Plus",
+      "description": {
+        "en": "A balanced multimodal Qwen model for long-context chat, reasoning, coding, and agent workflows.",
+        "zh-CN": "兼顾能力与效率，面向长上下文对话、推理、编程和智能体工作流的多模态千问模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "responses"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/text-generation-model",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://help.aliyun.com/en/model-studio/vision-model/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/token-plan-tool",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "qwen3.6-flash",
+      "display_name": "Qwen3.6 Flash",
+      "description": {
+        "en": "A fast, cost-efficient multimodal Qwen model for high-volume chat and agent applications.",
+        "zh-CN": "面向高并发对话与智能体应用的快速高效多模态千问模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "responses"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/text-generation-model",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://help.aliyun.com/en/model-studio/vision-model/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/token-plan-tool",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

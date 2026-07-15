@@ -1,0 +1,121 @@
+{
+  "provider": "internlm",
+  "models": [
+    {
+      "id": "intern-s2-preview",
+      "display_name": "Intern-S2 Preview",
+      "description": {
+        "en": "InternLM's preview scientific multimodal reasoning model for discovery and general agent tasks.",
+        "zh-CN": "书生浦语面向科学发现与通用智能体任务的多模态推理预览模型。"
+      },
+      "capabilities": {
+        "input": ["text", "image"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": 32000,
+      "knowledge_cutoff": null,
+      "released_at": "2026-05-09",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Models/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Chat/index.html",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "intern-s1-pro",
+      "display_name": "Intern-S1 Pro",
+      "description": {
+        "en": "InternLM's advanced multimodal reasoning model with long context and built-in web search.",
+        "zh-CN": "书生浦语具备长上下文与内置联网搜索能力的高级多模态推理模型。"
+      },
+      "capabilities": {
+        "input": ["text", "image"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "web_search"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": 32000,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Models/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Chat/index.html",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "intern-s1",
+      "display_name": "Intern-S1",
+      "description": {
+        "en": "InternLM's multimodal model combining general reasoning with strong scientific problem solving.",
+        "zh-CN": "书生浦语兼顾通用推理与科学问题求解能力的多模态模型。"
+      },
+      "capabilities": {
+        "input": ["text", "image"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 32768,
+      "max_output_tokens": 32000,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Models/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Chat/index.html",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "intern-s1-mini",
+      "display_name": "Intern-S1 Mini",
+      "description": {
+        "en": "InternLM's lightweight multimodal reasoning model for efficient scientific and general-purpose tasks.",
+        "zh-CN": "书生浦语面向高效科学推理与通用任务的轻量多模态模型。"
+      },
+      "capabilities": {
+        "input": ["text", "image"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 32768,
+      "max_output_tokens": 32000,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Models/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Chat/index.html",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

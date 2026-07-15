@@ -1,0 +1,59 @@
+{
+  "provider": "stepfun",
+  "models": [
+    {
+      "id": "step-3.7-flash",
+      "display_name": "Step 3.7 Flash",
+      "description": {
+        "en": "StepFun's multimodal reasoning flagship for coding, agent workflows, and image or video understanding.",
+        "zh-CN": "阶跃星辰面向编程、智能体工作流及图像和视频理解的多模态推理旗舰模型。"
+      },
+      "capabilities": {
+        "input": ["text", "image", "video"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions", "responses", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.stepfun.com/docs/zh/guides/models/step-3.7-flash",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://platform.stepfun.com/docs/zh/api-reference/responses/responses-create",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "step-3.5-flash",
+      "display_name": "Step 3.5 Flash",
+      "description": {
+        "en": "StepFun's text reasoning flagship for coding, tool use, and efficient agent workloads.",
+        "zh-CN": "阶跃星辰面向编程、工具调用与高效智能体负载的文本推理旗舰模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.stepfun.com/docs/zh/guides/models/step-3.5-flash",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

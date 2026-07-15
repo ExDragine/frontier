@@ -1,0 +1,170 @@
+{
+  "provider": "perplexity",
+  "models": [
+    {
+      "id": "sonar-pro",
+      "display_name": "Sonar Pro",
+      "description": {
+        "en": "Perplexity's advanced search model for complex, source-grounded questions requiring deeper web research.",
+        "zh-CN": "Perplexity 面向复杂、需要更深入网络研究且以来源为依据的问题的高级搜索模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 200000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2025-01-21",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/models/sonar-pro",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/features/structured-outputs",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://www.perplexity.ai/hub/blog/introducing-the-sonar-pro-api",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "sonar",
+      "display_name": "Sonar",
+      "description": {
+        "en": "Perplexity's fast search model for factual, citation-backed answers grounded in current web results.",
+        "zh-CN": "Perplexity 的快速搜索模型，基于实时网络结果生成有引用依据的事实型回答。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 128000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2025-01-21",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/models/sonar",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/features/structured-outputs",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://www.perplexity.ai/hub/blog/introducing-the-sonar-pro-api",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "sonar-reasoning-pro",
+      "display_name": "Sonar Reasoning Pro",
+      "description": {
+        "en": "Perplexity's search-grounded reasoning model for multi-step questions that benefit from deliberate analysis.",
+        "zh-CN": "Perplexity 以搜索为依据的推理模型，适合需要审慎分析的多步骤问题。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 128000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/models/sonar-reasoning-pro",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/features/structured-outputs",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "sonar-deep-research",
+      "display_name": "Sonar Deep Research",
+      "description": {
+        "en": "Perplexity's research agent for exhaustive web investigation, iterative reasoning, and source-backed synthesis.",
+        "zh-CN": "Perplexity 的研究智能体，用于全面网络调查、迭代推理与有来源依据的综合分析。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 128000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/models/sonar-deep-research",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/features/structured-outputs",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

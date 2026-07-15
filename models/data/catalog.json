@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.1",
+  "catalog_version": "2026.7.15",
+  "updated_at": "2026-07-15",
+  "providers": [
+    {
+      "id": "ai21",
+      "file": "providers/ai21.json"
+    },
+    {
+      "id": "antgroup",
+      "file": "providers/antgroup.json"
+    },
+    {
+      "id": "anthropic",
+      "file": "providers/anthropic.json"
+    },
+    {
+      "id": "baichuan",
+      "file": "providers/baichuan.json"
+    },
+    {
+      "id": "cohere",
+      "file": "providers/cohere.json"
+    },
+    {
+      "id": "deepseek",
+      "file": "providers/deepseek.json"
+    },
+    {
+      "id": "google",
+      "file": "providers/google.json"
+    },
+    {
+      "id": "groq",
+      "file": "providers/groq.json"
+    },
+    {
+      "id": "hunyuan",
+      "file": "providers/hunyuan.json"
+    },
+    {
+      "id": "internlm",
+      "file": "providers/internlm.json"
+    },
+    {
+      "id": "jina",
+      "file": "providers/jina.json"
+    },
+    {
+      "id": "longcat",
+      "file": "providers/longcat.json"
+    },
+    {
+      "id": "minimax",
+      "file": "providers/minimax.json"
+    },
+    {
+      "id": "mistral",
+      "file": "providers/mistral.json"
+    },
+    {
+      "id": "moonshot",
+      "file": "providers/moonshot.json"
+    },
+    {
+      "id": "nvidia",
+      "file": "providers/nvidia.json"
+    },
+    {
+      "id": "openai",
+      "file": "providers/openai.json"
+    },
+    {
+      "id": "perplexity",
+      "file": "providers/perplexity.json"
+    },
+    {
+      "id": "qwen",
+      "file": "providers/qwen.json"
+    },
+    {
+      "id": "spark",
+      "file": "providers/spark.json"
+    },
+    {
+      "id": "stepfun",
+      "file": "providers/stepfun.json"
+    },
+    {
+      "id": "upstage",
+      "file": "providers/upstage.json"
+    },
+    {
+      "id": "v0",
+      "file": "providers/v0.json"
+    },
+    {
+      "id": "volcengine",
+      "file": "providers/volcengine.json"
+    },
+    {
+      "id": "wenxin",
+      "file": "providers/wenxin.json"
+    },
+    {
+      "id": "xai",
+      "file": "providers/xai.json"
+    },
+    {
+      "id": "xiaomimimo",
+      "file": "providers/xiaomimimo.json"
+    },
+    {
+      "id": "zhipu",
+      "file": "providers/zhipu.json"
+    }
+  ]
+}

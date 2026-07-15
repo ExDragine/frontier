@@ -1,0 +1,101 @@
+{
+  "provider": "deepseek",
+  "models": [
+    {
+      "id": "deepseek-v4-flash",
+      "display_name": "DeepSeek V4 Flash",
+      "description": {
+        "en": "A fast and efficient DeepSeek V4 preview model for reasoning, chat, and agent workflows.",
+        "zh-CN": "面向推理、对话与智能体工作流的快速高效 DeepSeek V4 预览模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 384000,
+      "knowledge_cutoff": null,
+      "released_at": "2026-04-24",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://api-docs.deepseek.com/api/list-models/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/quick_start/pricing/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/news/news260424/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "display_name": "DeepSeek V4 Pro",
+      "description": {
+        "en": "DeepSeek's more capable V4 preview model for complex reasoning, coding, and agent workflows.",
+        "zh-CN": "面向复杂推理、编程与智能体工作流的高能力 DeepSeek V4 预览模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 384000,
+      "knowledge_cutoff": null,
+      "released_at": "2026-04-24",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://api-docs.deepseek.com/api/list-models/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/quick_start/pricing/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/news/news260424/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

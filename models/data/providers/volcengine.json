@@ -1,0 +1,92 @@
+{
+  "provider": "volcengine",
+  "models": [
+    {
+      "id": "doubao-seed-evolving",
+      "display_name": "Doubao Seed Evolving",
+      "description": {
+        "en": "Volcengine's continuously optimized Doubao model for coding, agent workflows, and complex reasoning.",
+        "zh-CN": "火山引擎面向编程、智能体工作流和复杂推理持续优化的豆包模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning"],
+        "api_modes": ["chat_completions", "responses"]
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://www.volcengine.com/product/doubao",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://www.volcengine.com/docs/82379/2123434",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "doubao-seed-2.1-pro",
+      "display_name": "Doubao Seed 2.1 Pro",
+      "description": {
+        "en": "Volcengine's high-capability Doubao 2.1 model for demanding general, coding, and agent workloads.",
+        "zh-CN": "火山引擎面向高要求通用任务、编程和智能体负载的高能力豆包 2.1 模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning"],
+        "api_modes": ["chat_completions", "responses"]
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://www.volcengine.com/product/doubao",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://www.volcengine.com/docs/82379/2123434",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "doubao-seed-2.1-turbo",
+      "display_name": "Doubao Seed 2.1 Turbo",
+      "description": {
+        "en": "A cost-efficient Doubao 2.1 model designed for high-volume general and agent deployments.",
+        "zh-CN": "面向大规模通用与智能体部署、兼顾成本效率的豆包 2.1 模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning"],
+        "api_modes": ["chat_completions", "responses"]
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://www.volcengine.com/product/doubao",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://www.volcengine.com/docs/82379/2123434",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

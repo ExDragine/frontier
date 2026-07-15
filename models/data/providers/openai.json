@@ -1,0 +1,389 @@
+{
+  "provider": "openai",
+  "models": [
+    {
+      "id": "gpt-5.6-sol",
+      "display_name": "GPT-5.6 Sol",
+      "description": {
+        "en": "The flagship GPT-5.6 model for complex professional and agentic work.",
+        "zh-CN": "GPT-5.6 旗舰模型，面向复杂专业任务与智能体工作流。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-02",
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "display_name": "GPT-5.6 Terra",
+      "description": {
+        "en": "A GPT-5.6 model balancing intelligence and cost for general professional workloads.",
+        "zh-CN": "兼顾智能水平与成本、面向通用专业负载的 GPT-5.6 模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-02",
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "display_name": "GPT-5.6 Luna",
+      "description": {
+        "en": "A GPT-5.6 model optimized for efficient, cost-sensitive high-volume workloads.",
+        "zh-CN": "面向高吞吐、成本敏感负载优化的高效 GPT-5.6 模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-02",
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.5",
+      "display_name": "GPT-5.5",
+      "description": {
+        "en": "A frontier reasoning model for demanding coding and professional work.",
+        "zh-CN": "面向高难度编程与专业工作的前沿推理模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2025-12",
+      "released_at": "2026-04-23",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-5.5",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.5-pro",
+      "display_name": "GPT-5.5 Pro",
+      "description": {
+        "en": "A higher-compute GPT-5.5 variant for difficult problems requiring more precise responses.",
+        "zh-CN": "为困难问题投入更多计算、强调回答精度的 GPT-5.5 高能力版本。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2025-12",
+      "released_at": "2026-04-23",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-5.5-pro",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.4",
+      "display_name": "GPT-5.4",
+      "description": {
+        "en": "A capable reasoning model for complex coding and professional workflows.",
+        "zh-CN": "面向复杂编程与专业工作流的高能力推理模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2025-08",
+      "released_at": "2026-03-05",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.4-pro",
+      "display_name": "GPT-5.4 Pro",
+      "description": {
+        "en": "A higher-compute GPT-5.4 variant for difficult, quality-focused tasks.",
+        "zh-CN": "面向困难且质量优先任务、投入更多计算的 GPT-5.4 版本。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2025-08",
+      "released_at": "2026-03-05",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-5.4-pro",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "display_name": "GPT-5.4 mini",
+      "description": {
+        "en": "An efficient GPT-5.4-class model for coding, computer use, subagents, and high-volume work.",
+        "zh-CN": "适合编程、计算机操作、子智能体及高吞吐任务的高效 GPT-5.4 级模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 400000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2025-08",
+      "released_at": "2026-03-17",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.4-nano",
+      "display_name": "GPT-5.4 nano",
+      "description": {
+        "en": "A fast, economical GPT-5.4-class model for simple high-volume tasks and subagents.",
+        "zh-CN": "面向简单高吞吐任务与子智能体的快速、经济型 GPT-5.4 级模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 400000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2025-08",
+      "released_at": "2026-03-17",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-5.4-nano",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

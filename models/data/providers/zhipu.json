@@ -1,0 +1,80 @@
+{
+  "provider": "zhipu",
+  "models": [
+    {
+      "id": "glm-5.2",
+      "display_name": "GLM-5.2",
+      "description": {
+        "en": "Zhipu's flagship long-context model for project-scale engineering, reasoning, and sustained agent work.",
+        "zh-CN": "智谱面向项目级工程、复杂推理与持续智能体任务的旗舰长上下文模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions"]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.2",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "glm-5.1",
+      "display_name": "GLM-5.1",
+      "description": {
+        "en": "A high-capability model optimized for complex coding and long-running autonomous agent tasks.",
+        "zh-CN": "面向复杂编程和长周期自主智能体任务优化的高能力模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions"]
+      },
+      "context_window": 200000,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.1",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "glm-5-turbo",
+      "display_name": "GLM-5-Turbo",
+      "description": {
+        "en": "An agent-focused GLM model optimized for tool use, instruction following, and persistent workflows.",
+        "zh-CN": "专为工具使用、指令遵循和持续工作流优化的智能体型 GLM 模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions"]
+      },
+      "context_window": 200000,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5-turbo",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

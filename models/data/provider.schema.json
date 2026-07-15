@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/exdragine/frontier-model-catalog/provider.schema.json",
+  "title": "Frontier Model Provider Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["provider", "models"],
+  "properties": {
+    "provider": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/model"}
+    }
+  },
+  "$defs": {
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name",
+        "description",
+        "capabilities",
+        "context_window",
+        "max_output_tokens",
+        "knowledge_cutoff",
+        "released_at",
+        "status",
+        "sources"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"},
+        "display_name": {"type": "string", "minLength": 1},
+        "description": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["en", "zh-CN"],
+          "properties": {
+            "en": {"type": "string", "minLength": 1},
+            "zh-CN": {"type": "string", "minLength": 1}
+          }
+        },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input", "output", "features", "api_modes"],
+          "properties": {
+            "input": {
+              "type": "array",
+              "contains": {"const": "text"},
+              "minContains": 1,
+              "uniqueItems": true,
+              "items": {"enum": ["text", "image", "audio", "video", "file"]}
+            },
+            "output": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"enum": ["text", "image", "audio", "video"]}
+            },
+            "features": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "reasoning",
+                  "tool_calling",
+                  "parallel_tool_calling",
+                  "structured_output",
+                  "web_search",
+                  "image_generation"
+                ]
+              }
+            },
+            "api_modes": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": ["chat_completions", "responses", "messages", "generate_content"]
+              }
+            }
+          }
+        },
+        "context_window": {
+          "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]
+        },
+        "max_output_tokens": {
+          "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]
+        },
+        "knowledge_cutoff": {
+          "oneOf": [
+            {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"},
+            {"type": "null"}
+          ]
+        },
+        "released_at": {
+          "oneOf": [{"type": "string", "format": "date"}, {"type": "null"}]
+        },
+        "status": {"enum": ["active", "preview", "legacy", "deprecated"]},
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url", "verified_at"],
+            "properties": {
+              "url": {"type": "string", "format": "uri", "pattern": "^https://"},
+              "verified_at": {"type": "string", "format": "date"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

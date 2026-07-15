@@ -1,0 +1,96 @@
+{
+  "provider": "wenxin",
+  "models": [
+    {
+      "id": "ernie-5.1",
+      "display_name": "ERNIE 5.1",
+      "description": {
+        "en": "Baidu's latest ERNIE flagship, strengthened for agent decisions, knowledge work, reasoning, and deep search.",
+        "zh-CN": "百度最新的文心旗舰模型，重点增强智能体决策、知识任务、推理与深度搜索能力。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "web_search"],
+        "api_modes": ["chat_completions"]
+      },
+      "context_window": 131072,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://cloud.baidu.com/doc/qianfan/s/rmh4stp0j",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://cloud.baidu.com/doc/qianfan-docs/s/xm95lyys5",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://cloud.baidu.com/doc/qianfan-docs/s/Wm8r4sw29",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "ernie-5.0",
+      "display_name": "ERNIE 5.0",
+      "description": {
+        "en": "Baidu's native multimodal ERNIE model for general chat, visual and audio understanding, reasoning, and agent planning.",
+        "zh-CN": "百度面向通用对话、视觉与音频理解、推理和智能体规划的原生多模态文心模型。"
+      },
+      "capabilities": {
+        "input": ["text", "image", "audio", "video"],
+        "output": ["text"],
+        "features": ["reasoning"],
+        "api_modes": ["chat_completions"]
+      },
+      "context_window": 131072,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://cloud.baidu.com/doc/qianfan/s/rmh4stp0j",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://cloud.baidu.com/doc/qianfan-api/s/Dmba8k71y",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "ernie-x1.1",
+      "display_name": "ERNIE X1.1",
+      "description": {
+        "en": "Baidu's dedicated reasoning model for logic, mathematics, coding, and complex instruction following.",
+        "zh-CN": "百度面向逻辑、数学、编程和复杂指令遵循的专用推理模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "web_search"],
+        "api_modes": ["chat_completions"]
+      },
+      "context_window": 65536,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://cloud.baidu.com/doc/qianfan/s/rmh4stp0j",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://cloud.baidu.com/doc/qianfan-api/s/Dmba8k71y",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

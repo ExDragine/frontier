@@ -1,0 +1,48 @@
+{
+  "provider": "v0",
+  "models": [
+    {
+      "id": "v0-1.5-lg",
+      "display_name": "v0 1.5 Large",
+      "description": {
+        "en": "Vercel's large v0 composite coding model for advanced reasoning, complex UI generation, and full-stack web development.",
+        "zh-CN": "Vercel 的大型 v0 复合编程模型，面向高级推理、复杂界面生成与全栈 Web 开发。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 512000,
+      "max_output_tokens": 32000,
+      "knowledge_cutoff": null,
+      "released_at": "2025-06-09",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://v0.dev/docs/v0-model-api",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://vercel.com/changelog/models-api-v0-1.5-beta",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://vercel.com/blog/v0-composite-model-family",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

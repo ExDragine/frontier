@@ -1,0 +1,34 @@
+{
+  "provider": "longcat",
+  "models": [
+    {
+      "id": "LongCat-2.0",
+      "display_name": "LongCat 2.0",
+      "description": {
+        "en": "LongCat's current general-purpose flagship model, with a one-million-token context window, reasoning, and tool calling.",
+        "zh-CN": "LongCat 当前的通用旗舰模型，支持百万 token 上下文、推理与工具调用。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 131072,
+      "released_at": "2026-06-30",
+      "knowledge_cutoff": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://longcat.chat/platform/docs/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://longcat.chat/platform/docs/ChangeLog.html",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

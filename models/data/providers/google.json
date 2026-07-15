@@ -1,0 +1,319 @@
+{
+  "provider": "google",
+  "models": [
+    {
+      "id": "gemini-3.5-flash",
+      "display_name": "Gemini 3.5 Flash",
+      "description": {
+        "en": "Google's stable multimodal model for sustained reasoning, coding, and long-running agentic workflows.",
+        "zh-CN": "Google 面向持续推理、编程与长流程智能体工作负载的稳定多模态模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video",
+          "file"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "generate_content"
+        ]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": "2025-01",
+      "released_at": "2026-05-19",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/deprecations",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gemini-3.1-flash-lite",
+      "display_name": "Gemini 3.1 Flash-Lite",
+      "description": {
+        "en": "Google's stable, low-latency multimodal model for high-volume lightweight and agentic workloads.",
+        "zh-CN": "Google 面向高吞吐轻量任务与智能体工作流的稳定低延迟多模态模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video",
+          "file"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "generate_content"
+        ]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": "2025-01",
+      "released_at": "2026-05-07",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/deprecations",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "display_name": "Gemini 3.1 Pro Preview",
+      "description": {
+        "en": "Google's preview Pro model for complex reasoning, coding, and advanced agentic workloads.",
+        "zh-CN": "Google 面向复杂推理、编程与高级智能体任务的 Pro 预览模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video",
+          "file"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "generate_content"
+        ]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": "2025-01",
+      "released_at": "2026-02-19",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-pro-preview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/deprecations",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gemini-3-flash-preview",
+      "display_name": "Gemini 3 Flash Preview",
+      "description": {
+        "en": "Google's preview Flash model for fast multimodal reasoning and agentic workloads.",
+        "zh-CN": "Google 面向快速多模态推理与智能体任务的 Flash 预览模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video",
+          "file"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "generate_content"
+        ]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": "2025-01",
+      "released_at": "2025-12-17",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/models/gemini-3-flash-preview",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/deprecations",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "display_name": "Gemini 2.5 Pro",
+      "description": {
+        "en": "Google's long-context reasoning model for complex code, STEM, data, and document analysis.",
+        "zh-CN": "Google 面向复杂代码、理工问题、数据与文档分析的长上下文推理模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video",
+          "file"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "generate_content"
+        ]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": "2025-01",
+      "released_at": "2025-06-17",
+      "status": "deprecated",
+      "sources": [
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-pro",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/deprecations",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "display_name": "Gemini 2.5 Flash",
+      "description": {
+        "en": "Google's balanced reasoning model for low-latency, high-volume, and agentic workloads.",
+        "zh-CN": "Google 面向低延迟、高吞吐与智能体工作负载的均衡推理模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "generate_content"
+        ]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": "2025-01",
+      "released_at": "2025-06-17",
+      "status": "deprecated",
+      "sources": [
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/deprecations",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "gemini-2.5-flash-lite",
+      "display_name": "Gemini 2.5 Flash-Lite",
+      "description": {
+        "en": "Google's cost-efficient multimodal model for high-volume extraction, classification, and low-latency tasks.",
+        "zh-CN": "Google 面向高吞吐抽取、分类与低延迟任务的高性价比多模态模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video",
+          "file"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "generate_content"
+        ]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": "2025-01",
+      "released_at": "2025-07-22",
+      "status": "deprecated",
+      "sources": [
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-lite",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://ai.google.dev/gemini-api/docs/deprecations",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

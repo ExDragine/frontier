@@ -1,0 +1,85 @@
+{
+  "provider": "cohere",
+  "models": [
+    {
+      "id": "command-a-plus-05-2026",
+      "display_name": "Command A+",
+      "description": {
+        "en": "Cohere's strongest Command model for multilingual enterprise agents, combining reasoning, vision, and tool use in one system.",
+        "zh-CN": "Cohere 能力最强的 Command 模型，在一个系统中融合推理、视觉与工具使用，面向多语言企业智能体。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 128000,
+      "max_output_tokens": 64000,
+      "knowledge_cutoff": "2025-04",
+      "released_at": "2026-05-20",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.cohere.com/docs/command-a-plus",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.cohere.com/changelog/",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "command-a-reasoning-08-2025",
+      "display_name": "Command A Reasoning",
+      "description": {
+        "en": "Cohere's hybrid reasoning model for complex multilingual enterprise agents, retrieval, and tool-driven workflows.",
+        "zh-CN": "Cohere 面向复杂多语言企业智能体、检索与工具驱动工作流的混合推理模型。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 256000,
+      "max_output_tokens": 32000,
+      "knowledge_cutoff": "2024-06",
+      "released_at": "2025-08-21",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.cohere.com/docs/command-a-reasoning",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://docs.cohere.com/changelog/2025-08-21-command-a-reasoning",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}

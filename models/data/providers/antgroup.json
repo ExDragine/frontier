@@ -1,0 +1,92 @@
+{
+  "provider": "antgroup",
+  "models": [
+    {
+      "id": "Ling-2.6-1T",
+      "display_name": "Ling 2.6 1T",
+      "description": {
+        "en": "Ant Group's flagship general-purpose model for long-context coding, tool use, and multi-step agent workflows.",
+        "zh-CN": "蚂蚁集团面向长上下文编程、工具调用与多步骤智能体工作流的通用旗舰模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developer.ant-ling.com/en/docs/models/ling/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/api-reference/openai/",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "Ling-2.6-flash",
+      "display_name": "Ling 2.6 Flash",
+      "description": {
+        "en": "Ant Group's efficient general model for high-throughput dialogue, content generation, and agent collaboration.",
+        "zh-CN": "蚂蚁集团面向高吞吐对话、内容生成与智能体协作的高效通用模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developer.ant-ling.com/en/docs/models/ling/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/api-reference/openai/",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "Ring-2.6-1T",
+      "display_name": "Ring 2.6 1T",
+      "description": {
+        "en": "Ant Group's reasoning model for coding agents, tool orchestration, research, and long-horizon execution.",
+        "zh-CN": "蚂蚁集团面向编程智能体、工具编排、研究分析与长周期执行的推理模型。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developer.ant-ling.com/en/docs/models/ring/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/api-reference/openai/",
+          "verified_at": "2026-07-15"
+        }
+      ]
+    }
+  ]
+}
