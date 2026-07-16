@@ -7,7 +7,6 @@ import types
 from pathlib import Path
 
 import pytest
-from pydantic import SecretStr
 
 from utils.http_client import ConnectError
 
@@ -15,8 +14,7 @@ from utils.http_client import ConnectError
 @pytest.mark.asyncio
 async def test_deepseek_balance_tool_formats_balance(load_tool_module, monkeypatch):
     mod = load_tool_module("deepseek_balance")
-    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_KEY", SecretStr("sk-test"), raising=False)
-    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_BASE", "", raising=False)
+    monkeypatch.setattr(mod, "get_provider_profile", lambda _name: {"api_key": "sk-test", "base_url": ""})
 
     captured = {}
 
@@ -56,18 +54,21 @@ async def test_deepseek_balance_tool_formats_balance(load_tool_module, monkeypat
 @pytest.mark.asyncio
 async def test_deepseek_balance_tool_reports_missing_key(load_tool_module, monkeypatch):
     mod = load_tool_module("deepseek_balance")
-    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_KEY", SecretStr(""), raising=False)
+    monkeypatch.setattr(mod, "get_provider_profile", lambda _name: {"api_key": "", "base_url": ""})
 
     result = await mod.get_deepseek_api_balance()
 
-    assert result == "未配置 DeepSeek API Key：请在 env.toml 的 [key].deepseek_api_key 中填写。"
+    assert result == "未配置 DeepSeek API Key：请在 env.toml 的 [providers.deepseek].api_key 中填写。"
 
 
 @pytest.mark.asyncio
 async def test_deepseek_balance_tool_normalizes_configured_base_url(load_tool_module, monkeypatch):
     mod = load_tool_module("deepseek_balance")
-    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_KEY", SecretStr("sk-test"), raising=False)
-    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_BASE", "https://api.deepseek.com/v1", raising=False)
+    monkeypatch.setattr(
+        mod,
+        "get_provider_profile",
+        lambda _name: {"api_key": "sk-test", "base_url": "https://api.deepseek.com/v1"},
+    )
 
     captured = {}
 
@@ -94,7 +95,7 @@ async def test_deepseek_balance_tool_normalizes_configured_base_url(load_tool_mo
 @pytest.mark.asyncio
 async def test_deepseek_balance_tool_reports_http_error(load_tool_module, monkeypatch):
     mod = load_tool_module("deepseek_balance")
-    monkeypatch.setattr(mod.EnvConfig, "DEEPSEEK_API_KEY", SecretStr("sk-test"), raising=False)
+    monkeypatch.setattr(mod, "get_provider_profile", lambda _name: {"api_key": "sk-test", "base_url": ""})
 
     class DummyClient:
         async def get(self, url, headers):

@@ -5,7 +5,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from pydantic import SecretStr, ValidationError
+from pydantic import ValidationError
 
 
 def test_env_config_defaults(tmp_path, monkeypatch):
@@ -64,12 +64,12 @@ jwt_secret = "secret"
 
     assert configs.EnvConfig.DASHBOARD_PASSWORD == "admin"
     assert not hasattr(configs.EnvConfig, "RAW_MESSAGE_GROUP_ID")
-    assert isinstance(configs.EnvConfig.OPENAI_API_KEY, SecretStr)
+    assert configs.EnvConfig.LLM_PROVIDERS["openai"]["api_key"] == "sk"
     assert configs.EnvConfig.ANNOUNCE_GROUP_ID == configs.EnvConfig.TEST_GROUP_ID
     assert configs.EnvConfig.CONTENT_CHECK_ENABLED is False
-    assert isinstance(configs.EnvConfig.GOOGLE_API_KEY, SecretStr)
-    assert isinstance(configs.EnvConfig.ANTHROPIC_API_KEY, SecretStr)
-    assert configs.EnvConfig.ANTHROPIC_BASE_URL == ""
+    assert configs.EnvConfig.LLM_PROVIDERS["google"]["api_key"] == ""
+    assert configs.EnvConfig.LLM_PROVIDERS["anthropic"]["api_key"] == ""
+    assert configs.EnvConfig.LLM_PROVIDERS["anthropic"]["base_url"] == ""
     assert configs.EnvConfig.BASIC_MODEL_PROVIDER == ""
     assert configs.EnvConfig.BASIC_MODEL_CAPABILITIES == []
     assert configs.EnvConfig.ADVAN_MODEL_PROVIDER == ""
@@ -79,13 +79,18 @@ jwt_secret = "secret"
     assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
     assert configs.EnvConfig.LLM_PROVIDERS["openai"]["use_responses_api"] is True
     assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["use_responses_api"] is False
-    assert isinstance(configs.EnvConfig.DEEPSEEK_API_KEY, SecretStr)
-    assert configs.EnvConfig.DEEPSEEK_API_KEY.get_secret_value() == ""
-    assert configs.EnvConfig.DEEPSEEK_API_BASE == ""
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_key"] == ""
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["base_url"] == ""
     assert configs.EnvConfig.VIDEO_MODULE_ENABLED is True
-    assert configs.EnvConfig.VIDEO_MODEL == "alibaba/happyhorse-1.0"
-    assert configs.EnvConfig.VIDEO_BASE_URL == "https://zenmux.ai/api/vertex-ai"
-    assert configs.EnvConfig.VIDEO_API_KEY.get_secret_value() == ""
+    assert configs.EnvConfig.VIDEO_MODEL == "sora-2"
+    assert configs.EnvConfig.VIDEO_MODEL_PROVIDER == "video"
+    assert configs.EnvConfig.LLM_PROVIDERS["video"]["type"] == "openai"
+    assert configs.EnvConfig.LLM_PROVIDERS["video"]["base_url"] == ""
+    assert configs.EnvConfig.LLM_PROVIDERS["video"]["api_key"] == ""
+    assert configs.EnvConfig.PAINT_SIZE == "1024x1024"
+    assert configs.EnvConfig.PAINT_QUALITY == "auto"
+    assert configs.EnvConfig.VIDEO_SIZE == "1280x720"
+    assert configs.EnvConfig.VIDEO_SECONDS == "8"
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 1
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 900
     assert configs.EnvConfig.VIDEO_POLL_INTERVAL_SECONDS == 15
@@ -150,7 +155,8 @@ jwt_secret = "secret"
     configs = importlib.import_module("utils.configs")
     importlib.reload(configs)
 
-    assert configs.EnvConfig.ANTHROPIC_BASE_URL == "https://anthropic.example.com"
+    assert configs.EnvConfig.LLM_PROVIDERS["anthropic"]["base_url"] == "https://anthropic.example.com"
+    assert configs.EnvConfig.LLM_PROVIDERS["anthropic"]["api_key"] == "ant"
 
 
 def test_env_config_reload_updates_runtime_sections(tmp_path, monkeypatch):
@@ -333,8 +339,44 @@ jwt_secret = "secret"
     assert configs.EnvConfig.LLM_PROVIDERS["anthropic_proxy"]["base_url"] == "https://anthropic-proxy.example.com"
     assert configs.EnvConfig.LLM_PROVIDERS["deepseek_signal"]["type"] == "deepseek"
     assert configs.EnvConfig.LLM_PROVIDERS["deepseek_signal"]["use_responses_api"] is True
-    assert configs.EnvConfig.DEEPSEEK_API_KEY.get_secret_value() == "sk-deepseek"
-    assert configs.EnvConfig.DEEPSEEK_API_BASE == "https://api.deepseek.example/v1"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_key"] == "sk-deepseek"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["base_url"] == "https://api.deepseek.example/v1"
+
+
+def test_legacy_canonical_profile_keeps_global_provider_key():
+    from utils.configs import parse_config
+
+    settings = parse_config(
+        {
+            "llm_endpoints": {
+                "openai": {
+                    "provider": "openai",
+                    "base_url": "https://openai.example.com/v1",
+                    "api_key": "",
+                }
+            },
+            "key": {"openai_api_key": "sk-legacy"},
+        }
+    )
+
+    assert settings.providers["openai"].api_key == "sk-legacy"
+
+
+def test_legacy_paint_dimensions_migrate_to_openai_size():
+    from utils.configs import parse_config
+
+    settings = parse_config(
+        {
+            "models": {
+                "paint_model": "gpt-image-test",
+                "paint_aspect_ratio": "16:9",
+                "paint_image_size": "2K",
+            }
+        }
+    )
+
+    assert settings.models.paint.size == "2048x1152"
+    assert settings.models.paint.quality == "auto"
 
 
 def test_env_config_paint_fields_fall_back_to_openai_values(tmp_path, monkeypatch):
@@ -392,8 +434,9 @@ jwt_secret = "secret"
     configs = importlib.import_module("utils.configs")
     importlib.reload(configs)
 
-    assert configs.EnvConfig.PAINT_BASE_URL == "https://example.com"
-    assert configs.EnvConfig.PAINT_API_KEY.get_secret_value() == "sk-openai"
+    profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.PAINT_MODEL_PROVIDER]
+    assert profile["base_url"] == "https://example.com"
+    assert profile["api_key"] == "sk-openai"
 
 
 def test_env_config_paint_fields_fall_back_when_keys_are_omitted(tmp_path, monkeypatch):
@@ -449,8 +492,9 @@ jwt_secret = "secret"
     configs = importlib.import_module("utils.configs")
     importlib.reload(configs)
 
-    assert configs.EnvConfig.PAINT_BASE_URL == "https://example.com"
-    assert configs.EnvConfig.PAINT_API_KEY.get_secret_value() == "sk-openai"
+    profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.PAINT_MODEL_PROVIDER]
+    assert profile["base_url"] == "https://example.com"
+    assert profile["api_key"] == "sk-openai"
 
 
 def test_env_config_paint_fields_allow_explicit_overrides(tmp_path, monkeypatch):
@@ -508,8 +552,9 @@ jwt_secret = "secret"
     configs = importlib.import_module("utils.configs")
     importlib.reload(configs)
 
-    assert configs.EnvConfig.PAINT_BASE_URL == "https://paint.example.com"
-    assert configs.EnvConfig.PAINT_API_KEY.get_secret_value() == "sk-paint"
+    profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.PAINT_MODEL_PROVIDER]
+    assert profile["base_url"] == "https://paint.example.com"
+    assert profile["api_key"] == "sk-paint"
 
 
 def test_env_config_video_fields_allow_explicit_overrides(tmp_path, monkeypatch):
@@ -577,8 +622,9 @@ jwt_secret = "secret"
 
     assert configs.EnvConfig.VIDEO_MODULE_ENABLED is False
     assert configs.EnvConfig.VIDEO_MODEL == "custom-video"
-    assert configs.EnvConfig.VIDEO_BASE_URL == "https://video.example.com"
-    assert configs.EnvConfig.VIDEO_API_KEY.get_secret_value() == "sk-video"
+    profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.VIDEO_MODEL_PROVIDER]
+    assert profile["base_url"] == "https://video.example.com"
+    assert profile["api_key"] == "sk-video"
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 2
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 1200
     assert configs.EnvConfig.VIDEO_POLL_INTERVAL_SECONDS == 5
@@ -604,20 +650,30 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
                 "advanced_model_provider": "openai",
                 "advanced_model_capabilities": ["text", "vision"],
                 "paint_model": "gpt-image-1.5",
+                "paint_model_provider": "openai",
+                "paint_size": "1536x1024",
+                "paint_quality": "high",
+                "video_model": "sora-2",
+                "video_model_provider": "openai",
+                "video_size": "1280x720",
+                "video_seconds": "12",
             },
             "providers": {
                 "openai": {
                     "type": "openai",
                     "base_url": "https://api.example.com/v1",
+                    "api_key": "sk-v2",
                     "use_responses_api": True,
                 },
                 "openai_chat": {
                     "type": "openai",
                     "base_url": "https://chat.example.com/v1",
+                    "api_key": "sk-chat",
                     "use_responses_api": False,
                 },
+                "google": {"type": "google", "base_url": "", "api_key": "google-v2"},
             },
-            "key": {"openai_api_key": "sk-v2", "nasa_api_key": "nasa-v2"},
+            "key": {"nasa_api_key": "nasa-v2"},
             "features": {"agent_enabled": True, "paint_enabled": False, "video_enabled": False},
             "agent": {"reasoning_effort": "high"},
             "agent_policy": {"blacklist_group_list": [1001]},
@@ -638,8 +694,13 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
     assert EnvConfig.ADVAN_MODEL_CAPABILITIES == ["text", "vision"]
     assert EnvConfig.LLM_PROVIDERS["openai_chat"]["use_responses_api"] is False
     assert EnvConfig.LLM_PROVIDERS["openai"]["use_responses_api"] is True
-    assert EnvConfig.OPENAI_API_KEY.get_secret_value() == "sk-v2"
-    assert EnvConfig.PAINT_API_KEY.get_secret_value() == "sk-v2"
+    assert EnvConfig.LLM_PROVIDERS["openai"]["api_key"] == "sk-v2"
+    assert EnvConfig.PAINT_MODEL_PROVIDER == "openai"
+    assert EnvConfig.PAINT_SIZE == "1536x1024"
+    assert EnvConfig.PAINT_QUALITY == "high"
+    assert EnvConfig.VIDEO_MODEL_PROVIDER == "openai"
+    assert EnvConfig.VIDEO_SIZE == "1280x720"
+    assert EnvConfig.VIDEO_SECONDS == "12"
     assert EnvConfig.AGENT_CAPABILITY == "high"
     assert EnvConfig.AGENT_BLACKLIST_GROUP_LIST == [1001]
     assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == [1002]
@@ -675,6 +736,10 @@ def test_env_toml_example_is_valid_v2_config():
     assert settings.config_version == 2
     assert settings.providers["openai"].use_responses_api is True
     assert settings.models.advanced.provider == "openai"
+    assert settings.models.paint.provider == "openai"
+    assert settings.models.paint.size == "1024x1024"
+    assert settings.models.video.provider == "openai"
+    assert settings.models.video.model == "sora-2"
 
 
 @pytest.mark.parametrize(
@@ -690,6 +755,14 @@ def test_env_toml_example_is_valid_v2_config():
                 "providers": {"openai": {"type": "openai", "capabilities": ["text"]}},
             },
             "不再接受 capabilities",
+        ),
+        (
+            {"config_version": 2, "models": {"paint_base_url": "https://example.com"}},
+            "不再接受 endpoint、base_url",
+        ),
+        (
+            {"config_version": 2, "key": {"openai_api_key": "sk-old"}},
+            "不再接受模型 API key",
         ),
     ],
 )

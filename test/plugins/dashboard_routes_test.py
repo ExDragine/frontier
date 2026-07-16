@@ -4,7 +4,6 @@ import types
 
 import pytest
 from fastapi import HTTPException
-from pydantic import SecretStr
 
 from plugins.dashboard.api import auth_routes, messages_routes, settings_routes, status_routes, tasks_routes
 
@@ -132,21 +131,18 @@ def test_settings_mask_value():
     assert settings_routes._mask_value("123456") == "****3456"
 
 
-def test_settings_sanitize_masks_paint_api_key():
+def test_settings_sanitize_masks_non_model_service_keys():
     result = settings_routes._sanitize_config(
         {
             "key": {
-                "openai_api_key": "sk-openai",
-                "paint_api_key": "sk-paint-secret",
-                "video_api_key": "sk-video-secret",
-                "deepseek_api_key": "sk-deepseek-secret",
+                "nasa_api_key": "nasa-secret",
+                "github_pat": "github-secret",
             }
         }
     )
 
-    assert result["key"]["paint_api_key"] == "****cret"
-    assert result["key"]["video_api_key"] == "****cret"
-    assert result["key"]["deepseek_api_key"] == "****cret"
+    assert result["key"]["nasa_api_key"] == "****cret"
+    assert result["key"]["github_pat"] == "****cret"
 
 
 def test_settings_sanitize_masks_provider_api_key():
@@ -327,7 +323,6 @@ jwt_secret = "secret"
 
     import utils.configs as configs
 
-    configs.EnvConfig.OPENAI_BASE_URL = "https://old.example.com/v1"
     configs.EnvConfig.BASIC_MODEL_PROVIDER = ""
     configs.EnvConfig.BASIC_MODEL_CAPABILITIES = []
     configs.EnvConfig.SIGNAL_MODEL = "old-signal"
@@ -335,18 +330,14 @@ jwt_secret = "secret"
     configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES = []
     configs.EnvConfig.ADVAN_MODEL_PROVIDER = ""
     configs.EnvConfig.ADVAN_MODEL_CAPABILITIES = []
-    configs.EnvConfig.PAINT_BASE_URL = "https://old-paint.example.com/v1"
+    configs.EnvConfig.PAINT_MODEL_PROVIDER = "old-paint"
+    configs.EnvConfig.PAINT_SIZE = "old-size"
+    configs.EnvConfig.PAINT_QUALITY = "old-quality"
     configs.EnvConfig.VIDEO_MODEL = "old-video"
-    configs.EnvConfig.VIDEO_BASE_URL = "https://old-video.example.com"
+    configs.EnvConfig.VIDEO_MODEL_PROVIDER = "old-video"
+    configs.EnvConfig.VIDEO_SIZE = "old-size"
+    configs.EnvConfig.VIDEO_SECONDS = "0"
     configs.EnvConfig.LLM_PROVIDERS = {}
-    configs.EnvConfig.OPENAI_API_KEY = SecretStr("sk-old-global")
-    configs.EnvConfig.PAINT_API_KEY = SecretStr("sk-old-paint")
-    configs.EnvConfig.VIDEO_API_KEY = SecretStr("sk-old-video")
-    configs.EnvConfig.GOOGLE_API_KEY = SecretStr("ggl-old")
-    configs.EnvConfig.ANTHROPIC_API_KEY = SecretStr("ant-old")
-    configs.EnvConfig.ANTHROPIC_BASE_URL = ""
-    configs.EnvConfig.DEEPSEEK_API_KEY = SecretStr("deepseek-old")
-    configs.EnvConfig.DEEPSEEK_API_BASE = ""
     configs.EnvConfig.VIDEO_MODULE_ENABLED = False
     configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS = 1
     configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS = 900
@@ -357,7 +348,6 @@ jwt_secret = "secret"
 
     settings_routes._reload_env_config()
 
-    assert configs.EnvConfig.OPENAI_BASE_URL == "https://global.example.com/v1"
     assert configs.EnvConfig.BASIC_MODEL_PROVIDER == "anthropic_proxy"
     assert configs.EnvConfig.BASIC_MODEL_CAPABILITIES == ["text"]
     assert configs.EnvConfig.ADVAN_MODEL_PROVIDER == "openrouter"
@@ -365,20 +355,27 @@ jwt_secret = "secret"
     assert configs.EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
     assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek_signal"
     assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
-    assert configs.EnvConfig.PAINT_BASE_URL == "https://global.example.com/v1"
+    paint_profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.PAINT_MODEL_PROVIDER]
+    assert paint_profile["base_url"] == "https://global.example.com/v1"
+    assert paint_profile["api_key"] == "sk-global"
+    assert configs.EnvConfig.PAINT_SIZE == "1024x1024"
+    assert configs.EnvConfig.PAINT_QUALITY == "auto"
     assert configs.EnvConfig.VIDEO_MODEL == "alibaba/happyhorse-1.0"
-    assert configs.EnvConfig.VIDEO_BASE_URL == "https://zenmux.ai/api/vertex-ai"
+    video_profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.VIDEO_MODEL_PROVIDER]
+    assert video_profile["base_url"] == "https://zenmux.ai/api/vertex-ai"
+    assert video_profile["api_key"] == "sk-video"
+    assert video_profile["type"] == "openai"
+    assert configs.EnvConfig.VIDEO_SIZE == "1280x720"
+    assert configs.EnvConfig.VIDEO_SECONDS == "8"
     assert "capabilities" not in configs.EnvConfig.LLM_PROVIDERS["openrouter"]
     assert configs.EnvConfig.LLM_PROVIDERS["openrouter"]["api_key"] == "sk-openrouter"
     assert configs.EnvConfig.LLM_PROVIDERS["deepseek_signal"]["type"] == "deepseek"
-    assert configs.EnvConfig.OPENAI_API_KEY.get_secret_value() == "sk-global"
-    assert configs.EnvConfig.PAINT_API_KEY.get_secret_value() == "sk-global"
-    assert configs.EnvConfig.VIDEO_API_KEY.get_secret_value() == "sk-video"
-    assert configs.EnvConfig.GOOGLE_API_KEY.get_secret_value() == "ggl-global"
-    assert configs.EnvConfig.ANTHROPIC_API_KEY.get_secret_value() == "ant-global"
-    assert configs.EnvConfig.ANTHROPIC_BASE_URL == "https://anthropic.example.com"
-    assert configs.EnvConfig.DEEPSEEK_API_KEY.get_secret_value() == "sk-deepseek"
-    assert configs.EnvConfig.DEEPSEEK_API_BASE == "https://api.deepseek.example/v1"
+    assert configs.EnvConfig.LLM_PROVIDERS["openai"]["api_key"] == "sk-global"
+    assert configs.EnvConfig.LLM_PROVIDERS["google"]["api_key"] == "ggl-global"
+    assert configs.EnvConfig.LLM_PROVIDERS["anthropic"]["api_key"] == "ant-global"
+    assert configs.EnvConfig.LLM_PROVIDERS["anthropic"]["base_url"] == "https://anthropic.example.com"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_key"] == "sk-deepseek"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["base_url"] == "https://api.deepseek.example/v1"
     assert configs.EnvConfig.VIDEO_MODULE_ENABLED is True
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 2
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 1200

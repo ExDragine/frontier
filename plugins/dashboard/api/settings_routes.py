@@ -23,12 +23,6 @@ BACKUP_DIR = Path("configs/backups")
 # 需要脱敏的段和字段
 SENSITIVE_FIELDS = {
     "key": {
-        "openai_api_key",
-        "paint_api_key",
-        "video_api_key",
-        "google_api_key",
-        "anthropic_api_key",
-        "deepseek_api_key",
         "nasa_api_key",
         "github_pat",
     },

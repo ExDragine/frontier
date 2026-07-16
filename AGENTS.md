@@ -149,7 +149,8 @@ Prompt 加载链：
 
 模型路由规则：
 - 显式 `*_model_provider` 优先。
-- `*_model_provider` 指向 `[providers.<name>]`；供应商 profile 管理协议类型、base URL、可选 API key 和 Responses API 开关。
+- 所有 `*_model_provider`（包括 paint/video）均指向 `[providers.<name>]`；供应商 profile 管理协议类型、base URL、API key 和 Responses API 开关。
+- Paint/Video 服务使用 OpenAI-compatible Images/Videos API，因此对应 provider 的 `type` 必须为 `openai`。
 - 没有显式 provider 时，`llm_factory.py` 会根据模型名前缀推断：`deepseek*`、`gemini-*`、`claude-*`，其余走 OpenAI-compatible。
 
 Dashboard 配置：

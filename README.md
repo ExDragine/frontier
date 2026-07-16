@@ -141,9 +141,9 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 
 `env.toml` 的关键部分：
 - `[bot]`: 主 system prompt；不再保存机器人名称。
-- `[models]`: 模型 ID、供应商 profile 引用和模型能力。
+- `[models]`: 对话、绘图和视频模型 ID、供应商 profile 引用及模型能力。
 - `[providers.*]`: 供应商协议类型、base URL、可选 API key 和 Responses API 开关。
-- `[key]`: 模型和外部服务密钥；密钥仍保存在 `env.toml`。
+- `[key]`: NASA、GitHub 等非模型服务密钥；模型密钥统一放在供应商 profile。
 - `[features]` / `[agent]`: 功能开关和 Agent 推理等级。
 - `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]`: 访问策略。
 - `[limits]` / `[notifications]` / `[storage]`: 限流超时、定时推送群和存储设置。
@@ -156,7 +156,9 @@ Dashboard 保存前也会执行相同校验。
 
 `*_model_provider` 填写供应商 profile 名称，而不是重复填写 URL。例如
 `advanced_model_provider = "openrouter"` 会读取 `[providers.openrouter]`；其中 `type = "openai"`
-决定底层协议。模型能力只配置在 `[models]`，`use_responses_api` 只配置在供应商 profile。
+决定底层协议。`paint_model_provider` 和 `video_model_provider` 使用相同规则；模型能力只配置在
+`[models]`，base URL、API key 和 `use_responses_api` 只配置在供应商 profile。绘图调用
+OpenAI-compatible Images API，视频调用 OpenAI-compatible Videos API。
 
 机器人名称只来自 `.env` 的 `NICKNAME`。数组第一项作为默认显示名称，全部非空项都可
 作为全局唤醒词；某个群在数据库中配置了自定义唤醒词后，以该群的数据库配置为准。

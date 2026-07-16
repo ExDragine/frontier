@@ -35,12 +35,17 @@ class ModelConfig(_FrozenConfig):
 
 class MediaModelConfig(_FrozenConfig):
     model: str = ""
-    base_url: str = ""
+    provider: str = ""
 
 
 class PaintModelConfig(MediaModelConfig):
-    aspect_ratio: str = "1:1"
-    image_size: str = "1K"
+    size: str = "1024x1024"
+    quality: str = "auto"
+
+
+class VideoModelConfig(MediaModelConfig):
+    size: str = "1280x720"
+    seconds: str = "8"
 
 
 class ModelsConfig(_FrozenConfig):
@@ -53,11 +58,11 @@ class ModelsConfig(_FrozenConfig):
         )
     )
     advanced: ModelConfig = Field(default_factory=ModelConfig)
-    paint: PaintModelConfig = Field(default_factory=PaintModelConfig)
-    video: MediaModelConfig = Field(
-        default_factory=lambda: MediaModelConfig(
-            model="alibaba/happyhorse-1.0",
-            base_url="https://zenmux.ai/api/vertex-ai",
+    paint: PaintModelConfig = Field(default_factory=lambda: PaintModelConfig(provider="openai"))
+    video: VideoModelConfig = Field(
+        default_factory=lambda: VideoModelConfig(
+            model="sora-2",
+            provider="openai",
         )
     )
 
@@ -72,12 +77,6 @@ class ProviderProfile(BaseModel):
 
 
 class KeyConfig(_FrozenConfig):
-    openai_api_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
-    paint_api_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
-    video_api_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
-    google_api_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
-    anthropic_api_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
-    deepseek_api_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
     nasa_api_key: SecretStr = Field(default_factory=lambda: SecretStr("DEMO_KEY"))
     github_pat: SecretStr = Field(default_factory=lambda: SecretStr(""))
 
@@ -215,16 +214,38 @@ def _validate_v2_model_provider_sections(
     config_version: object,
     models: Mapping[str, Any],
     providers: Mapping[str, Any],
+    keys: Mapping[str, Any],
 ) -> None:
     if not isinstance(config_version, int) or config_version < 2:
         return
     removed_model_fields = sorted(
-        key for key in models if key.endswith("_model_endpoint") or key.endswith("_model_use_responses_api")
+        key
+        for key in models
+        if key.endswith("_model_endpoint")
+        or key.endswith("_model_use_responses_api")
+        or key in {"paint_base_url", "video_base_url"}
     )
     if removed_model_fields:
         raise ValueError(
-            "[models] 不再接受 endpoint 或 use_responses_api，请将 API 模式配置到 [providers.<name>]: "
+            "[models] 不再接受 endpoint、base_url 或 use_responses_api，请配置到 [providers.<name>]: "
             + ", ".join(removed_model_fields)
+        )
+    removed_key_fields = sorted(
+        key
+        for key in keys
+        if key
+        in {
+            "openai_api_key",
+            "paint_api_key",
+            "video_api_key",
+            "google_api_key",
+            "anthropic_api_key",
+            "deepseek_api_key",
+        }
+    )
+    if removed_key_fields:
+        raise ValueError(
+            "[key] 不再接受模型 API key，请配置到 [providers.<name>].api_key: " + ", ".join(removed_key_fields)
         )
     for name, raw_profile in providers.items():
         if not isinstance(raw_profile, Mapping):
@@ -243,17 +264,25 @@ def _normalize_provider_profiles(
         "openai": {
             "type": "openai",
             "base_url": _pick(providers, legacy_endpoint, "openai_base_url", ""),
+            "api_key": keys.get("openai_api_key", ""),
             "use_responses_api": True,
         },
-        "google": {"type": "google", "base_url": "", "use_responses_api": False},
+        "google": {
+            "type": "google",
+            "base_url": "",
+            "api_key": keys.get("google_api_key", ""),
+            "use_responses_api": False,
+        },
         "anthropic": {
             "type": "anthropic",
             "base_url": _pick(providers, keys, "anthropic_base_url", ""),
+            "api_key": keys.get("anthropic_api_key", ""),
             "use_responses_api": False,
         },
         "deepseek": {
             "type": "deepseek",
             "base_url": _pick(providers, keys, "deepseek_base_url", "", "deepseek_api_base"),
+            "api_key": keys.get("deepseek_api_key", ""),
             "use_responses_api": False,
         },
     }
@@ -269,18 +298,24 @@ def _normalize_provider_profiles(
         profiles[name] = {**profiles.get(name, {}), **profile}
 
     for name, raw_profile in legacy_profiles.items():
-        if not isinstance(raw_profile, Mapping) or name in profiles:
+        if not isinstance(raw_profile, Mapping):
             continue
         profile = dict(raw_profile)
         if "use_responses_api" in profile:
             explicit_responses.add(name)
-        provider_type = profile.get("type") or profile.get("provider", "")
-        profiles[name] = {
+        existing = profiles.get(name, {})
+        provider_type = profile.get("type") or profile.get("provider") or existing.get("type", "")
+        migrated = {
             "type": provider_type,
-            "base_url": profile.get("base_url", ""),
-            "api_key": profile.get("api_key", ""),
-            "use_responses_api": profile.get("use_responses_api", provider_type == "openai"),
+            "base_url": profile.get("base_url") or existing.get("base_url", ""),
+            # 旧版 endpoint profile 的空密钥会回退到 [key] 中对应供应商的密钥。
+            "api_key": profile.get("api_key") or existing.get("api_key", ""),
+            "use_responses_api": profile.get(
+                "use_responses_api",
+                existing.get("use_responses_api", provider_type == "openai"),
+            ),
         }
+        profiles[name] = {**existing, **migrated}
     return profiles, explicit_responses
 
 
@@ -337,6 +372,97 @@ def _normalize_model_roles(
     }
 
 
+def _legacy_media_provider(
+    profiles: dict[str, dict[str, Any]],
+    *,
+    preferred_name: str,
+    base_url: str,
+    api_key: str,
+) -> str:
+    for name, profile in profiles.items():
+        if (
+            profile.get("type") == "openai"
+            and profile.get("base_url", "") == base_url
+            and profile.get("api_key", "") == api_key
+        ):
+            return name
+
+    name = preferred_name
+    suffix = 2
+    while name in profiles:
+        name = f"{preferred_name}_{suffix}"
+        suffix += 1
+    profiles[name] = {
+        "type": "openai",
+        "base_url": base_url,
+        "api_key": api_key,
+        "use_responses_api": False,
+    }
+    return name
+
+
+def _normalize_paint_size(models: Mapping[str, Any], legacy_endpoint: Mapping[str, Any]) -> str:
+    if "paint_size" in models:
+        return str(models["paint_size"])
+
+    image_size = str(_pick(models, legacy_endpoint, "paint_image_size", "1K")).upper()
+    aspect_ratio = str(_pick(models, legacy_endpoint, "paint_aspect_ratio", "1:1"))
+    if "x" in image_size.lower():
+        return image_size.lower()
+
+    legacy_sizes = {
+        ("1K", "1:1"): "1024x1024",
+        ("1K", "16:9"): "1536x1024",
+        ("1K", "9:16"): "1024x1536",
+        ("2K", "1:1"): "2048x2048",
+        ("2K", "16:9"): "2048x1152",
+        ("2K", "9:16"): "1152x2048",
+        ("4K", "16:9"): "3840x2160",
+        ("4K", "9:16"): "2160x3840",
+    }
+    return legacy_sizes.get((image_size, aspect_ratio), "1024x1024")
+
+
+def _normalize_media_models(
+    models: Mapping[str, Any],
+    legacy_endpoint: Mapping[str, Any],
+    keys: Mapping[str, Any],
+    provider_profiles: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    paint_provider = models.get("paint_model_provider")
+    if not paint_provider:
+        paint_provider = _legacy_media_provider(
+            provider_profiles,
+            preferred_name="paint",
+            base_url=legacy_endpoint.get("paint_base_url") or legacy_endpoint.get("openai_base_url", ""),
+            api_key=keys.get("paint_api_key") or keys.get("openai_api_key", ""),
+        )
+
+    video_provider = models.get("video_model_provider")
+    if not video_provider:
+        video_provider = _legacy_media_provider(
+            provider_profiles,
+            preferred_name="video",
+            base_url=legacy_endpoint.get("video_base_url", ""),
+            api_key=keys.get("video_api_key") or os.getenv("ZENMUX_API_KEY", ""),
+        )
+
+    return {
+        "paint": {
+            "model": _pick(models, legacy_endpoint, "paint_model", ""),
+            "provider": paint_provider,
+            "size": _normalize_paint_size(models, legacy_endpoint),
+            "quality": _pick(models, legacy_endpoint, "paint_quality", "auto"),
+        },
+        "video": {
+            "model": _pick(models, legacy_endpoint, "video_model", "sora-2"),
+            "provider": video_provider,
+            "size": _pick(models, legacy_endpoint, "video_size", "1280x720"),
+            "seconds": str(_pick(models, legacy_endpoint, "video_seconds", "8")),
+        },
+    }
+
+
 def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
     """解析 v2 配置；缺少新分区时从 v1 字段兼容迁移。"""
     if not isinstance(config, Mapping):
@@ -362,7 +488,7 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
     storage = _section(config, "storage")
 
     config_version = config.get("config_version", 1)
-    _validate_v2_model_provider_sections(config_version, models, providers)
+    _validate_v2_model_provider_sections(config_version, models, providers, keys)
     legacy_profiles = _section(config, "llm_endpoints")
     provider_profiles, explicit_responses = _normalize_provider_profiles(
         providers,
@@ -377,6 +503,7 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
         provider_profiles,
         explicit_responses,
     )
+    media_models = _normalize_media_models(models, legacy_endpoint, keys, provider_profiles)
 
     paint_enabled = _pick(features, legacy_function, "paint_enabled", True, "paint_module_enabled")
     normalized = {
@@ -387,31 +514,11 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
         "providers": provider_profiles,
         "models": {
             **model_roles,
-            "paint": {
-                "model": _pick(models, legacy_endpoint, "paint_model", ""),
-                "base_url": _pick(models, legacy_endpoint, "paint_base_url", ""),
-                "aspect_ratio": _pick(models, legacy_endpoint, "paint_aspect_ratio", "1:1"),
-                "image_size": _pick(models, legacy_endpoint, "paint_image_size", "1K"),
-            },
-            "video": {
-                "model": _pick(models, legacy_endpoint, "video_model", "alibaba/happyhorse-1.0"),
-                "base_url": _pick(
-                    models,
-                    legacy_endpoint,
-                    "video_base_url",
-                    "https://zenmux.ai/api/vertex-ai",
-                ),
-            },
+            **media_models,
         },
         "keys": {
             name: keys.get(name, default)
             for name, default in (
-                ("openai_api_key", ""),
-                ("paint_api_key", ""),
-                ("video_api_key", os.getenv("ZENMUX_API_KEY", "")),
-                ("google_api_key", ""),
-                ("anthropic_api_key", ""),
-                ("deepseek_api_key", ""),
                 ("nasa_api_key", "DEMO_KEY"),
                 ("github_pat", ""),
             )
@@ -534,12 +641,10 @@ class EnvConfig:
         model = settings.models
         keys = settings.keys
         providers = _provider_profiles(settings)
-        openai_base_url = providers.get("openai", {}).get("base_url", "")
         values: dict[str, Any] = {
             "BOT_NAME": nicknames[0],
             "BOT_NICKNAMES": list(nicknames),
             "SYSTEM_PROMPT": settings.bot.system_prompt,
-            "OPENAI_BASE_URL": openai_base_url,
             "BASIC_MODEL": model.basic.model,
             "BASIC_MODEL_PROVIDER": model.basic.provider,
             "BASIC_MODEL_CAPABILITIES": list(model.basic.capabilities),
@@ -550,22 +655,14 @@ class EnvConfig:
             "ADVAN_MODEL_PROVIDER": model.advanced.provider,
             "ADVAN_MODEL_CAPABILITIES": list(model.advanced.capabilities),
             "PAINT_MODEL": model.paint.model,
-            "PAINT_BASE_URL": model.paint.base_url or openai_base_url,
-            "PAINT_ASPECT_RATIO": model.paint.aspect_ratio,
-            "PAINT_IMAGE_SIZE": model.paint.image_size,
+            "PAINT_MODEL_PROVIDER": model.paint.provider,
+            "PAINT_SIZE": model.paint.size,
+            "PAINT_QUALITY": model.paint.quality,
             "VIDEO_MODEL": model.video.model,
-            "VIDEO_BASE_URL": model.video.base_url,
+            "VIDEO_MODEL_PROVIDER": model.video.provider,
+            "VIDEO_SIZE": model.video.size,
+            "VIDEO_SECONDS": model.video.seconds,
             "LLM_PROVIDERS": providers,
-            "OPENAI_API_KEY": keys.openai_api_key,
-            "PAINT_API_KEY": SecretStr(
-                keys.paint_api_key.get_secret_value() or keys.openai_api_key.get_secret_value()
-            ),
-            "VIDEO_API_KEY": keys.video_api_key,
-            "GOOGLE_API_KEY": keys.google_api_key,
-            "ANTHROPIC_API_KEY": keys.anthropic_api_key,
-            "ANTHROPIC_BASE_URL": providers.get("anthropic", {}).get("base_url", ""),
-            "DEEPSEEK_API_KEY": keys.deepseek_api_key,
-            "DEEPSEEK_API_BASE": providers.get("deepseek", {}).get("base_url", ""),
             "NASA_API_KEY": keys.nasa_api_key,
             "GITHUB_PAT": keys.github_pat,
             "AGENT_MODULE_ENABLED": settings.features.agent_enabled,
@@ -625,6 +722,15 @@ class EnvConfig:
                 "⚠️  当前 env.toml 使用旧版配置结构；仍可正常运行，建议按 env.toml.example 渐进迁移。",
                 file=sys.stderr,
             )
+
+
+def get_provider_profile(name: str) -> dict[str, Any]:
+    profile = EnvConfig.LLM_PROVIDERS.get(name)
+    if profile is None:
+        raise ValueError(f"未知 provider profile: {name!r}")
+    if not isinstance(profile, dict):
+        raise ValueError(f"provider profile 必须是表格: {name!r}")
+    return profile
 
 
 EnvConfig.reload(load_config(), warn=True)

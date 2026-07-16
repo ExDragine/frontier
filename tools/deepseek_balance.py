@@ -3,7 +3,7 @@ from urllib.parse import urlparse, urlunparse
 from langchain_core.tools import tool
 from nonebot import logger
 
-from utils.configs import EnvConfig
+from utils.configs import get_provider_profile
 from utils.http_client import get_http_client
 
 DEFAULT_BALANCE_URL = "https://api.deepseek.com/user/balance"
@@ -12,7 +12,7 @@ httpx_client = get_http_client("deepseek_balance")
 
 
 def _balance_url() -> str:
-    raw_base = (EnvConfig.DEEPSEEK_API_BASE or "").strip()
+    raw_base = str(get_provider_profile("deepseek").get("base_url", "")).strip()
     if not raw_base:
         return DEFAULT_BALANCE_URL
 
@@ -48,9 +48,9 @@ def _format_balance(data: dict) -> str:
 @tool(response_format="content")
 async def get_deepseek_api_balance() -> str:
     """查询 DeepSeek API 账户余额。"""
-    api_key = EnvConfig.DEEPSEEK_API_KEY.get_secret_value().strip()
+    api_key = str(get_provider_profile("deepseek").get("api_key", "")).strip()
     if not api_key:
-        return "未配置 DeepSeek API Key：请在 env.toml 的 [key].deepseek_api_key 中填写。"
+        return "未配置 DeepSeek API Key：请在 env.toml 的 [providers.deepseek].api_key 中填写。"
 
     try:
         response = await httpx_client.get(_balance_url(), headers={"Authorization": f"Bearer {api_key}"})

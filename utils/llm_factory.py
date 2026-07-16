@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 @dataclass
 class ProviderConfig:
     cls_fn: Callable[[], type[BaseChatModel]]  # 延迟求值，支持测试时替换
-    api_key_fn: Callable[[], SecretStr]
     api_key_field: str
     valid_kwargs: set[str]
     kwarg_map: dict[str, str] = field(default_factory=dict)
@@ -41,7 +40,6 @@ _DEEPSEEK_VALID = {"streaming", "max_retries", "timeout", "temperature", "model_
 
 _openai_config = ProviderConfig(
     cls_fn=lambda: ChatOpenAI,
-    api_key_fn=lambda: EnvConfig.OPENAI_API_KEY,
     api_key_field="openai_api_key",
     valid_kwargs=_OPENAI_VALID,
     kwarg_map={"timeout": "request_timeout"},
@@ -50,7 +48,6 @@ _openai_config = ProviderConfig(
 
 _google_config = ProviderConfig(
     cls_fn=lambda: ChatGoogleGenerativeAI,
-    api_key_fn=lambda: EnvConfig.GOOGLE_API_KEY,
     api_key_field="google_api_key",
     valid_kwargs=_GOOGLE_VALID,
     base_url_field="base_url",
@@ -58,7 +55,6 @@ _google_config = ProviderConfig(
 
 _anthropic_config = ProviderConfig(
     cls_fn=lambda: ChatAnthropic,
-    api_key_fn=lambda: EnvConfig.ANTHROPIC_API_KEY,
     api_key_field="anthropic_api_key",
     valid_kwargs=_ANTHROPIC_VALID,
     kwarg_map={"timeout": "default_request_timeout"},
@@ -67,7 +63,6 @@ _anthropic_config = ProviderConfig(
 
 _deepseek_config = ProviderConfig(
     cls_fn=lambda: ChatDeepSeek,
-    api_key_fn=lambda: EnvConfig.DEEPSEEK_API_KEY,
     api_key_field="api_key",
     valid_kwargs=_DEEPSEEK_VALID,
     base_url_field="api_base",
@@ -175,7 +170,7 @@ def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatMod
         raise ValueError(f"未知 LLM provider type: {provider_type!r}")
 
     cls = config.cls_fn()
-    api_key = SecretStr(profile["api_key"]) if _clean_optional(profile.get("api_key")) else config.api_key_fn()
+    api_key = SecretStr(_clean_optional(profile.get("api_key")))
     filtered: dict = {}
     for k, v in kwargs.items():
         if k in config.valid_kwargs:

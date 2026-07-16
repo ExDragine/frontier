@@ -1,15 +1,16 @@
 import asyncio
 import base64
+import binascii
 import inspect
-import os
-import time
 from dataclasses import dataclass
 
-from google import genai
-from google.genai import types as genai_types
 from nonebot import logger
+from openai import AsyncOpenAI
 
-from utils.configs import EnvConfig
+from utils.configs import EnvConfig, get_provider_profile
+from utils.http_client import get_http_client
+
+httpx_client = get_http_client("video_service")
 
 
 @dataclass(frozen=True)
@@ -54,7 +55,38 @@ def _coerce_media_reference(value: MediaReference | bytes | None, *, default_mim
     return MediaReference(data=value, mime_type=default_mime_type)
 
 
-def _generate_video_source(
+def _file_tuple(reference: MediaReference, *, stem: str) -> tuple[str, bytes, str]:
+    extension = {
+        "image/png": "png",
+        "image/gif": "gif",
+        "image/webp": "webp",
+        "video/webm": "webm",
+        "video/x-msvideo": "avi",
+    }.get(reference.mime_type, "mp4" if reference.mime_type.startswith("video/") else "jpg")
+    return f"{stem}.{extension}", reference.data, reference.mime_type
+
+
+def _build_openai_client() -> AsyncOpenAI:
+    profile = get_provider_profile(EnvConfig.VIDEO_MODEL_PROVIDER)
+    if str(profile.get("type", "")).strip().lower() != "openai":
+        raise ValueError("video_model_provider 必须引用 type = 'openai' 的 provider")
+    kwargs = {"api_key": str(profile.get("api_key", ""))}
+    if base_url := str(profile.get("base_url", "")).strip():
+        kwargs["base_url"] = base_url
+    return AsyncOpenAI(**kwargs)
+
+
+def _video_create_options() -> dict[str, str]:
+    options: dict[str, str] = {"model": EnvConfig.VIDEO_MODEL}
+    if size := str(EnvConfig.VIDEO_SIZE).strip():
+        options["size"] = size
+    if seconds := str(EnvConfig.VIDEO_SECONDS).strip():
+        options["seconds"] = seconds
+    return options
+
+
+async def _create_video_job(
+    client: AsyncOpenAI,
     prompt: str,
     *,
     image: MediaReference | bytes | None,
@@ -64,166 +96,84 @@ def _generate_video_source(
         video,
         default_mime_type=_guess_video_mime_type(video) if isinstance(video, bytes) else "video/mp4",
     )
-    image_ref = (
-        None
-        if video_ref
-        else _coerce_media_reference(
-            image,
-            default_mime_type=_guess_image_mime_type(image) if isinstance(image, bytes) else "image/jpeg",
-        )
+    if video_ref is not None:
+        return await client.videos.edit(prompt=prompt, video=_file_tuple(video_ref, stem="reference"))
+
+    image_ref = _coerce_media_reference(
+        image,
+        default_mime_type=_guess_image_mime_type(image) if isinstance(image, bytes) else "image/jpeg",
     )
-    return genai_types.GenerateVideosSource(
-        prompt=prompt,
-        image=genai_types.Image(image_bytes=image_ref.data, mime_type=image_ref.mime_type) if image_ref else None,
-        video=genai_types.Video(video_bytes=video_ref.data, mime_type=video_ref.mime_type) if video_ref else None,
-    )
+    options = _video_create_options()
+    if image_ref is not None:
+        options["input_reference"] = _file_tuple(image_ref, stem="reference")
+    return await client.videos.create(prompt=prompt, **options)
 
 
-def _coerce_video_bytes(value) -> bytes | None:
-    if isinstance(value, bytes):
-        return value
-    if isinstance(value, bytearray):
-        return bytes(value)
-    if isinstance(value, str) and not _is_http_url(value):
-        try:
-            return base64.b64decode(value, validate=True)
-        except Exception:
+async def _poll_video_job(client: AsyncOpenAI, job):
+    timeout_seconds = EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS
+    deadline = None if timeout_seconds <= 0 else asyncio.get_running_loop().time() + timeout_seconds
+
+    while getattr(job, "status", None) in {"queued", "in_progress"}:
+        if deadline is not None and asyncio.get_running_loop().time() >= deadline:
+            logger.warning(f"OpenAI 视频生成超时: timeout={timeout_seconds}s")
             return None
-    return None
+        await asyncio.sleep(max(0, EnvConfig.VIDEO_POLL_INTERVAL_SECONDS))
+        job = await client.videos.retrieve(job.id)
 
-
-def _extract_video_bytes(*objects) -> bytes | None:
-    for obj in objects:
-        if obj is None:
-            continue
-        if raw := _coerce_video_bytes(obj):
-            return raw
-        for field in ("video_bytes", "bytes", "data", "content", "b64_json", "base64"):
-            if raw := _coerce_video_bytes(getattr(obj, field, None)):
-                return raw
-    return None
-
-
-def _is_http_url(value: str | None) -> bool:
-    return bool(value and value.startswith(("http://", "https://")))
-
-
-def _extract_video_url(*objects) -> str | None:
-    for obj in objects:
-        if isinstance(obj, str) and _is_http_url(obj):
-            return obj
-        if obj is None:
-            continue
-        for field in ("url", "uri", "download_url", "download_uri"):
-            value = getattr(obj, field, None)
-            if isinstance(value, str) and _is_http_url(value):
-                return value
-    return None
-
-
-def _download_video_bytes(client, *objects) -> bytes | None:
-    files = getattr(client, "files", None)
-    download = getattr(files, "download", None)
-    if not callable(download):
+    if getattr(job, "status", None) != "completed":
+        error = getattr(job, "error", None) or getattr(job, "last_error", None)
+        logger.warning(f"OpenAI 视频生成失败: status={getattr(job, 'status', None)}, error={error}")
         return None
+    return job
 
-    for obj in objects:
-        if obj is None:
-            continue
-        try:
-            downloaded = download(file=obj)
-        except TypeError:
-            downloaded = download(obj)
-        except Exception as e:
-            logger.warning(f"下载视频结果失败: {e}")
-            continue
-        if raw := _extract_video_bytes(downloaded):
-            return raw
+
+async def _binary_response_bytes(response) -> bytes | None:
+    if isinstance(response, bytes):
+        return response
+    if isinstance(response, bytearray):
+        return bytes(response)
+
+    read = getattr(response, "read", None)
+    if callable(read):
+        content = read()
+        if inspect.isawaitable(content):
+            content = await content
+        if isinstance(content, bytes):
+            return content
+
+    content = getattr(response, "content", None)
+    if isinstance(content, bytes):
+        return content
     return None
 
 
-def _video_result_from_generated_video(client, generated_video) -> VideoGenerationResult | None:
-    video = getattr(generated_video, "video", None)
-    if raw := _extract_video_bytes(generated_video, video):
-        return VideoGenerationResult(raw=raw)
-    if raw := _download_video_bytes(client, video, generated_video):
-        return VideoGenerationResult(raw=raw)
-    if url := _extract_video_url(generated_video, video):
-        return VideoGenerationResult(url=url)
-    logger.warning("HappyHorse 视频API响应缺少可发送的视频内容")
-    return None
-
-
-def _get_video_operation(client, operation):
-    operations = getattr(client, "operations", None)
-    if operations is None:
-        raise AttributeError("google genai client has no operations API")
-
-    get_videos_operation = getattr(operations, "get_videos_operation", None)
-    if callable(get_videos_operation):
-        try:
-            return get_videos_operation(operation=operation)
-        except TypeError:
-            return get_videos_operation(operation)
-
-    get_operation = getattr(operations, "get", None)
-    if callable(get_operation):
-        try:
-            return get_operation(operation=operation)
-        except TypeError:
-            return get_operation(operation)
-
-    raise AttributeError("google genai operations API has no supported polling method")
-
-
-def _close_genai_client(client) -> None:
-    close = getattr(client, "close", None)
-    if callable(close):
-        maybe_awaitable = close()
-        if inspect.isawaitable(maybe_awaitable):
-            logger.debug("google genai sync client close returned awaitable; ignored in worker thread")
-
-
-def _generate_video_sync(
-    prompt: str,
-    *,
-    image: MediaReference | bytes | None = None,
-    video: MediaReference | bytes | None = None,
-) -> VideoGenerationResult | None:
-    configured_key = EnvConfig.VIDEO_API_KEY.get_secret_value()
-    client = genai.Client(
-        api_key=configured_key or os.getenv("ZENMUX_API_KEY", ""),
-        vertexai=True,
-        http_options=genai_types.HttpOptions(api_version="v1", base_url=EnvConfig.VIDEO_BASE_URL),
-    )
+async def _video_result(client: AsyncOpenAI, job) -> VideoGenerationResult | None:
     try:
-        operation = client.models.generate_videos(
-            model=EnvConfig.VIDEO_MODEL,
-            source=_generate_video_source(prompt, image=image, video=video),
-        )
-        timeout_seconds = EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS
-        deadline = None if timeout_seconds <= 0 else time.monotonic() + timeout_seconds
+        response = await client.videos.download_content(job.id)
+        if raw := await _binary_response_bytes(response):
+            return VideoGenerationResult(raw=raw)
+    except Exception as exc:
+        logger.warning(f"下载 OpenAI 视频内容失败: {exc}")
 
-        while not operation.done:
-            if deadline is not None and time.monotonic() >= deadline:
-                logger.warning(f"HappyHorse 视频生成超时: timeout={timeout_seconds}s")
-                return None
-            time.sleep(max(0, EnvConfig.VIDEO_POLL_INTERVAL_SECONDS))
-            operation = _get_video_operation(client, operation)
+    if encoded := getattr(job, "b64_json", None):
+        try:
+            return VideoGenerationResult(raw=base64.b64decode(encoded, validate=True))
+        except (binascii.Error, ValueError):
+            logger.warning("OpenAI 视频 API 返回了无效的 base64 内容")
 
-        if error := getattr(operation, "error", None):
-            logger.warning(f"HappyHorse 视频生成失败: {error}")
-            return None
+    for field in ("url", "download_url"):
+        url = getattr(job, field, None)
+        if isinstance(url, str) and url.startswith(("http://", "https://")):
+            try:
+                response = await httpx_client.get(url)
+                response.raise_for_status()
+                return VideoGenerationResult(raw=await response.aread())
+            except Exception as exc:
+                logger.warning(f"下载 OpenAI 视频 URL 失败: {exc}")
+                return VideoGenerationResult(url=url)
 
-        response = getattr(operation, "response", None) or getattr(operation, "result", None)
-        generated_videos = getattr(response, "generated_videos", None) or []
-        if not generated_videos:
-            logger.warning("HappyHorse 视频API返回空 generated_videos")
-            return None
-
-        return _video_result_from_generated_video(client, generated_videos[0])
-    finally:
-        _close_genai_client(client)
+    logger.warning("OpenAI 视频 API 响应缺少可发送的视频内容")
+    return None
 
 
 async def generate_video(
@@ -232,10 +182,21 @@ async def generate_video(
     image: MediaReference | bytes | None = None,
     video: MediaReference | bytes | None = None,
 ) -> VideoGenerationResult | None:
-    logger.info(f"🎬 调用 HappyHorse 视频API, model={EnvConfig.VIDEO_MODEL}, prompt_length={len(prompt)}")
-
-    try:
-        return await asyncio.to_thread(_generate_video_sync, prompt, image=image, video=video)
-    except Exception as e:
-        logger.exception(f"💥 调用 HappyHorse 视频API失败: {e}")
+    if not EnvConfig.VIDEO_MODEL:
+        logger.warning("VIDEO_MODEL 未配置，视频请求失败")
         return None
+
+    logger.info(f"🎬 调用 OpenAI 视频 API, model={EnvConfig.VIDEO_MODEL}, prompt_length={len(prompt)}")
+    client: AsyncOpenAI | None = None
+    try:
+        client = _build_openai_client()
+        job = await _create_video_job(client, prompt, image=image, video=video)
+        if completed := await _poll_video_job(client, job):
+            return await _video_result(client, completed)
+        return None
+    except Exception as exc:
+        logger.exception(f"💥 调用 OpenAI 视频 API 失败: {exc}")
+        return None
+    finally:
+        if client is not None:
+            await client.close()
