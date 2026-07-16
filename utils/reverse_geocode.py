@@ -60,14 +60,15 @@ async def reverse_geocode(lat: float, lng: float) -> str:
         llm = create_llm(
             model=EnvConfig.SIGNAL_MODEL,
             provider=EnvConfig.SIGNAL_MODEL_PROVIDER,
-            endpoint=EnvConfig.SIGNAL_MODEL_ENDPOINT,
             temperature=0.1,
             streaming=False,
         )
-        response = await llm.ainvoke([
-            SystemMessage(content=_SYSTEM_PROMPT),
-            HumanMessage(content=f"经纬度 ({lat:.2f}, {lng:.2f}) GCJ-02 坐标位于哪里？"),
-        ])
+        response = await llm.ainvoke(
+            [
+                SystemMessage(content=_SYSTEM_PROMPT),
+                HumanMessage(content=f"经纬度 ({lat:.2f}, {lng:.2f}) GCJ-02 坐标位于哪里？"),
+            ]
+        )
         desc = _trim_description(response.content)
         logger.debug("逆地理编码: (%.2f, %.2f) → %s", lat, lng, desc)
         return desc

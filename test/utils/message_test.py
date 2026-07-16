@@ -1080,13 +1080,13 @@ async def test_sanitize_outgoing_text_allows_controversial_output(monkeypatch):
 
 
 class TestGetWakeWords:
-    def test_returns_bot_name_when_no_custom_words(self, monkeypatch):
+    def test_returns_env_nicknames_when_no_custom_words(self, monkeypatch):
         from utils.database import get_engine
 
         monkeypatch.setattr(message_module, "get_engine", get_engine)
-        monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "小李子")
+        monkeypatch.setattr(message_module.EnvConfig, "BOT_NICKNAMES", ["小李子", "小栗子"])
         words = message_module._get_wake_words(99999)
-        assert words == ["小李子"]
+        assert words == ["小李子", "小栗子"]
 
     def test_returns_custom_words_from_database(self, monkeypatch, memory_engine):
         from utils.database import GroupSettings, GroupSettingsManager
@@ -1098,12 +1098,12 @@ class TestGetWakeWords:
 
         # 让 _get_wake_words 使用 memory_engine
         monkeypatch.setattr(message_module, "get_engine", lambda url=None: memory_engine)
-        monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "小李子")
+        monkeypatch.setattr(message_module.EnvConfig, "BOT_NICKNAMES", ["小李子", "小栗子"])
 
         words = message_module._get_wake_words(456)
         assert sorted(words) == ["助手", "小天"]
 
-    def test_returns_bot_name_for_dm(self, monkeypatch):
-        monkeypatch.setattr(message_module.EnvConfig, "BOT_NAME", "小李子")
+    def test_returns_env_nicknames_for_dm(self, monkeypatch):
+        monkeypatch.setattr(message_module.EnvConfig, "BOT_NICKNAMES", ["小李子", "小栗子"])
         words = message_module._get_wake_words(0)
-        assert words == ["小李子"]
+        assert words == ["小李子", "小栗子"]

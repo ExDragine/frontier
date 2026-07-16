@@ -135,19 +135,31 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 
 | 文件 | 用途 |
 |------|------|
-| `.env` | NoneBot 环境变量，如 driver、端口、超级用户、适配器连接配置 |
-| `env.toml` | Frontier 应用配置：bot 名称、system prompt、模型、API key、功能开关、速率限制、任务群组、Dashboard |
+| `.env` | NoneBot 环境变量，以及由 `NICKNAME` 管理的机器人全局名称和别名 |
+| `env.toml` | Frontier 应用配置：system prompt、模型、API key、功能开关、速率限制、任务群组、Dashboard |
 | `mcp.json` | MCP 外部工具服务器定义 |
 
 `env.toml` 的关键部分：
-- `[information]`: `name` 和主 system prompt。
-- `[endpoint]`: basic/signal/advan/paint/video 模型及 provider、endpoint、capabilities。
-- `[llm_endpoints.*]`: 可复用 LLM endpoint profile，用于覆盖 provider/base_url/api_key/capabilities。
-- `[function]`: Agent、绘图、视频、黑白名单、速率限制、超时。
+- `[bot]`: 主 system prompt；不再保存机器人名称。
+- `[models]`: 模型 ID、供应商 profile 引用和模型能力。
+- `[providers.*]`: 供应商协议类型、base URL、可选 API key 和 Responses API 开关。
+- `[key]`: 模型和外部服务密钥；密钥仍保存在 `env.toml`。
+- `[features]` / `[agent]`: 功能开关和 Agent 推理等级。
+- `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]`: 访问策略。
+- `[limits]` / `[notifications]` / `[storage]`: 限流超时、定时推送群和存储设置。
 - `[dashboard]`: 管理面板密码、JWT secret、过期时间。
 - `[content_check]`: 文本/图片内容安全开关。
 
-`utils/configs.py` 在 import 时读取 `env.toml`。普通配置变更通常需要重启；Dashboard settings API 会调用运行时 reload 更新一部分配置。
+`config_version = 2` 使用上述结构。旧版 `information/endpoint/function/message/database`
+配置仍可读取，便于渐进迁移。`utils/configs.py` 会先校验完整配置，再原子切换运行时快照；
+Dashboard 保存前也会执行相同校验。
+
+`*_model_provider` 填写供应商 profile 名称，而不是重复填写 URL。例如
+`advanced_model_provider = "openrouter"` 会读取 `[providers.openrouter]`；其中 `type = "openai"`
+决定底层协议。模型能力只配置在 `[models]`，`use_responses_api` 只配置在供应商 profile。
+
+机器人名称只来自 `.env` 的 `NICKNAME`。数组第一项作为默认显示名称，全部非空项都可
+作为全局唤醒词；某个群在数据库中配置了自定义唤醒词后，以该群的数据库配置为准。
 
 ## Dashboard
 

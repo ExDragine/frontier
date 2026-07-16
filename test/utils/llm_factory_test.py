@@ -32,6 +32,7 @@ def test_gpt_routes_to_openai(monkeypatch):
     assert kw["model"] == "gpt-4o"
     assert "openai_api_key" in kw
     assert "openai_api_base" in kw
+    assert kw["use_responses_api"] is True
     assert kw.get("request_timeout") == 300  # timeout → request_timeout
     assert "timeout" not in kw  # raw "timeout" filtered out
 
@@ -75,7 +76,17 @@ def test_o4_mini_routes_to_openai(monkeypatch):
 def test_claude_routes_to_anthropic(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatAnthropic", mock_cls)
-    monkeypatch.setattr(factory.EnvConfig, "ANTHROPIC_BASE_URL", "https://anthropic.example.com")
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "anthropic": {
+                "type": "anthropic",
+                "base_url": "https://anthropic.example.com",
+                "use_responses_api": False,
+            }
+        },
+    )
 
     factory.create_llm(model="claude-3-5-sonnet-20241022", timeout=60)
 
@@ -91,7 +102,11 @@ def test_claude_routes_to_anthropic(monkeypatch):
 def test_deepseek_routes_to_deepseek(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatDeepSeek", mock_cls)
-    monkeypatch.setattr(factory.EnvConfig, "DEEPSEEK_API_BASE", "")
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {"deepseek": {"type": "deepseek", "base_url": "", "use_responses_api": False}},
+    )
 
     factory.create_llm(model="deepseek-v4-flash", timeout=30, max_retries=2)
 
@@ -104,22 +119,23 @@ def test_deepseek_routes_to_deepseek(monkeypatch):
     assert kw["max_retries"] == 2
 
 
-def test_deepseek_endpoint_profile_overrides_api_key_and_base_url(monkeypatch):
+def test_deepseek_provider_profile_overrides_api_key_and_base_url(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatDeepSeek", mock_cls)
     monkeypatch.setattr(
         factory.EnvConfig,
-        "LLM_ENDPOINTS",
+        "LLM_PROVIDERS",
         {
             "deepseek_signal": {
-                "provider": "deepseek",
+                "type": "deepseek",
                 "base_url": "https://deepseek.example.com/v1",
                 "api_key": "sk-deepseek-profile",
+                "use_responses_api": False,
             }
         },
     )
 
-    factory.create_llm(model="custom-signal", endpoint="deepseek_signal")
+    factory.create_llm(model="custom-signal", provider="deepseek_signal")
 
     kw = mock_cls.call_args.kwargs
     assert kw["api_key"].get_secret_value() == "sk-deepseek-profile"
@@ -132,7 +148,6 @@ def test_openai_kwargs_filtered_for_google(monkeypatch):
 
     factory.create_llm(
         model="gemini-2.5-flash",
-        use_responses_api=True,
         reasoning_effort="high",
         verbosity="low",
         max_retries=2,
@@ -151,7 +166,6 @@ def test_openai_kwargs_filtered_for_anthropic(monkeypatch):
 
     factory.create_llm(
         model="claude-3-5-haiku-20241022",
-        use_responses_api=True,
         reasoning_effort="medium",
         max_retries=2,
     )
@@ -207,58 +221,66 @@ def test_explicit_provider_routes_without_model_prefix(monkeypatch):
     assert "anthropic_api_key" in kw
 
 
-def test_endpoint_profile_can_set_provider_base_url_and_api_key(monkeypatch):
+def test_provider_profile_can_set_type_base_url_and_api_key(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatAnthropic", mock_cls)
     monkeypatch.setattr(
         factory.EnvConfig,
-        "LLM_ENDPOINTS",
+        "LLM_PROVIDERS",
         {
             "anthropic_proxy": {
-                "provider": "anthropic",
+                "type": "anthropic",
                 "base_url": "https://anthropic-proxy.example.com",
                 "api_key": "ant-profile",
+                "use_responses_api": False,
             }
         },
     )
 
-    factory.create_llm(model="custom-sonnet", endpoint="anthropic_proxy")
+    factory.create_llm(model="custom-sonnet", provider="anthropic_proxy")
 
     kw = mock_cls.call_args.kwargs
     assert kw["anthropic_api_key"].get_secret_value() == "ant-profile"
     assert kw["anthropic_api_url"] == "https://anthropic-proxy.example.com"
 
 
-def test_endpoint_profile_overrides_openai_base_url(monkeypatch):
+def test_provider_profile_controls_openai_base_url_and_responses_api(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
     monkeypatch.setattr(
         factory.EnvConfig,
-        "LLM_ENDPOINTS",
+        "LLM_PROVIDERS",
         {
             "openrouter": {
-                "provider": "openai",
+                "type": "openai",
                 "base_url": "https://openrouter.example.com/api/v1",
                 "api_key": "sk-openrouter",
+                "use_responses_api": False,
             }
         },
     )
 
-    factory.create_llm(model="any-model", endpoint="openrouter")
+    factory.create_llm(model="any-model", provider="openrouter")
 
     kw = mock_cls.call_args.kwargs
     assert kw["openai_api_key"].get_secret_value() == "sk-openrouter"
     assert kw["openai_api_base"] == "https://openrouter.example.com/api/v1"
+    assert kw["use_responses_api"] is False
+    assert factory.provider_uses_responses_api("any-model", "openrouter") is False
 
 
-def test_unknown_endpoint_profile_raises():
-    with pytest.raises(ValueError, match="未知 LLM endpoint profile"):
-        factory.create_llm(model="gpt-4o", endpoint="missing")
+def test_unknown_provider_profile_raises():
+    with pytest.raises(ValueError, match="未知 LLM provider profile"):
+        factory.create_llm(model="gpt-4o", provider="missing")
+
+
+@pytest.mark.parametrize("removed_kwarg", ["endpoint", "use_responses_api"])
+def test_removed_model_routing_kwargs_raise(removed_kwarg):
+    with pytest.raises(TypeError, match=removed_kwarg):
+        factory.create_llm(model="gpt-4o", **{removed_kwarg: "value"})
 
 
 def test_model_capabilities_default_to_text(monkeypatch):
-    monkeypatch.setattr(factory.EnvConfig, "LLM_ENDPOINTS", {})
-
     assert factory.get_model_capabilities("unknown-model") == {"text"}
     assert factory.model_supports("unknown-model", "text") is True
     assert factory.model_supports("unknown-model", "vision") is False
@@ -267,7 +289,6 @@ def test_model_capabilities_default_to_text(monkeypatch):
 def test_model_capabilities_use_model_specific_config(monkeypatch):
     monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL", "basic-model")
     monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL_CAPABILITIES", ["text", "vision"])
-    monkeypatch.setattr(factory.EnvConfig, "LLM_ENDPOINTS", {})
 
     assert factory.get_model_capabilities("basic-model") == {"text", "vision"}
     assert factory.model_supports("basic-model", "vision") is True
@@ -276,29 +297,29 @@ def test_model_capabilities_use_model_specific_config(monkeypatch):
 def test_model_capabilities_use_signal_model_config(monkeypatch):
     monkeypatch.setattr(factory.EnvConfig, "SIGNAL_MODEL", "signal-model")
     monkeypatch.setattr(factory.EnvConfig, "SIGNAL_MODEL_CAPABILITIES", ["text"])
-    monkeypatch.setattr(factory.EnvConfig, "LLM_ENDPOINTS", {})
 
     assert factory.get_model_capabilities("signal-model") == {"text"}
     assert factory.model_supports("signal-model", "text") is True
     assert factory.model_supports("signal-model", "vision") is False
 
 
-def test_model_capabilities_fall_back_to_endpoint_profile(monkeypatch):
+def test_provider_capabilities_do_not_override_model_capabilities(monkeypatch):
     monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL", "basic-model")
     monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL_CAPABILITIES", [])
     monkeypatch.setattr(
         factory.EnvConfig,
-        "LLM_ENDPOINTS",
+        "LLM_PROVIDERS",
         {
             "text_gateway": {
-                "provider": "openai",
-                "capabilities": ["text"],
+                "type": "openai",
+                "capabilities": ["text", "vision"],
+                "use_responses_api": True,
             }
         },
     )
 
-    assert factory.get_model_capabilities("basic-model", endpoint="text_gateway") == {"text"}
-    assert factory.model_supports("basic-model", "vision", endpoint="text_gateway") is False
+    assert factory.get_model_capabilities("basic-model") == {"text"}
+    assert factory.model_supports("basic-model", "vision") is False
 
 
 def test_openai_base_url_included(monkeypatch):

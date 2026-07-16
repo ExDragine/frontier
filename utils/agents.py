@@ -26,8 +26,8 @@ from nonebot import logger
 from pydantic import BaseModel, Field, ValidationError
 
 from tools import agent_tools
-from utils.configs import EnvConfig, information
-from utils.llm_factory import create_llm, model_supports
+from utils.configs import EnvConfig
+from utils.llm_factory import create_llm, model_supports, provider_uses_responses_api
 from utils.message import extract_message_text
 from utils.progress_messages import subagent_message as _subagent_message
 from utils.progress_messages import tool_message as _tool_message
@@ -64,11 +64,14 @@ SKILLS_BACKEND_PATH = "/skills"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MEMORY_BACKEND_PATH = "/memory"
 
+
 # 截图/录屏工具硬门控：通过 Signal LLM 判断用户原始意图，仅当用户明确想"看网页外观"时才暴露对应工具
 class BrowserCaptureIntent(BaseModel):
     """Signal LLM 对用户消息的截图/录屏意图判断结果。"""
 
-    screenshot: bool = Field(description="用户是否要求查看某个网页的可视化外观（截图/拍照/快照/看看长啥样/打开看看等）")
+    screenshot: bool = Field(
+        description="用户是否要求查看某个网页的可视化外观（截图/拍照/快照/看看长啥样/打开看看等）"
+    )
     recording: bool = Field(description="用户是否要求录制网页视频（录屏/录制/录视频等）")
 
 
@@ -85,20 +88,20 @@ async def _detect_browser_capture_intent(user_text: str | None) -> set[str]:
     try:
         result: BrowserCaptureIntent = await signal_structured(
             system_prompt=(
-                "判断用户消息是否明确表达了\"想看到某个网页的可视化外观\"的意图。\n\n"
+                '判断用户消息是否明确表达了"想看到某个网页的可视化外观"的意图。\n\n'
                 "以下情况 screenshot 应为 True：\n"
                 "- 明确说截图、拍照、快照、截屏、screenshot\n"
-                "- \"来张XX看看\"、\"打开XX看看\"、\"看看XX长啥样\"、\"XX首页什么样的\"\n"
-                "- \"帮我打开XX网站\"、\"访问XX页面\"并带有查看意图\n\n"
+                '- "来张XX看看"、"打开XX看看"、"看看XX长啥样"、"XX首页什么样的"\n'
+                '- "帮我打开XX网站"、"访问XX页面"并带有查看意图\n\n'
                 "以下情况 recording 应为 True：\n"
                 "- 明确说录屏、录制、录视频、record/recording\n"
-                "- \"把XX录下来\"、\"录一段XX\"\n\n"
+                '- "把XX录下来"、"录一段XX"\n\n'
                 "以下情况应返回 False：\n"
-                "- 用户只是提到\"截图\"但不是要求截图（如\"你看这个截图\"、\"截图里的内容\"）\n"
+                '- 用户只是提到"截图"但不是要求截图（如"你看这个截图"、"截图里的内容"）\n'
                 "- 普通问答、搜索、查数据、天气等不涉及网页外观的请求\n"
-                "- 模糊回应如\"好\"、\"可以\"、\"行\"\n"
+                '- 模糊回应如"好"、"可以"、"行"\n'
                 "- 台风、雷达图、云图、卫星云图、天气图等气象数据可视化请求——这些是数据产品，不是网页截图\n"
-                "- \"叠加雷达\"\"叠加云图\"\"看看雷达\"\"看看云图\"等台风工具内的图层叠加选项"
+                '- "叠加雷达""叠加云图""看看雷达""看看云图"等台风工具内的图层叠加选项'
             ),
             user_prompt=user_text,
             schema=BrowserCaptureIntent,
@@ -117,20 +120,11 @@ async def _detect_browser_capture_intent(user_text: str | None) -> set[str]:
 
 def _configured_model_route(model: str) -> dict[str, str]:
     if model == EnvConfig.BASIC_MODEL:
-        return {
-            "provider": EnvConfig.BASIC_MODEL_PROVIDER,
-            "endpoint": EnvConfig.BASIC_MODEL_ENDPOINT,
-        }
+        return {"provider": EnvConfig.BASIC_MODEL_PROVIDER}
     if model == EnvConfig.ADVAN_MODEL:
-        return {
-            "provider": EnvConfig.ADVAN_MODEL_PROVIDER,
-            "endpoint": EnvConfig.ADVAN_MODEL_ENDPOINT,
-        }
+        return {"provider": EnvConfig.ADVAN_MODEL_PROVIDER}
     if model == EnvConfig.SIGNAL_MODEL:
-        return {
-            "provider": EnvConfig.SIGNAL_MODEL_PROVIDER,
-            "endpoint": EnvConfig.SIGNAL_MODEL_ENDPOINT,
-        }
+        return {"provider": EnvConfig.SIGNAL_MODEL_PROVIDER}
     return {}
 
 
@@ -161,8 +155,8 @@ def _filter_content_parts_for_text_model(content: list) -> list:
     return [{"type": "text", "text": VISION_OMITTED_NOTICE}, *filtered]
 
 
-def _filter_messages_for_model_capabilities(messages: list[dict], model: str, endpoint: str | None) -> list[dict]:
-    if model_supports(model, "vision", endpoint=endpoint):
+def _filter_messages_for_model_capabilities(messages: list[dict], model: str) -> list[dict]:
+    if model_supports(model, "vision"):
         return messages
     filtered_messages = []
     for message in messages:
@@ -318,10 +312,9 @@ async def assistant_agent(
         "streaming": False,
         "max_retries": 2,
         "timeout": 300,
-        "use_responses_api": EnvConfig.BASIC_MODEL_USE_RESPONSES_API,
         **route,
     }
-    if reasoning_effort is not None:
+    if reasoning_effort is not None and provider_uses_responses_api(use_model, route.get("provider")):
         llm_kwargs["reasoning_effort"] = reasoning_effort
     if temperature is not None:
         llm_kwargs["temperature"] = temperature
@@ -344,7 +337,7 @@ async def assistant_agent(
                     "content": _build_user_content(
                         user_prompt,
                         images,
-                        supports_vision=model_supports(use_model, "vision", endpoint=route.get("endpoint")),
+                        supports_vision=model_supports(use_model, "vision"),
                     ),
                 }
             ]
@@ -390,10 +383,7 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
         except UnicodeDecodeError as exc:
             backup_path = f"{agents_md}.corrupt-{time.time_ns()}"
             os.replace(agents_md, backup_path)
-            logger.warning(
-                f"检测到非 UTF-8 的 Agent memory，已备份并恢复模板: "
-                f"{agents_md} -> {backup_path} ({exc})"
-            )
+            logger.warning(f"检测到非 UTF-8 的 Agent memory，已备份并恢复模板: {agents_md} -> {backup_path} ({exc})")
     if not os.path.exists(agents_md):
         try:
             with (PROJECT_ROOT / "prompts" / "AGENTS.md").open(encoding="utf-8") as src:
@@ -422,9 +412,9 @@ class FrontierCognitive:
 
         {name}: 优先使用当前触发的唤醒词，其次群自定义，最后 fallback BOT_NAME。
         """
-        toml_prompt: str = information.get("system_prompt", "").strip()
+        toml_prompt = EnvConfig.SYSTEM_PROMPT.strip()
         if not toml_prompt:
-            logger.error("❌ env.toml 中未配置 information.system_prompt")
+            logger.error("❌ env.toml 中未配置 bot.system_prompt")
             return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: system prompt未配置]"
 
         name = EnvConfig.BOT_NAME
@@ -552,24 +542,22 @@ class FrontierCognitive:
         progress_reporter: ProgressReporter | None = None,
         user_text: str | None = None,
     ):
+        uses_responses_api = provider_uses_responses_api(
+            EnvConfig.ADVAN_MODEL,
+            EnvConfig.ADVAN_MODEL_PROVIDER,
+        )
         model_kwargs: dict = {
             "model": EnvConfig.ADVAN_MODEL,
             "streaming": False,
             "max_retries": 2,
             "timeout": EnvConfig.AGENT_LLM_TIMEOUT_SECONDS,
-            "use_responses_api": EnvConfig.ADVAN_MODEL_USE_RESPONSES_API,
             "provider": EnvConfig.ADVAN_MODEL_PROVIDER,
-            "endpoint": EnvConfig.ADVAN_MODEL_ENDPOINT,
         }
-        if EnvConfig.ADVAN_MODEL_USE_RESPONSES_API:
+        if uses_responses_api:
             model_kwargs["reasoning_effort"] = capability
             model_kwargs["verbosity"] = "low"
         model = create_llm(**model_kwargs)
-        messages = _filter_messages_for_model_capabilities(
-            messages,
-            EnvConfig.ADVAN_MODEL,
-            endpoint=EnvConfig.ADVAN_MODEL_ENDPOINT,
-        )
+        messages = _filter_messages_for_model_capabilities(messages, EnvConfig.ADVAN_MODEL)
         working_dir = getattr(self, "working_dir", os.path.join(os.getcwd(), "cache", "sandbox"))
         thread_id = thread_id_override or _agent_thread_id(user_id, group_id)
         if not isinstance(thread_id, uuid.UUID):

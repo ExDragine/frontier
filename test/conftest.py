@@ -2,6 +2,7 @@
 
 import importlib
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import pytest
 from .stubs.install import install_all_third_party_stubs
 
 install_all_third_party_stubs()
+os.environ.setdefault("NICKNAME", '["FrontierBot"]')
 _tools_dir = Path(__file__).resolve().parents[1] / "tools"
 
 
@@ -61,6 +63,7 @@ if str(_repo_root) not in sys.path:
 
 
 def _ensure_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("NICKNAME", '["FrontierBot"]')
     env_path = tmp_path / "env.toml"
     env_path.write_text(
         """
@@ -132,7 +135,9 @@ jwt_expire_hours = 1
 @pytest.fixture
 def load_tool_module():
     """Load a single tools/*.py module without triggering tools/__init__.py discovery."""
-    tools_pkg = sys.modules.setdefault("tools", importlib.util.module_from_spec(importlib.machinery.ModuleSpec("tools", None)))
+    tools_pkg = sys.modules.setdefault(
+        "tools", importlib.util.module_from_spec(importlib.machinery.ModuleSpec("tools", None))
+    )
     tools_pkg.__path__ = [str(_tools_dir)]
 
     def _load(module_name: str):

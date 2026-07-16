@@ -152,11 +152,11 @@ def test_clean_staged_artifact_handoffs_from_ai_message():
     assert cleaned.content == "完成"
 
 
-def test_env_config_responses_api_defaults():
+def test_env_config_provider_responses_api_defaults():
     from utils.configs import EnvConfig
 
-    assert EnvConfig.BASIC_MODEL_USE_RESPONSES_API is True
-    assert EnvConfig.ADVAN_MODEL_USE_RESPONSES_API is True
+    assert EnvConfig.LLM_PROVIDERS["openai"]["use_responses_api"] is True
+    assert EnvConfig.LLM_PROVIDERS["deepseek"]["use_responses_api"] is False
 
 
 def test_build_user_content_omits_images_when_model_lacks_vision():
@@ -187,7 +187,7 @@ def test_filter_messages_for_text_only_model_removes_image_parts(monkeypatch):
         }
     ]
 
-    filtered = agents._filter_messages_for_model_capabilities(messages, "text-model", endpoint="")
+    filtered = agents._filter_messages_for_model_capabilities(messages, "text-model")
 
     assert filtered[0]["content"] == [{"type": "text", "text": "hello\n\n[图片已省略：当前模型不支持视觉输入]"}]
     assert messages[0]["content"][1]["type"] == "image_url"
@@ -233,16 +233,14 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
     monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
 
     # Monkeypatch the EnvConfig in the agents module
-    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_USE_RESPONSES_API", False)
-    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_PROVIDER", "anthropic")
-    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_ENDPOINT", "anthropic_proxy")
+    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_PROVIDER", "anthropic_proxy")
     monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: False)
 
     await agents.assistant_agent(user_prompt="hello", images=[b"image-bytes"])
 
-    assert captured.get("use_responses_api") is False
-    assert captured.get("provider") == "anthropic"
-    assert captured.get("endpoint") == "anthropic_proxy"
+    assert "use_responses_api" not in captured
+    assert captured.get("provider") == "anthropic_proxy"
+    assert "endpoint" not in captured
     assert "图片已省略" in captured["payload"]["messages"][0]["content"]
 
 
@@ -268,14 +266,13 @@ async def test_assistant_agent_uses_signal_model_config(monkeypatch):
 
     monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
     monkeypatch.setattr(agents.EnvConfig, "SIGNAL_MODEL", "signal-model")
-    monkeypatch.setattr(agents.EnvConfig, "SIGNAL_MODEL_PROVIDER", "deepseek")
-    monkeypatch.setattr(agents.EnvConfig, "SIGNAL_MODEL_ENDPOINT", "deepseek_signal")
+    monkeypatch.setattr(agents.EnvConfig, "SIGNAL_MODEL_PROVIDER", "deepseek_signal")
 
     await agents.assistant_agent(user_prompt="hello", use_model="signal-model")
 
     assert captured["model"] == "signal-model"
-    assert captured["provider"] == "deepseek"
-    assert captured["endpoint"] == "deepseek_signal"
+    assert captured["provider"] == "deepseek_signal"
+    assert "endpoint" not in captured
 
 
 @pytest.mark.asyncio
@@ -333,9 +330,8 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
         return DummyModel()
 
     monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
-    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_USE_RESPONSES_API", False)
-    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_PROVIDER", "openai")
-    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_ENDPOINT", "openrouter")
+    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_PROVIDER", "openrouter")
+    monkeypatch.setattr(agents, "provider_uses_responses_api", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: False)
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
@@ -357,9 +353,9 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
         group_id=123,
     )
 
-    assert captured.get("use_responses_api") is False
-    assert captured.get("provider") == "openai"
-    assert captured.get("endpoint") == "openrouter"
+    assert "use_responses_api" not in captured
+    assert captured.get("provider") == "openrouter"
+    assert "endpoint" not in captured
     assert "reasoning_effort" not in captured
     assert "verbosity" not in captured
     assert captured["payload"]["messages"][0]["content"] == [
@@ -431,9 +427,9 @@ def test_build_agent_backend_recovers_non_utf8_memory(tmp_path):
 
     backend = agents._build_agent_backend(str(working_dir), "123")
 
-    assert agents_md.read_text(encoding="utf-8") == (
-        agents.PROJECT_ROOT / "prompts" / "AGENTS.md"
-    ).read_text(encoding="utf-8")
+    assert agents_md.read_text(encoding="utf-8") == (agents.PROJECT_ROOT / "prompts" / "AGENTS.md").read_text(
+        encoding="utf-8"
+    )
     backups = list(memory_dir.glob("AGENTS.md.corrupt-*"))
     assert len(backups) == 1
     assert backups[0].read_bytes() == corrupt_content
@@ -572,7 +568,7 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
         return DummyModel()
 
     monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
-    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_USE_RESPONSES_API", True)
+    monkeypatch.setattr(agents, "provider_uses_responses_api", lambda *_args, **_kwargs: True)
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
@@ -586,7 +582,7 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
         capability="medium",
     )
 
-    assert captured.get("use_responses_api") is True
+    assert "use_responses_api" not in captured
     assert captured.get("reasoning_effort") == "medium"
     assert captured.get("verbosity") == "low"
 

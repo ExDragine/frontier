@@ -2,6 +2,7 @@ import os
 import shutil
 import time
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -9,12 +10,14 @@ import tomlkit
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from utils.configs import CONFIG_PATH, parse_config
+
 from ..auth import require_auth
 
 router = APIRouter()
 AUTH_DEPENDENCY = Depends(require_auth)
 
-TOML_PATH = Path("env.toml")
+TOML_PATH = CONFIG_PATH
 BACKUP_DIR = Path("configs/backups")
 
 # 需要脱敏的段和字段
@@ -82,7 +85,7 @@ def _is_sensitive_key(section: str, key: str) -> bool:
 def _resolve_update_value(section: str, key: str, original_value, new_value):
     if _is_sensitive_key(section, key) and _is_masked(new_value):
         return original_value
-    if isinstance(original_value, dict) and isinstance(new_value, dict):
+    if isinstance(original_value, Mapping) and isinstance(new_value, Mapping):
         merged = dict(original_value)
         for child_key, child_value in new_value.items():
             merged[child_key] = _resolve_update_value(
@@ -98,9 +101,11 @@ def _resolve_update_value(section: str, key: str, original_value, new_value):
 def _backup_config():
     """备份当前配置文件"""
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUP_DIR.chmod(0o700)
     timestamp = int(time.time())
     backup_path = BACKUP_DIR / f"env.toml.{timestamp}.bak"
     shutil.copy2(TOML_PATH, backup_path)
+    backup_path.chmod(0o600)
 
     # 保留最近 10 个备份
     backups = sorted(BACKUP_DIR.glob("env.toml.*.bak"), key=lambda p: p.stat().st_mtime)
@@ -110,12 +115,13 @@ def _backup_config():
     return backup_path
 
 
-def _reload_env_config():
+def _reload_env_config(config: dict | None = None):
     """热重载 EnvConfig — 委托给 configs.py 的统一入口。"""
     from utils.configs import EnvConfig
 
-    with open(TOML_PATH, "rb") as f:
-        config = tomllib.load(f)
+    if config is None:
+        with open(TOML_PATH, "rb") as f:
+            config = tomllib.load(f)
     EnvConfig.reload(config)
 
 
@@ -133,12 +139,7 @@ async def get_section(section: str, user: dict = AUTH_DEPENDENCY):
     if section not in config:
         raise HTTPException(status_code=404, detail=f"配置段 '{section}' 不存在")
 
-    result = dict(config[section])
-    sensitive = SENSITIVE_FIELDS.get(section, set())
-    for k, v in result.items():
-        if k in sensitive and isinstance(v, str):
-            result[k] = _mask_value(v)
-    return {"section": section, "config": result}
+    return {"section": section, "config": _sanitize_section(section, dict(config[section]))}
 
 
 class SectionUpdate(BaseModel):
@@ -154,9 +155,6 @@ async def update_section(section: str, body: SectionUpdate, user: dict = AUTH_DE
     if section not in doc:
         raise HTTPException(status_code=404, detail=f"配置段 '{section}' 不存在")
 
-    # 备份
-    backup_path = _backup_config()
-
     # 获取原始值以处理脱敏字段
     original = dict(doc[section])
     sensitive = SENSITIVE_FIELDS.get(section, set())
@@ -167,6 +165,15 @@ async def update_section(section: str, body: SectionUpdate, user: dict = AUTH_DE
             # 脱敏值不做修改，保留原值
             continue
         doc[section][k] = _resolve_update_value(section, k, original.get(k), v)  # type: ignore
+
+    new_config = doc.unwrap()
+    try:
+        parse_config(new_config)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"配置校验失败: {exc}") from exc
+
+    # 校验通过后才备份和落盘。
+    backup_path = _backup_config()
 
     # 原子写入：先写临时文件，再替换
     tmp_path = TOML_PATH.with_suffix(".tmp")
@@ -182,9 +189,18 @@ async def update_section(section: str, body: SectionUpdate, user: dict = AUTH_DE
 
     # 热重载 EnvConfig
     try:
-        _reload_env_config()
+        _reload_env_config(new_config)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"配置已保存但重载失败: {e}") from e
+        shutil.copy2(backup_path, TOML_PATH)
+        rollback_error = None
+        try:
+            _reload_env_config()
+        except Exception as exc:
+            rollback_error = exc
+        detail = f"配置重载失败，已恢复原配置: {e}"
+        if rollback_error is not None:
+            detail += f"；恢复后运行时重载也失败: {rollback_error}"
+        raise HTTPException(status_code=500, detail=detail) from e
 
     return {
         "message": f"配置段 '{section}' 已更新",

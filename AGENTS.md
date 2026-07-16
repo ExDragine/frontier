@@ -70,7 +70,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `database.py` | SQLite/SQLModel、消息/附件/群设置模型、WAL/FTS/索引、历史上下文构造、检索和维护 |
 | `message.py` | 消息段提取、文件暂存、媒体下载、回复网关、内容安全、Markdown/图片回复渲染 |
 | `configs.py` | `EnvConfig`：从 `env.toml` 读取模型、端点、密钥、功能开关、Dashboard、内容安全配置 |
-| `llm_factory.py` | OpenAI-compatible / Google / Anthropic / DeepSeek 模型路由，endpoint profile，能力判断 |
+| `llm_factory.py` | OpenAI-compatible / Google / Anthropic / DeepSeek 模型路由，供应商 profile，能力判断 |
 | `signal_llm.py` | 轻量结构化 LLM 调用，用于回复门控、浏览器捕获意图等判断 |
 | `reply_context.py` | 引用消息解析、Milky 原消息获取、引用图片下载、转发消息重建 |
 | `message_normalizer.py` | 消息段归一化，展开合并转发 derived messages |
@@ -109,8 +109,8 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 
 `FrontierCognitive.chat_agent()` 的关键行为：
 - 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，Signal 判断使用 `EnvConfig.SIGNAL_MODEL`。
-- 当 `*_use_responses_api` 为 true 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；Chat Completions 路径会跳过这些参数。
-- 根据模型/endpoint 的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
+- 当模型引用的供应商 `use_responses_api` 为 true 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；Chat Completions 路径会跳过这些参数。
+- 根据模型自身的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
 - 构建 `CompositeBackend`：
   - default: `cache/sandbox/workspaces/{workspace_key}`，`LocalShellBackend`
   - `/skills/`: `cache/sandbox/skills`
@@ -120,7 +120,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - `interrupt_on` 对 read/write/edit/execute 均关闭，Agent 工具执行不走人工确认。
 
 Prompt 加载链：
-- 主 system prompt 来自 `env.toml` 的 `[information].system_prompt`，由 `FrontierCognitive.load_system_prompt()` 用 `{name}` 注入 bot 名称或当前唤醒词。
+- 主 system prompt 来自 `env.toml` 的 `[bot].system_prompt`（旧 `[information]` 仍兼容），由 `FrontierCognitive.load_system_prompt()` 用 `{name}` 注入名称；全局名称/别名来自 `.env` 的 `NICKNAME`，群级数据库唤醒词优先。
 - `prompts/AGENTS.md` 是每个 Agent memory workspace 的基础操作规范模板，不是主对话 system prompt。
 - `prompts/reply_check.md` 用于群聊是否应主动回复的 Signal LLM 判断。
 - `prompts/daily_news.md` 用于每日新闻任务。
@@ -149,7 +149,7 @@ Prompt 加载链：
 
 模型路由规则：
 - 显式 `*_model_provider` 优先。
-- `*_model_endpoint` 可指向 `[llm_endpoints.<name>]`，覆盖 provider/base_url/api_key/capabilities。
+- `*_model_provider` 指向 `[providers.<name>]`；供应商 profile 管理协议类型、base URL、可选 API key 和 Responses API 开关。
 - 没有显式 provider 时，`llm_factory.py` 会根据模型名前缀推断：`deepseek*`、`gemini-*`、`claude-*`，其余走 OpenAI-compatible。
 
 Dashboard 配置：

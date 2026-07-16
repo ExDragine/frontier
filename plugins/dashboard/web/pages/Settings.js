@@ -12,7 +12,7 @@ const SettingsPage = {
             <template v-else>
                 <div class="bg-white rounded-lg shadow">
                     <div class="border-b flex overflow-x-auto">
-                        <button v-for="tab in tabs" :key="tab.key"
+                        <button v-for="tab in visibleTabs" :key="tab.key"
                                 @click="activeTab = tab.key"
                                 :class="activeTab === tab.key
                                     ? 'border-b-2 border-primary text-primary bg-indigo-50'
@@ -48,6 +48,14 @@ const SettingsPage = {
                                                @keyup.enter="addArrayItem(activeTab, key, $event)"
                                                class="border rounded px-3 py-1 text-sm w-32">
                                     </div>
+                                </template>
+
+                                <template v-else-if="isObject(value)">
+                                    <textarea :value="formatObject(value)"
+                                              @change="updateObject(activeTab, key, $event.target.value)"
+                                              rows="8"
+                                              class="border rounded px-3 py-2 text-sm font-mono"></textarea>
+                                    <span class="text-xs text-gray-500">JSON 对象；修改后移出输入框进行校验。</span>
                                 </template>
 
                                 <template v-else-if="isSensitive(activeTab, key)">
@@ -99,22 +107,36 @@ const SettingsPage = {
         const { ref, reactive, onMounted } = Vue;
         const loading = ref(false);
         const saving = ref(false);
-        const activeTab = ref('information');
+        const activeTab = ref('bot');
         const configData = reactive({});
         const showSecrets = reactive({});
 
         const tabs = [
-            { key: 'information', label: '基本信息' },
-            { key: 'endpoint', label: '接口配置' },
+            { key: 'bot', label: '机器人' },
+            { key: 'models', label: '模型' },
+            { key: 'providers', label: '供应商' },
             { key: 'key', label: '密钥管理' },
-            { key: 'function', label: '功能开关' },
-            { key: 'message', label: '消息推送' },
-            { key: 'database', label: '数据库' },
+            { key: 'features', label: '功能开关' },
+            { key: 'agent', label: 'Agent' },
+            { key: 'agent_policy', label: 'Agent 权限' },
+            { key: 'auto_reply_policy', label: '自动回复' },
+            { key: 'paint_policy', label: '绘图权限' },
+            { key: 'limits', label: '限流与超时' },
+            { key: 'notifications', label: '消息推送' },
+            { key: 'storage', label: '存储' },
             { key: 'debug', label: '调试' },
-            { key: 'schedule', label: '计划任务' },
-            { key: 'memory', label: '记忆系统' },
             { key: 'dashboard', label: 'Dashboard' },
+            { key: 'content_check', label: '内容检查' },
+            // v1 配置兼容：旧文件仍可从 Dashboard 编辑并热重载。
+            { key: 'information', label: '基本信息（旧版）' },
+            { key: 'endpoint', label: '接口配置（旧版）' },
+            { key: 'llm_endpoints', label: '供应商端点（旧版）' },
+            { key: 'function', label: '功能设置（旧版）' },
+            { key: 'message', label: '消息推送（旧版）' },
+            { key: 'database', label: '数据库（旧版）' },
+            { key: 'image_memory', label: '图片记忆（旧版）' },
         ];
+        const visibleTabs = Vue.computed(() => tabs.filter(tab => configData[tab.key]));
 
         const sensitiveFields = {
             key: new Set([
@@ -139,6 +161,18 @@ const SettingsPage = {
             showSecrets[k] = !showSecrets[k];
         };
 
+        const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+        const formatObject = value => JSON.stringify(value, null, 2);
+        const updateObject = (section, key, rawValue) => {
+            try {
+                const value = JSON.parse(rawValue);
+                if (!isObject(value)) throw new Error('必须是 JSON 对象');
+                configData[section][key] = value;
+            } catch (err) {
+                showToast(`JSON 格式错误: ${err.message}`, 'error');
+            }
+        };
+
         const fetchConfig = async () => {
             loading.value = true;
             try {
@@ -146,6 +180,9 @@ const SettingsPage = {
                 // 清空并重新填充 reactive 对象
                 Object.keys(configData).forEach(k => delete configData[k]);
                 Object.assign(configData, data.config);
+                if (!configData[activeTab.value] && visibleTabs.value.length > 0) {
+                    activeTab.value = visibleTabs.value[0].key;
+                }
             } catch (err) {
                 showToast('加载配置失败: ' + err.message, 'error');
             } finally {
@@ -184,9 +221,9 @@ const SettingsPage = {
         onMounted(fetchConfig);
 
         return {
-            loading, saving, activeTab, configData, showSecrets, tabs,
+            loading, saving, activeTab, configData, showSecrets, visibleTabs,
             isSensitive, toggleSecret, fetchConfig, saveSection,
-            removeArrayItem, addArrayItem
+            removeArrayItem, addArrayItem, isObject, formatObject, updateObject
         };
     }
 };

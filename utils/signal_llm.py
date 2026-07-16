@@ -18,13 +18,11 @@ class SignalLLM:
         *,
         model: str | None = None,
         provider: str | None = None,
-        endpoint: str | None = None,
         max_retries: int = 2,
         timeout: int = 30,
     ):
         self.model = model or EnvConfig.SIGNAL_MODEL
         self.provider = EnvConfig.SIGNAL_MODEL_PROVIDER if provider is None else provider
-        self.endpoint = EnvConfig.SIGNAL_MODEL_ENDPOINT if endpoint is None else endpoint
         self.max_retries = max_retries
         self.timeout = timeout
 
@@ -41,8 +39,6 @@ class SignalLLM:
             "max_retries": self.max_retries,
             "timeout": self.timeout,
             "provider": self.provider,
-            "endpoint": self.endpoint,
-            "use_responses_api": EnvConfig.SIGNAL_MODEL_USE_RESPONSES_API,
         }
         if temperature is not None:
             kwargs["temperature"] = temperature

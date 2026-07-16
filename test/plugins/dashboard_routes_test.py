@@ -149,12 +149,12 @@ def test_settings_sanitize_masks_paint_api_key():
     assert result["key"]["deepseek_api_key"] == "****cret"
 
 
-def test_settings_sanitize_masks_llm_endpoint_api_key():
+def test_settings_sanitize_masks_provider_api_key():
     result = settings_routes._sanitize_config(
         {
-            "llm_endpoints": {
+            "providers": {
                 "openrouter": {
-                    "provider": "openai",
+                    "type": "openai",
                     "base_url": "https://openrouter.example.com/api/v1",
                     "api_key": "sk-openrouter-secret",
                 }
@@ -162,20 +162,40 @@ def test_settings_sanitize_masks_llm_endpoint_api_key():
         }
     )
 
-    assert result["llm_endpoints"]["openrouter"]["api_key"] == "****cret"
+    assert result["providers"]["openrouter"]["api_key"] == "****cret"
 
 
-def test_settings_update_preserves_masked_nested_llm_endpoint_api_key():
+@pytest.mark.asyncio
+async def test_settings_section_recursively_masks_provider_api_key(monkeypatch):
+    monkeypatch.setattr(
+        settings_routes,
+        "_read_toml",
+        lambda: {
+            "providers": {
+                "openrouter": {
+                    "type": "openai",
+                    "api_key": "sk-openrouter-secret",
+                }
+            }
+        },
+    )
+
+    result = await settings_routes.get_section("providers", user={})
+
+    assert result["config"]["openrouter"]["api_key"] == "****cret"
+
+
+def test_settings_update_preserves_masked_nested_provider_api_key():
     result = settings_routes._resolve_update_value(
-        "llm_endpoints",
+        "providers",
         "openrouter",
         {
-            "provider": "openai",
+            "type": "openai",
             "base_url": "https://old.example.com/api/v1",
             "api_key": "sk-openrouter-secret",
         },
         {
-            "provider": "openai",
+            "type": "openai",
             "base_url": "https://new.example.com/api/v1",
             "api_key": "****cret",
         },
@@ -183,6 +203,30 @@ def test_settings_update_preserves_masked_nested_llm_endpoint_api_key():
 
     assert result["base_url"] == "https://new.example.com/api/v1"
     assert result["api_key"] == "sk-openrouter-secret"
+
+
+@pytest.mark.asyncio
+async def test_settings_rejects_invalid_config_before_writing(tmp_path, monkeypatch):
+    env_path = tmp_path / "env.toml"
+    original = """config_version = 2
+
+[limits]
+agent_llm_timeout_seconds = 900
+"""
+    env_path.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(settings_routes, "TOML_PATH", env_path)
+    monkeypatch.setattr(settings_routes, "BACKUP_DIR", tmp_path / "backups")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_routes.update_section(
+            "limits",
+            settings_routes.SectionUpdate(config={"agent_llm_timeout_seconds": 0}),
+            user={},
+        )
+
+    assert exc_info.value.status_code == 422
+    assert env_path.read_text(encoding="utf-8") == original
+    assert not settings_routes.BACKUP_DIR.exists()
 
 
 def test_reload_env_config_recomputes_paint_specific_values(tmp_path, monkeypatch):
@@ -285,19 +329,16 @@ jwt_secret = "secret"
 
     configs.EnvConfig.OPENAI_BASE_URL = "https://old.example.com/v1"
     configs.EnvConfig.BASIC_MODEL_PROVIDER = ""
-    configs.EnvConfig.BASIC_MODEL_ENDPOINT = ""
     configs.EnvConfig.BASIC_MODEL_CAPABILITIES = []
     configs.EnvConfig.SIGNAL_MODEL = "old-signal"
     configs.EnvConfig.SIGNAL_MODEL_PROVIDER = ""
-    configs.EnvConfig.SIGNAL_MODEL_ENDPOINT = ""
     configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES = []
     configs.EnvConfig.ADVAN_MODEL_PROVIDER = ""
-    configs.EnvConfig.ADVAN_MODEL_ENDPOINT = ""
     configs.EnvConfig.ADVAN_MODEL_CAPABILITIES = []
     configs.EnvConfig.PAINT_BASE_URL = "https://old-paint.example.com/v1"
     configs.EnvConfig.VIDEO_MODEL = "old-video"
     configs.EnvConfig.VIDEO_BASE_URL = "https://old-video.example.com"
-    configs.EnvConfig.LLM_ENDPOINTS = {}
+    configs.EnvConfig.LLM_PROVIDERS = {}
     configs.EnvConfig.OPENAI_API_KEY = SecretStr("sk-old-global")
     configs.EnvConfig.PAINT_API_KEY = SecretStr("sk-old-paint")
     configs.EnvConfig.VIDEO_API_KEY = SecretStr("sk-old-video")
@@ -317,22 +358,19 @@ jwt_secret = "secret"
     settings_routes._reload_env_config()
 
     assert configs.EnvConfig.OPENAI_BASE_URL == "https://global.example.com/v1"
-    assert configs.EnvConfig.BASIC_MODEL_PROVIDER == "anthropic"
-    assert configs.EnvConfig.BASIC_MODEL_ENDPOINT == "anthropic_proxy"
+    assert configs.EnvConfig.BASIC_MODEL_PROVIDER == "anthropic_proxy"
     assert configs.EnvConfig.BASIC_MODEL_CAPABILITIES == ["text"]
-    assert configs.EnvConfig.ADVAN_MODEL_PROVIDER == "openai"
-    assert configs.EnvConfig.ADVAN_MODEL_ENDPOINT == "openrouter"
+    assert configs.EnvConfig.ADVAN_MODEL_PROVIDER == "openrouter"
     assert configs.EnvConfig.ADVAN_MODEL_CAPABILITIES == ["text", "vision"]
     assert configs.EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
-    assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
-    assert configs.EnvConfig.SIGNAL_MODEL_ENDPOINT == "deepseek_signal"
+    assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek_signal"
     assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
     assert configs.EnvConfig.PAINT_BASE_URL == "https://global.example.com/v1"
     assert configs.EnvConfig.VIDEO_MODEL == "alibaba/happyhorse-1.0"
     assert configs.EnvConfig.VIDEO_BASE_URL == "https://zenmux.ai/api/vertex-ai"
-    assert configs.EnvConfig.LLM_ENDPOINTS["openrouter"]["capabilities"] == ["text", "vision"]
-    assert configs.EnvConfig.LLM_ENDPOINTS["openrouter"]["api_key"] == "sk-openrouter"
-    assert configs.EnvConfig.LLM_ENDPOINTS["deepseek_signal"]["provider"] == "deepseek"
+    assert "capabilities" not in configs.EnvConfig.LLM_PROVIDERS["openrouter"]
+    assert configs.EnvConfig.LLM_PROVIDERS["openrouter"]["api_key"] == "sk-openrouter"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_signal"]["type"] == "deepseek"
     assert configs.EnvConfig.OPENAI_API_KEY.get_secret_value() == "sk-global"
     assert configs.EnvConfig.PAINT_API_KEY.get_secret_value() == "sk-global"
     assert configs.EnvConfig.VIDEO_API_KEY.get_secret_value() == "sk-video"
