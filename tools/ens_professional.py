@@ -4,16 +4,15 @@
 所有模式默认播放动画，用户可传 animoff 暂停。
 """
 
-import asyncio
 import re
 import time as _time
 
 from langchain_core.tools import tool
 from nonebot import logger
 
-from utils.ens_gate import _ens_prefix
 from utils.alconna import UniMessage
 from utils.browser_capture import record_video, screenshot
+from utils.ens_gate import _ens_prefix
 from utils.tool_helpers import tool_timer
 
 # 内存缓存：同一 URL 在 TTL 内直接返回，避免重复生成视频/截图。

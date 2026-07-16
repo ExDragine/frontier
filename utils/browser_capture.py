@@ -79,16 +79,6 @@ async def _get_browser():
         return _browser
 
 
-async def _is_browser_alive() -> bool:
-    """检测浏览器进程是否存活。"""
-    if _browser is None:
-        return False
-    try:
-        return _browser.is_connected()
-    except Exception:
-        return False
-
-
 async def _restart_browser():
     """强制重启浏览器进程。"""
     global _browser, _playwright

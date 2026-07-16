@@ -9,7 +9,6 @@ AUTH_DEPENDENCY = Depends(require_auth)
 
 # Cookie 安全配置
 COOKIE_NAME = "frontier_token"
-COOKIE_MAX_AGE = 86400  # 24 小时（与 JWT 过期时间对齐）
 
 
 class LoginRequest(BaseModel):

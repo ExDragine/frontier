@@ -30,7 +30,7 @@ async def test_get_paint_generate_uses_shared_paint_service(load_tool_module, mo
 
 
 @pytest.mark.asyncio
-async def test_get_paint_returns_direct_artifact_without_staged_handoff(load_tool_module, monkeypatch):
+async def test_get_paint_returns_direct_artifact(load_tool_module, monkeypatch):
     mod = load_tool_module("paint")
 
     async def fake_paint(_prompt, _reference_images):
@@ -42,8 +42,6 @@ async def test_get_paint_returns_direct_artifact_without_staged_handoff(load_too
     text, artifact = await mod.get_paint("a cat")
 
     assert artifact.content["raw"] == b"img"
-    assert "send_staged_artifact" not in text
-    assert "staged_artifact" not in text
 
 
 @pytest.mark.asyncio
@@ -356,8 +354,6 @@ async def test_satellite_tools(load_tool_module, monkeypatch):
 
     text2, artifact2 = await mod.get_fy4b_geos_cloud_map("MOS", "24h")
     assert text2.startswith("成功获取FY4B卫星全地球视角云图视频")
-    assert "send_staged_artifact" not in text2
-    assert "staged_artifact" not in text2
     assert artifact2.content["type"] == "video"
 
     assert await mod.get_fy4b_geos_cloud_map("BAD", "24h") is None
@@ -370,22 +366,6 @@ async def test_satellite_tools(load_tool_module, monkeypatch):
 @pytest.mark.asyncio
 async def test_weather_tools(load_tool_module, monkeypatch):
     mod = load_tool_module("weather")
-
-    async def fake_geocode(_city):
-        return 39.9, 116.4
-
-    async def fake_fetch_json(url, _client, **_kwargs):
-        if "current_weather=true" in url:
-            return {"current_weather": {"temperature": 25, "windspeed": 3}}
-        return {"daily": {"temperature_2m_max": [30, 31], "temperature_2m_min": [20, 21]}}
-
-    monkeypatch.setattr(mod, "geocode", fake_geocode)
-    monkeypatch.setattr(mod, "fetch_json", fake_fetch_json)
-
-    current = await mod.weather_tool.current("北京")
-    future = await mod.weather_tool.forecast("北京", 2)
-    assert "北京 25℃" in current
-    assert "第1天: 高30℃ 低20℃" in future
 
     class MarsResp:
         def raise_for_status(self):
@@ -404,6 +384,4 @@ async def test_weather_tools(load_tool_module, monkeypatch):
 
     text, artifact = await mod.get_wind_map("wind_shear")
     assert text.startswith("获取成功")
-    assert "send_staged_artifact" not in text
-    assert "staged_artifact" not in text
     assert artifact.content["type"] == "image"

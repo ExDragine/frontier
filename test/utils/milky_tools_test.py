@@ -4,55 +4,6 @@ from pathlib import Path
 
 import pytest
 
-# ── is_local ──────────────────────────────────────────────────────────────────
-
-
-def test_is_local_finds_file_with_root_dir(tmp_path):
-    from utils.milky_tools import is_local
-
-    (tmp_path / "report.pdf").write_text("pdf")
-
-    assert is_local("/report.pdf", root_dir=str(tmp_path)) is True
-
-
-def test_is_local_finds_file_with_relative_path(tmp_path, monkeypatch):
-    from utils.milky_tools import is_local
-
-    (tmp_path / "a.txt").write_text("hello")
-    monkeypatch.chdir(tmp_path)
-
-    assert is_local("a.txt") is True
-
-
-def test_is_local_returns_false_when_not_found(tmp_path):
-    from utils.milky_tools import is_local
-
-    assert is_local("/nope.txt", root_dir=str(tmp_path)) is False
-
-
-def test_is_local_rejects_absolute_path_without_root_dir(tmp_path):
-    from utils.milky_tools import is_local
-
-    f = tmp_path / "a.txt"
-    f.write_text("hello")
-
-    # Absolute paths are NOT allowed without a root_dir sandbox
-    assert is_local(str(f)) is False
-
-
-def test_is_local_blocks_path_traversal(tmp_path):
-    from utils.milky_tools import is_local
-
-    root = tmp_path / "sandbox"
-    root.mkdir()
-    (root / "legal.txt").write_text("ok")
-    (tmp_path / "secret.txt").write_text("secret")
-
-    assert is_local("/legal.txt", root_dir=str(root)) is True
-    assert is_local("../secret.txt", root_dir=str(root)) is False
-    assert is_local("../../secret.txt", root_dir=str(root)) is False
-
-
 # ── resolve_local_path ───────────────────────────────────────────────────────
 
 

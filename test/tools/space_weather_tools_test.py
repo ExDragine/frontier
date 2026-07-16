@@ -105,8 +105,6 @@ async def test_solar_image_and_goes_suvi(load_tool_module):
 
     text, artifact = await mod.solar_image("SN")
     assert text.startswith("获取成功")
-    assert "send_staged_artifact" not in text
-    assert "staged_artifact" not in text
     assert artifact.content["type"] == "image"
 
     text2, artifact2 = await mod.solar_image("BAD")
@@ -115,8 +113,6 @@ async def test_solar_image_and_goes_suvi(load_tool_module):
 
     text3, artifact3 = await mod.goes_suvi("304")
     assert text3.startswith("获取成功")
-    assert "send_staged_artifact" not in text3
-    assert "staged_artifact" not in text3
     assert artifact3.content["type"] == "image"
 
     text4, artifact4 = await mod.goes_suvi("094")
@@ -149,14 +145,10 @@ async def test_sunspot(load_tool_module, monkeypatch):
 
     text, artifact = await mod.sunspot("SOHO")
     assert text.startswith("获取成功")
-    assert "send_staged_artifact" not in text
-    assert "staged_artifact" not in text
     assert artifact.content["raw"] == b"soho"
 
     text2, artifact2 = await mod.sunspot("ASO-S")
     assert text2.startswith("获取成功")
-    assert "send_staged_artifact" not in text2
-    assert "staged_artifact" not in text2
     assert artifact2.content["raw"] == b"aso"
 
 
@@ -203,8 +195,6 @@ async def test_swpc_page(load_tool_module, monkeypatch):
 
     text, artifact = await mod.swpc_page()
     assert text.startswith("获取成功")
-    assert "send_staged_artifact" not in text
-    assert "staged_artifact" not in text
     assert artifact.content["raw"] == b"swpc"
 
 

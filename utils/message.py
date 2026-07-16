@@ -8,7 +8,6 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Literal
 
-from langchain.messages import AIMessage
 from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.exception import ActionFailed
@@ -682,14 +681,6 @@ async def sanitize_outgoing_text(content: str | None) -> str | None:
         logger.warning(f"⚠️ 模型输出命中文本风险审核，已拦截: {categories}")
         return OUTPUT_RISK_BLOCKED_MESSAGE
     return content
-
-
-async def sanitize_outgoing_message(raw: Any) -> Any:
-    content = outgoing_message_content(raw)
-    sanitized = await sanitize_outgoing_text(content)
-    if sanitized == content:
-        return raw
-    return AIMessage(content=sanitized)
 
 
 async def _markdown_to_image_with_retry(content: str) -> bytes | None:

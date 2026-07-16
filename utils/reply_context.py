@@ -31,13 +31,6 @@ def reply_seq_from_segments(segments: list[dict]) -> int | None:
     return None
 
 
-def strip_reply_marker(text: str, reply_seq: int) -> str:
-    marker = f"[回复消息:{reply_seq}]"
-    if text.startswith(marker):
-        return text[len(marker) :].lstrip()
-    return text.replace(marker, "", 1).lstrip()
-
-
 def _sender_name_from_milky_message(message) -> str:
     if getattr(message, "group_member", None) and message.group_member.nickname:
         return message.group_member.nickname

@@ -197,7 +197,7 @@ frontier/
 ├── scripts/            # 维护脚本
 ├── test/               # pytest / nonebug 测试
 ├── docs/               # 设计文档和实现计划
-├── cache/              # 运行时缓存、sandbox、staged artifacts
+├── cache/              # 运行时缓存和 sandbox
 ├── frontier.db         # 默认 SQLite 数据库
 ├── env.toml.example
 ├── mcp.json.example

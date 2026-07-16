@@ -7,7 +7,7 @@ from langchain_core.tools import BaseTool
 from .mcp_client import mcp_get_tools
 
 # 跳过不应暴露给 Agent 的模块
-_EXCLUDED_MODULES = {"__init__", "mcp_client", "artifact_bridge"}
+_EXCLUDED_MODULES = {"__init__", "mcp_client"}
 
 _SUBAGENT_GROUPS = ("astro", "earth", "media", "memory", "divination", "external")
 _RESTRICTED_GROUPS = ("restricted",)

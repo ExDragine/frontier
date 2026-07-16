@@ -1702,8 +1702,6 @@ async def test_agent_startup_only_cleans_cached_files(monkeypatch):
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_AUTO_CLEANUP", True)
-    monkeypatch.setattr(agent, "cleanup_expired_staged_artifacts", lambda: 0)
-
     await agent.on_startup()
 
     assert calls == ["attachments"]

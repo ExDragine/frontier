@@ -8,7 +8,6 @@ import os
 import posixpath
 import time
 import zoneinfo
-from contextlib import asynccontextmanager
 from functools import lru_cache
 
 from sqlalchemy import Engine, event, inspect, text
@@ -28,26 +27,6 @@ logger = logging.getLogger(__name__)
 async def _run_in_thread(func, *args, **kwargs):
     """将同步数据库操作放入线程池执行，避免阻塞 asyncio 事件循环。"""
     return await asyncio.to_thread(func, *args, **kwargs)
-
-
-@asynccontextmanager
-async def async_session_scope(engine: Engine):
-    """异步 Session 上下文管理器，自动处理线程调度和提交。
-
-    用法:
-        async with async_session_scope(engine) as session:
-            result = session.exec(select(Model).where(...)).all()
-    """
-    session = Session(engine)
-
-    async def _execute_sync(fn, *a, **kw):
-        if _engine_uses_memory_database(engine):
-            return fn(*a, **kw)
-        return await _run_in_thread(fn, *a, **kw)
-
-    yield session
-    await _execute_sync(lambda: (session.commit(), None) if session.is_active else None)
-    await _execute_sync(session.close)
 
 
 def _engine_uses_memory_database(engine: Engine) -> bool:

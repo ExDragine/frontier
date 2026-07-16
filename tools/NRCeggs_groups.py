@@ -124,13 +124,6 @@ def _check_compatible(danzu1: str, danzu2: str) -> bool:
     return bool(_parse_danzu_ids(danzu1) & _parse_danzu_ids(danzu2))
 
 
-def _find_common_groups(danzu1: str, danzu2: str) -> list[int]:
-    """找出两个精灵共有的蛋组编号。"""
-    ids1 = _parse_danzu_ids(danzu1)
-    ids2 = _parse_danzu_ids(danzu2)
-    return sorted(ids1 & ids2)
-
-
 def _split_name(name: str) -> tuple[str, str]:
     """将精灵名称拆分为正式名称和括号备注。"""
     for left, right in (("（", "）"), ("(", ")")):

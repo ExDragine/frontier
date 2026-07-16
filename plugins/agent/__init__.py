@@ -34,7 +34,6 @@ from utils.message import (
 )
 from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments
 from utils.reply_context import build_reply_context, reply_seq_from_segments
-from utils.staged_artifacts import cleanup_expired_staged_artifacts
 
 messages_db = MessageDatabase()
 f_cognitive = FrontierCognitive()
@@ -232,14 +231,6 @@ async def on_startup():
                 logger.info("已清理过期消息附件: %s", cleaned_attachments)
         except Exception as exc:
             logger.warning("清理过期消息附件失败: %s: %s", type(exc).__name__, exc)
-    try:
-        cleaned_artifacts = cleanup_expired_staged_artifacts()
-        if cleaned_artifacts:
-            logger.info("已清理过期 staged artifacts: %s", cleaned_artifacts)
-    except Exception as exc:
-        logger.warning("清理过期 staged artifacts 失败: %s: %s", type(exc).__name__, exc)
-
-
 @common.handle()
 async def handle_common(event: MessageEvent):  # noqa: C901
     if EnvConfig.AGENT_MODULE_ENABLED is False:

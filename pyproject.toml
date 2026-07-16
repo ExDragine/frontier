@@ -23,7 +23,6 @@ dependencies = [
   "httpx2[http2]",
   "imageio-ffmpeg",
   "gitpython",
-  "pypinyin",
   "sqlmodel",
   "sqlalchemy",
   "markdown-it-py",

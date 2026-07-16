@@ -74,7 +74,6 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `signal_llm.py` | 轻量结构化 LLM 调用，用于回复门控、浏览器捕获意图等判断 |
 | `reply_context.py` | 引用消息解析、Milky 原消息获取、引用图片下载、转发消息重建 |
 | `message_normalizer.py` | 消息段归一化，展开合并转发 derived messages |
-| `staged_artifacts.py` | 将工具产出的媒体工件暂存到 `cache/staged_artifacts` 并支持 ID 回传 |
 | `markdown_render.py` | Markdown/HTML → 图片，普通文本降级，适配 QQ 文本/图片发送 |
 | `browser_capture.py` | Playwright 截图/录屏/页面数据提取，带浏览器重启和超时处理 |
 | `paint_service.py` / `video_service.py` | 共享图片和视频生成服务，供命令和 Agent 工具复用 |
@@ -101,7 +100,6 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - 新工具模块要放在 `tools/` 下，用 `@tool` 装饰函数。
 - 如需指定分组，更新 `tools/__init__.py` 的 `_TOOL_MODULE_GROUPS`。
 - `response_format="content_and_artifact"` 的工具可返回 `UniMessage` 工件，最终由 `extract_uni_messages()` 和 `send_artifacts()` 发送。
-- `artifact_bridge.py` 被自动扫描排除，不要误以为所有测试工具都会暴露给主 Agent。
 
 ---
 
