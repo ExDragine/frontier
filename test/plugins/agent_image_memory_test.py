@@ -137,7 +137,8 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
     assert captured["user_text"] == "hi\n[视频]"
     current_content = captured["messages"][-1]["content"]
     assert "[图片]" not in current_content[0]["text"]
-    assert current_content[1]["type"] == "image_url"
+    assert current_content[1] == {"type": "text", "text": "以下图片来自当前消息："}
+    assert current_content[2]["type"] == "image_url"
 
 
 @pytest.mark.asyncio
@@ -603,6 +604,9 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
         async def send_group_message_reaction(self, **_kwargs):
             return None
 
+        async def get_message(self, **_kwargs):
+            return types.SimpleNamespace(segments=[{"type": "text", "data": {"text": "原始消息内容"}}])
+
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
@@ -655,7 +659,97 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
 
 
 @pytest.mark.asyncio
-async def test_agent_fetches_missing_quoted_image_from_milky(monkeypatch):  # noqa: C901
+async def test_rejected_reply_does_not_resolve_quoted_images(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    calls = {"agent": 0, "image_lookup": 0}
+
+    class DummyMessagesDb:
+        async def insert(self, **_kwargs):
+            return None
+
+        async def prepare_message(self, *_args, **_kwargs):
+            return []
+
+        async def select_by_msg_id(self, *, msg_id, group_id):
+            assert (msg_id, group_id) == (900, 123)
+            return types.SimpleNamespace(
+                time=500,
+                msg_id=900,
+                user_id=111,
+                group_id=123,
+                user_name="Alice",
+                role="user",
+                content="[图片]",
+                raw_segments_json=None,
+                normalized_version=agent.NORMALIZED_VERSION,
+                normalized_status="complete",
+            )
+
+        async def select_image_attachments_by_msg_time(self, _msg_time):
+            calls["image_lookup"] += 1
+            raise AssertionError("网关拒绝后不应解析引用图片")
+
+    class DummyCognitive:
+        async def chat_agent(self, *_args, **_kwargs):
+            calls["agent"] += 1
+            raise AssertionError("网关拒绝后不应调用 Agent")
+
+    async def fake_message_gateway(_event, _messages):
+        return False
+
+    async def fake_stage_message_files(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "get_bot", lambda: types.SimpleNamespace())
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "stage_message_files", fake_stage_message_files)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=901,
+        sender_id=456,
+        time=0,
+        segments=[
+            {"type": "reply", "data": {"message_seq": 900}},
+            {"type": "text", "data": {"text": "这张图是什么？"}},
+        ],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="Bob",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert calls == {"agent": 0, "image_lookup": 0}
+
+
+@pytest.mark.asyncio
+async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -689,10 +783,11 @@ async def test_agent_fetches_missing_quoted_image_from_milky(monkeypatch):  # no
             )
 
         async def select_image_attachments_by_msg_time(self, _msg_time):
-            return [types.SimpleNamespace(id=1, file_name="500_0.jpg", physical_path="cache/images/111/500_0.jpg")]
+            return []
 
-        def load_attachment_files(self, _records):
-            return [], 1
+        def load_attachment_files(self, records):
+            assert records == []
+            return [], 0
 
     class DummyCognitive:
         async def chat_agent(self, messages, *_args, **_kwargs):
@@ -799,8 +894,10 @@ async def test_agent_fetches_missing_quoted_image_from_milky(monkeypatch):  # no
     assert captured["restored_images"][0]["images"] == [b"quoted-image"]
     current_content = captured["messages"][-1]["content"]
     assert current_content[0]["type"] == "text"
-    assert "用户(Alice): [图片]" in current_content[0]["text"]
-    assert current_content[1]["type"] == "image_url"
+    assert "[图片]" not in current_content[0]["text"]
+    assert "[下方已附加引用图片 1 张]" in current_content[0]["text"]
+    assert current_content[1] == {"type": "text", "text": "以下图片来自上面的引用消息："}
+    assert current_content[2]["type"] == "image_url"
 
 
 @pytest.mark.asyncio
@@ -901,7 +998,7 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
 
     context_a = agent.AgentRequestContext(
         bot=None,
-        event=types.SimpleNamespace(self_id="1"),
+        event=types.SimpleNamespace(self_id="1", get_plaintext=lambda: "first"),
         user_id="456",
         user_name="Bob",
         event_id=1,
@@ -914,7 +1011,7 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
     )
     context_b = agent.AgentRequestContext(
         bot=None,
-        event=types.SimpleNamespace(self_id="1"),
+        event=types.SimpleNamespace(self_id="1", get_plaintext=lambda: "second"),
         user_id="456",
         user_name="Bob",
         event_id=2,

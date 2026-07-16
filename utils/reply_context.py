@@ -1,5 +1,6 @@
 import importlib
 import json
+import re
 
 from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
@@ -45,12 +46,21 @@ def _sender_name_from_milky_message(message) -> str:
     return str(message.sender_id)
 
 
+def _strip_resolved_image_markers(text: str, image_count: int) -> str:
+    """移除已经作为多模态内容附加的图片标记。"""
+    cleaned = re.sub(r"\[图片(?::[^\]\n]*)?\]", "", text, count=image_count)
+    return "\n".join(line.rstrip() for line in cleaned.splitlines() if line.strip()).strip()
+
+
 def _format_quote(role: str, name: str | None, text: str, image_count: int, missing_images: int) -> str:
+    handled_images = image_count + missing_images
+    if handled_images:
+        text = _strip_resolved_image_markers(text, handled_images)
     content_parts = []
     if text.strip():
         content_parts.append(text.strip())
     if image_count:
-        content_parts.append(" ".join("[图片]" for _ in range(image_count)))
+        content_parts.append(f"[下方已附加引用图片 {image_count} 张]")
     if missing_images:
         content_parts.append(" ".join("[引用消息包含图片，但图片已失效]" for _ in range(missing_images)))
     content = "\n".join(content_parts) if content_parts else "[空消息]"
@@ -248,19 +258,26 @@ async def build_reply_context(  # noqa: C901
     reply_seq: int,
     group_id: int | None,
     messages_db: MessageDatabase,
+    *,
+    load_images: bool = True,
 ) -> tuple[str, list[bytes]]:
     quoted = await messages_db.select_by_msg_id(msg_id=reply_seq, group_id=group_id)
     if quoted:
         if _quoted_needs_normalization_rebuild(quoted):
             quoted = await _rebuild_quoted_normalization(bot, event, quoted, reply_seq, messages_db)
+        if not load_images:
+            return _format_quote(quoted.role, quoted.user_name or str(quoted.user_id), quoted.content, 0, 0), []
+
         image_records = await messages_db.select_image_attachments_by_msg_time(quoted.time)
         local_images, missing_images = messages_db.load_attachment_files(image_records)
         fetched_images: list[bytes] = []
-        if missing_images:
+        fetched_missing = 0
+        # 没有附件记录不代表引用消息没有图片：未触发 Agent 的群消息只会
+        # 存储文本占位符，因此仍需回源 Milky。损坏缓存同样以远端消息为准。
+        if not image_records or missing_images:
             milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
             if milky_message:
-                _quoted_text, fetched_images, milky_missing = await _extract_milky_message_content(bot, milky_message)
-                missing_images = milky_missing + max(0, missing_images - len(fetched_images))
+                _quoted_text, fetched_images, fetched_missing = await _extract_milky_message_content(bot, milky_message)
                 if fetched_images and EnvConfig.IMAGE_ENABLED:
                     try:
                         await messages_db.insert_images(
@@ -271,7 +288,16 @@ async def build_reply_context(  # noqa: C901
                         )
                     except Exception as e:
                         logger.warning(f"⚠️ 重建引用图片缓存失败 message_seq={reply_seq}: {type(e).__name__}: {e}")
-        images = local_images + fetched_images
+            elif not image_records:
+                missing_images = len(re.findall(r"\[图片(?::[^\]\n]*)?\]", quoted.content))
+        if fetched_images:
+            # 回源会返回引用消息中的完整图片集合，不能再与部分本地缓存拼接，
+            # 否则已有图片会重复传给模型。
+            images = fetched_images
+            missing_images = fetched_missing
+        else:
+            images = local_images
+            missing_images += fetched_missing
         return (
             _format_quote(
                 quoted.role, quoted.user_name or str(quoted.user_id), quoted.content, len(images), missing_images
@@ -285,7 +311,10 @@ async def build_reply_context(  # noqa: C901
 
     normalized = await normalize_segments(bot, milky_message.segments)
     quoted_text = normalized.content
-    _image_text, images, missing_images = await _extract_milky_message_content(bot, milky_message)
+    if load_images:
+        _image_text, images, missing_images = await _extract_milky_message_content(bot, milky_message)
+    else:
+        images, missing_images = [], 0
     role = "assistant" if str(milky_message.sender_id) == str(event.self_id) else "user"
     name = _sender_name_from_milky_message(milky_message)
     quoted_time = milky_message.time * 1000 if milky_message.time < 10_000_000_000 else milky_message.time
@@ -314,7 +343,7 @@ async def build_reply_context(  # noqa: C901
             )
     except Exception as e:
         logger.warning(f"⚠️ 写入引用消息记录失败 message_seq={reply_seq}: {type(e).__name__}: {e}")
-    if images and EnvConfig.IMAGE_ENABLED:
+    if load_images and images and EnvConfig.IMAGE_ENABLED:
         try:
             await messages_db.insert_images(
                 msg_time=quoted_time,

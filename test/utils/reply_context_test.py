@@ -151,7 +151,50 @@ async def test_build_reply_context_loads_quoted_images_from_attachments(monkeypa
 
     assert images == [b"quoted-image"]
     assert "用户(Alice): 看图" in quote_text
-    assert "[图片]" in quote_text
+    assert "[图片]" not in quote_text
+    assert "[下方已附加引用图片 1 张]" in quote_text
+
+
+@pytest.mark.asyncio
+async def test_build_reply_context_marks_unavailable_unindexed_image():
+    class DummyMessagesDb:
+        async def select_by_msg_id(self, *, msg_id, group_id):
+            assert (msg_id, group_id) == (900, 123)
+            return types.SimpleNamespace(
+                time=500,
+                msg_id=900,
+                user_id=111,
+                group_id=123,
+                user_name="Alice",
+                role="user",
+                content="[图片:照片]",
+                raw_segments_json=None,
+                normalized_version=NORMALIZED_VERSION,
+                normalized_status="complete",
+            )
+
+        async def select_image_attachments_by_msg_time(self, _msg_time):
+            return []
+
+        def load_attachment_files(self, records):
+            assert records == []
+            return [], 0
+
+    class DummyBot:
+        async def get_message(self, **_kwargs):
+            raise RuntimeError("quoted message expired")
+
+    event = types.SimpleNamespace(
+        self_id="1",
+        reply=None,
+        data=types.SimpleNamespace(message_scene="group", peer_id=123),
+    )
+
+    quote_text, images = await build_reply_context(DummyBot(), event, 900, 123, DummyMessagesDb())
+
+    assert images == []
+    assert "[图片:照片]" not in quote_text
+    assert "[引用消息包含图片，但图片已失效]" in quote_text
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 # ruff: noqa: E402
 
+import asyncio
 import base64
 import os
 import time
@@ -56,6 +57,7 @@ class AgentRequestContext:
     quoted_images: list[bytes]
     images: list[bytes]
     videos: list[bytes]
+    quoted_text: str = ""
 
 
 def _agent_workspace_key(user_id: str, group_id: int | None) -> str:
@@ -101,6 +103,42 @@ async def _private_chat_reporter(event: ProgressEvent) -> None:
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
     messages = list(history_messages or [])
+    combined_text = f"{context.text}{context.quoted_text}".strip()
+    current_content: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": str(
+                {
+                    "metadata": build_message_metadata(
+                        timestamp_ms=context.msg_time,
+                        user_id=context.user_id,
+                        group_id=context.group_id,
+                        user_name=context.user_name,
+                    ),
+                    "is_current": True,
+                    "content": combined_text,
+                }
+            ),
+        }
+    ]
+    if context.quoted_images:
+        current_content.append({"type": "text", "text": "以下图片来自上面的引用消息："})
+        current_content.extend(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"},
+            }
+            for image in context.quoted_images
+        )
+    if context.images:
+        current_content.append({"type": "text", "text": "以下图片来自当前消息："})
+        current_content.extend(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"},
+            }
+            for image in context.images
+        )
     messages += [
         {
             "role": "user",
@@ -108,30 +146,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         },
         {
             "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": str(
-                        {
-                            "metadata": build_message_metadata(
-                                timestamp_ms=context.msg_time,
-                                user_id=context.user_id,
-                                group_id=context.group_id,
-                                user_name=context.user_name,
-                            ),
-                            "is_current": True,
-                            "content": context.text,
-                        }
-                    ),
-                }
-            ]
-            + [
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}"},
-                }
-                for image in context.quoted_images + context.images
-            ],
+            "content": current_content,
         },
     ]
     capability = EnvConfig.AGENT_CAPABILITY
@@ -247,19 +262,26 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     normalized_message = await normalize_segments(bot, event.data.segments)
     if normalized_message.content:
         text = normalized_message.content
+    current_text = text
 
-    quoted_images: list[bytes] = []
-    if reply_seq := reply_seq_from_segments(event.data.segments):
-        quote_text, quoted_images = await build_reply_context(bot, event, reply_seq, group_id, messages_db)
-        if quote_text:
-            text += quote_text
-    if video_downloaders and "[视频" not in text:
-        text = f"{text}\n{' '.join('[视频]' for _ in video_downloaders)}".strip()
-    if not text:
+    reply_seq = reply_seq_from_segments(event.data.segments)
+    quote_text = ""
+    if reply_seq:
+        quote_text, _ = await build_reply_context(
+            bot,
+            event,
+            reply_seq,
+            group_id,
+            messages_db,
+            load_images=False,
+        )
+    if video_downloaders and "[视频" not in current_text:
+        current_text = f"{current_text}\n{' '.join('[视频]' for _ in video_downloaders)}".strip()
+    if not current_text and not quote_text:
         if not event.is_tome():
             await common.finish()
         else:
-            text = ""
+            current_text = ""
 
     msg_time = int(time.time() * 1000)
     staged_files = await stage_message_files(
@@ -271,7 +293,8 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         group_id=group_id,
     )
     if staged_file_text := format_staged_message_files(staged_files):
-        text = f"{text}\n{staged_file_text}".strip()
+        current_text = f"{current_text}\n{staged_file_text}".strip()
+    text = f"{current_text}{quote_text}".strip()
 
     # ── Phase 2: 存储消息文本/文件路径 + 快速网关检查 ──
     await messages_db.insert(
@@ -307,9 +330,16 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     if not await message_gateway(event, messages):
         await common.finish()
 
-    # ── Phase 3: 网关通过后才下载图片/音频/视频 ──
-    images, _audio, videos = await download_media(image_downloaders, audio_downloaders, video_downloaders)
-    agent_text = _remove_attached_image_placeholders(text, len(images))
+    # ── Phase 3: 网关通过后才下载当前消息及引用消息中的媒体 ──
+    media_task = download_media(image_downloaders, audio_downloaders, video_downloaders)
+    if reply_seq:
+        quote_task = build_reply_context(bot, event, reply_seq, group_id, messages_db)
+        (images, _audio, videos), (agent_quote_text, quoted_images) = await asyncio.gather(media_task, quote_task)
+    else:
+        images, _audio, videos = await media_task
+        agent_quote_text, quoted_images = "", []
+
+    agent_text = _remove_attached_image_placeholders(current_text, len(images))
 
     if images and EnvConfig.IMAGE_ENABLED:
         try:
@@ -319,7 +349,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
 
     # ── Phase 4: 内容安全 + Agent 处理 ──
     if EnvConfig.CONTENT_CHECK_ENABLED:
-        risk_check = await message_check(text, images)
+        risk_check = await message_check(f"{agent_text}{agent_quote_text}".strip(), quoted_images + images)
     else:
         risk_check = "Safe"
     match risk_check:
@@ -351,6 +381,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         quoted_images=quoted_images,
         images=images,
         videos=videos,
+        quoted_text=agent_quote_text,
     )
     thread_id = _agent_thread_id(user_id, group_id)
     from utils.ens_gate import _ens_caller_allowed, _ens_prefix
