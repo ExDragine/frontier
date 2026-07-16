@@ -116,28 +116,40 @@ def _provider_profile(model: str, provider: str | None) -> tuple[str, dict]:
 def _normalize_capabilities(capabilities: object) -> set[str]:
     if not isinstance(capabilities, list):
         return set()
-    return {
+    normalized = {
         capability.strip().lower() for capability in capabilities if isinstance(capability, str) and capability.strip()
     }
+    return {"vision" if capability == "image" else capability for capability in normalized}
 
 
-def _model_specific_capabilities(model: str) -> set[str]:
-    if model == EnvConfig.BASIC_MODEL:
-        return _normalize_capabilities(EnvConfig.BASIC_MODEL_CAPABILITIES)
-    if model == EnvConfig.ADVAN_MODEL:
-        return _normalize_capabilities(EnvConfig.ADVAN_MODEL_CAPABILITIES)
-    if model == EnvConfig.SIGNAL_MODEL:
-        return _normalize_capabilities(EnvConfig.SIGNAL_MODEL_CAPABILITIES)
-    return set()
+def _model_specific_capabilities(model: str, role: str | None = None) -> set[str]:
+    role_capabilities = {
+        "basic": (EnvConfig.BASIC_MODEL, EnvConfig.BASIC_MODEL_CAPABILITIES),
+        "signal": (EnvConfig.SIGNAL_MODEL, EnvConfig.SIGNAL_MODEL_CAPABILITIES),
+        "advanced": (EnvConfig.ADVAN_MODEL, EnvConfig.ADVAN_MODEL_CAPABILITIES),
+    }
+    if role is not None:
+        configured = role_capabilities.get(role)
+        if configured is None:
+            raise ValueError(f"未知模型角色: {role!r}")
+        configured_model, capabilities = configured
+        return _normalize_capabilities(capabilities) if model == configured_model else set()
+
+    capabilities: set[str] = set()
+    for configured_model, configured_capabilities in role_capabilities.values():
+        if model == configured_model:
+            capabilities.update(_normalize_capabilities(configured_capabilities))
+    return capabilities
 
 
-def get_model_capabilities(model: str) -> set[str]:
-    capabilities = _model_specific_capabilities(model)
+def get_model_capabilities(model: str, *, role: str | None = None) -> set[str]:
+    capabilities = _model_specific_capabilities(model, role)
     return capabilities or {"text"}
 
 
-def model_supports(model: str, capability: str) -> bool:
-    return capability.strip().lower() in get_model_capabilities(model)
+def model_supports(model: str, capability: str, *, role: str | None = None) -> bool:
+    requested = _normalize_capabilities([capability])
+    return bool(requested & get_model_capabilities(model, role=role))
 
 
 def provider_uses_responses_api(model: str, provider: str | None = None) -> bool:

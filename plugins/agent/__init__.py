@@ -75,6 +75,23 @@ def _group_member_role(event: MessageEvent) -> str | None:
     return str(role)
 
 
+def _remove_attached_image_placeholders(text: str, attached_images: int) -> str:
+    """移除已作为视觉内容附加的当前消息图片占位行。"""
+    if attached_images <= 0 or not text:
+        return text
+
+    remaining = attached_images
+    lines: list[str] = []
+    for line in text.splitlines():
+        marker = line.strip()
+        is_image_marker = marker == "[图片]" or (marker.startswith("[图片:") and marker.endswith("]"))
+        if remaining and is_image_marker:
+            remaining -= 1
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
 async def _private_chat_reporter(event: ProgressEvent) -> None:
     """私聊场景的进度事件消费者 —— 向用户发送当前 Agent 正在做什么。"""
     match event.type:
@@ -292,6 +309,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
 
     # ── Phase 3: 网关通过后才下载图片/音频/视频 ──
     images, _audio, videos = await download_media(image_downloaders, audio_downloaders, video_downloaders)
+    agent_text = _remove_attached_image_placeholders(text, len(images))
 
     if images and EnvConfig.IMAGE_ENABLED:
         try:
@@ -329,7 +347,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         event_id=event_id,
         group_id=group_id,
         msg_time=msg_time,
-        text=text,
+        text=agent_text,
         quoted_images=quoted_images,
         images=images,
         videos=videos,

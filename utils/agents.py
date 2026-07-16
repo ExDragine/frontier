@@ -118,7 +118,13 @@ async def _detect_browser_capture_intent(user_text: str | None) -> set[str]:
     return tools
 
 
-def _configured_model_route(model: str) -> dict[str, str]:
+def _configured_model_route(model: str, role: Literal["basic", "signal", "advanced"] | None = None) -> dict[str, str]:
+    if role == "basic":
+        return {"provider": EnvConfig.BASIC_MODEL_PROVIDER}
+    if role == "signal":
+        return {"provider": EnvConfig.SIGNAL_MODEL_PROVIDER}
+    if role == "advanced":
+        return {"provider": EnvConfig.ADVAN_MODEL_PROVIDER}
     if model == EnvConfig.BASIC_MODEL:
         return {"provider": EnvConfig.BASIC_MODEL_PROVIDER}
     if model == EnvConfig.ADVAN_MODEL:
@@ -155,8 +161,13 @@ def _filter_content_parts_for_text_model(content: list) -> list:
     return [{"type": "text", "text": VISION_OMITTED_NOTICE}, *filtered]
 
 
-def _filter_messages_for_model_capabilities(messages: list[dict], model: str) -> list[dict]:
-    if model_supports(model, "vision"):
+def _filter_messages_for_model_capabilities(
+    messages: list[dict],
+    model: str,
+    *,
+    role: Literal["basic", "signal", "advanced"] | None = None,
+) -> list[dict]:
+    if model_supports(model, "vision", role=role):
         return messages
     filtered_messages = []
     for message in messages:
@@ -297,7 +308,8 @@ async def _collect_progress(stream, reporter: ProgressReporter | None) -> None: 
 async def assistant_agent(
     system_prompt: str = "",
     user_prompt: str = "",
-    use_model: str = EnvConfig.BASIC_MODEL,
+    use_model: str | None = None,
+    model_role: Literal["basic", "signal", "advanced"] | None = None,
     tools=None,
     response_format=None,
     middleware=None,
@@ -306,7 +318,10 @@ async def assistant_agent(
     temperature: float | None = None,
     model_kwargs: dict | None = None,
 ) -> Any:
-    route = _configured_model_route(use_model)
+    if use_model is None:
+        use_model = EnvConfig.BASIC_MODEL
+        model_role = model_role or "basic"
+    route = _configured_model_route(use_model, model_role)
     llm_kwargs: dict[str, Any] = {
         "model": use_model,
         "streaming": False,
@@ -337,7 +352,7 @@ async def assistant_agent(
                     "content": _build_user_content(
                         user_prompt,
                         images,
-                        supports_vision=model_supports(use_model, "vision"),
+                        supports_vision=model_supports(use_model, "vision", role=model_role),
                     ),
                 }
             ]
@@ -557,7 +572,11 @@ class FrontierCognitive:
             model_kwargs["reasoning_effort"] = capability
             model_kwargs["verbosity"] = "low"
         model = create_llm(**model_kwargs)
-        messages = _filter_messages_for_model_capabilities(messages, EnvConfig.ADVAN_MODEL)
+        messages = _filter_messages_for_model_capabilities(
+            messages,
+            EnvConfig.ADVAN_MODEL,
+            role="advanced",
+        )
         working_dir = getattr(self, "working_dir", os.path.join(os.getcwd(), "cache", "sandbox"))
         thread_id = thread_id_override or _agent_thread_id(user_id, group_id)
         if not isinstance(thread_id, uuid.UUID):

@@ -294,6 +294,26 @@ def test_model_capabilities_use_model_specific_config(monkeypatch):
     assert factory.model_supports("basic-model", "vision") is True
 
 
+def test_model_capabilities_treat_image_as_vision(monkeypatch):
+    monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL", "basic-model")
+    monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL_CAPABILITIES", ["text", "image"])
+
+    assert factory.get_model_capabilities("basic-model", role="basic") == {"text", "vision"}
+    assert factory.model_supports("basic-model", "vision", role="basic") is True
+    assert factory.model_supports("basic-model", "image", role="basic") is True
+
+
+def test_model_capabilities_are_resolved_by_role_for_shared_model(monkeypatch):
+    monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL", "shared-model")
+    monkeypatch.setattr(factory.EnvConfig, "ADVAN_MODEL", "shared-model")
+    monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL_CAPABILITIES", ["text"])
+    monkeypatch.setattr(factory.EnvConfig, "ADVAN_MODEL_CAPABILITIES", ["text", "vision"])
+
+    assert factory.model_supports("shared-model", "vision", role="basic") is False
+    assert factory.model_supports("shared-model", "vision", role="advanced") is True
+    assert factory.model_supports("shared-model", "vision") is True
+
+
 def test_model_capabilities_use_signal_model_config(monkeypatch):
     monkeypatch.setattr(factory.EnvConfig, "SIGNAL_MODEL", "signal-model")
     monkeypatch.setattr(factory.EnvConfig, "SIGNAL_MODEL_CAPABILITIES", ["text"])

@@ -193,6 +193,26 @@ def test_filter_messages_for_text_only_model_removes_image_parts(monkeypatch):
     assert messages[0]["content"][1]["type"] == "image_url"
 
 
+def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
+    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL", "shared-model")
+    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL", "shared-model")
+    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_CAPABILITIES", ["text"])
+    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_CAPABILITIES", ["text", "vision"])
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "hello"},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,abc"}},
+            ],
+        }
+    ]
+
+    filtered = agents._filter_messages_for_model_capabilities(messages, "shared-model", role="advanced")
+
+    assert filtered == messages
+
+
 def test_frontier_cognitive_uses_main_tools(monkeypatch):
     monkeypatch.setattr(agents.agent_tools, "all_tools", ["all-tool"], raising=False)
     monkeypatch.setattr(agents.agent_tools, "main_tools", ["main-tool"], raising=False)

@@ -15,6 +15,18 @@ async def _noop(*_args, **_kwargs):
     return None
 
 
+def test_attached_image_placeholders_only_removed_for_successful_downloads(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    text = "查看图片\n[图片]\n[图片:动画表情]"
+
+    assert agent._remove_attached_image_placeholders(text, 1) == "查看图片\n[图片:动画表情]"
+    assert agent._remove_attached_image_placeholders(text, 0) == text
+
+
 @pytest.mark.asyncio
 async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # noqa: C901
     import nonebot
@@ -37,10 +49,11 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
             return []
 
     class DummyCognitive:
-        async def chat_agent(self, *_args, **kwargs):
+        async def chat_agent(self, messages, *_args, **kwargs):
+            captured["messages"] = messages
             captured["image_inputs"] = kwargs.get("image_inputs")
             captured["video_inputs"] = kwargs.get("video_inputs")
-            captured["query_text"] = kwargs.get("query_text")
+            captured["user_text"] = kwargs.get("user_text")
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
 
     class DummyBot:
@@ -81,7 +94,18 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
         message_seq=1,
         sender_id=456,
         time=0,
-        segments=[{"type": "text", "data": {"text": "hi"}}],
+        segments=[
+            {"type": "text", "data": {"text": "hi"}},
+            {
+                "type": "image",
+                "data": {
+                    "resource_id": "image-resource",
+                    "temp_url": "https://example.com/image.jpg",
+                    "width": 100,
+                    "height": 100,
+                },
+            },
+        ],
         friend=None,
         group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
         group_member=Member(
@@ -110,7 +134,10 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
     assert calls["schedule_summary"] == 0
     assert captured["image_inputs"] == [b"image-bytes"]
     assert captured["video_inputs"] == [b"video-bytes"]
-    assert captured["query_text"] == "hi\n[视频]"
+    assert captured["user_text"] == "hi\n[视频]"
+    current_content = captured["messages"][-1]["content"]
+    assert "[图片]" not in current_content[0]["text"]
+    assert current_content[1]["type"] == "image_url"
 
 
 @pytest.mark.asyncio
