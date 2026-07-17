@@ -94,6 +94,40 @@ def _daily_news_tools(available_tools=None) -> list:
     return search_tools or available_tools
 
 
+def _is_exa_rate_limit_error(exc: BaseException) -> bool:
+    """判断异常链是否来自 Exa MCP 的 429 限流。"""
+    pending = [exc]
+    seen: set[int] = set()
+    messages: list[str] = []
+    rate_limited = False
+
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        messages.append(str(current).lower())
+
+        status_code = getattr(current, "status_code", None)
+        response = getattr(current, "response", None)
+        if status_code == 429 or getattr(response, "status_code", None) == 429:
+            rate_limited = True
+
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(current.exceptions)
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+
+    error_text = "\n".join(messages)
+    is_exa = "web_search_exa" in error_text or "mcp.exa.ai" in error_text or "exa mcp" in error_text
+    is_rate_limit = rate_limited or any(
+        marker in error_text for marker in ("429", "too many requests", "rate limit", "rate_limit")
+    )
+    return is_exa and is_rate_limit
+
+
 def _source_text(value) -> str:
     if isinstance(value, list):
         return "、".join(str(source).strip() for source in value if str(source).strip())
@@ -192,12 +226,18 @@ async def build_daily_news_artifacts(
     _now_cn, today, period, report_time = daily_news_context(now_cn)
     system_prompt, user_prompt = daily_news_research_prompts(today, period, report_time, recent_titles)
 
-    material = await assistant_agent(
-        system_prompt,
-        user_prompt,
-        use_model=EnvConfig.ADVAN_MODEL,
-        tools=_daily_news_tools(),
-    )
+    try:
+        material = await assistant_agent(
+            system_prompt,
+            user_prompt,
+            use_model=EnvConfig.ADVAN_MODEL,
+            tools=_daily_news_tools(),
+        )
+    except Exception as exc:
+        if not _is_exa_rate_limit_error(exc):
+            raise
+        logger.warning("Exa MCP 触发限流，本次每日新闻跳过: %s", exc)
+        return None
     if not material:
         logger.warning("每日新闻素材包为空，跳过推送")
         return None
@@ -444,7 +484,11 @@ async def daily_news(**kwargs):  # noqa: C901
     else:
         artifacts = await build_daily_news_artifacts()
     if not artifacts:
-        return
+        return TaskRunResult(
+            groups_sent=[],
+            messages_sent=0,
+            output_summary="daily_news skipped: no research material",
+        )
 
     image = await html_to_image(artifacts.html, css=load_daily_news_css())
     message = UniMessage().image(raw=image)

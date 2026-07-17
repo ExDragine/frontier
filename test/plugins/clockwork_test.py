@@ -434,6 +434,39 @@ async def test_build_daily_news_artifacts_returns_material_payload_and_html(monk
 
 
 @pytest.mark.asyncio
+async def test_daily_news_skips_exa_mcp_rate_limit(monkeypatch):
+    task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
+
+    async def rate_limited_assistant_agent(*_args, **_kwargs):
+        raise RuntimeError("web_search_exa failed: 429 Too Many Requests")
+
+    async def fail_if_rendered(*_args, **_kwargs):
+        raise AssertionError("rate-limited daily news should not be rendered")
+
+    monkeypatch.setattr(task_handlers_module, "assistant_agent", rate_limited_assistant_agent)
+    monkeypatch.setattr(task_handlers_module, "html_to_image", fail_if_rendered)
+
+    result = await task_handlers_module.daily_news()
+
+    assert result.groups_sent == []
+    assert result.messages_sent == 0
+    assert result.output_summary == "daily_news skipped: no research material"
+
+
+@pytest.mark.asyncio
+async def test_daily_news_does_not_swallow_unrelated_research_error(monkeypatch):
+    task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
+
+    async def broken_assistant_agent(*_args, **_kwargs):
+        raise RuntimeError("advanced model unavailable")
+
+    monkeypatch.setattr(task_handlers_module, "assistant_agent", broken_assistant_agent)
+
+    with pytest.raises(RuntimeError, match="advanced model unavailable"):
+        await task_handlers_module.daily_news()
+
+
+@pytest.mark.asyncio
 async def test_agent_task_final_group_delivery_mentions_owner(monkeypatch):
     calls = []
     agent_calls = []
