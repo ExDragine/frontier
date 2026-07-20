@@ -26,7 +26,6 @@ class TaskManager:
     JOB_ID_TO_CONFIG_KEY = {
         "apod_everyday": "APOD_GROUP_ID",
         "earth_now": "EARTH_NOW_GROUP_ID",
-        "eq_cenc": "EARTHQUAKE_GROUP_ID",
         "eq_usgs": "EARTHQUAKE_GROUP_ID",
         "daily_news": "NEWS_SUMMARY_GROUP_ID",
         "nrc_merchant_alert": "NRC_MERCHANT_GROUP_ID",

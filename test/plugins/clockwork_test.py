@@ -33,6 +33,13 @@ ScheduledTaskMetadata = task_models_module.ScheduledTaskMetadata
 TaskRunResult = task_models_module.TaskRunResult
 
 
+def test_cenc_is_not_a_clockwork_task_anymore():
+    task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
+
+    assert "eq_cenc" not in TaskManager.JOB_ID_TO_CONFIG_KEY
+    assert not hasattr(task_handlers_module, "eq_cenc")
+
+
 class DummyScheduler:
     def __init__(self):
         self.jobs = {}

@@ -550,6 +550,7 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "sqlmodel" },
     { name = "tomlkit" },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -614,6 +615,7 @@ requires-dist = [
     { name = "torch", marker = "sys_platform != 'darwin' and extra == 'content-check'", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torchao", marker = "extra == 'content-check'" },
     { name = "transformers", marker = "extra == 'content-check'" },
+    { name = "websockets", specifier = ">=15.0.1,<16" },
 ]
 provides-extras = ["content-check"]
 

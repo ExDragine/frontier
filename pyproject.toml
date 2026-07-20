@@ -30,6 +30,7 @@ dependencies = [
   "pydantic",
   "jinja2",
   "tomlkit",
+  "websockets>=15.0.1,<16",
   "python-dotenv",
   "bcrypt",
   "pyjwt",

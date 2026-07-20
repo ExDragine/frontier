@@ -66,7 +66,7 @@ def _help_message() -> str:
         "/task trigger <job_id> cron <时间>           - 修改cron触发器\n"
         "    示例: /task trigger apod_everyday cron 20:00\n"
         "/task trigger <job_id> interval <分钟数>     - 修改interval触发器\n"
-        "    示例: /task trigger eq_cenc interval 2\n"
+        "    示例: /task trigger eq_usgs interval 5\n"
         "/task groups <job_id> set <群号1> [群号2...]  - 设置推送群组\n"
         "/task groups <job_id> add <群号>             - 添加推送群组\n"
         "/task groups <job_id> remove <群号>          - 移除推送群组\n"
