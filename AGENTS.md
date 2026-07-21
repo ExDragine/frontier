@@ -109,10 +109,13 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，Signal 判断使用 `EnvConfig.SIGNAL_MODEL`。
 - 当模型引用的供应商 `use_responses_api` 为 true 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；Chat Completions 路径会跳过这些参数。
 - 根据模型自身的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
-- 主 Agent 不直接持有记忆工具；同步 `memory-agent` 使用基础模型检索和总结当前会话历史。
+- 主 Agent 不直接持有记忆工具；同步 `memory-agent` 使用基础模型检索和总结当前会话历史。纯文本地球数据由同步 `earth-data-agent` 查询，媒体类地球工具保留在主 Agent。
+- Frontier 为四类模型 provider 注册统一 Harness Profile，关闭 Deep Agents 自动添加且工具面重复的 `general-purpose` subagent。
+- 模型目录会转换为 LangChain `ModelProfile` 注入模型实例，为 Deep Agents 提供上下文窗口、输出上限和能力元数据；目录外模型继续按未知模型降级。
+- 请求身份、群权限和 workspace 使用冻结的 `FrontierRuntimeContext`；媒体等会话数据保留在继承 `DeepAgentState` 的图状态中。
 - 构建 `CompositeBackend`：
-  - default: `cache/sandbox/workspaces/{workspace_key}`，`LocalShellBackend`
-  - `/skills/`: `cache/sandbox/skills`
+  - default: `cache/sandbox/workspaces/{workspace_key}`，只提供文件操作的 `FilesystemBackend`
+  - `/skills/`: 仓库内置 `skills/`，Agent 只读
   - `/memory/{workspace_key}/`: `cache/sandbox/memory/{workspace_key}`
 - 对每个 workspace，如果缺少 memory `AGENTS.md`，会从 `prompts/AGENTS.md` 初始化一份。
 - middleware 顺序是 `PII → ToolRetry → ModelRetry → FilesystemFileSearch → CodeInterpreter`。
@@ -123,7 +126,7 @@ Prompt 加载链：
 - `prompts/AGENTS.md` 是每个 Agent memory workspace 的基础操作规范模板，不是主对话 system prompt。
 - `prompts/reply_check.md` 用于群聊是否应主动回复的 Signal LLM 判断。
 - `prompts/daily_news.md` 用于每日新闻任务。
-- ENS 规则在 `utils/agents.py` 中有硬编码追加，并与 `prompts/ens_rules.md` 同步维护。
+- ENS 详细工作流位于只读内置 Skill `/skills/ens-weather/SKILL.md`；主提示词只保留加载入口。
 
 ---
 

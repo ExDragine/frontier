@@ -89,7 +89,7 @@ class DummyContext:
 def is_injected_tool_arg(annotation) -> bool:
     if get_origin(annotation) is not None:
         return any(is_injected_tool_arg(item) for item in get_args(annotation))
-    return getattr(annotation, "__name__", "") == "InjectedState" or annotation.__class__.__name__ == "InjectedState"
+    return getattr(annotation, "__name__", "") in {"InjectedState", "ToolRuntime"} or annotation.__class__.__name__ == "InjectedState"
 
 
 def fake_tool(name_or_callable=None, *_args, **_kwargs):

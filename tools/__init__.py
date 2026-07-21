@@ -88,9 +88,12 @@ class ModuleTools:
         # MCP 工具延迟加载，在 mcp_tools property 首次访问时才执行 asyncio.run()
         self.subagent_tools["main"].extend(self.web_tools)
 
-        # 仅将通用领域工具暴露给主 Agent；memory 工具由专用 subagent 独占。
-        for group in ("astro", "earth", "divination", "media"):
+        # 仅将通用领域工具暴露给主 Agent；memory 和纯文本 earth 查询由专用 subagent 独占。
+        for group in ("astro", "divination", "media"):
             self.subagent_tools["main"].extend(self.subagent_tools[group])
+        self.subagent_tools["main"].extend(
+            tool for tool in self.subagent_tools["earth"] if getattr(tool, "response_format", None) != "content"
+        )
 
     @property
     def mcp_tools(self):
@@ -105,6 +108,10 @@ class ModuleTools:
     @property
     def restricted_tools(self):
         return self.subagent_tools.get("restricted", [])
+
+    @property
+    def earth_query_tools(self):
+        return [tool for tool in self.subagent_tools.get("earth", []) if getattr(tool, "response_format", None) == "content"]
 
     @property
     def main_tools(self):

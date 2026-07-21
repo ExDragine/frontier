@@ -12,9 +12,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from deepagents import CompiledSubAgent, create_deep_agent
-from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
-from langchain.agents import AgentState, create_agent
+from deepagents import CompiledSubAgent, FilesystemPermission, create_deep_agent
+from deepagents.backends import CompositeBackend, FilesystemBackend
+from deepagents.graph import DeepAgentState
+from langchain.agents import create_agent
 from langchain.agents.middleware import (
     FilesystemFileSearchMiddleware,
     ModelRetryMiddleware,
@@ -28,7 +29,9 @@ from nonebot import logger
 from pydantic import BaseModel, Field, ValidationError
 
 from tools import agent_tools
+from utils.agent_context import FrontierRuntimeContext
 from utils.configs import EnvConfig
+from utils.harness_profiles import register_frontier_harness_profiles
 from utils.llm_factory import create_llm, model_supports, provider_uses_responses_api
 from utils.message import extract_message_text
 from utils.progress_messages import subagent_message as _subagent_message
@@ -48,11 +51,11 @@ class ProgressEvent:
     type: Literal[
         "thinking",  # Agent 开始思考（stream.messages 首个 LLM 消息）
         "tool_call",  # 工具开始执行（stream.tool_calls 新条目）
-        "tool_result",  # 工具执行完成（预留）
+        "tool_result",  # 工具执行完成或失败
         "subagent_start",  # 子代理启动（stream.subagents 新条目）
-        "subagent_done",  # 子代理完成（预留）
+        "subagent_done",  # 子代理完成或失败
         "text_delta",  # 段落级文本增量（预留，markdown 结构不能拆）
-        "done",  # 执行完成或出错（预留）
+        "done",  # Agent 执行完成或出错
     ]
     message: str  # 用户可读的中文描述
     detail: dict[str, Any] | None = None  # 结构化附加信息
@@ -63,7 +66,10 @@ SKILLS_BACKEND_PATH = "/skills"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MEMORY_BACKEND_PATH = "/memory"
 MEMORY_SUBAGENT_NAME = "memory-agent"
+EARTH_DATA_SUBAGENT_NAME = "earth-data-agent"
 _SHANGHAI = zoneinfo.ZoneInfo("Asia/Shanghai")
+
+register_frontier_harness_profiles()
 
 
 # 截图/录屏工具硬门控：通过 Signal LLM 判断用户原始意图，仅当用户明确想"看网页外观"时才暴露对应工具
@@ -167,6 +173,40 @@ def _build_memory_subagent() -> CompiledSubAgent:
         description=(
             "检索、核对或总结当前群聊/私聊的历史消息。用户询问之前说过什么、过去的决定、"
             "历史数据或需要基于聊天记录继续分析时，必须委托此代理。"
+        ),
+        runnable=runnable,
+    )
+
+
+def _build_earth_data_subagent() -> CompiledSubAgent:
+    """Build a query-only agent for textual earth and weather data."""
+    model = create_llm(
+        model=EnvConfig.BASIC_MODEL,
+        provider=EnvConfig.BASIC_MODEL_PROVIDER,
+        streaming=False,
+        max_retries=2,
+        timeout=300,
+    )
+    now = datetime.datetime.now(tz=_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S %Z")
+    runnable = create_agent(
+        model=model,
+        tools=list(agent_tools.earth_query_tools),
+        system_prompt=f"""你是只读的地球与气象数据查询专员。当前时间是 {now}。
+
+只处理工具能够回答的文本数据查询，例如中国地震、USGS 重大地震、雷达支持地区和火星天气：
+- 必须调用合适的工具取得数据，不得凭记忆编造时效性事实。
+- 只返回简洁结论和必要的时间、地点、震级等依据。
+- 不执行平台写操作，不生成或发送图片，也不处理超出工具范围的普通问答。
+- 工具没有结果或失败时如实说明，不自行补全。
+""",
+        middleware=[ToolRetryMiddleware(), ModelRetryMiddleware()],
+        debug=EnvConfig.AGENT_DEBUG_MODE,
+    )
+    return CompiledSubAgent(
+        name=EARTH_DATA_SUBAGENT_NAME,
+        description=(
+            "查询只返回文本的地球与气象数据，包括中国地震、USGS 月度重大地震、"
+            "中国雷达支持地区和火星天气。此类查询应委托本代理；雷达图、风图等图片仍由主代理处理。"
         ),
         runnable=runnable,
     )
@@ -278,34 +318,63 @@ async def _collect_progress(stream, reporter: ProgressReporter | None) -> None: 
     """
 
     async def consume_subagents() -> None:
-        last_subagent_name: str | None = None
+        last_subagent_event: tuple[str, str] | None = None
         async for subagent in stream.subagents:
-            if subagent.name == last_subagent_name:
+            name = subagent.name
+            raw_status = getattr(subagent, "status", None)
+            status = raw_status.lower() if isinstance(raw_status, str) else "started"
+            terminal = status in {"completed", "complete", "done", "failed", "error"}
+            phase = "done" if terminal else "start"
+            event_key = (name, phase)
+            if event_key == last_subagent_event:
                 continue
-            last_subagent_name = subagent.name
+            last_subagent_event = event_key
+            if terminal:
+                failed = status in {"failed", "error"}
+                await _emit_progress(
+                    reporter,
+                    ProgressEvent(
+                        type="subagent_done",
+                        message=f"{name} {'执行失败' if failed else '已完成'}",
+                        detail={"name": name, "status": status},
+                    ),
+                )
+                continue
             await _emit_progress(
                 reporter,
                 ProgressEvent(
                     type="subagent_start",
-                    message=_subagent_message(subagent.name),
-                    detail={"name": subagent.name},
+                    message=_subagent_message(name),
+                    detail={"name": name},
                 ),
             )
 
     async def consume_tool_calls() -> None:
         last_tool_name: str | None = None
         async for tool_call in stream.tool_calls:
-            if tool_call.tool_name == last_tool_name:
-                continue
-            last_tool_name = tool_call.tool_name
-            await _emit_progress(
-                reporter,
-                ProgressEvent(
-                    type="tool_call",
-                    message=_tool_message(tool_call.tool_name),
-                    detail={"tool_name": tool_call.tool_name},
-                ),
-            )
+            tool_name = tool_call.tool_name
+            if tool_name != last_tool_name:
+                last_tool_name = tool_name
+                await _emit_progress(
+                    reporter,
+                    ProgressEvent(
+                        type="tool_call",
+                        message=_tool_message(tool_name),
+                        detail={"tool_name": tool_name},
+                    ),
+                )
+            completed = getattr(tool_call, "completed", None)
+            error = getattr(tool_call, "error", None)
+            failed = isinstance(error, BaseException) or (isinstance(error, str) and bool(error))
+            if completed is True or failed:
+                await _emit_progress(
+                    reporter,
+                    ProgressEvent(
+                        type="tool_result",
+                        message=f"{tool_name} {'执行失败' if failed else '已完成'}",
+                        detail={"tool_name": tool_name, "success": not failed},
+                    ),
+                )
 
     async def consume_messages() -> None:
         first_message = True
@@ -341,6 +410,21 @@ async def _collect_progress(stream, reporter: ProgressReporter | None) -> None: 
         _safe(consume_tool_calls()),
         _safe(consume_messages()),
     )
+
+
+async def _finish_progress_collection(progress_task: asyncio.Task) -> None:
+    """Drain closed projections briefly, then stop a stuck collector."""
+    try:
+        await asyncio.wait_for(progress_task, timeout=1)
+    except TimeoutError:
+        logger.debug("Progress projections 未在响应完成后及时关闭，已停止收集")
+    finally:
+        if not progress_task.done():
+            progress_task.cancel()
+            try:
+                await progress_task
+            except asyncio.CancelledError:
+                pass
 
 
 async def assistant_agent(
@@ -407,7 +491,9 @@ async def assistant_agent(
     return content
 
 
-class CustomAgentState(AgentState):
+class FrontierAgentState(DeepAgentState):
+    """Mutable graph state; identity fields remain as a compatibility bridge for tools."""
+
     user_id: str
     group_id: int | None
     image_inputs: list[bytes]
@@ -426,7 +512,7 @@ def _ensure_dir(path: str) -> str:
 
 def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBackend:
     workspace_dir = _ensure_dir(os.path.join(working_dir, "workspaces", workspace_key))
-    skills_dir = _ensure_dir(os.path.join(working_dir, "skills"))
+    skills_dir = str(PROJECT_ROOT / "skills")
     memory_dir = _ensure_dir(os.path.join(working_dir, "memory", workspace_key))
     agents_md = os.path.join(memory_dir, "AGENTS.md")
     if os.path.exists(agents_md):
@@ -447,7 +533,7 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
             dst.write(content)
 
     return CompositeBackend(
-        default=LocalShellBackend(root_dir=workspace_dir, virtual_mode=True, inherit_env=True),
+        default=FilesystemBackend(root_dir=workspace_dir, virtual_mode=True),
         routes={
             f"{SKILLS_BACKEND_PATH}/": FilesystemBackend(root_dir=skills_dir, virtual_mode=True),
             f"{MEMORY_BACKEND_PATH}/{workspace_key}/": FilesystemBackend(root_dir=memory_dir, virtual_mode=True),
@@ -459,6 +545,7 @@ class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.main_tools
         self.memory_subagent = _build_memory_subagent()
+        self.earth_data_subagent = _build_earth_data_subagent()
 
     @staticmethod
     def load_system_prompt(group_id: int | None = None, wake_word: str | None = None):
@@ -494,6 +581,10 @@ class FrontierCognitive:
             "\n\n【聊天记忆规则】凡是需要追溯、核对或总结聊天历史的任务，统一委托 "
             "memory-agent；不要根据当前上下文猜测未提供的历史。"
         )
+        prompt += (
+            "\n\n【只读数据委托】中国地震、USGS 重大地震、雷达支持地区和火星天气等纯文本查询，"
+            "统一委托 earth-data-agent；雷达图、风图等媒体工具仍由主 Agent 调用。"
+        )
         try:
             rendering_rules = (PROJECT_ROOT / "prompts" / "rendering.md").read_text(encoding="utf-8").strip()
         except OSError as exc:
@@ -501,8 +592,10 @@ class FrontierCognitive:
         else:
             if rendering_rules:
                 prompt += f"\n\n{rendering_rules}"
-        # 气象查询规则（硬编码，与 prompts/ens_rules.md 同步维护）
-        prompt += "\n\n【气象查询规则】用户要查新的气象数据 → 调 ens_normal(no_video=True)。用户追问/评价/对比之前查过的数据（含 BAA/珊瑚白化等）→ 委托 memory-agent 翻聊天记录，数据已翻成中文在记录里，直接引用评价，禁止重调 ens_normal。记录里找不到才调工具。用户要看视频 → 委托 memory-agent 查参数 → ens_normal(no_video=False)。多地点用 queries（最多3个），超过3个告知用户精简。"
+        prompt += (
+            "\n\n【气象查询规则】处理 ENS 气象、海洋、BAA、珊瑚白化或视频任务前，先读取 "
+            "`/skills/ens-weather/SKILL.md` 并按其中流程执行。"
+        )
         return prompt
 
     @staticmethod
@@ -582,6 +675,7 @@ class FrontierCognitive:
         # ── 提取 PTC 工具名列表 ──
         ptc_tool_names: list = [tool.name for tool in effective_tools] if effective_tools else []
         memory_subagent = getattr(self, "memory_subagent", None) or _build_memory_subagent()
+        earth_data_subagent = getattr(self, "earth_data_subagent", None) or _build_earth_data_subagent()
         middleware: list = []
         middleware.extend(
             [
@@ -601,18 +695,20 @@ class FrontierCognitive:
             model=model,
             system_prompt=system_prompt,
             tools=effective_tools,
-            subagents=[memory_subagent],
+            subagents=[memory_subagent, earth_data_subagent],
             middleware=middleware,
             skills=[SKILLS_BACKEND_PATH],
             memory=[f"/memory/{workspace_key}/AGENTS.md"],
-            interrupt_on={
-                "write_file": False,
-                "read_file": False,
-                "edit_file": False,
-                "execute": False,
-            },
+            permissions=[
+                FilesystemPermission(
+                    operations=["write"],
+                    paths=[f"{SKILLS_BACKEND_PATH}", f"{SKILLS_BACKEND_PATH}/**"],
+                    mode="deny",
+                )
+            ],
             backend=backend,
-            context_schema=CustomAgentState,
+            state_schema=FrontierAgentState,
+            context_schema=FrontierRuntimeContext,
             debug=EnvConfig.AGENT_DEBUG_MODE,
         )
         start_time = time.time()
@@ -626,6 +722,12 @@ class FrontierCognitive:
                 "workspace_dir": workspace_dir,
             }
         }
+        runtime_context = FrontierRuntimeContext(
+            user_id=str(user_id),
+            group_id=group_id,
+            group_member_role=group_member_role,
+            workspace_dir=workspace_dir,
+        )
         try:
             input_data: Any = {
                 "messages": messages,
@@ -637,21 +739,22 @@ class FrontierCognitive:
             stream = await agent.astream_events(
                 input_data,
                 config=config,
+                context=runtime_context,
                 version="v3",
             )
             progress_task = asyncio.create_task(_collect_progress(stream, progress_reporter))
             try:
                 response = await stream.output()
             finally:
-                progress_task.cancel()
-                try:
-                    await progress_task
-                except asyncio.CancelledError:
-                    pass
+                await _finish_progress_collection(progress_task)
         except Exception as e:
             # 其他意外错误，记录详细信息
             logger.error(f"❌ Agent执行出现意外错误 用户{user_id}: {type(e).__name__}")
             logger.exception("完整错误堆栈:")
+            await _emit_progress(
+                progress_reporter,
+                ProgressEvent(type="done", message="Agent 执行失败", detail={"success": False}),
+            )
             return {
                 "response": {"messages": [AIMessage("💥 服务暂时不可用，请稍后重试。")]},
                 "total_time": time.time() - start_time,
@@ -665,6 +768,10 @@ class FrontierCognitive:
 
         processing_time = time.time() - start_time
         logger.info(f"Agent烤熟了~🥓 (耗时: {processing_time:.2f}s)")
+        await _emit_progress(
+            progress_reporter,
+            ProgressEvent(type="done", message="Agent 已完成", detail={"success": True}),
+        )
 
         return {
             "response": {"messages": [final_response]},

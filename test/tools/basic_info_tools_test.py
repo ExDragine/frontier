@@ -131,8 +131,9 @@ def test_mcp_get_tools(load_tool_module, monkeypatch):
 
 def test_module_tools_groups_tools_by_domain(monkeypatch):
     class FakeBaseTool:
-        def __init__(self, name: str):
+        def __init__(self, name: str, response_format: str | None = None):
             self.name = name
+            self.response_format = response_format
 
     langchain_core_tools = sys.modules.get("langchain_core.tools")
     if langchain_core_tools is None:
@@ -155,12 +156,12 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
             get_fy4b_satellite_image=FakeBaseTool("get_fy4b_satellite_image"),
         ),
         "earthquake": types.SimpleNamespace(
-            get_china_earthquake=FakeBaseTool("get_china_earthquake"),
-            get_usgs_significant_earthquakes=FakeBaseTool("get_usgs_significant_earthquakes"),
+            get_china_earthquake=FakeBaseTool("get_china_earthquake", "content"),
+            get_usgs_significant_earthquakes=FakeBaseTool("get_usgs_significant_earthquakes", "content"),
         ),
         "radar": types.SimpleNamespace(
-            get_available_china_radar_areas=FakeBaseTool("get_available_china_radar_areas"),
-            get_static_china_radar=FakeBaseTool("get_static_china_radar"),
+            get_available_china_radar_areas=FakeBaseTool("get_available_china_radar_areas", "content"),
+            get_static_china_radar=FakeBaseTool("get_static_china_radar", "content_and_artifact"),
         ),
         "paint": types.SimpleNamespace(get_paint=FakeBaseTool("get_paint")),
         "video": types.SimpleNamespace(get_video=FakeBaseTool("get_video")),
@@ -215,9 +216,6 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "mystery_tool",
         "aurora_live",
         "get_fy4b_satellite_image",
-        "get_china_earthquake",
-        "get_usgs_significant_earthquakes",
-        "get_available_china_radar_areas",
         "get_static_china_radar",
         "iching_divination",
     }
@@ -231,6 +229,11 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_usgs_significant_earthquakes",
         "get_available_china_radar_areas",
         "get_static_china_radar",
+    }
+    assert {tool.name for tool in module.agent_tools.earth_query_tools} == {
+        "get_china_earthquake",
+        "get_usgs_significant_earthquakes",
+        "get_available_china_radar_areas",
     }
     assert {tool.name for tool in groups["media"]} == set()
     assert {tool.name for tool in groups["memory"]} == {"search_messages", "get_history_messages"}

@@ -31,8 +31,6 @@ set_cmd = on_command("set", priority=2, block=True, aliases={"设置"})
 vehelp_cmd = on_command("vehelp", priority=2, block=True, aliases={"专业模式", "vep菜单"})
 restart = on_command("restart", priority=3, block=True, aliases={"重启"}, permission=SUPERUSER)
 
-SKILL_CREATOR_URL = "https://gh-proxy.org/https://github.com/anthropics/skills.git"
-SKILL_CREATOR_PATH = os.path.join(".", "cache", "sandbox", "skills", "skill-creator")
 MAX_UPDATE_CHANGELOG_COMMITS = 20
 
 # vehelp 菜单缓存（内存级，bot 停止自动释放）
@@ -326,39 +324,6 @@ async def _handle_set_model(event: MessageEvent, model_text: str):
 # ── 原有命令 ────────────────────────────────────────────────
 
 
-def clone_skill_creator():
-    """将 anthropics/skills 仓库中的 skill-creator 克隆到 skills 目录。"""
-    target = os.path.abspath(SKILL_CREATOR_PATH)
-    if os.path.exists(target):
-        logger.info("skill-creator 已存在，跳过克隆")
-        return
-
-    logger.info("正在克隆 skill-creator...")
-    temp_dir = os.path.join(os.path.abspath("cache/sandbox"), ".skills-temp")
-    git_executable = shutil.which("git")
-    if git_executable is None:
-        logger.error("未找到 git，无法克隆 skill-creator")
-        return
-    try:
-        subprocess.run(  # noqa: S603
-            [git_executable, "clone", "--depth", "1", SKILL_CREATOR_URL, temp_dir],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        source = os.path.join(temp_dir, "skills", "skill-creator")
-        if os.path.exists(source):
-            shutil.copytree(source, target)
-            logger.info("skill-creator 克隆完成")
-        else:
-            logger.warning(f"skill-creator 子目录不存在于仓库中: {source}")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"克隆 skill-creator 失败: {e.stderr}")
-    finally:
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-
-
 @driver.on_startup
 async def on_startup():
     os.makedirs("./cache", exist_ok=True)
@@ -369,7 +334,6 @@ async def on_startup():
         shutil.copy("env.toml.example", "env.toml")
     if not os.path.exists("mcp.json"):
         shutil.copy("mcp.json.example", "mcp.json")
-    clone_skill_creator()
 
 
 @driver.on_bot_connect

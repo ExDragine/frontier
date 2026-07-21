@@ -2,6 +2,7 @@
 
 import sys
 import types
+from typing import TypedDict
 
 from .dummies import (
     DummyCompositeBackend,
@@ -35,8 +36,25 @@ def install_all_third_party_stubs():
     install_stub(
         "deepagents",
         CompiledSubAgent=dict,
+        GeneralPurposeSubagentProfile=type(
+            "GeneralPurposeSubagentProfile",
+            (),
+            {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
+        ),
+        HarnessProfile=type(
+            "HarnessProfile",
+            (),
+            {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
+        ),
+        FilesystemPermission=type(
+            "FilesystemPermission",
+            (),
+            {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
+        ),
+        register_harness_profile=lambda *_args, **_kwargs: None,
         create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}),
     )
+    install_stub("deepagents.graph", DeepAgentState=TypedDict("DeepAgentState", {}))
     install_stub(
         "deepagents.backends",
         CompositeBackend=DummyCompositeBackend,
@@ -48,7 +66,15 @@ def install_all_third_party_stubs():
         AgentState=type("AgentState", (), {}),
         create_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}),
     )
-    install_stub("langchain.tools", tool=fake_tool)
+    install_stub(
+        "langchain.tools",
+        tool=fake_tool,
+        ToolRuntime=type(
+            "ToolRuntime",
+            (),
+            {"__class_getitem__": classmethod(lambda cls, _item: cls)},
+        ),
+    )
     install_stub(
         "langchain.agents.middleware",
         FilesystemFileSearchMiddleware=type(
@@ -63,6 +89,7 @@ def install_all_third_party_stubs():
         AIMessage=type("AIMessage", (), {"__init__": lambda self, content=None: setattr(self, "content", content)}),
     )
     install_stub("langchain_core.runnables", RunnableConfig=dict)
+    install_stub("langchain_core.language_models", ModelProfile=dict)
     install_stub("langchain_core.tools", tool=fake_tool)
     install_stub("langchain_openai", ChatOpenAI=type("ChatOpenAI", (), {"__init__": lambda self, **_kw: None}))
     install_stub("langchain_deepseek", ChatDeepSeek=type("ChatDeepSeek", (), {"__init__": lambda self, **_kw: None}))
@@ -89,6 +116,7 @@ def install_all_third_party_stubs():
         web_tools=[],
         mcp_tools=[],
         restricted_tools=[],
+        earth_query_tools=[],
         tool_metadata={},
         subagent_tools={
             "main": [],

@@ -19,6 +19,37 @@ def test_gemini_routes_to_google(monkeypatch):
     assert "google_api_key" in kw
     assert kw.get("max_retries") == 2
     assert kw.get("streaming") is False
+    assert kw["profile"]["max_input_tokens"] == 1_048_576
+    assert kw["profile"]["image_inputs"] is True
+    assert kw["profile"]["tool_calling"] is True
+
+
+def test_unknown_model_does_not_receive_catalog_profile(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
+
+    factory.create_llm(model="vendor-private-model")
+
+    assert "profile" not in mock_cls.call_args.kwargs
+
+
+def test_explicit_model_profile_overrides_catalog(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatGoogleGenerativeAI", mock_cls)
+    custom_profile = {"max_input_tokens": 1234, "text_inputs": True}
+
+    factory.create_llm(model="gemini-2.5-flash", profile=custom_profile)
+
+    assert mock_cls.call_args.kwargs["profile"] is custom_profile
+
+
+def test_catalog_profile_accepts_proxy_prefixed_model_id(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
+
+    factory.create_llm(model="openrouter/google/gemini-2.5-flash", provider="openai")
+
+    assert mock_cls.call_args.kwargs["profile"]["max_input_tokens"] == 1_048_576
 
 
 def test_gpt_routes_to_openai(monkeypatch):

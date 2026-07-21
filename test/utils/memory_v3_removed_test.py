@@ -29,7 +29,7 @@ async def test_chat_agent_does_not_import_or_append_memory_v3_context(monkeypatc
     monkeypatch.setitem(sys.modules, "utils.memory_v3", fake_memory_v3)
 
     class DummyAgent:
-        async def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, context=None, version=None):
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -47,6 +47,8 @@ async def test_chat_agent_does_not_import_or_append_memory_v3_context(monkeypatc
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
+    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
+    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
     frontier.working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(

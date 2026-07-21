@@ -61,9 +61,9 @@ async def test_assistant_agent_model_selection(monkeypatch):
     assert result == "ok"
 
 
-def test_frontier_load_system_prompt_missing():
+def test_frontier_load_system_prompt_missing(monkeypatch):
     """测试 env.toml 未配置 system_prompt 时返回错误提示"""
-    # 测试 fixture 的 env.toml 没有 system_prompt，应返回配置错误
+    monkeypatch.setattr(agents.EnvConfig, "SYSTEM_PROMPT", "")
     prompt = agents.FrontierCognitive.load_system_prompt()
     assert "配置错误" in prompt
 
@@ -158,12 +158,15 @@ def test_frontier_cognitive_uses_main_tools(monkeypatch):
     monkeypatch.setattr(agents.agent_tools, "all_tools", ["all-tool"], raising=False)
     monkeypatch.setattr(agents.agent_tools, "main_tools", ["main-tool"], raising=False)
     memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
+    earth_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
     monkeypatch.setattr(agents, "_build_memory_subagent", lambda: memory_subagent)
+    monkeypatch.setattr(agents, "_build_earth_data_subagent", lambda: earth_subagent)
 
     frontier = agents.FrontierCognitive()
 
     assert frontier.tools == ["main-tool"]
     assert frontier.memory_subagent is memory_subagent
+    assert frontier.earth_data_subagent is earth_subagent
     assert not hasattr(frontier, "subagents")
 
 
@@ -211,8 +214,38 @@ def test_build_memory_subagent_uses_basic_model_and_only_memory_tools(monkeypatc
     assert "检索" in subagent["description"]
 
 
+def test_build_earth_data_subagent_uses_basic_model_and_query_only_tools(monkeypatch):
+    captured = {}
+    earth_tools = [types.SimpleNamespace(name="get_china_earthquake")]
+    runnable = object()
+
+    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL", "basic-model")
+    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_PROVIDER", "basic-provider")
+    monkeypatch.setattr(agents.agent_tools, "earth_query_tools", earth_tools, raising=False)
+    monkeypatch.setattr(agents, "create_llm", lambda **kwargs: captured.setdefault("model_kwargs", kwargs) or object())
+
+    def fake_create_agent(**kwargs):
+        captured["agent_kwargs"] = kwargs
+        return runnable
+
+    monkeypatch.setattr(agents, "create_agent", fake_create_agent)
+
+    subagent = agents._build_earth_data_subagent()
+
+    assert captured["model_kwargs"]["model"] == "basic-model"
+    assert captured["model_kwargs"]["provider"] == "basic-provider"
+    assert captured["agent_kwargs"]["tools"] == earth_tools
+    assert "不得凭记忆编造" in captured["agent_kwargs"]["system_prompt"]
+    assert subagent["name"] == "earth-data-agent"
+    assert "雷达图" in subagent["description"]
+
+
 def test_memory_subagent_uses_dedicated_progress_message():
     assert agents._subagent_message("memory-agent") == "正在检索聊天记忆…"
+
+
+def test_earth_data_subagent_uses_dedicated_progress_message():
+    assert agents._subagent_message("earth-data-agent") == "正在查询地球与气象数据…"
 
 
 @pytest.mark.asyncio
@@ -319,9 +352,10 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     from utils import agents
 
     class DummyAgent:
-        async def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, context=None, version=None):
             captured["payload"] = payload
             captured["config"] = config
+            captured["context"] = context
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -349,6 +383,7 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
+    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
     frontier.backend = None
 
     await frontier.chat_agent(
@@ -386,9 +421,10 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     captured = {}
 
     class DummyAgent:
-        async def astream_events(self, input=None, config=None, version=None):
+        async def astream_events(self, input=None, config=None, context=None, version=None):
             captured["payload"] = input
             captured["config"] = config
+            captured["context"] = context
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -404,6 +440,7 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
+    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
     frontier.working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -420,16 +457,25 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert backend.default.virtual_mode is True
     assert backend.default.root_dir == str(tmp_path / "sandbox" / "workspaces" / "123")
     assert set(backend.routes) == {"/skills/", "/memory/123/"}
-    assert backend.routes["/skills/"].root_dir == str(tmp_path / "sandbox" / "skills")
+    assert backend.routes["/skills/"].root_dir == str(agents.PROJECT_ROOT / "skills")
     assert backend.routes["/memory/123/"].root_dir == str(tmp_path / "sandbox" / "memory" / "123")
     assert captured["skills"] == ["/skills"]
     assert captured["memory"] == ["/memory/123/AGENTS.md"]
-    assert captured["subagents"] == [frontier.memory_subagent]
+    assert captured["subagents"] == [frontier.memory_subagent, frontier.earth_data_subagent]
+    assert captured["state_schema"] is agents.FrontierAgentState
+    assert captured["context_schema"] is agents.FrontierRuntimeContext
+    assert captured["permissions"][0].mode == "deny"
+    assert captured["permissions"][0].operations == ["write"]
     assert (tmp_path / "sandbox" / "workspaces" / "123").is_dir()
-    assert (tmp_path / "sandbox" / "skills").is_dir()
     assert (tmp_path / "sandbox" / "memory").is_dir()
     assert captured["config"]["configurable"]["workspace_dir"] == str(tmp_path / "sandbox" / "workspaces" / "123")
     assert captured["config"]["configurable"]["group_member_role"] == "owner"
+    assert captured["context"] == agents.FrontierRuntimeContext(
+        user_id="u1",
+        group_id=123,
+        group_member_role="owner",
+        workspace_dir=str(tmp_path / "sandbox" / "workspaces" / "123"),
+    )
 
 
 def test_build_agent_backend_recovers_non_utf8_memory(tmp_path):
@@ -474,9 +520,10 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
     captured = {}
 
     class DummyAgent:
-        async def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, context=None, version=None):
             captured["payload"] = payload
             captured["config"] = config
+            captured["context"] = context
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -492,6 +539,7 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
+    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
     frontier.working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -516,7 +564,7 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
     captured = {}
 
     class DummyAgent:
-        async def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, context=None, version=None):
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -535,6 +583,7 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
+    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
     frontier.working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -564,7 +613,7 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
     from utils import agents
 
     class DummyAgent:
-        async def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, context=None, version=None):
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -590,6 +639,7 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
+    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
     frontier.backend = None
 
     await frontier.chat_agent(
@@ -609,7 +659,7 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
     from utils import agents
 
     class DummyAgent:
-        async def astream_events(self, payload, config=None, version=None):
+        async def astream_events(self, payload, config=None, context=None, version=None):
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -632,6 +682,7 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
+    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
     frontier.working_dir = os.getcwd()
 
     await frontier.chat_agent(
@@ -780,6 +831,20 @@ class TestCollectProgress:
         assert subagent_calls[0][0][0].detail["name"] == "research"
 
     @pytest.mark.asyncio
+    async def test_emits_subagent_done_for_terminal_status(self):
+        from unittest.mock import AsyncMock
+
+        from utils.agents import _collect_progress
+
+        subagent = types.SimpleNamespace(name="earth-data-agent", status="completed")
+        reporter = AsyncMock()
+
+        await _collect_progress(self._mock_stream(subagents=[subagent]), reporter)
+
+        events = [call.args[0] for call in reporter.call_args_list]
+        assert [(event.type, event.detail["status"]) for event in events] == [("subagent_done", "completed")]
+
+    @pytest.mark.asyncio
     async def test_emits_tool_call(self):
         from unittest.mock import MagicMock
 
@@ -796,6 +861,21 @@ class TestCollectProgress:
         tool_calls = [c for c in reporter.call_args_list if c[0][0].type == "tool_call"]
         assert len(tool_calls) == 1
         assert tool_calls[0][0][0].detail["tool_name"] == "web_search"
+
+    @pytest.mark.asyncio
+    async def test_emits_tool_result_when_completed(self):
+        from unittest.mock import AsyncMock
+
+        from utils.agents import _collect_progress
+
+        tool_call = types.SimpleNamespace(tool_name="web_search", completed=True, error=None)
+        reporter = AsyncMock()
+
+        await _collect_progress(self._mock_stream(tool_calls=[tool_call]), reporter)
+
+        events = [call.args[0] for call in reporter.call_args_list]
+        assert [event.type for event in events] == ["tool_call", "tool_result"]
+        assert events[-1].detail == {"tool_name": "web_search", "success": True}
 
     @pytest.mark.asyncio
     async def test_dedup_consecutive_same_tool_calls(self):

@@ -3,11 +3,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models import ModelProfile
 from langchain_deepseek import ChatDeepSeek
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
+from models import ModelFeature, ModelInput, ModelOutput, get_model, load_catalog
 from utils.configs import EnvConfig
 
 if TYPE_CHECKING:
@@ -33,10 +35,19 @@ _OPENAI_VALID = {
     "temperature",
     "model_kwargs",
     "extra_body",
+    "profile",
 }
-_GOOGLE_VALID = {"streaming", "max_retries", "timeout", "temperature"}
-_ANTHROPIC_VALID = {"streaming", "max_retries", "timeout", "temperature"}
-_DEEPSEEK_VALID = {"streaming", "max_retries", "timeout", "temperature", "model_kwargs", "extra_body"}
+_GOOGLE_VALID = {"streaming", "max_retries", "timeout", "temperature", "profile"}
+_ANTHROPIC_VALID = {"streaming", "max_retries", "timeout", "temperature", "profile"}
+_DEEPSEEK_VALID = {
+    "streaming",
+    "max_retries",
+    "timeout",
+    "temperature",
+    "model_kwargs",
+    "extra_body",
+    "profile",
+}
 
 _openai_config = ProviderConfig(
     cls_fn=lambda: ChatOpenAI,
@@ -153,6 +164,53 @@ def provider_uses_responses_api(model: str, provider: str | None = None) -> bool
     return provider_type == "openai" and bool(profile.get("use_responses_api", False))
 
 
+def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile | None:
+    """Translate a catalog model card into LangChain's runtime model profile."""
+    parts = model.split("/")
+    candidates = ["/".join(parts[index:]) for index in range(len(parts))]
+    card = next((match for candidate in candidates if (match := get_model(provider_type, candidate))), None)
+    if card is None:
+        catalog = load_catalog().models
+        for candidate in candidates:
+            matches = [item for item in catalog if item.id.lower() == candidate.lower()]
+            if len(matches) == 1:
+                card = matches[0]
+                break
+    if card is None:
+        return None
+
+    inputs = set(card.capabilities.input)
+    outputs = set(card.capabilities.output)
+    features = set(card.capabilities.features)
+    profile: ModelProfile = {
+        "name": card.display_name,
+        "status": card.status.value,
+        "text_inputs": ModelInput.TEXT in inputs,
+        "image_inputs": ModelInput.IMAGE in inputs,
+        "image_url_inputs": ModelInput.IMAGE in inputs,
+        "pdf_inputs": ModelInput.FILE in inputs,
+        "audio_inputs": ModelInput.AUDIO in inputs,
+        "video_inputs": ModelInput.VIDEO in inputs,
+        "text_outputs": ModelOutput.TEXT in outputs,
+        "image_outputs": ModelOutput.IMAGE in outputs,
+        "audio_outputs": ModelOutput.AUDIO in outputs,
+        "video_outputs": ModelOutput.VIDEO in outputs,
+        "reasoning_output": ModelFeature.REASONING in features,
+        "tool_calling": ModelFeature.TOOL_CALLING in features,
+        "tool_choice": ModelFeature.TOOL_CALLING in features,
+        "tool_call_streaming": ModelFeature.PARALLEL_TOOL_CALLING in features,
+        "structured_output": ModelFeature.STRUCTURED_OUTPUT in features,
+        "attachment": ModelInput.FILE in inputs,
+    }
+    if card.context_window is not None:
+        profile["max_input_tokens"] = card.context_window
+    if card.max_output_tokens is not None:
+        profile["max_output_tokens"] = card.max_output_tokens
+    if card.released_at is not None:
+        profile["release_date"] = card.released_at
+    return profile
+
+
 def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatModel:
     """根据供应商 profile 路由模型，并过滤底层 SDK 不支持的参数。
 
@@ -176,6 +234,10 @@ def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatMod
         if k in config.valid_kwargs:
             actual_key = config.kwarg_map.get(k, k)
             filtered[actual_key] = v
+    if "profile" not in filtered:
+        catalog_profile = get_langchain_model_profile(model, provider_type)
+        if catalog_profile is not None:
+            filtered["profile"] = catalog_profile
     if provider_type == "openai":
         filtered["use_responses_api"] = bool(profile.get("use_responses_api", False))
     base_url = _clean_optional(profile.get("base_url"))

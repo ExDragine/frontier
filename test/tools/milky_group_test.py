@@ -140,6 +140,31 @@ async def test_group_management_uses_current_group_from_config(load_tool_module,
 
 
 @pytest.mark.asyncio
+async def test_group_management_prefers_typed_runtime_context(load_tool_module, monkeypatch):
+    from utils.agent_context import FrontierRuntimeContext
+
+    group = load_tool_module("milky_group")
+    bot = _install_dummy_bot(monkeypatch, group)
+    runtime = types.SimpleNamespace(
+        context=FrontierRuntimeContext(
+            user_id="42",
+            group_id=123,
+            group_member_role="owner",
+            workspace_dir="/workspace",
+        )
+    )
+
+    result = await group.set_group_name(
+        new_group_name="新群名",
+        config=_group_config(group_id=999, role="member"),
+        runtime=runtime,
+    )
+
+    assert result == "已将群 123 的名称设置为：新群名"
+    assert bot.calls == [("set_group_name", {"group_id": 123, "new_group_name": "新群名"})]
+
+
+@pytest.mark.asyncio
 async def test_group_management_allows_explicit_group_id(load_tool_module, monkeypatch):
     group = load_tool_module("milky_group")
     bot = _install_dummy_bot(monkeypatch, group)
