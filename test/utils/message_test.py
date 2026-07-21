@@ -321,6 +321,9 @@ async def test_send_messages_retries_image_render(monkeypatch):
         "| 名称 | 数值 |\n| --- | ---: |\n| alpha | 1 |",
         "```mermaid\ngraph TD\nA --> B\n```",
         "flowchart LR\nA[开始] --> B[结束]",
+        '```chart\n{"type":"bar","labels":["A"],"series":[{"name":"x","values":[1]}]}\n```',
+        '```stats\n{"items":[{"label":"在线","value":"12"}]}\n```',
+        '```timeline\n{"items":[{"time":"现在","title":"完成"}]}\n```',
     ],
 )
 def test_message_should_render_image_for_hard_to_text_content(content):

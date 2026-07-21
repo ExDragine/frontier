@@ -1,0 +1,22 @@
+{
+  "name": "frontier-markdown-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "build:check": "npm run build && git diff --exit-code -- ../templates/markdown_assets"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "dependencies": {
+    "echarts": "6.1.0",
+    "katex": "0.16.33",
+    "mermaid": "11.16.0",
+    "prismjs": "1.30.0"
+  },
+  "devDependencies": {
+    "vite": "8.1.5"
+  }
+}

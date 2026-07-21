@@ -2,6 +2,15 @@
 
 ARG PYTHON_VERSION=3.14
 ARG PLAYWRIGHT_VERSION=1.61.0
+
+FROM node:24-bookworm-slim AS markdown-assets
+
+WORKDIR /build
+COPY renderer/package.json renderer/package-lock.json ./renderer/
+RUN npm ci --prefix renderer
+COPY renderer ./renderer
+RUN npm run build --prefix renderer
+
 FROM python:${PYTHON_VERSION}-slim-bookworm AS base
 
 COPY --from=docker.io/astral/uv:0.11.28 /uv /uvx /bin/
@@ -17,7 +26,7 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git nodejs \
+    && apt-get install -y --no-install-recommends fonts-noto-cjk git nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system frontier \
     && useradd --system --gid frontier --home-dir /app --shell /usr/sbin/nologin frontier
@@ -42,6 +51,7 @@ RUN uvx --from "playwright==${PLAYWRIGHT_VERSION}" playwright install --with-dep
     && chown -R frontier:frontier /app /ms-playwright
 
 COPY --chown=frontier:frontier . /app
+COPY --from=markdown-assets --chown=frontier:frontier /build/templates/markdown_assets /app/templates/markdown_assets
 
 USER frontier
 

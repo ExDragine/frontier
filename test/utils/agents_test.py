@@ -68,6 +68,19 @@ def test_frontier_load_system_prompt_missing():
     assert "配置错误" in prompt
 
 
+def test_frontier_load_system_prompt_includes_markdown_rendering_rules(monkeypatch):
+    monkeypatch.setattr(agents.EnvConfig, "SYSTEM_PROMPT", "You are {name}.")
+    monkeypatch.setattr(agents.EnvConfig, "BOT_NAME", "Frontier")
+
+    prompt = agents.FrontierCognitive.load_system_prompt()
+
+    assert "You are Frontier." in prompt
+    assert "```chart" in prompt
+    assert "```stats" in prompt
+    assert "```timeline" in prompt
+    assert "不要添加 `<frontier-render>`" in prompt
+
+
 @pytest.mark.asyncio
 async def test_extract_uni_messages():
     response = {

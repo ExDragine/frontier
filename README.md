@@ -68,7 +68,7 @@ UniMessage 文本、图片、视频或文件回复
 | Agent | LangChain、LangGraph、deepagents、langchain-quickjs |
 | 模型 | OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek |
 | 存储 | SQLite、SQLModel、FTS5、WAL |
-| 渲染/浏览器 | Playwright、markdown-it-py、Pillow |
+| 渲染/浏览器 | Playwright、markdown-it-py、Mermaid、Apache ECharts、KaTeX、Prism |
 | 定时任务 | nonebot-plugin-apscheduler / APScheduler |
 | 部署 | Docker、docker compose、uv |
 
@@ -111,6 +111,15 @@ Windows:
 ```
 
 `run.sh` 会设置默认 `HF_ENDPOINT`，然后循环执行 `uv run nb run`。
+
+Markdown 渲染所需的 Mermaid、ECharts、KaTeX 和 Prism 已预构建到
+`templates/markdown_assets/`，普通安装和启动不需要 Node.js，也不会在运行时访问 CDN。
+修改 `renderer/` 后需要使用 Node.js 24 重新生成资源：
+
+```bash
+npm ci --prefix renderer
+npm run build --prefix renderer
+```
 
 ### Docker
 
@@ -192,6 +201,7 @@ frontier/
 ├── tools/              # LangChain Agent 工具
 ├── utils/              # Agent、消息、DB、LLM、渲染、HTTP、Milky helper
 ├── prompts/            # prompt 模板和 Agent memory 基础模板
+├── renderer/           # Markdown 本地图表/公式/代码高亮前端源码
 ├── templates/          # HTML/CSS 渲染模板
 ├── data/               # 易经、塔罗等静态数据
 ├── scripts/            # 维护脚本

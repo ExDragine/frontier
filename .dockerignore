@@ -2,6 +2,9 @@
 .github
 .codegraph
 .venv
+node_modules
+renderer/node_modules
+renderer/.vite
 .vscode
 __pycache__
 *.py[cod]

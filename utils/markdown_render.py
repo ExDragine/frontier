@@ -4,13 +4,19 @@ import os
 import re
 import secrets
 from asyncio import Lock
+from pathlib import Path
 
 from bs4 import BeautifulSoup
 from markdown_it import MarkdownIt
 from playwright.async_api import async_playwright
 
+from utils.markdown_rich import render_rich_markdown_blocks
+
 logger = logging.getLogger(__name__)
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+TEMPLATES_DIR = PROJECT_ROOT / "templates"
+CACHE_DIR = PROJECT_ROOT / "cache"
 _browser = None
 _browser_lock = Lock()
 
@@ -54,6 +60,16 @@ async def markdown_to_text(markdown_text):
     return plain_text
 
 
+def _markdown_asset_paths() -> tuple[Path, Path]:
+    asset_dir = TEMPLATES_DIR / "markdown_assets"
+    asset_style_path = asset_dir / "markdown-render.css"
+    asset_script_path = asset_dir / "markdown-render.js"
+    for asset_path in (asset_style_path, asset_script_path):
+        if not asset_path.is_file():
+            raise FileNotFoundError("Markdown renderer assets are missing; run `npm run build --prefix renderer`")
+    return asset_style_path, asset_script_path
+
+
 async def markdown_to_image(markdown_text, width=1000, css=None):
     """
     将 Markdown 文本渲染为图片
@@ -68,7 +84,7 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
 
     def replace_mermaid(match):
         code_content = html.unescape(match.group(1))  # 反转义 HTML 实体
-        return f'<div class="mermaid">{code_content}</div>'
+        return f'<div class="mermaid">{html.escape(code_content)}</div>'
 
     html_content = re.sub(
         r"<pre><code class=\"language-mermaid\">(.*?)</code></pre>",
@@ -76,20 +92,26 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
         html_content,
         flags=re.DOTALL,
     )
+    html_content = render_rich_markdown_blocks(html_content)
 
     if css is None:
-        css_abs_path = os.path.abspath("./templates/markdown_render.css")
-        style_block = f'<link rel="stylesheet" href="file://{css_abs_path}">'  # 绝对路径
+        style_block = f'<link rel="stylesheet" href="{(TEMPLATES_DIR / "markdown_render.css").as_uri()}">'
     else:
         style_block = f"<style>{css}</style>"
 
-    template_path = "./templates/markdown_render.html"
-    with open(template_path, encoding="utf-8") as f:
+    with (TEMPLATES_DIR / "markdown_render.html").open(encoding="utf-8") as f:
         template_html = f.read()
 
-    full_html = template_html.replace("{style_block}", style_block).replace("{html_content}", html_content)
-    temp_html_path = f"./cache/{secrets.token_hex(16)}.html"
-    with open(temp_html_path, mode="w", encoding="utf-8") as f:
+    asset_style_path, asset_script_path = _markdown_asset_paths()
+    full_html = (
+        template_html.replace("{style_block}", style_block)
+        .replace("{asset_style_url}", asset_style_path.as_uri())
+        .replace("{asset_script_url}", asset_script_path.as_uri())
+        .replace("{html_content}", html_content)
+    )
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    temp_html_path = CACHE_DIR / f"{secrets.token_hex(16)}.html"
+    with temp_html_path.open(mode="w", encoding="utf-8") as f:
         f.write(full_html)
 
     browser = await _get_browser()
@@ -99,34 +121,29 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
     page.on("pageerror", _on_page_error)
 
     try:
-        await page.goto(f"file://{os.path.abspath(temp_html_path)}")
+        async def abort_remote(route):
+            await route.abort()
+
+        route = getattr(page, "route", None)
+        if route is not None:
+            await route(re.compile(r"^(?:https?|wss?)://", re.IGNORECASE), abort_remote)
+
+        await page.goto(temp_html_path.resolve().as_uri())
         await page.wait_for_load_state("networkidle")
 
         try:
-            await page.wait_for_function("typeof renderMathInElement !== 'undefined'", timeout=1000)
-            await page.wait_for_timeout(1000)
-            logger.debug("KaTeX rendering complete")
-        except Exception as e:
-            logger.warning("KaTeX may have issues, continuing screenshot: %s", e)
-            await page.wait_for_timeout(1000)
-
-        try:
-            await page.wait_for_function(
-                "typeof mermaid !== 'undefined' && document.querySelectorAll('svg').length > 0", timeout=1000
+            await page.wait_for_selector(
+                "html[data-frontier-ready='true']",
+                state="attached",
+                timeout=10_000,
             )
-            await page.wait_for_timeout(500)
-            logger.debug("Mermaid rendering complete")
+            render_errors = await page.evaluate("window.__FRONTIER_RENDER__?.errors ?? []")
+            if render_errors:
+                logger.warning("Markdown 部分内容已降级渲染: %s", render_errors)
+            else:
+                logger.debug("Markdown local rendering complete")
         except Exception as e:
-            logger.warning("Mermaid may have issues, continuing screenshot: %s", e)
-            await page.wait_for_timeout(500)
-
-        try:
-            await page.wait_for_function("window.codeHighlightComplete === true", timeout=1000)
-            await page.wait_for_timeout(200)
-            logger.debug("Prism highlighting complete")
-        except Exception as e:
-            logger.warning("Prism highlighting may have issues: %s", e)
-            await page.wait_for_timeout(200)
+            raise RuntimeError("Markdown local renderer did not become ready") from e
 
         height = await page.evaluate("""
             Math.max(
@@ -152,7 +169,7 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
         if close_page is not None:
             await close_page()
         try:
-            os.remove(temp_html_path)
+            temp_html_path.unlink()
         except Exception as e:
             logger.warning("Failed to delete temp file: %s", e)
 

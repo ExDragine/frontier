@@ -3,7 +3,7 @@ body {
     min-height: 100vh;
     margin: 0;
     padding: 0;
-    font-family: 'MiSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'SimSun', Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Noto Sans CJK SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'SimSun', Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -13,7 +13,7 @@ body {
     border-radius: 0;
     box-shadow: none;
     padding: 40px 36px 32px 36px;
-    font-family: 'MiSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'SimSun', Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Noto Sans CJK SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'SimSun', Roboto, Helvetica, Arial, sans-serif;
     color: #23272f;
     font-size: 20px;
     line-height: 1.85;
@@ -132,6 +132,150 @@ hr {
 }
 .math-inline, .math-display {
     font-family: 'KaTeX_Main', 'Times New Roman', serif;
+}
+
+/* 受控 Markdown 富内容：ECharts / stats / timeline */
+.md-rich-block {
+    margin: 1.6em 0;
+    padding: 22px;
+    overflow: hidden;
+    border: 1px solid #dfe7f2;
+    border-radius: 14px;
+    background: #fbfcff;
+    box-shadow: 0 5px 18px rgba(30, 64, 175, 0.06);
+}
+.md-rich-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+    color: #172033;
+    font-size: 1.08em;
+    font-weight: 700;
+    line-height: 1.4;
+}
+.md-rich-unit {
+    color: #718096;
+    font-size: 0.68em;
+    font-weight: 400;
+    white-space: nowrap;
+}
+.md-chart-canvas {
+    width: 100%;
+    height: 420px;
+    min-height: 320px;
+}
+.md-chart-fallback {
+    margin: 0;
+    background: #fff;
+}
+.md-mermaid-fallback {
+    white-space: pre-wrap;
+}
+.md-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--md-stats-columns, 3), minmax(0, 1fr));
+    gap: 14px;
+}
+.md-stat-card {
+    min-height: 110px;
+    box-sizing: border-box;
+    padding: 17px 18px 15px;
+    border: 1px solid #e1e7ef;
+    border-top: 4px solid #64748b;
+    border-radius: 11px;
+    background: #fff;
+}
+.md-stat-card.md-status-success { border-top-color: #0f9f6e; }
+.md-stat-card.md-status-warning { border-top-color: #f59e0b; }
+.md-stat-card.md-status-danger { border-top-color: #ef4444; }
+.md-stat-label {
+    margin-bottom: 8px;
+    color: #667085;
+    font-size: 14px;
+    line-height: 1.35;
+}
+.md-stat-value {
+    color: #172033;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.15;
+}
+.md-stat-unit {
+    margin-left: 6px;
+    color: #667085;
+    font-size: 14px;
+    font-weight: 500;
+}
+.md-stat-detail {
+    margin-top: 8px;
+    color: #7a8799;
+    font-size: 13px;
+    line-height: 1.45;
+}
+.md-timeline {
+    position: relative;
+    margin: 4px 0 0 7px;
+}
+.md-timeline::before {
+    position: absolute;
+    top: 11px;
+    bottom: 18px;
+    left: 6px;
+    width: 2px;
+    background: #dce4ef;
+    content: "";
+}
+.md-timeline-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 14px;
+    padding-bottom: 22px;
+}
+.md-timeline-marker {
+    z-index: 1;
+    width: 14px;
+    height: 14px;
+    margin-top: 5px;
+    box-sizing: border-box;
+    border: 3px solid #64748b;
+    border-radius: 50%;
+    background: #fff;
+}
+.md-timeline-item.md-status-success .md-timeline-marker { border-color: #0f9f6e; }
+.md-timeline-item.md-status-warning .md-timeline-marker { border-color: #f59e0b; }
+.md-timeline-item.md-status-danger .md-timeline-marker { border-color: #ef4444; }
+.md-timeline-time {
+    color: #708096;
+    font-size: 13px;
+    font-weight: 600;
+}
+.md-timeline-title {
+    margin-top: 2px;
+    color: #172033;
+    font-size: 17px;
+    font-weight: 700;
+}
+.md-timeline-content {
+    margin-top: 5px;
+    color: #596579;
+    font-size: 15px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+.md-rich-error {
+    padding: 14px 16px;
+    border-radius: 8px;
+    background: #fff1f2;
+    color: #b42318;
+    font-size: 15px;
+}
+@media (max-width: 700px) {
+    .md-stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 /* 滚动条美化 */
 ::-webkit-scrollbar {

@@ -37,7 +37,8 @@ Reasoning effort is set to xhigh。请仔细思考任务，验证关键假设，
 
 ## Output Format
 群聊默认纯文字，不加标题，不加 bullet list——那样在聊天里很奇怪。
-代码用代码块，公式用 `$...$` 或 `$$...$$`，图表用 Mermaid。
+代码用代码块，公式用 `$...$` 或 `$$...$$`。流程图和关系图用 Mermaid；有明确数值的数据图表、指标卡和时间线可使用 `chart`、`stats`、`timeline` 增强 Markdown 块。
+不要输出原始 HTML、JavaScript、CSS 或额外的渲染信封；增强块必须严格遵循系统提示词中的 JSON 格式，不确定时退回普通 Markdown。
 直接给出聊天回复内容；不要添加称呼、前言、说明、总结、备注、字段名、标签或任何元信息。
 
 ## Code Execution

@@ -494,6 +494,13 @@ class FrontierCognitive:
             "\n\n【聊天记忆规则】凡是需要追溯、核对或总结聊天历史的任务，统一委托 "
             "memory-agent；不要根据当前上下文猜测未提供的历史。"
         )
+        try:
+            rendering_rules = (PROJECT_ROOT / "prompts" / "rendering.md").read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            logger.warning("读取 Markdown 渲染规范失败: %s", exc)
+        else:
+            if rendering_rules:
+                prompt += f"\n\n{rendering_rules}"
         # 气象查询规则（硬编码，与 prompts/ens_rules.md 同步维护）
         prompt += "\n\n【气象查询规则】用户要查新的气象数据 → 调 ens_normal(no_video=True)。用户追问/评价/对比之前查过的数据（含 BAA/珊瑚白化等）→ 委托 memory-agent 翻聊天记录，数据已翻成中文在记录里，直接引用评价，禁止重调 ens_normal。记录里找不到才调工具。用户要看视频 → 委托 memory-agent 查参数 → ens_normal(no_video=False)。多地点用 queries（最多3个），超过3个告知用户精简。"
         return prompt

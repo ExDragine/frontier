@@ -74,7 +74,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `signal_llm.py` | 轻量结构化 LLM 调用，用于回复门控、浏览器捕获意图等判断 |
 | `reply_context.py` | 引用消息解析、Milky 原消息获取、引用图片下载、转发消息重建 |
 | `message_normalizer.py` | 消息段归一化，展开合并转发 derived messages |
-| `markdown_render.py` | Markdown/HTML → 图片，普通文本降级，适配 QQ 文本/图片发送 |
+| `markdown_render.py` | Markdown → 图片，使用本地 Mermaid/ECharts/KaTeX/Prism 渲染增强内容，适配 QQ 文本/图片发送 |
 | `browser_capture.py` | Playwright 截图/录屏/页面数据提取，带浏览器重启和超时处理 |
 | `paint_service.py` / `video_service.py` | 共享图片和视频生成服务，供命令和 Agent 工具复用 |
 | `milky_tools.py` | Milky API 参数解析、路径/URL/base64 输入处理、结果格式化 |
@@ -192,7 +192,7 @@ from utils.agents import assistant_agent  # 放在函数内，避免循环依赖
 ### 输出发送规则
 
 - 短文本优先走 QQ 文本。
-- 长文本、Markdown 表格、LaTeX、Mermaid 等难以纯文本表达的内容走 Markdown → 图片。
+- 长文本、Markdown 表格、LaTeX、Mermaid，以及 `chart`/`stats`/`timeline` 增强块走 Markdown → 图片。
 - 文本发送失败时会尝试图片回退。
 - 多段媒体工件会拆分并串行发送，避免 QQ 消息顺序混乱。
 
