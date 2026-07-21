@@ -144,11 +144,62 @@ def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
 def test_frontier_cognitive_uses_main_tools(monkeypatch):
     monkeypatch.setattr(agents.agent_tools, "all_tools", ["all-tool"], raising=False)
     monkeypatch.setattr(agents.agent_tools, "main_tools", ["main-tool"], raising=False)
+    memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
+    monkeypatch.setattr(agents, "_build_memory_subagent", lambda: memory_subagent)
 
     frontier = agents.FrontierCognitive()
 
     assert frontier.tools == ["main-tool"]
+    assert frontier.memory_subagent is memory_subagent
     assert not hasattr(frontier, "subagents")
+
+
+def test_build_memory_subagent_uses_basic_model_and_only_memory_tools(monkeypatch):
+    captured = {}
+    memory_tools = [types.SimpleNamespace(name="search_messages"), types.SimpleNamespace(name="get_history_messages")]
+    runnable = object()
+
+    def fake_create_llm(**kwargs):
+        captured["model_kwargs"] = kwargs
+        return "basic-llm"
+
+    def fake_create_agent(**kwargs):
+        captured["agent_kwargs"] = kwargs
+        return runnable
+
+    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL", "basic-model")
+    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_PROVIDER", "basic-provider")
+    monkeypatch.setattr(agents.EnvConfig, "AGENT_DEBUG_MODE", True)
+    monkeypatch.setattr(agents.agent_tools, "subagent_tools", {"memory": memory_tools}, raising=False)
+    monkeypatch.setattr(agents, "create_llm", fake_create_llm)
+    monkeypatch.setattr(agents, "create_agent", fake_create_agent)
+
+    subagent = agents._build_memory_subagent()
+
+    assert captured["model_kwargs"] == {
+        "model": "basic-model",
+        "provider": "basic-provider",
+        "streaming": False,
+        "max_retries": 2,
+        "timeout": 300,
+    }
+    assert captured["agent_kwargs"]["model"] == "basic-llm"
+    assert captured["agent_kwargs"]["tools"] == memory_tools
+    assert "最多读取 1000 条记录" in captured["agent_kwargs"]["system_prompt"]
+    assert [type(item) for item in captured["agent_kwargs"]["middleware"]] == [
+        agents.ToolRetryMiddleware,
+        agents.ModelRetryMiddleware,
+    ]
+    assert subagent == {
+        "name": "memory-agent",
+        "description": subagent["description"],
+        "runnable": runnable,
+    }
+    assert "检索" in subagent["description"]
+
+
+def test_memory_subagent_uses_dedicated_progress_message():
+    assert agents._subagent_message("memory-agent") == "正在检索聊天记忆…"
 
 
 @pytest.mark.asyncio
@@ -284,6 +335,7 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
+    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.backend = None
 
     await frontier.chat_agent(
@@ -338,6 +390,7 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
+    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -358,6 +411,7 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert backend.routes["/memory/123/"].root_dir == str(tmp_path / "sandbox" / "memory" / "123")
     assert captured["skills"] == ["/skills"]
     assert captured["memory"] == ["/memory/123/AGENTS.md"]
+    assert captured["subagents"] == [frontier.memory_subagent]
     assert (tmp_path / "sandbox" / "workspaces" / "123").is_dir()
     assert (tmp_path / "sandbox" / "skills").is_dir()
     assert (tmp_path / "sandbox" / "memory").is_dir()
@@ -424,6 +478,7 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
+    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -466,6 +521,7 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
+    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -520,7 +576,7 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
-    frontier.subagents = []
+    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.backend = None
 
     await frontier.chat_agent(
@@ -562,6 +618,7 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
 
     frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
     frontier.tools = []
+    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.working_dir = os.getcwd()
 
     await frontier.chat_agent(

@@ -33,19 +33,6 @@ class DummyMilkyBot:
             segments=[{"type": "text", "data": {"text": "hello"}}],
         )
 
-    async def get_history_messages(self, **kwargs):
-        self.calls.append(("get_history_messages", kwargs))
-        return [
-            types.SimpleNamespace(
-                message_scene=kwargs["message_scene"],
-                peer_id=kwargs["peer_id"],
-                message_seq=1,
-                sender_id=456,
-                time=1714521600,
-                segments=[{"type": "text", "data": {"text": "old"}}],
-            )
-        ], 0
-
     async def get_resource_temp_url(self, *, resource_id):
         self.calls.append(("get_resource_temp_url", {"resource_id": resource_id}))
         return "https://example.com/resource"
@@ -104,24 +91,17 @@ async def test_message_query_tools_use_context_and_format_results(load_tool_modu
     bot = _install_dummy_bot(monkeypatch, message)
 
     one = await message.get_message(message_scene="group", message_seq=88, config=_config())
-    history = await message.get_history_messages(message_scene="friend", limit=60, config=_config())
     url = await message.get_resource_temp_url(resource_id="res-1")
     forwarded = await message.get_forwarded_messages(forward_id="fwd-1")
     marked = await message.mark_message_as_read(message_scene="group", message_seq=88, config=_config())
 
     assert "message_seq=88" in one
     assert "hello" in one
-    assert "next_message_seq=0" in history
-    assert "old" in history
     assert url == "https://example.com/resource"
     assert "forward" in forwarded
     assert marked == "已将 group 会话 123 中消息 88 及之前消息标为已读"
     assert bot.calls == [
         ("get_message", {"message_scene": "group", "peer_id": 123, "message_seq": 88}),
-        (
-            "get_history_messages",
-            {"message_scene": "friend", "peer_id": 456, "start_message_seq": None, "limit": 30},
-        ),
         ("get_resource_temp_url", {"resource_id": "res-1"}),
         ("get_forwarded_messages", {"forward_id": "fwd-1"}),
         ("mark_message_as_read", {"message_scene": "group", "peer_id": 123, "message_seq": 88}),

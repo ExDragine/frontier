@@ -18,7 +18,6 @@ _TOOL_MESSAGE_EXACT: dict[str, str] = {
     "execute": "正在执行代码…",
     "shell": "正在执行 shell 命令…",
     # 记忆
-    "summarize_messages": "正在总结聊天记录…",
     "search_messages": "正在搜索历史消息…",
     # 天气 / 地球
     "ens_normal": "🌐 正在查询…",
@@ -220,6 +219,7 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
 
 # ── 子代理消息映射 ─────────────────────────────────────────────────────────
 _SUBAGENT_MESSAGE_MAP: dict[str, str] = {
+    "memory-agent": "正在检索聊天记忆…",
     "code-explorer": "启动代码探索子代理…",
     "code-reviewer": "启动代码审查子代理…",
     "feature-dev": "启动功能开发子代理…",

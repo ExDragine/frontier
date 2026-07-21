@@ -87,9 +87,8 @@ class ModuleTools:
         ) = _discover_tools()
         # MCP 工具延迟加载，在 mcp_tools property 首次访问时才执行 asyncio.run()
         self.subagent_tools["main"].extend(self.web_tools)
-        self.subagent_tools["main"].extend(self.subagent_tools["memory"])
 
-        # 将所有子代理组的工具也暴露给主 Agent
+        # 仅将通用领域工具暴露给主 Agent；memory 工具由专用 subagent 独占。
         for group in ("astro", "earth", "divination", "media"):
             self.subagent_tools["main"].extend(self.subagent_tools[group])
 

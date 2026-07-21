@@ -5,7 +5,6 @@ from nonebot import get_bot
 from utils.milky_tools import (
     format_forwarded_messages,
     format_message,
-    format_messages,
     resolve_group_id,
     resolve_peer,
     resolve_user_id,
@@ -74,34 +73,6 @@ async def get_message(
         message_seq=message_seq,
     )
     return format_message(message)
-
-
-@tool(response_format="content")
-async def get_history_messages(
-    message_scene: str,
-    peer_id: int | None = None,
-    start_message_seq: int | None = None,
-    limit: int = 20,
-    config: RunnableConfig = None,
-) -> str:
-    """获取历史消息列表。
-    Args:
-        message_scene: 消息场景，friend、group 或 temp
-        peer_id: 可选会话 ID，未传时按场景从当前上下文推断
-        start_message_seq: 可选起始消息序列号
-        limit: 获取数量上限，最大 30
-    """
-    resolved_peer_id, error = resolve_peer(message_scene, peer_id, config)
-    if error:
-        return error
-    limit = max(1, min(limit, 30))
-    messages, next_message_seq = await get_bot().get_history_messages(
-        message_scene=message_scene,
-        peer_id=resolved_peer_id,
-        start_message_seq=start_message_seq,
-        limit=limit,
-    )
-    return format_messages("历史消息", messages, next_message_seq)
 
 
 @tool(response_format="content")

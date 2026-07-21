@@ -32,7 +32,11 @@ def install_stub(module_name: str, **attrs):
 def install_all_third_party_stubs():
     """安装所有必要的第三方库桩。"""
     install_stub("uuid_utils", uuid7=lambda: "uuid")
-    install_stub("deepagents", create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}))
+    install_stub(
+        "deepagents",
+        CompiledSubAgent=dict,
+        create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}),
+    )
     install_stub(
         "deepagents.backends",
         CompositeBackend=DummyCompositeBackend,
@@ -84,15 +88,17 @@ def install_all_third_party_stubs():
         main_tools=[],
         web_tools=[],
         mcp_tools=[],
+        restricted_tools=[],
         tool_metadata={},
         subagent_tools={
-            "research": [],
+            "main": [],
             "astro": [],
             "earth": [],
             "media": [],
             "memory": [],
             "divination": [],
             "external": [],
+            "restricted": [],
         },
     )
 

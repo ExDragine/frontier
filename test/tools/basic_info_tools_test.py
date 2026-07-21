@@ -164,7 +164,10 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         ),
         "paint": types.SimpleNamespace(get_paint=FakeBaseTool("get_paint")),
         "video": types.SimpleNamespace(get_video=FakeBaseTool("get_video")),
-        "memory": types.SimpleNamespace(search_messages=FakeBaseTool("search_messages")),
+        "memory": types.SimpleNamespace(
+            search_messages=FakeBaseTool("search_messages"),
+            get_history_messages=FakeBaseTool("get_history_messages"),
+        ),
         "iching": types.SimpleNamespace(iching_divination=FakeBaseTool("iching_divination")),
         "unknown_local": types.SimpleNamespace(mystery_tool=FakeBaseTool("mystery_tool")),
     }
@@ -209,7 +212,6 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_paint",
         "get_video",
         "mcp_tool",
-        "search_messages",
         "mystery_tool",
         "aurora_live",
         "get_fy4b_satellite_image",
@@ -231,7 +233,7 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_static_china_radar",
     }
     assert {tool.name for tool in groups["media"]} == set()
-    assert {tool.name for tool in groups["memory"]} == {"search_messages"}
+    assert {tool.name for tool in groups["memory"]} == {"search_messages", "get_history_messages"}
     assert {tool.name for tool in groups["divination"]} == {"iching_divination"}
     assert {tool.name for tool in groups["external"]} == {"mcp_tool"}
     assert {tool.name for tool in module.agent_tools.web_tools} == set()

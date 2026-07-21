@@ -91,7 +91,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `main` | `adapter`, `milky_*`, `paint`, `video`, `reminder`, `scheduled_task`, `deepseek_balance`, `NRC*`, `typhoon` | QQ 平台操作、媒体生成、提醒/自动任务、游戏/业务工具 |
 | `astro` | `aurora`, `comet`, `heavens_above`, `rocket`, `satellite`, `space_weather` | 天文、卫星、空间天气 |
 | `earth` | `earthquake`, `radar`, `weather` | 地震、雷达、天气 |
-| `memory` | `memory` | 聊天记录搜索和总结 |
+| `memory` | `memory` | 当前会话聊天记录搜索和平台历史读取，仅供 `memory-agent` 使用 |
 | `divination` | `iching`, `tarot` | 易经、塔罗 |
 | `restricted` | `ens_normal`, `ens_professional`, `webpage_screenshot`, `webpage_recording` | 受控工具：ENS 在 Agent 中显式追加；网页截图/录屏需 Signal LLM 判断用户明确要求 |
 | `external` | MCP tools | `mcp.json` 定义的外部工具，首次访问 `agent_tools.mcp_tools` 时懒加载 |
@@ -109,6 +109,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，Signal 判断使用 `EnvConfig.SIGNAL_MODEL`。
 - 当模型引用的供应商 `use_responses_api` 为 true 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；Chat Completions 路径会跳过这些参数。
 - 根据模型自身的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
+- 主 Agent 不直接持有记忆工具；同步 `memory-agent` 使用基础模型检索和总结当前会话历史。
 - 构建 `CompositeBackend`：
   - default: `cache/sandbox/workspaces/{workspace_key}`，`LocalShellBackend`
   - `/skills/`: `cache/sandbox/skills`

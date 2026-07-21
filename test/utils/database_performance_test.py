@@ -241,18 +241,45 @@ async def test_search_messages_can_sort_fts_results_by_relevance(tmp_path: Path,
         "user",
         "Python " + " ".join(f"unrelated{i}" for i in range(40)),
     )
+    await database.insert(3000, 12, 0, 123, "Assistant", "assistant", "Python 助手记录")
 
-    by_time = await database.search_messages(group_id=123, user_id=1, content_query="Python", limit=10)
+    by_time = await database.search_messages(
+        group_id=123,
+        user_id=1,
+        content_query="Python",
+        role="user",
+        limit=10,
+    )
     by_relevance = await database.search_messages(
         group_id=123,
         user_id=1,
         content_query="Python",
+        role="user",
+        limit=10,
+        sort="relevance",
+    )
+    relevance_second_page = await database.search_messages(
+        group_id=123,
+        user_id=1,
+        content_query="Python",
+        role="user",
+        limit=1,
+        offset=1,
+        sort="relevance",
+    )
+    assistant_results = await database.search_messages(
+        group_id=123,
+        user_id=1,
+        content_query="Python",
+        role="assistant",
         limit=10,
         sort="relevance",
     )
 
     assert [message.msg_id for message in by_time] == [11, 10]
     assert by_relevance[0].msg_id == 10
+    assert [message.msg_id for message in relevance_second_page] == [11]
+    assert [message.msg_id for message in assistant_results] == [12]
 
 
 def test_cleanup_task_execution_history_applies_day_and_per_job_retention(tmp_path: Path, monkeypatch):

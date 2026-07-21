@@ -1,16 +1,18 @@
 import asyncio
 import base64
+import datetime
 import json
 import os
 import re
 import time
 import uuid
+import zoneinfo
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from deepagents import create_deep_agent
+from deepagents import CompiledSubAgent, create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
 from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import (
@@ -60,6 +62,8 @@ VISION_OMITTED_NOTICE = "[图片已省略：当前模型不支持视觉输入]"
 SKILLS_BACKEND_PATH = "/skills"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MEMORY_BACKEND_PATH = "/memory"
+MEMORY_SUBAGENT_NAME = "memory-agent"
+_SHANGHAI = zoneinfo.ZoneInfo("Asia/Shanghai")
 
 
 # 截图/录屏工具硬门控：通过 Signal LLM 判断用户原始意图，仅当用户明确想"看网页外观"时才暴露对应工具
@@ -129,6 +133,43 @@ def _configured_model_route(model: str, role: Literal["basic", "signal", "advanc
     if model == EnvConfig.SIGNAL_MODEL:
         return {"provider": EnvConfig.SIGNAL_MODEL_PROVIDER}
     return {}
+
+
+def _build_memory_subagent() -> CompiledSubAgent:
+    """Build a minimal compiled subagent with access only to memory tools."""
+    model = create_llm(
+        model=EnvConfig.BASIC_MODEL,
+        provider=EnvConfig.BASIC_MODEL_PROVIDER,
+        streaming=False,
+        max_retries=2,
+        timeout=300,
+    )
+    now = datetime.datetime.now(tz=_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S %Z")
+    system_prompt = f"""你是聊天记忆检索专员。当前时间是 {now}。
+
+你的唯一职责是检索、核对和总结当前会话的历史记录：
+- 优先使用 search_messages 查询本地记忆；没有筛选条件时它会返回最近记录。
+- 只有本地记忆不足，或必须按 QQ 消息序列继续翻页时，才使用 get_history_messages。
+- 需要概览或总结时，自行组合关键词、时间、角色和分页条件，最多读取 1000 条记录；按页提炼，避免重复拉取。
+- 不得猜测、补写或把没有检索到的信息当成事实；没有依据就明确说未找到。
+- 返回简洁结论，并列出关键依据。依据必须保留时间、用户、角色和 msg_id；达到读取上限时说明结果可能不完整。
+- 只回答主 Agent 委托的记忆问题，不处理普通问答，也不尝试调用任何其他能力。
+"""
+    runnable = create_agent(
+        model=model,
+        tools=list(agent_tools.subagent_tools["memory"]),
+        system_prompt=system_prompt,
+        middleware=[ToolRetryMiddleware(), ModelRetryMiddleware()],
+        debug=EnvConfig.AGENT_DEBUG_MODE,
+    )
+    return CompiledSubAgent(
+        name=MEMORY_SUBAGENT_NAME,
+        description=(
+            "检索、核对或总结当前群聊/私聊的历史消息。用户询问之前说过什么、过去的决定、"
+            "历史数据或需要基于聊天记录继续分析时，必须委托此代理。"
+        ),
+        runnable=runnable,
+    )
 
 
 def _append_vision_notice(text: str) -> str:
@@ -417,6 +458,7 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
 class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.main_tools
+        self.memory_subagent = _build_memory_subagent()
 
     @staticmethod
     def load_system_prompt(group_id: int | None = None, wake_word: str | None = None):
@@ -448,8 +490,12 @@ class FrontierCognitive:
             logger.error(f"❌ system prompt 模板变量缺失: {e}")
             return f"You are {name}, a helpful assistant. [配置错误: 模板变量缺失]"
 
+        prompt += (
+            "\n\n【聊天记忆规则】凡是需要追溯、核对或总结聊天历史的任务，统一委托 "
+            "memory-agent；不要根据当前上下文猜测未提供的历史。"
+        )
         # 气象查询规则（硬编码，与 prompts/ens_rules.md 同步维护）
-        prompt += "\n\n【气象查询规则】用户要查新的气象数据 → 调 ens_normal(no_video=True)。用户追问/评价/对比之前查过的数据（含 BAA/珊瑚白化等）→ 先用 get_history_messages 或 search_messages 翻聊天记录，数据已翻成中文在记录里，直接引用评价，禁止重调 ens_normal。记录里找不到才调工具。用户要看视频 → 翻记录找参数 → ens_normal(no_video=False)。多地点用 queries（最多3个），超过3个告知用户精简。"
+        prompt += "\n\n【气象查询规则】用户要查新的气象数据 → 调 ens_normal(no_video=True)。用户追问/评价/对比之前查过的数据（含 BAA/珊瑚白化等）→ 委托 memory-agent 翻聊天记录，数据已翻成中文在记录里，直接引用评价，禁止重调 ens_normal。记录里找不到才调工具。用户要看视频 → 委托 memory-agent 查参数 → ens_normal(no_video=False)。多地点用 queries（最多3个），超过3个告知用户精简。"
         return prompt
 
     @staticmethod
@@ -528,6 +574,7 @@ class FrontierCognitive:
                 effective_tools.append(rt)
         # ── 提取 PTC 工具名列表 ──
         ptc_tool_names: list = [tool.name for tool in effective_tools] if effective_tools else []
+        memory_subagent = getattr(self, "memory_subagent", None) or _build_memory_subagent()
         middleware: list = []
         middleware.extend(
             [
@@ -547,6 +594,7 @@ class FrontierCognitive:
             model=model,
             system_prompt=system_prompt,
             tools=effective_tools,
+            subagents=[memory_subagent],
             middleware=middleware,
             skills=[SKILLS_BACKEND_PATH],
             memory=[f"/memory/{workspace_key}/AGENTS.md"],

@@ -1078,7 +1078,9 @@ class MessageDatabase:
         msg_id: int | None,
         start_time: int | None,
         end_time: int | None,
+        role: str | None,
         limit: int,
+        offset: int,
         sort: str,
     ) -> list[Message]:
         params: dict[str, object] = {
@@ -1093,6 +1095,8 @@ class MessageDatabase:
             "msg_id": msg_id,
             "start_time": start_time,
             "end_time": end_time,
+            "role": role,
+            "offset": max(0, min(offset, 5000)),
         }
 
         if group_id is None:
@@ -1121,8 +1125,10 @@ class MessageDatabase:
               AND (:msg_id IS NULL OR m.msg_id = :msg_id)
               AND (:start_time IS NULL OR m.time >= :start_time)
               AND (:end_time IS NULL OR m.time <= :end_time)
+              AND (:role IS NULL OR m.role = :role)
             ORDER BY bm25(message_fts), m.time DESC
             LIMIT :limit
+            OFFSET :offset
                 """
             )
         else:
@@ -1142,8 +1148,10 @@ class MessageDatabase:
               AND (:msg_id IS NULL OR m.msg_id = :msg_id)
               AND (:start_time IS NULL OR m.time >= :start_time)
               AND (:end_time IS NULL OR m.time <= :end_time)
+              AND (:role IS NULL OR m.role = :role)
             ORDER BY m.time DESC
             LIMIT :limit
+            OFFSET :offset
                 """
             )
 
@@ -1167,7 +1175,9 @@ class MessageDatabase:
         msg_id: int | None = None,
         start_time: int | None = None,
         end_time: int | None = None,
+        role: str | None = None,
         limit: int = 50,
+        offset: int = 0,
         sort: str = "time",
     ) -> list[Message]:
         def _do():  # noqa: C901
@@ -1183,7 +1193,9 @@ class MessageDatabase:
                         msg_id=msg_id,
                         start_time=start_time,
                         end_time=end_time,
+                        role=role,
                         limit=limit,
+                        offset=offset,
                         sort=sort,
                     )
 
@@ -1213,8 +1225,14 @@ class MessageDatabase:
                     statement = statement.where(Message.time >= start_time)
                 if end_time is not None:
                     statement = statement.where(Message.time <= end_time)
+                if role is not None:
+                    statement = statement.where(Message.role == role)
 
-                statement = statement.order_by(desc(Message.time)).limit(max(1, min(limit, 500)))
+                statement = (
+                    statement.order_by(desc(Message.time))
+                    .limit(max(1, min(limit, 500)))
+                    .offset(max(0, min(offset, 5000)))
+                )
                 return session.exec(statement).all()
 
         return await _run_database(self.engine, _do)
