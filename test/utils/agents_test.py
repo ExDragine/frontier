@@ -64,7 +64,7 @@ async def test_assistant_agent_model_selection(monkeypatch):
 def test_frontier_load_system_prompt_missing(monkeypatch):
     """测试 env.toml 未配置 system_prompt 时返回错误提示"""
     monkeypatch.setattr(agents.EnvConfig, "SYSTEM_PROMPT", "")
-    prompt = agents.FrontierCognitive.load_system_prompt()
+    prompt = agents.FrontierCognitive.load_system_prompt(workspace_key="123")
     assert "配置错误" in prompt
 
 
@@ -72,13 +72,21 @@ def test_frontier_load_system_prompt_includes_markdown_rendering_rules(monkeypat
     monkeypatch.setattr(agents.EnvConfig, "SYSTEM_PROMPT", "You are {name}.")
     monkeypatch.setattr(agents.EnvConfig, "BOT_NAME", "Frontier")
 
-    prompt = agents.FrontierCognitive.load_system_prompt()
+    prompt = agents.FrontierCognitive.load_system_prompt(workspace_key="123")
 
     assert "You are Frontier." in prompt
+    assert "# Frontier Deep Agent 全局操作规范" in prompt
+    assert "## Workspace SOUL" in prompt
     assert "```chart" in prompt
     assert "```stats" in prompt
     assert "```timeline" in prompt
     assert "不要添加 `<frontier-render>`" in prompt
+    assert prompt.index("You are Frontier.") < prompt.index("# Frontier Deep Agent 全局操作规范")
+    assert prompt.index("# Frontier Deep Agent 全局操作规范") < prompt.index("【Markdown 渲染规范】")
+    assert prompt.count("memory-agent") == 1
+    assert prompt.count("earth-data-agent") == 1
+    assert prompt.count("`/skills/ens-weather/SKILL.md`") == 1
+    assert "动态人设文件路径为 `/memory/123/SOUL.md`" in prompt
 
 
 @pytest.mark.asyncio
@@ -460,7 +468,8 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert backend.routes["/skills/"].root_dir == str(agents.PROJECT_ROOT / "skills")
     assert backend.routes["/memory/123/"].root_dir == str(tmp_path / "sandbox" / "memory" / "123")
     assert captured["skills"] == ["/skills"]
-    assert captured["memory"] == ["/memory/123/AGENTS.md"]
+    assert captured["memory"] == ["/memory/123/SOUL.md"]
+    assert "动态人设文件路径为 `/memory/123/SOUL.md`" in captured["system_prompt"]
     assert captured["subagents"] == [frontier.memory_subagent, frontier.earth_data_subagent]
     assert captured["state_schema"] is agents.FrontierAgentState
     assert captured["context_schema"] is agents.FrontierRuntimeContext
@@ -478,37 +487,48 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     )
 
 
-def test_build_agent_backend_recovers_non_utf8_memory(tmp_path):
+def test_build_agent_backend_creates_empty_soul_memory(tmp_path):
     working_dir = tmp_path / "sandbox"
     memory_dir = working_dir / "memory" / "123"
-    memory_dir.mkdir(parents=True)
-    agents_md = memory_dir / "AGENTS.md"
-    corrupt_content = b"# Agent memory\n" + b"\x80binary"
-    agents_md.write_bytes(corrupt_content)
 
     backend = agents._build_agent_backend(str(working_dir), "123")
 
-    assert agents_md.read_text(encoding="utf-8") == (agents.PROJECT_ROOT / "prompts" / "AGENTS.md").read_text(
-        encoding="utf-8"
-    )
-    backups = list(memory_dir.glob("AGENTS.md.corrupt-*"))
+    soul_md = memory_dir / "SOUL.md"
+    assert soul_md.is_file()
+    assert soul_md.read_bytes() == b""
+    assert not (memory_dir / "AGENTS.md").exists()
+    assert backend.routes["/memory/123/"].root_dir == str(memory_dir)
+
+
+def test_build_agent_backend_recovers_non_utf8_soul_memory(tmp_path):
+    working_dir = tmp_path / "sandbox"
+    memory_dir = working_dir / "memory" / "123"
+    memory_dir.mkdir(parents=True)
+    soul_md = memory_dir / "SOUL.md"
+    corrupt_content = b"# Agent memory\n" + b"\x80binary"
+    soul_md.write_bytes(corrupt_content)
+
+    backend = agents._build_agent_backend(str(working_dir), "123")
+
+    assert soul_md.read_bytes() == b""
+    backups = list(memory_dir.glob("SOUL.md.corrupt-*"))
     assert len(backups) == 1
     assert backups[0].read_bytes() == corrupt_content
     assert backend.routes["/memory/123/"].root_dir == str(memory_dir)
 
 
-def test_build_agent_backend_preserves_valid_utf8_memory(tmp_path):
+def test_build_agent_backend_preserves_valid_utf8_soul_memory(tmp_path):
     working_dir = tmp_path / "sandbox"
     memory_dir = working_dir / "memory" / "123"
     memory_dir.mkdir(parents=True)
-    agents_md = memory_dir / "AGENTS.md"
-    custom_content = "# 自定义 Agent memory\n保留这段内容。"
-    agents_md.write_text(custom_content, encoding="utf-8")
+    soul_md = memory_dir / "SOUL.md"
+    custom_content = "# 群聊 SOUL\n保留这段人设。"
+    soul_md.write_text(custom_content, encoding="utf-8")
 
     agents._build_agent_backend(str(working_dir), "123")
 
-    assert agents_md.read_text(encoding="utf-8") == custom_content
-    assert list(memory_dir.glob("AGENTS.md.corrupt-*")) == []
+    assert soul_md.read_text(encoding="utf-8") == custom_content
+    assert list(memory_dir.glob("SOUL.md.corrupt-*")) == []
 
 
 @pytest.mark.asyncio
@@ -552,6 +572,7 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
     assert captured["backend"].default.root_dir == str(tmp_path / "sandbox" / "workspaces" / "u1")
     assert captured["config"]["configurable"]["workspace_dir"] == str(tmp_path / "sandbox" / "workspaces" / "u1")
     assert (tmp_path / "sandbox" / "workspaces" / "u1").is_dir()
+    assert (tmp_path / "sandbox" / "memory" / "u1" / "SOUL.md").read_bytes() == b""
 
 
 @pytest.mark.asyncio

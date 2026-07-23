@@ -514,23 +514,18 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
     workspace_dir = _ensure_dir(os.path.join(working_dir, "workspaces", workspace_key))
     skills_dir = str(PROJECT_ROOT / "skills")
     memory_dir = _ensure_dir(os.path.join(working_dir, "memory", workspace_key))
-    agents_md = os.path.join(memory_dir, "AGENTS.md")
-    if os.path.exists(agents_md):
+    soul_md = os.path.join(memory_dir, "SOUL.md")
+    if os.path.exists(soul_md):
         try:
-            with open(agents_md, encoding="utf-8") as existing_memory:
+            with open(soul_md, encoding="utf-8") as existing_memory:
                 existing_memory.read()
         except UnicodeDecodeError as exc:
-            backup_path = f"{agents_md}.corrupt-{time.time_ns()}"
-            os.replace(agents_md, backup_path)
-            logger.warning(f"检测到非 UTF-8 的 Agent memory，已备份并恢复模板: {agents_md} -> {backup_path} ({exc})")
-    if not os.path.exists(agents_md):
-        try:
-            with (PROJECT_ROOT / "prompts" / "AGENTS.md").open(encoding="utf-8") as src:
-                content = src.read()
-        except FileNotFoundError:
-            content = ""
-        with open(agents_md, "w", encoding="utf-8") as dst:
-            dst.write(content)
+            backup_path = f"{soul_md}.corrupt-{time.time_ns()}"
+            os.replace(soul_md, backup_path)
+            logger.warning(f"检测到非 UTF-8 的 SOUL memory，已备份并恢复空文件: {soul_md} -> {backup_path} ({exc})")
+    if not os.path.exists(soul_md):
+        with open(soul_md, "w", encoding="utf-8"):
+            pass
 
     return CompositeBackend(
         default=FilesystemBackend(root_dir=workspace_dir, virtual_mode=True),
@@ -541,6 +536,40 @@ def _build_agent_backend(working_dir: str, workspace_key: str) -> CompositeBacke
     )
 
 
+def _load_base_system_prompt(group_id: int | None, wake_word: str | None) -> str:
+    toml_prompt = EnvConfig.SYSTEM_PROMPT.strip()
+    if not toml_prompt:
+        logger.error("❌ env.toml 中未配置 bot.system_prompt")
+        return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: system prompt未配置]"
+
+    name = EnvConfig.BOT_NAME
+    if wake_word:
+        name = wake_word
+    elif group_id is not None:
+        try:
+            from utils.database import GroupSettingsManager, get_engine
+
+            words = GroupSettingsManager(get_engine()).get(group_id, "wake_word")
+            if words:
+                name = words[0]
+        except Exception as exc:
+            logger.debug("Wake word injection skipped: %s: %s", type(exc).__name__, exc)
+
+    try:
+        return toml_prompt.format(name=name)
+    except KeyError as exc:
+        logger.error("❌ system prompt 模板变量缺失: %s", exc)
+        return f"You are {name}, a helpful assistant. [配置错误: 模板变量缺失]"
+
+
+def _load_prompt_fragment(filename: str, description: str) -> str:
+    try:
+        return (PROJECT_ROOT / "prompts" / filename).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        logger.warning("读取%s失败: %s", description, exc)
+        return ""
+
+
 class FrontierCognitive:
     def __init__(self):
         self.tools = agent_tools.main_tools
@@ -548,54 +577,29 @@ class FrontierCognitive:
         self.earth_data_subagent = _build_earth_data_subagent()
 
     @staticmethod
-    def load_system_prompt(group_id: int | None = None, wake_word: str | None = None):
-        """从 env.toml 加载 system prompt，注入当前触发的名称。
+    def load_system_prompt(
+        group_id: int | None = None,
+        wake_word: str | None = None,
+        workspace_key: str | None = None,
+    ):
+        """组合基础人设、全局操作规范和渲染规范，注入当前触发的名称。
 
         {name}: 优先使用当前触发的唤醒词，其次群自定义，最后 fallback BOT_NAME。
         """
-        toml_prompt = EnvConfig.SYSTEM_PROMPT.strip()
-        if not toml_prompt:
-            logger.error("❌ env.toml 中未配置 bot.system_prompt")
-            return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: system prompt未配置]"
-
-        name = EnvConfig.BOT_NAME
-        if wake_word:
-            name = wake_word
-        elif group_id is not None:
-            try:
-                from utils.database import GroupSettingsManager, get_engine
-
-                words = GroupSettingsManager(get_engine()).get(group_id, "wake_word")
-                if words:
-                    name = words[0]
-            except Exception as exc:
-                logger.debug("Wake word injection skipped: %s: %s", type(exc).__name__, exc)
-
-        try:
-            prompt = toml_prompt.format(name=name)
-        except KeyError as e:
-            logger.error(f"❌ system prompt 模板变量缺失: {e}")
-            return f"You are {name}, a helpful assistant. [配置错误: 模板变量缺失]"
-
-        prompt += (
-            "\n\n【聊天记忆规则】凡是需要追溯、核对或总结聊天历史的任务，统一委托 "
-            "memory-agent；不要根据当前上下文猜测未提供的历史。"
+        prompt = _load_base_system_prompt(group_id, wake_word)
+        prompt_fragments = (
+            ("AGENTS.md", "Agent 操作规范"),
+            ("rendering.md", "Markdown 渲染规范"),
         )
-        prompt += (
-            "\n\n【只读数据委托】中国地震、USGS 重大地震、雷达支持地区和火星天气等纯文本查询，"
-            "统一委托 earth-data-agent；雷达图、风图等媒体工具仍由主 Agent 调用。"
-        )
-        try:
-            rendering_rules = (PROJECT_ROOT / "prompts" / "rendering.md").read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            logger.warning("读取 Markdown 渲染规范失败: %s", exc)
-        else:
-            if rendering_rules:
-                prompt += f"\n\n{rendering_rules}"
-        prompt += (
-            "\n\n【气象查询规则】处理 ENS 气象、海洋、BAA、珊瑚白化或视频任务前，先读取 "
-            "`/skills/ens-weather/SKILL.md` 并按其中流程执行。"
-        )
+        for filename, description in prompt_fragments:
+            if fragment := _load_prompt_fragment(filename, description):
+                prompt += f"\n\n{fragment}"
+        if workspace_key is not None:
+            prompt += (
+                "\n\n【当前 Workspace SOUL】"
+                f"动态人设文件路径为 `/memory/{workspace_key}/SOUL.md`。"
+                "需要持久化稳定人设或长期偏好时，只更新该文件。"
+            )
         return prompt
 
     @staticmethod
@@ -657,7 +661,7 @@ class FrontierCognitive:
         workspace_key = str(group_id) if group_id is not None else str(user_id)
         backend = _build_agent_backend(working_dir, workspace_key)
         workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
-        system_prompt = self.load_system_prompt(group_id, wake_word)
+        system_prompt = self.load_system_prompt(group_id, wake_word, workspace_key)
         # ── 硬门控：仅当用户明确请求截图/录屏时才暴露对应工具 ──
         effective_tools = list(self.tools)
         allowed_capture_tools = await _detect_browser_capture_intent(user_text)
@@ -698,7 +702,7 @@ class FrontierCognitive:
             subagents=[memory_subagent, earth_data_subagent],
             middleware=middleware,
             skills=[SKILLS_BACKEND_PATH],
-            memory=[f"/memory/{workspace_key}/AGENTS.md"],
+            memory=[f"/memory/{workspace_key}/SOUL.md"],
             permissions=[
                 FilesystemPermission(
                     operations=["write"],

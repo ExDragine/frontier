@@ -29,6 +29,7 @@ UniMessage 文本、图片、视频或文件回复
 - **会话串行**：同一用户/群聊线程通过 `asyncio.Lock` 串行执行，不同线程可并发。
 - **多模型路由**：OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek 统一由 `utils/llm_factory.py` 创建。
 - **文件系统工作区**：每个私聊或群聊拥有独立 `cache/sandbox/workspaces/{id}` 和 `/memory/{id}`。
+- **分层提示词**：`env.toml` 定义基础人设，`prompts/AGENTS.md` 定义全局操作规范，`prompts/rendering.md` 定义渲染规范，workspace `SOUL.md` 保存动态人设与长期偏好。
 - **媒体工件直发**：工具返回的 `UniMessage` artifact 会被提取并直接发送到 QQ。
 
 ## 功能模块
@@ -174,6 +175,17 @@ OpenAI-compatible Images API，视频调用 OpenAI-compatible Videos API。
 机器人名称只来自 `.env` 的 `NICKNAME`。数组第一项作为默认显示名称，全部非空项都可
 作为全局唤醒词；某个群在数据库中配置了自定义唤醒词后，以该群的数据库配置为准。
 
+每个群聊按 `group_id` 共享 `cache/sandbox/memory/{id}/SOUL.md`，每个私聊按 `user_id`
+维护独立 SOUL。新文件为空，由 Agent 按稳定互动逐步记录局部人设和长期偏好；全局安全、
+权限和工具规范不会写入 SOUL。
+
+从旧版 memory `AGENTS.md` 升级时不做自动迁移。如需按新规则重置旧记忆，可在项目根目录
+执行一次以下命令；它只删除 workspace 目录中的旧 `AGENTS.md`：
+
+```bash
+find cache/sandbox/memory -mindepth 2 -maxdepth 2 -type f -name AGENTS.md -delete
+```
+
 ## Dashboard
 
 启动后 Dashboard 挂载到：
@@ -202,7 +214,7 @@ frontier/
 │   └── toolbox/        # 管理命令
 ├── tools/              # LangChain Agent 工具
 ├── utils/              # Agent、消息、DB、LLM、渲染、HTTP、Milky helper
-├── prompts/            # prompt 模板和 Agent memory 基础模板
+├── prompts/            # 全局操作、渲染和任务 prompt
 ├── renderer/           # Markdown 本地图表/公式/代码高亮前端源码
 ├── templates/          # HTML/CSS 渲染模板
 ├── data/               # 易经、塔罗等静态数据
