@@ -250,7 +250,7 @@ async def handle_set(event: MessageEvent):  # noqa: C901
 
     # 尝试匹配旧命令别名 /set model
     if text.startswith("model ") or text == "model":
-        await _handle_set_model(event, text.removeprefix("model").strip())
+        await _handle_set_model()
         return
 
     # /set wake ...
@@ -311,7 +311,7 @@ async def handle_set(event: MessageEvent):  # noqa: C901
 # ── /set model (保留旧兼容) ─────────────────────────────────
 
 
-async def _handle_set_model(event: MessageEvent, model_text: str):
+async def _handle_set_model():
     """/set model 的过渡兼容处理，提示用户使用 /model 或待实现群级别 model。"""
     await UniMessage.text(
         f"当前默认模型为: {EnvConfig.ADVAN_MODEL}\n"

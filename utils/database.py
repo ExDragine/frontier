@@ -987,39 +987,9 @@ class MessageDatabase:
     def load_attachment_files(self, records: list[MessageAttachment]) -> tuple[list[bytes], int]:
         return self._attachments.load_files(records)
 
-    def group_settings(self) -> GroupSettingsManager:
-        return GroupSettingsManager(self.engine)
-
-    async def select_attachments_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
-        self._attachments.engine = self.engine
-        return await self._attachments.select_by_msg_time(msg_time)
-
     async def cleanup_expired_attachments(self, now_ms: int | None = None) -> int:
         self._attachments.engine = self.engine
         return await self._attachments.cleanup_expired_attachments(now_ms=now_ms)
-
-    async def select_by_time_range(
-        self,
-        start_time: int,
-        end_time: int,
-        group_id: int | None = None,
-        user_id: int | None = None,
-        limit: int = 500,
-    ) -> list[Message]:
-        def _do():  # noqa: C901
-            with Session(self.engine) as session:
-                statement = select(Message).where(Message.time >= start_time).where(Message.time <= end_time)
-                statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
-                if group_id is not None:
-                    statement = statement.where(Message.group_id == group_id)
-                    if user_id is not None:
-                        statement = statement.where(Message.user_id == user_id)
-                elif user_id is not None:
-                    statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
-                statement = statement.order_by(col(Message.time)).limit(limit)
-                return session.exec(statement).all()
-
-        return await _run_database(self.engine, _do)
 
     async def count_group_messages_since(self, *, group_id: int, since_time: int) -> int:
         def _do():
@@ -1236,22 +1206,6 @@ class MessageDatabase:
                 return session.exec(statement).all()
 
         return await _run_database(self.engine, _do)
-
-    @staticmethod
-    def format_for_llm(messages: list[Message]) -> str:
-        """将 Message 列表格式化为 LLM 可读的纯文本。
-
-        格式：[时间] 角色(显示名): 消息内容
-        """
-        tz = zoneinfo.ZoneInfo("Asia/Shanghai")
-        lines = []
-        for msg in messages:
-            ts = datetime.datetime.fromtimestamp(msg.time / 1000, tz=tz).strftime("%Y-%m-%d %H:%M:%S")
-            name = msg.user_name or ("助手" if msg.role == "assistant" else str(msg.user_id))
-            role_label = "助手" if msg.role == "assistant" else "用户"
-            lines.append(f"[{ts}] {role_label}({name}): {msg.content}")
-        return "\n".join(lines)
-
 
 class EventDatabase:
     def __init__(self):

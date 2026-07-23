@@ -32,16 +32,6 @@ async def _get_browser():
         return _browser
 
 
-async def close_playwright():
-    """清理全局浏览器实例（关闭时调用）。"""
-    global _browser
-    async with _browser_lock:
-        if _browser:
-            await _browser.close()
-            _browser = None
-            logger.info("Playwright 浏览器已关闭")
-
-
 def _on_console(msg):
     try:
         loc = msg.location

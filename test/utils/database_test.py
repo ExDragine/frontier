@@ -168,7 +168,7 @@ async def test_insert_images_records_memory_file_attachment(monkeypatch, memory_
     assert paths == [str(expected_path)]
     assert (tmp_path / expected_path).read_bytes() == b"image-bytes"
 
-    attachments = await database.select_attachments_by_msg_time(1000)
+    attachments = await database.select_image_attachments_by_msg_time(1000)
     assert len(attachments) == 1
     attachment = attachments[0]
     assert attachment.kind == "image"
@@ -208,7 +208,7 @@ async def test_cleanup_expired_attachments_deletes_only_db_tracked_files(monkeyp
     assert deleted == 1
     assert not (tmp_path / tracked).exists()
     assert (tmp_path / untracked).exists()
-    assert await database.select_attachments_by_msg_time(1000) == []
+    assert await database.select_image_attachments_by_msg_time(1000) == []
 
 
 @pytest.mark.asyncio

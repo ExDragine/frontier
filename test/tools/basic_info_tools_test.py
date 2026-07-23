@@ -235,9 +235,6 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_usgs_significant_earthquakes",
         "get_available_china_radar_areas",
     }
-    assert {tool.name for tool in groups["media"]} == set()
     assert {tool.name for tool in groups["memory"]} == {"search_messages", "get_history_messages"}
     assert {tool.name for tool in groups["divination"]} == {"iching_divination"}
     assert {tool.name for tool in groups["external"]} == {"mcp_tool"}
-    assert {tool.name for tool in module.agent_tools.web_tools} == set()
-    assert "mcp_tool" in {tool.name for tool in module.agent_tools.all_tools}

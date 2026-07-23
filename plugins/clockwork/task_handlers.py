@@ -28,7 +28,7 @@ from .task_models import TaskRunResult
 # 共享的资源
 event_database = EventDatabase()
 httpx_client = get_http_client("task_handlers")
-tools = agent_tools.mcp_tools + agent_tools.web_tools
+tools = agent_tools.mcp_tools
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
 DAILY_NEWS_SEARCH_TOOL_NAMES = {"web_search_exa"}

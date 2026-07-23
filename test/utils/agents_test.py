@@ -169,7 +169,6 @@ def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
 
 
 def test_frontier_cognitive_uses_main_tools(monkeypatch):
-    monkeypatch.setattr(cognitive_mod.agent_tools, "all_tools", ["all-tool"], raising=False)
     monkeypatch.setattr(cognitive_mod.agent_tools, "main_tools", ["main-tool"], raising=False)
     memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     earth_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}

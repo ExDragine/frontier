@@ -42,7 +42,6 @@ class CencWebSocketService:
         self._task: asyncio.Task[None] | None = None
         self._connected = False
         self._last_error: str | None = None
-        self._last_message_at: float | None = None
 
     @property
     def is_running(self) -> bool:
@@ -124,7 +123,6 @@ class CencWebSocketService:
         snapshot_pending = True
         while True:
             raw_message = await asyncio.wait_for(websocket.recv(), timeout=self._receive_timeout)
-            self._last_message_at = time.monotonic()
             data = self._decode_message(raw_message)
             if data is not None:
                 snapshot_pending = await self._dispatch_message(websocket, data, snapshot_pending)
