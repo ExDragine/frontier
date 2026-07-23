@@ -1,4 +1,4 @@
-"""Specialized Deep Agents subagent builders."""
+"""Specialized Deep Agent subagent builders."""
 
 from .earth_data import build_earth_data_subagent
 from .memory import build_memory_subagent

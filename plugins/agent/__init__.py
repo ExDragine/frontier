@@ -14,7 +14,7 @@ from nonebot.adapters.milky.event import MessageEvent
 
 require("nonebot_plugin_alconna")
 
-from utils.agents import FrontierCognitive, ProgressEvent, _agent_thread_id, run_serialized
+from utils.agents import FrontierCognitive, ProgressEvent, agent_thread_id, run_serialized
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
@@ -42,6 +42,7 @@ driver = get_driver()
 common = on_message(priority=10)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 @dataclass(slots=True)
 class AgentRequestContext:
@@ -214,6 +215,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
 @driver.on_shutdown
 async def on_shutdown():
     from tools.ens_professional import clear_ens_cache as clear_ens_professional_cache
+
     clear_ens_professional_cache()
     from utils.browser_capture import close_browser
     from utils.http_client import aclose_all
@@ -231,6 +233,8 @@ async def on_startup():
                 logger.info("已清理过期消息附件: %s", cleaned_attachments)
         except Exception as exc:
             logger.warning("清理过期消息附件失败: %s: %s", type(exc).__name__, exc)
+
+
 @common.handle()
 async def handle_common(event: MessageEvent):  # noqa: C901
     if EnvConfig.AGENT_MODULE_ENABLED is False:
@@ -374,7 +378,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         videos=videos,
         quoted_text=agent_quote_text,
     )
-    thread_id = _agent_thread_id(user_id, group_id)
+    thread_id = agent_thread_id(user_id, group_id)
     from utils.ens_gate import _ens_caller_allowed, _ens_prefix
 
     cleaned = text.strip().lstrip("/")

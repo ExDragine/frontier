@@ -4,7 +4,7 @@ import types
 
 from langchain.agents.middleware import ModelRetryMiddleware, ToolRetryMiddleware
 
-from utils.subagents import earth_data, memory
+from utils.agents.subagents import earth_data, memory
 
 
 def test_build_memory_subagent_uses_basic_model_and_only_injected_tools(monkeypatch):

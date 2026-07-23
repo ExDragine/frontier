@@ -66,8 +66,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 
 | 文件 | 职责 |
 |------|------|
-| `agents.py` | `assistant_agent()`、`FrontierCognitive`、主 Deep Agent backend/middleware/tools 组装、进度事件、会话锁 |
-| `subagents/` | 独立的 `memory-agent`、`earth-data-agent` CompiledSubAgent 定义；由主 Agent 注入专用工具集 |
+| `agents/` | Agent 包：主 Deep Agent 编排、轻量 Agent、输入适配、进度流、Prompt、workspace、运行时与 Subagent |
 | `database.py` | SQLite/SQLModel、消息/附件/群设置模型、WAL/FTS/索引、历史上下文构造、检索和维护 |
 | `message.py` | 消息段提取、文件暂存、媒体下载、回复网关、内容安全、Markdown/图片回复渲染 |
 | `configs.py` | `EnvConfig`：从 `env.toml` 读取模型、端点、密钥、功能开关、Dashboard、内容安全配置 |
@@ -111,7 +110,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - 当模型引用的供应商 `use_responses_api` 为 true 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；Chat Completions 路径会跳过这些参数。
 - 根据模型自身的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
 - 主 Agent 不直接持有记忆工具；同步 `memory-agent` 使用基础模型检索和总结当前会话历史。纯文本地球数据由同步 `earth-data-agent` 查询，媒体类地球工具保留在主 Agent。
-- 专用子代理定义位于 `utils/subagents/`，使用 `create_agent()` 构建独立图并包装为 `CompiledSubAgent`；builder 只接收所需工具列表，避免反向依赖工具注册器。
+- 专用子代理定义位于 `utils/agents/subagents/`，使用 `create_agent()` 构建独立图并包装为 `CompiledSubAgent`；builder 只接收所需工具列表，避免反向依赖工具注册器。
 - Frontier 为四类模型 provider 注册统一 Harness Profile，关闭 Deep Agents 自动添加且工具面重复的 `general-purpose` subagent。
 - 模型目录会转换为 LangChain `ModelProfile` 注入模型实例，为 Deep Agents 提供上下文窗口、输出上限和能力元数据；目录外模型继续按未知模型降级。
 - 请求身份、群权限和 workspace 使用冻结的 `FrontierRuntimeContext`；媒体等会话数据保留在继承 `DeepAgentState` 的图状态中。
@@ -168,13 +167,13 @@ Dashboard 配置：
 
 ### 延迟 import 避免循环依赖
 
-`utils/agents.py` 会 import `tools.agent_tools`，而部分工具需要调用 `assistant_agent()`。这类回引必须放在函数体内：
+`utils/agents/cognitive.py` 会 import `tools.agent_tools`，而部分工具需要调用 `assistant_agent()`。这类回引必须放在函数体内：
 
 ```python
 from utils.agents import assistant_agent  # 放在函数内，避免循环依赖
 ```
 
-不要在 `utils/agents.py` 顶层 import 具体 tool 模块。
+不要在 `utils/agents/cognitive.py` 顶层 import 具体 tool 模块。
 
 ### UniMessage 延迟加载
 

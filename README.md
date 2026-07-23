@@ -61,7 +61,7 @@ UniMessage 文本、图片、视频或文件回复
 部分工具是受限工具：网页截图/录屏只有在用户明确要求查看网页外观或录制页面时才暴露；ENS 专业气象工具有独立前缀和门控规则。
 
 仓库内置工作流位于 `skills/`，运行时以只读方式挂载到 `/skills`，按描述渐进加载；Agent 不再拥有宿主 Shell，也不会在启动时从远端下载 Skill。
-`memory-agent` 和 `earth-data-agent` 的独立 `CompiledSubAgent` 定义位于 `utils/subagents/`，
+`memory-agent` 和 `earth-data-agent` 的独立 `CompiledSubAgent` 定义位于 `utils/agents/subagents/`，
 主 Agent 只向它们注入各自所需的最小工具集。
 
 ## 技术栈
@@ -215,7 +215,7 @@ frontier/
 │   ├── playground/     # /paint 和 /video
 │   └── toolbox/        # 管理命令
 ├── tools/              # LangChain Agent 工具
-├── utils/              # 主 Agent、subagents、消息、DB、LLM、渲染、HTTP、Milky helper
+├── utils/              # agents/ 包、消息、DB、LLM、渲染、HTTP、Milky helper
 ├── prompts/            # 全局操作、渲染和任务 prompt
 ├── renderer/           # Markdown 本地图表/公式/代码高亮前端源码
 ├── templates/          # HTML/CSS 渲染模板
@@ -251,6 +251,6 @@ uv run python scripts/database_maintenance.py
 
 - 新工具：在 `tools/xxx.py` 中添加 `@tool`，必要时在 `tools/__init__.py` 的 `_TOOL_MODULE_GROUPS` 注册分组。
 - 新插件：放入 `plugins/`，NoneBot 会按 `pyproject.toml` 的 `plugin_dirs` 加载。
-- 不要在 `utils/agents.py` 顶层 import 具体工具模块，容易触发循环依赖。
+- 不要在 `utils/agents/cognitive.py` 顶层 import 具体工具模块，容易触发循环依赖。
 - `UniMessage` 和 alconna 相关 import 尽量延迟到 NoneBot 环境就绪后。
 - 涉及消息主流程、DB schema、工具权限、Agent backend、LLM 路由的改动需要补针对性测试。

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from utils import agents
+from utils.agents import cognitive as cognitive_mod
 
 
 class _FakeStream:
@@ -38,14 +38,16 @@ async def test_chat_agent_does_not_import_or_append_memory_v3_context(monkeypatc
         captured.update(kwargs)
         return DummyAgent()
 
-    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
-    monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
-    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(cognitive_mod, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(cognitive_mod, "create_llm", lambda **_kwargs: object())
     monkeypatch.setattr(
-        agents.FrontierCognitive, "load_system_prompt", staticmethod(lambda *_args, **_kwargs: "base prompt")
+        cognitive_mod, "filter_messages_for_model_capabilities", lambda messages, *_args, **_kwargs: messages
+    )
+    monkeypatch.setattr(
+        cognitive_mod.FrontierCognitive, "load_system_prompt", staticmethod(lambda *_args, **_kwargs: "base prompt")
     )
 
-    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}

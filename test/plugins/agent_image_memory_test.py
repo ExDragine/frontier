@@ -1022,7 +1022,7 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
         images=[],
         videos=[],
     )
-    thread_id = str(agent._agent_thread_id("456", 123))
+    thread_id = str(agent.agent_thread_id("456", 123))
 
     task_a = asyncio.create_task(run_serialized(thread_id, agent._process_agent_request(context_a)))
     await first_started.wait()

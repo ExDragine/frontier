@@ -7,7 +7,13 @@ import uuid
 
 import pytest
 
-from utils import agents
+from utils.agents import assistant as assistant_mod
+from utils.agents import cognitive as cognitive_mod
+from utils.agents import inputs as inputs_mod
+from utils.agents import progress as progress_mod
+from utils.agents import prompts as prompts_mod
+from utils.agents import runtime as runtime_mod
+from utils.agents import workspace as workspace_mod
 
 # ── 共享 async 迭代工具 ──────────────────────────────────────────
 
@@ -50,29 +56,29 @@ async def test_assistant_agent_model_selection(monkeypatch):
     def fake_create_agent(**_kwargs):
         return DummyAgent()
 
-    monkeypatch.setattr(agents, "create_agent", fake_create_agent)
+    monkeypatch.setattr(assistant_mod, "create_agent", fake_create_agent)
 
     class DummyModel:
         pass
 
-    monkeypatch.setattr(agents, "create_llm", lambda model, **_kw: DummyModel())
+    monkeypatch.setattr(assistant_mod, "create_llm", lambda model, **_kw: DummyModel())
 
-    result = await agents.assistant_agent(user_prompt="hello", use_model="claude-3")
+    result = await assistant_mod.assistant_agent(user_prompt="hello", use_model="claude-3")
     assert result == "ok"
 
 
 def test_frontier_load_system_prompt_missing(monkeypatch):
     """测试 env.toml 未配置 system_prompt 时返回错误提示"""
-    monkeypatch.setattr(agents.EnvConfig, "SYSTEM_PROMPT", "")
-    prompt = agents.FrontierCognitive.load_system_prompt(workspace_key="123")
+    monkeypatch.setattr(prompts_mod.EnvConfig, "SYSTEM_PROMPT", "")
+    prompt = prompts_mod.load_system_prompt(workspace_key="123")
     assert "配置错误" in prompt
 
 
 def test_frontier_load_system_prompt_includes_markdown_rendering_rules(monkeypatch):
-    monkeypatch.setattr(agents.EnvConfig, "SYSTEM_PROMPT", "You are {name}.")
-    monkeypatch.setattr(agents.EnvConfig, "BOT_NAME", "Frontier")
+    monkeypatch.setattr(prompts_mod.EnvConfig, "SYSTEM_PROMPT", "You are {name}.")
+    monkeypatch.setattr(prompts_mod.EnvConfig, "BOT_NAME", "Frontier")
 
-    prompt = agents.FrontierCognitive.load_system_prompt(workspace_key="123")
+    prompt = prompts_mod.load_system_prompt(workspace_key="123")
 
     assert "You are Frontier." in prompt
     assert "# Frontier Deep Agent 全局操作规范" in prompt
@@ -97,7 +103,7 @@ async def test_extract_uni_messages():
             types.SimpleNamespace(type="ai", content="ok"),
         ]
     }
-    result = await agents.FrontierCognitive.extract_uni_messages(response)
+    result = await cognitive_mod.FrontierCognitive.extract_uni_messages(response)
     assert result == ["payload"]
 
 
@@ -109,7 +115,7 @@ def test_env_config_provider_responses_api_defaults():
 
 
 def test_build_user_content_omits_images_when_model_lacks_vision():
-    content = agents._build_user_content("hello", [b"image-bytes"], supports_vision=False)
+    content = inputs_mod.build_user_content("hello", [b"image-bytes"], supports_vision=False)
 
     assert isinstance(content, str)
     assert "hello" in content
@@ -117,7 +123,7 @@ def test_build_user_content_omits_images_when_model_lacks_vision():
 
 
 def test_build_user_content_keeps_images_when_model_supports_vision():
-    content = agents._build_user_content("hello", [b"image-bytes"], supports_vision=True)
+    content = inputs_mod.build_user_content("hello", [b"image-bytes"], supports_vision=True)
 
     assert isinstance(content, list)
     assert content[0] == {"type": "text", "text": "hello"}
@@ -125,7 +131,7 @@ def test_build_user_content_keeps_images_when_model_supports_vision():
 
 
 def test_filter_messages_for_text_only_model_removes_image_parts(monkeypatch):
-    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(inputs_mod, "model_supports", lambda *_args, **_kwargs: False)
     messages = [
         {
             "role": "user",
@@ -136,17 +142,17 @@ def test_filter_messages_for_text_only_model_removes_image_parts(monkeypatch):
         }
     ]
 
-    filtered = agents._filter_messages_for_model_capabilities(messages, "text-model")
+    filtered = inputs_mod.filter_messages_for_model_capabilities(messages, "text-model")
 
     assert filtered[0]["content"] == [{"type": "text", "text": "hello\n\n[图片已省略：当前模型不支持视觉输入]"}]
     assert messages[0]["content"][1]["type"] == "image_url"
 
 
 def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
-    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL", "shared-model")
-    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL", "shared-model")
-    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_CAPABILITIES", ["text"])
-    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_CAPABILITIES", ["text", "vision"])
+    monkeypatch.setattr(assistant_mod.EnvConfig, "BASIC_MODEL", "shared-model")
+    monkeypatch.setattr(assistant_mod.EnvConfig, "ADVAN_MODEL", "shared-model")
+    monkeypatch.setattr(assistant_mod.EnvConfig, "BASIC_MODEL_CAPABILITIES", ["text"])
+    monkeypatch.setattr(assistant_mod.EnvConfig, "ADVAN_MODEL_CAPABILITIES", ["text", "vision"])
     messages = [
         {
             "role": "user",
@@ -157,20 +163,20 @@ def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
         }
     ]
 
-    filtered = agents._filter_messages_for_model_capabilities(messages, "shared-model", role="advanced")
+    filtered = inputs_mod.filter_messages_for_model_capabilities(messages, "shared-model", role="advanced")
 
     assert filtered == messages
 
 
 def test_frontier_cognitive_uses_main_tools(monkeypatch):
-    monkeypatch.setattr(agents.agent_tools, "all_tools", ["all-tool"], raising=False)
-    monkeypatch.setattr(agents.agent_tools, "main_tools", ["main-tool"], raising=False)
+    monkeypatch.setattr(cognitive_mod.agent_tools, "all_tools", ["all-tool"], raising=False)
+    monkeypatch.setattr(cognitive_mod.agent_tools, "main_tools", ["main-tool"], raising=False)
     memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     earth_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    monkeypatch.setattr(agents, "build_memory_subagent", lambda _tools: memory_subagent)
-    monkeypatch.setattr(agents, "build_earth_data_subagent", lambda _tools: earth_subagent)
+    monkeypatch.setattr(cognitive_mod, "build_memory_subagent", lambda _tools: memory_subagent)
+    monkeypatch.setattr(cognitive_mod, "build_earth_data_subagent", lambda _tools: earth_subagent)
 
-    frontier = agents.FrontierCognitive()
+    frontier = cognitive_mod.FrontierCognitive()
 
     assert frontier.tools == ["main-tool"]
     assert frontier.memory_subagent is memory_subagent
@@ -179,18 +185,16 @@ def test_frontier_cognitive_uses_main_tools(monkeypatch):
 
 
 def test_memory_subagent_uses_dedicated_progress_message():
-    assert agents._subagent_message("memory-agent") == "正在检索聊天记忆…"
+    assert progress_mod.subagent_message("memory-agent") == "正在检索聊天记忆…"
 
 
 def test_earth_data_subagent_uses_dedicated_progress_message():
-    assert agents._subagent_message("earth-data-agent") == "正在查询地球与气象数据…"
+    assert progress_mod.subagent_message("earth-data-agent") == "正在查询地球与气象数据…"
 
 
 @pytest.mark.asyncio
 async def test_assistant_agent_uses_basic_model_config(monkeypatch):
     import types
-
-    from utils import agents
 
     captured = {}
 
@@ -202,7 +206,7 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
     def fake_create_agent(**_kwargs):
         return DummyAgent()
 
-    monkeypatch.setattr(agents, "create_agent", fake_create_agent)
+    monkeypatch.setattr(assistant_mod, "create_agent", fake_create_agent)
 
     def capturing_create_llm(model, **kwargs):
         captured.update(kwargs)
@@ -213,13 +217,13 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
 
         return DummyModel()
 
-    monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
+    monkeypatch.setattr(assistant_mod, "create_llm", capturing_create_llm)
 
     # Monkeypatch the EnvConfig in the agents module
-    monkeypatch.setattr(agents.EnvConfig, "BASIC_MODEL_PROVIDER", "anthropic_proxy")
-    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(assistant_mod.EnvConfig, "BASIC_MODEL_PROVIDER", "anthropic_proxy")
+    monkeypatch.setattr(assistant_mod, "model_supports", lambda *_args, **_kwargs: False)
 
-    await agents.assistant_agent(user_prompt="hello", images=[b"image-bytes"])
+    await assistant_mod.assistant_agent(user_prompt="hello", images=[b"image-bytes"])
 
     assert "use_responses_api" not in captured
     assert captured.get("provider") == "anthropic_proxy"
@@ -231,8 +235,6 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
 async def test_assistant_agent_uses_signal_model_config(monkeypatch):
     import types
 
-    from utils import agents
-
     captured = {}
 
     class DummyAgent:
@@ -240,18 +242,18 @@ async def test_assistant_agent_uses_signal_model_config(monkeypatch):
             captured["payload"] = payload
             return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok")]}
 
-    monkeypatch.setattr(agents, "create_agent", lambda **_kwargs: DummyAgent())
+    monkeypatch.setattr(assistant_mod, "create_agent", lambda **_kwargs: DummyAgent())
 
     def capturing_create_llm(model, **kwargs):
         captured.update(kwargs)
         captured["model"] = model
         return object()
 
-    monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
-    monkeypatch.setattr(agents.EnvConfig, "SIGNAL_MODEL", "signal-model")
-    monkeypatch.setattr(agents.EnvConfig, "SIGNAL_MODEL_PROVIDER", "deepseek_signal")
+    monkeypatch.setattr(assistant_mod, "create_llm", capturing_create_llm)
+    monkeypatch.setattr(assistant_mod.EnvConfig, "SIGNAL_MODEL", "signal-model")
+    monkeypatch.setattr(assistant_mod.EnvConfig, "SIGNAL_MODEL_PROVIDER", "deepseek_signal")
 
-    await agents.assistant_agent(user_prompt="hello", use_model="signal-model")
+    await assistant_mod.assistant_agent(user_prompt="hello", use_model="signal-model")
 
     assert captured["model"] == "signal-model"
     assert captured["provider"] == "deepseek_signal"
@@ -270,10 +272,10 @@ async def test_assistant_agent_parses_structured_response_from_ai_json_text(monk
         async def ainvoke(self, _payload):
             return {"messages": [types.SimpleNamespace(type="ai", text='{"title": "日报", "count": 2}', content="")]}
 
-    monkeypatch.setattr(agents, "create_agent", lambda **_kwargs: DummyAgent())
-    monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(assistant_mod, "create_agent", lambda **_kwargs: DummyAgent())
+    monkeypatch.setattr(assistant_mod, "create_llm", lambda **_kwargs: object())
 
-    result = await agents.assistant_agent(
+    result = await assistant_mod.assistant_agent(
         system_prompt="system",
         user_prompt="hello",
         use_model="any-model",
@@ -287,8 +289,6 @@ async def test_assistant_agent_parses_structured_response_from_ai_json_text(monk
 async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypatch):
     import types
 
-    from utils import agents
-
     class DummyAgent:
         async def astream_events(self, payload, config=None, context=None, version=None):
             captured["payload"] = payload
@@ -301,7 +301,7 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     def fake_create_deep_agent(**_kwargs):
         return DummyAgent()
 
-    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(cognitive_mod, "create_deep_agent", fake_create_deep_agent)
 
     captured = {}
 
@@ -313,12 +313,15 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
 
         return DummyModel()
 
-    monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
-    monkeypatch.setattr(agents.EnvConfig, "ADVAN_MODEL_PROVIDER", "openrouter")
-    monkeypatch.setattr(agents, "provider_uses_responses_api", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(cognitive_mod, "create_llm", capturing_create_llm)
+    monkeypatch.setattr(cognitive_mod.EnvConfig, "ADVAN_MODEL_PROVIDER", "openrouter")
+    monkeypatch.setattr(cognitive_mod, "provider_uses_responses_api", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        cognitive_mod, "filter_messages_for_model_capabilities", inputs_mod.filter_messages_for_model_capabilities
+    )
+    monkeypatch.setattr(inputs_mod, "model_supports", lambda *_args, **_kwargs: False)
 
-    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
@@ -347,14 +350,12 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     assert captured["payload"]["messages"][0]["content"] == [
         {"type": "text", "text": "hi\n\n[图片已省略：当前模型不支持视觉输入]"}
     ]
-    assert str(captured["config"]["configurable"]["thread_id"]) == str(agents._agent_thread_id("u1", 123))
+    assert str(captured["config"]["configurable"]["thread_id"]) == str(runtime_mod.agent_thread_id("u1", 123))
 
 
 @pytest.mark.asyncio
 async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     import types
-
-    from utils import agents
 
     captured = {}
 
@@ -371,11 +372,13 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
         captured.update(kwargs)
         return DummyAgent()
 
-    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
-    monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
-    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(cognitive_mod, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(cognitive_mod, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        cognitive_mod, "filter_messages_for_model_capabilities", lambda messages, *_args, **_kwargs: messages
+    )
 
-    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
@@ -391,25 +394,25 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
 
     backend = captured["backend"]
 
-    assert isinstance(backend, agents.CompositeBackend)
+    assert isinstance(backend, workspace_mod.CompositeBackend)
     assert backend.default.virtual_mode is True
     assert backend.default.root_dir == str(tmp_path / "sandbox" / "workspaces" / "123")
     assert set(backend.routes) == {"/skills/", "/memory/123/"}
-    assert backend.routes["/skills/"].root_dir == str(agents.PROJECT_ROOT / "skills")
+    assert backend.routes["/skills/"].root_dir == str(workspace_mod.PROJECT_ROOT / "skills")
     assert backend.routes["/memory/123/"].root_dir == str(tmp_path / "sandbox" / "memory" / "123")
     assert captured["skills"] == ["/skills"]
     assert captured["memory"] == ["/memory/123/SOUL.md"]
     assert "动态人设文件路径为 `/memory/123/SOUL.md`" in captured["system_prompt"]
     assert captured["subagents"] == [frontier.memory_subagent, frontier.earth_data_subagent]
-    assert captured["state_schema"] is agents.FrontierAgentState
-    assert captured["context_schema"] is agents.FrontierRuntimeContext
+    assert captured["state_schema"] is cognitive_mod.FrontierAgentState
+    assert captured["context_schema"] is cognitive_mod.FrontierRuntimeContext
     assert captured["permissions"][0].mode == "deny"
     assert captured["permissions"][0].operations == ["write"]
     assert (tmp_path / "sandbox" / "workspaces" / "123").is_dir()
     assert (tmp_path / "sandbox" / "memory").is_dir()
     assert captured["config"]["configurable"]["workspace_dir"] == str(tmp_path / "sandbox" / "workspaces" / "123")
     assert captured["config"]["configurable"]["group_member_role"] == "owner"
-    assert captured["context"] == agents.FrontierRuntimeContext(
+    assert captured["context"] == cognitive_mod.FrontierRuntimeContext(
         user_id="u1",
         group_id=123,
         group_member_role="owner",
@@ -421,7 +424,7 @@ def test_build_agent_backend_creates_empty_soul_memory(tmp_path):
     working_dir = tmp_path / "sandbox"
     memory_dir = working_dir / "memory" / "123"
 
-    backend = agents._build_agent_backend(str(working_dir), "123")
+    backend = workspace_mod.build_agent_backend(str(working_dir), "123")
 
     soul_md = memory_dir / "SOUL.md"
     assert soul_md.is_file()
@@ -438,7 +441,7 @@ def test_build_agent_backend_recovers_non_utf8_soul_memory(tmp_path):
     corrupt_content = b"# Agent memory\n" + b"\x80binary"
     soul_md.write_bytes(corrupt_content)
 
-    backend = agents._build_agent_backend(str(working_dir), "123")
+    backend = workspace_mod.build_agent_backend(str(working_dir), "123")
 
     assert soul_md.read_bytes() == b""
     backups = list(memory_dir.glob("SOUL.md.corrupt-*"))
@@ -455,7 +458,7 @@ def test_build_agent_backend_preserves_valid_utf8_soul_memory(tmp_path):
     custom_content = "# 群聊 SOUL\n保留这段人设。"
     soul_md.write_text(custom_content, encoding="utf-8")
 
-    agents._build_agent_backend(str(working_dir), "123")
+    workspace_mod.build_agent_backend(str(working_dir), "123")
 
     assert soul_md.read_text(encoding="utf-8") == custom_content
     assert list(memory_dir.glob("SOUL.md.corrupt-*")) == []
@@ -464,8 +467,6 @@ def test_build_agent_backend_preserves_valid_utf8_soul_memory(tmp_path):
 @pytest.mark.asyncio
 async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_path):
     import types
-
-    from utils import agents
 
     captured = {}
 
@@ -482,11 +483,13 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
         captured.update(kwargs)
         return DummyAgent()
 
-    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
-    monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
-    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(cognitive_mod, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(cognitive_mod, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        cognitive_mod, "filter_messages_for_model_capabilities", lambda messages, *_args, **_kwargs: messages
+    )
 
-    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
@@ -510,8 +513,6 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
     """load_system_prompt 返回的 system prompt 直接透传给 create_deep_agent，不做额外拼接。"""
     import types
 
-    from utils import agents
-
     captured = {}
 
     class DummyAgent:
@@ -524,14 +525,16 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
         captured.update(kwargs)
         return DummyAgent()
 
-    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
-    monkeypatch.setattr(agents, "create_llm", lambda **_kwargs: object())
-    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(cognitive_mod, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(cognitive_mod, "create_llm", lambda **_kwargs: object())
     monkeypatch.setattr(
-        agents.FrontierCognitive, "load_system_prompt", staticmethod(lambda *_args, **_kwargs: "base prompt")
+        cognitive_mod, "filter_messages_for_model_capabilities", lambda messages, *_args, **_kwargs: messages
+    )
+    monkeypatch.setattr(
+        cognitive_mod.FrontierCognitive, "load_system_prompt", staticmethod(lambda *_args, **_kwargs: "base prompt")
     )
 
-    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
@@ -547,10 +550,10 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
 
 
 def test_agent_thread_id_isolated_by_group_and_user():
-    group_user = agents._agent_thread_id("u1", 123)
-    same_user_other_group = agents._agent_thread_id("u1", 456)
-    other_user_same_group = agents._agent_thread_id("u2", 123)
-    dm_user = agents._agent_thread_id("u1", None)
+    group_user = runtime_mod.agent_thread_id("u1", 123)
+    same_user_other_group = runtime_mod.agent_thread_id("u1", 456)
+    other_user_same_group = runtime_mod.agent_thread_id("u2", 123)
+    dm_user = runtime_mod.agent_thread_id("u1", None)
 
     assert group_user != same_user_other_group
     assert group_user != other_user_same_group
@@ -561,8 +564,6 @@ def test_agent_thread_id_isolated_by_group_and_user():
 async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypatch):
     import types
 
-    from utils import agents
-
     class DummyAgent:
         async def astream_events(self, payload, config=None, context=None, version=None):
             return _FakeStream(
@@ -572,7 +573,7 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
     def fake_create_deep_agent(**_kwargs):
         return DummyAgent()
 
-    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(cognitive_mod, "create_deep_agent", fake_create_deep_agent)
 
     captured = {}
 
@@ -584,10 +585,10 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
 
         return DummyModel()
 
-    monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
-    monkeypatch.setattr(agents, "provider_uses_responses_api", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(cognitive_mod, "create_llm", capturing_create_llm)
+    monkeypatch.setattr(cognitive_mod, "provider_uses_responses_api", lambda *_args, **_kwargs: True)
 
-    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
@@ -607,7 +608,6 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
 
 @pytest.mark.asyncio
 async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
-    from utils import agents
 
     class DummyAgent:
         async def astream_events(self, payload, config=None, context=None, version=None):
@@ -618,7 +618,7 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
     def fake_create_deep_agent(**_kwargs):
         return DummyAgent()
 
-    monkeypatch.setattr(agents, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(cognitive_mod, "create_deep_agent", fake_create_deep_agent)
 
     captured = {}
 
@@ -626,11 +626,13 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
         captured.update(kwargs)
         return object()
 
-    monkeypatch.setattr(agents, "create_llm", capturing_create_llm)
-    monkeypatch.setattr(agents, "model_supports", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(agents.EnvConfig, "AGENT_LLM_TIMEOUT_SECONDS", 1234, raising=False)
+    monkeypatch.setattr(cognitive_mod, "create_llm", capturing_create_llm)
+    monkeypatch.setattr(
+        cognitive_mod, "filter_messages_for_model_capabilities", lambda messages, *_args, **_kwargs: messages
+    )
+    monkeypatch.setattr(cognitive_mod.EnvConfig, "AGENT_LLM_TIMEOUT_SECONDS", 1234, raising=False)
 
-    frontier = agents.FrontierCognitive.__new__(agents.FrontierCognitive)
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
@@ -649,7 +651,7 @@ class TestProgressEvent:
     """ProgressEvent 类型单元测试。"""
 
     def test_construct_minimal(self):
-        from utils.agents import ProgressEvent
+        from utils.agents.progress import ProgressEvent
 
         event = ProgressEvent(type="thinking", message="test")
         assert event.type == "thinking"
@@ -657,7 +659,7 @@ class TestProgressEvent:
         assert event.detail is None
 
     def test_construct_with_detail(self):
-        from utils.agents import ProgressEvent
+        from utils.agents.progress import ProgressEvent
 
         event = ProgressEvent(
             type="tool_call",
@@ -667,7 +669,7 @@ class TestProgressEvent:
         assert event.detail == {"tool_name": "search"}
 
     def test_all_type_literals_valid(self):
-        from utils.agents import ProgressEvent
+        from utils.agents.progress import ProgressEvent
 
         valid_types = [
             "thinking",
@@ -684,19 +686,19 @@ class TestProgressEvent:
 
 
 class TestEmitProgress:
-    """_emit_progress 安全调用测试。"""
+    """emit_progress 安全调用测试。"""
 
     @pytest.mark.asyncio
     async def test_does_nothing_when_reporter_is_none(self):
-        from utils.agents import ProgressEvent, _emit_progress
+        from utils.agents.progress import ProgressEvent, emit_progress
 
         event = ProgressEvent(type="thinking", message="test")
         # 不应抛异常
-        await _emit_progress(None, event)
+        await emit_progress(None, event)
 
     @pytest.mark.asyncio
     async def test_calls_reporter_with_event(self):
-        from utils.agents import ProgressEvent, _emit_progress
+        from utils.agents.progress import ProgressEvent, emit_progress
 
         received: list[ProgressEvent] = []
 
@@ -704,24 +706,24 @@ class TestEmitProgress:
             received.append(e)
 
         event = ProgressEvent(type="thinking", message="hello")
-        await _emit_progress(reporter, event)
+        await emit_progress(reporter, event)
         assert len(received) == 1
         assert received[0] is event
 
     @pytest.mark.asyncio
     async def test_reporter_exception_does_not_propagate(self):
-        from utils.agents import ProgressEvent, _emit_progress
+        from utils.agents.progress import ProgressEvent, emit_progress
 
         async def failing_reporter(_e: ProgressEvent) -> None:
             raise RuntimeError("boom")
 
         event = ProgressEvent(type="thinking", message="test")
         # 不应抛异常
-        await _emit_progress(failing_reporter, event)
+        await emit_progress(failing_reporter, event)
 
 
 class TestCollectProgress:
-    """_collect_progress 消费 astream_events v3 projection 的测试。"""
+    """collect_progress 消费 astream_events v3 projection 的测试。"""
 
     @staticmethod
     def _mock_stream(*, subagents=(), tool_calls=(), messages=()):
@@ -737,17 +739,17 @@ class TestCollectProgress:
 
     @pytest.mark.asyncio
     async def test_noop_when_reporter_is_none(self):
-        from utils.agents import _collect_progress
+        from utils.agents.progress import collect_progress
 
         stream = self._mock_stream()
-        # 不应抛异常（_emit_progress 短路）
-        await _collect_progress(stream, None)
+        # 不应抛异常（emit_progress 短路）
+        await collect_progress(stream, None)
 
     @pytest.mark.asyncio
     async def test_emits_thinking_on_first_message(self):
         from unittest.mock import MagicMock
 
-        from utils.agents import _collect_progress
+        from utils.agents.progress import collect_progress
 
         mock_text = MagicMock()
         mock_text.__aiter__.return_value = iter([])  # 空文本迭代器
@@ -758,7 +760,7 @@ class TestCollectProgress:
         stream = self._mock_stream(messages=[mock_msg])
         reporter = MagicMock()
 
-        await _collect_progress(stream, reporter)
+        await collect_progress(stream, reporter)
 
         thinking_calls = [c for c in reporter.call_args_list if c[0][0].type == "thinking"]
         assert len(thinking_calls) == 1
@@ -767,7 +769,7 @@ class TestCollectProgress:
     async def test_emits_subagent_start(self):
         from unittest.mock import MagicMock
 
-        from utils.agents import _collect_progress
+        from utils.agents.progress import collect_progress
 
         mock_sub = MagicMock()
         mock_sub.name = "research"
@@ -775,7 +777,7 @@ class TestCollectProgress:
         stream = self._mock_stream(subagents=[mock_sub])
         reporter = MagicMock()
 
-        await _collect_progress(stream, reporter)
+        await collect_progress(stream, reporter)
 
         subagent_calls = [c for c in reporter.call_args_list if c[0][0].type == "subagent_start"]
         assert len(subagent_calls) == 1
@@ -785,12 +787,12 @@ class TestCollectProgress:
     async def test_emits_subagent_done_for_terminal_status(self):
         from unittest.mock import AsyncMock
 
-        from utils.agents import _collect_progress
+        from utils.agents.progress import collect_progress
 
         subagent = types.SimpleNamespace(name="earth-data-agent", status="completed")
         reporter = AsyncMock()
 
-        await _collect_progress(self._mock_stream(subagents=[subagent]), reporter)
+        await collect_progress(self._mock_stream(subagents=[subagent]), reporter)
 
         events = [call.args[0] for call in reporter.call_args_list]
         assert [(event.type, event.detail["status"]) for event in events] == [("subagent_done", "completed")]
@@ -799,7 +801,7 @@ class TestCollectProgress:
     async def test_emits_tool_call(self):
         from unittest.mock import MagicMock
 
-        from utils.agents import _collect_progress
+        from utils.agents.progress import collect_progress
 
         mock_tc = MagicMock()
         mock_tc.tool_name = "web_search"
@@ -807,7 +809,7 @@ class TestCollectProgress:
         stream = self._mock_stream(tool_calls=[mock_tc])
         reporter = MagicMock()
 
-        await _collect_progress(stream, reporter)
+        await collect_progress(stream, reporter)
 
         tool_calls = [c for c in reporter.call_args_list if c[0][0].type == "tool_call"]
         assert len(tool_calls) == 1
@@ -817,12 +819,12 @@ class TestCollectProgress:
     async def test_emits_tool_result_when_completed(self):
         from unittest.mock import AsyncMock
 
-        from utils.agents import _collect_progress
+        from utils.agents.progress import collect_progress
 
         tool_call = types.SimpleNamespace(tool_name="web_search", completed=True, error=None)
         reporter = AsyncMock()
 
-        await _collect_progress(self._mock_stream(tool_calls=[tool_call]), reporter)
+        await collect_progress(self._mock_stream(tool_calls=[tool_call]), reporter)
 
         events = [call.args[0] for call in reporter.call_args_list]
         assert [event.type for event in events] == ["tool_call", "tool_result"]
@@ -833,7 +835,7 @@ class TestCollectProgress:
         """连续调用同一工具时，只发送第一条进度事件。"""
         from unittest.mock import MagicMock
 
-        from utils.agents import _collect_progress
+        from utils.agents.progress import collect_progress
 
         tc1 = MagicMock()
         tc1.tool_name = "search"
@@ -847,7 +849,7 @@ class TestCollectProgress:
         stream = self._mock_stream(tool_calls=[tc1, tc2, tc3, tc4])
         reporter = MagicMock()
 
-        await _collect_progress(stream, reporter)
+        await collect_progress(stream, reporter)
 
         tool_calls = [c for c in reporter.call_args_list if c[0][0].type == "tool_call"]
         assert len(tool_calls) == 2, f"Expected 2 unique tool calls, got {len(tool_calls)}"
@@ -859,7 +861,7 @@ class TestCollectProgress:
         """连续启动同一子代理时，只发送第一条进度事件。"""
         from unittest.mock import MagicMock
 
-        from utils.agents import _collect_progress
+        from utils.agents.progress import collect_progress
 
         sa1 = MagicMock()
         sa1.name = "coder"
@@ -871,7 +873,7 @@ class TestCollectProgress:
         stream = self._mock_stream(subagents=[sa1, sa2, sa3])
         reporter = MagicMock()
 
-        await _collect_progress(stream, reporter)
+        await collect_progress(stream, reporter)
 
         subagent_calls = [c for c in reporter.call_args_list if c[0][0].type == "subagent_start"]
         assert len(subagent_calls) == 2, f"Expected 2 unique subagent events, got {len(subagent_calls)}"
@@ -882,7 +884,7 @@ class TestCollectProgress:
     async def test_one_consumer_failure_does_not_block_others(self):
         from unittest.mock import MagicMock
 
-        import utils.agents as agents_mod
+        from utils.agents import cognitive as agents_mod
 
         # 让 tool_calls 迭代器抛异常
         class _FailingIter:
@@ -901,7 +903,7 @@ class TestCollectProgress:
         reporter = MagicMock()
 
         # 不应抛异常，thinking 事件仍应被发出
-        await agents_mod._collect_progress(stream, reporter)
+        await agents_mod.collect_progress(stream, reporter)
 
         thinking_calls = [c for c in reporter.call_args_list if c[0][0].type == "thinking"]
         assert len(thinking_calls) == 1, "thinking event should still emit even if tool_calls fails"
@@ -911,7 +913,7 @@ class TestCollectProgress:
         """文本按 \\n\\n 段落边界切分并发出 text_delta 事件。"""
         from unittest.mock import AsyncMock, MagicMock
 
-        from utils.agents import _collect_progress
+        from utils.agents.progress import collect_progress
 
         text_chunks = iter(["段落一\n\n段落二\n\n"])
 
@@ -924,7 +926,7 @@ class TestCollectProgress:
         stream = self._mock_stream(messages=[mock_msg])
         reporter = AsyncMock()
 
-        await _collect_progress(stream, reporter)
+        await collect_progress(stream, reporter)
 
         text_delta_calls = [c for c in reporter.call_args_list if c[0][0].type == "text_delta"]
         assert len(text_delta_calls) == 2, f"Expected 2 text_delta events, got {len(text_delta_calls)}"
@@ -936,7 +938,7 @@ class TestCollectProgress:
         """不含 \\n\\n 结尾的文本留在 buffer 中不发出。"""
         from unittest.mock import AsyncMock, MagicMock
 
-        from utils.agents import _collect_progress
+        from utils.agents.progress import collect_progress
 
         mock_text = MagicMock()
         mock_text.__aiter__.return_value = iter(["未完结文本"])
@@ -947,7 +949,7 @@ class TestCollectProgress:
         stream = self._mock_stream(messages=[mock_msg])
         reporter = AsyncMock()
 
-        await _collect_progress(stream, reporter)
+        await collect_progress(stream, reporter)
 
         text_delta_calls = [c for c in reporter.call_args_list if c[0][0].type == "text_delta"]
         assert len(text_delta_calls) == 0, "Trailing text should be buffered, not emitted"
@@ -961,7 +963,7 @@ class TestChatAgentStreaming:
         """不传 progress_reporter 时，chat_agent 行为与 ainvoke 时期一致。"""
         from unittest.mock import AsyncMock, MagicMock
 
-        import utils.agents as agents_mod
+        from utils.agents import cognitive as agents_mod
 
         # Mock create_deep_agent 返回的 agent
         mock_stream = MagicMock()
@@ -979,8 +981,8 @@ class TestChatAgentStreaming:
         mock_agent.astream_events = AsyncMock(return_value=mock_stream)
 
         monkeypatch.setattr(agents_mod, "create_deep_agent", MagicMock(return_value=mock_agent))
-        monkeypatch.setattr(agents_mod, "_build_agent_backend", MagicMock())
-        monkeypatch.setattr(agents_mod, "_agent_thread_id", MagicMock(return_value=uuid.uuid4()))
+        monkeypatch.setattr(agents_mod, "build_agent_backend", MagicMock())
+        monkeypatch.setattr(agents_mod, "agent_thread_id", MagicMock(return_value=uuid.uuid4()))
         monkeypatch.setattr(agents_mod.FrontierCognitive, "load_system_prompt", lambda *a, **kw: "You are a bot.")
         monkeypatch.setattr(agents_mod.FrontierCognitive, "extract_uni_messages", AsyncMock(return_value=[]))
         cognitive = agents_mod.FrontierCognitive()
@@ -1000,10 +1002,10 @@ class TestChatAgentStreaming:
 
     @pytest.mark.asyncio
     async def test_with_reporter_receives_events(self, monkeypatch):
-        """传入 progress_reporter 时，_collect_progress 应被调用。"""
+        """传入 progress_reporter 时，collect_progress 应被调用。"""
         from unittest.mock import AsyncMock, MagicMock
 
-        import utils.agents as agents_mod
+        from utils.agents import cognitive as agents_mod
 
         mock_agent_output = {
             "messages": [
@@ -1031,9 +1033,9 @@ class TestChatAgentStreaming:
             collector_called.append((stream, reporter))
 
         monkeypatch.setattr(agents_mod, "create_deep_agent", MagicMock(return_value=mock_agent))
-        monkeypatch.setattr(agents_mod, "_build_agent_backend", MagicMock())
-        monkeypatch.setattr(agents_mod, "_agent_thread_id", MagicMock(return_value=uuid.uuid4()))
-        monkeypatch.setattr(agents_mod, "_collect_progress", fake_collect)
+        monkeypatch.setattr(agents_mod, "build_agent_backend", MagicMock())
+        monkeypatch.setattr(agents_mod, "agent_thread_id", MagicMock(return_value=uuid.uuid4()))
+        monkeypatch.setattr(agents_mod, "collect_progress", fake_collect)
         monkeypatch.setattr(agents_mod.FrontierCognitive, "load_system_prompt", lambda *a, **kw: "You are a bot.")
         monkeypatch.setattr(agents_mod.FrontierCognitive, "extract_uni_messages", AsyncMock(return_value=[]))
         reporter = AsyncMock()
@@ -1047,7 +1049,7 @@ class TestChatAgentStreaming:
         )
 
         assert "response" in result
-        assert len(collector_called) == 1, "_collect_progress should be called once"
+        assert len(collector_called) == 1, "collect_progress should be called once"
         # 验证传入了 stream 和 reporter
         assert collector_called[0][0] is mock_stream
         assert collector_called[0][1] is reporter
@@ -1057,7 +1059,7 @@ class TestChatAgentStreaming:
         """stream.output 抛出异常时，返回 fallback 响应并取消 progress_task。"""
         from unittest.mock import AsyncMock, MagicMock
 
-        import utils.agents as agents_mod
+        from utils.agents import cognitive as agents_mod
 
         mock_stream = MagicMock()
         mock_stream.output = AsyncMock(side_effect=RuntimeError("agent failed"))
@@ -1066,8 +1068,8 @@ class TestChatAgentStreaming:
         mock_agent.astream_events = AsyncMock(return_value=mock_stream)
 
         monkeypatch.setattr(agents_mod, "create_deep_agent", MagicMock(return_value=mock_agent))
-        monkeypatch.setattr(agents_mod, "_build_agent_backend", MagicMock())
-        monkeypatch.setattr(agents_mod, "_agent_thread_id", MagicMock(return_value=uuid.uuid4()))
+        monkeypatch.setattr(agents_mod, "build_agent_backend", MagicMock())
+        monkeypatch.setattr(agents_mod, "agent_thread_id", MagicMock(return_value=uuid.uuid4()))
         monkeypatch.setattr(agents_mod.FrontierCognitive, "load_system_prompt", lambda *a, **kw: "You are a bot.")
 
         reporter = AsyncMock()
