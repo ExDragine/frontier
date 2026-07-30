@@ -40,6 +40,7 @@ dependencies = [
   "langchain-anthropic",
   "langchain-deepseek",
   "langchain-quickjs",
+  "mcp>=1.24.0,<2.0.0"
 ]
 
 [project.optional-dependencies]
