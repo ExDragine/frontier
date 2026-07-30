@@ -2,6 +2,7 @@
 
 import importlib
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -108,8 +109,16 @@ async def test_deepseek_balance_tool_reports_http_error(load_tool_module, monkey
     assert result == "获取 DeepSeek API 余额失败: network down"
 
 
-def test_mcp_get_tools(load_tool_module, monkeypatch):
-    Path("mcp.json").write_text("{}", encoding="utf-8")
+def test_mcp_get_tools_skips_failed_server(load_tool_module, monkeypatch, caplog):
+    Path("mcp.json").write_text(
+        json.dumps(
+            {
+                "healthy": {"url": "https://healthy.example/mcp", "transport": "http"},
+                "broken": {"url": "https://broken.example/mcp", "transport": "http"},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     class FakeMultiServerMCPClient:
         def __init__(self, _config):
@@ -121,12 +130,29 @@ def test_mcp_get_tools(load_tool_module, monkeypatch):
     mod = load_tool_module("mcp_client")
 
     class DummyClient:
-        async def get_tools(self):
+        def __init__(self):
+            self.calls = []
+
+        async def get_tools(self, *, server_name):
+            self.calls.append(server_name)
+            if server_name == "broken":
+                raise RuntimeError("connection closed")
             return ["a", "b"]
 
-    monkeypatch.setattr(mod, "client", DummyClient())
+    client = DummyClient()
+    monkeypatch.setattr(mod, "client", client)
     tools = mod.mcp_get_tools()
+
     assert tools == ["a", "b"]
+    assert client.calls == ["healthy", "broken"]
+    assert "MCP 服务 'broken' 加载失败，已跳过: RuntimeError: connection closed" in caplog.text
+
+
+def test_mcp_example_pins_v1_sdk_for_time_server():
+    example_path = Path(__file__).resolve().parents[2] / "mcp.json.example"
+    config = json.loads(example_path.read_text(encoding="utf-8"))
+
+    assert config["time"]["args"][:3] == ["--with", "mcp==1.29.0", "mcp-server-time"]
 
 
 def test_module_tools_groups_tools_by_domain(monkeypatch):

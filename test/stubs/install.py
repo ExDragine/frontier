@@ -82,6 +82,9 @@ def install_all_third_party_stubs():
         ),
         ModelRetryMiddleware=type("ModelRetryMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
         PIIMiddleware=type("PIIMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
+        ProviderToolSearchMiddleware=type(
+            "ProviderToolSearchMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}
+        ),
         ToolRetryMiddleware=type("ToolRetryMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
     )
     install_stub(
