@@ -12,6 +12,7 @@ from langchain.agents.middleware import (
     FilesystemFileSearchMiddleware,
     ModelRetryMiddleware,
     PIIMiddleware,
+    ProviderToolSearchMiddleware,
     ToolRetryMiddleware,
 )
 from langchain.messages import AIMessage
@@ -157,6 +158,7 @@ class FrontierCognitive:
             ModelRetryMiddleware(),
             FilesystemFileSearchMiddleware(root_path=workspace_dir),
             CodeInterpreterMiddleware(ptc=ptc_tool_names),
+            ProviderToolSearchMiddleware(searchable_tools=effective_tools),
         ]
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
