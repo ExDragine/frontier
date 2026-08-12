@@ -158,8 +158,9 @@ class FrontierCognitive:
             ModelRetryMiddleware(),
             FilesystemFileSearchMiddleware(root_path=workspace_dir),
             CodeInterpreterMiddleware(ptc=ptc_tool_names),
-            ProviderToolSearchMiddleware(searchable_tools=effective_tools),
         ]
+        if any(name in EnvConfig.ADVAN_MODEL.lower() for name in ("gpt", "claude")):
+            middleware.append(ProviderToolSearchMiddleware(searchable_tools=effective_tools))
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
