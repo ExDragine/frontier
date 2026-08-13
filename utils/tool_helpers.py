@@ -1,7 +1,5 @@
 """Shared helpers for media-capable tools."""
 
-import base64
-import binascii
 import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
@@ -10,6 +8,7 @@ from typing import Any
 
 from nonebot import logger
 
+from utils.media import inline_media_bytes, media_block_kind
 from utils.video_service import MediaReference
 
 
@@ -57,25 +56,18 @@ class ToolStateView:
             return
         parts = reversed(content) if reverse else content
         for part in parts:
-            if not isinstance(part, dict) or part.get("type") != part_type:
+            if not isinstance(part, dict):
                 continue
-
-            value = part.get(key)
-            if isinstance(value, dict):
-                value = value.get("url")
-            if not isinstance(value, str) or not value.startswith(expected_prefix) or "," not in value:
+            expected_kind = "image" if part_type == "image_url" else "video" if part_type == "video_url" else None
+            if part.get("type") != part_type and media_block_kind(part) != expected_kind:
                 continue
-
-            header, payload = value.split(",", 1)
-            if ";base64" not in header:
+            decoded = inline_media_bytes(part)
+            if decoded is None:
                 continue
-            try:
-                yield MediaReference(
-                    data=base64.b64decode(payload, validate=True),
-                    mime_type=header.removeprefix("data:").split(";", 1)[0],
-                )
-            except binascii.Error, ValueError:
+            data, mime_type = decoded
+            if expected_prefix and not f"data:{mime_type}".startswith(expected_prefix):
                 continue
+            yield MediaReference(data=data, mime_type=mime_type)
 
 
 @asynccontextmanager

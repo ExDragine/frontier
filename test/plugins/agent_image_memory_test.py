@@ -52,6 +52,7 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
         async def chat_agent(self, messages, *_args, **kwargs):
             captured["messages"] = messages
             captured["image_inputs"] = kwargs.get("image_inputs")
+            captured["audio_inputs"] = kwargs.get("audio_inputs")
             captured["video_inputs"] = kwargs.get("video_inputs")
             captured["user_text"] = kwargs.get("user_text")
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
@@ -61,7 +62,7 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
             return None
 
     async def fake_message_extract(_segments):
-        return "hi", [b"image-bytes"], [], [b"video-bytes"]
+        return "hi", [b"image-bytes"], [b"audio-bytes"], [b"video-bytes"]
 
     async def fake_message_gateway(_event, _messages):
         return True
@@ -133,12 +134,17 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
     assert calls["insert_images"] == 1
     assert calls["schedule_summary"] == 0
     assert captured["image_inputs"] == [b"image-bytes"]
+    assert captured["audio_inputs"] == [b"audio-bytes"]
     assert captured["video_inputs"] == [b"video-bytes"]
-    assert captured["user_text"] == "hi\n[视频]"
+    assert captured["user_text"] == "hi\n[视频]\n[语音]"
     current_content = captured["messages"][-1]["content"]
     assert "[图片]" not in current_content[0]["text"]
     assert current_content[1] == {"type": "text", "text": "以下图片来自当前消息："}
-    assert current_content[2]["type"] == "image_url"
+    assert current_content[2]["type"] == "image"
+    assert current_content[3] == {"type": "text", "text": "以下语音来自当前消息："}
+    assert current_content[4]["type"] == "audio"
+    assert current_content[5] == {"type": "text", "text": "以下视频来自当前消息："}
+    assert current_content[6]["type"] == "video"
 
 
 @pytest.mark.asyncio
@@ -159,6 +165,9 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
 
         async def prepare_message(self, *_args, **_kwargs):
             return []
+
+        async def insert_attachment(self, **kwargs):
+            captured["attachment"] = kwargs
 
     class DummyCognitive:
         working_dir = str(tmp_path / "sandbox")
@@ -183,6 +192,9 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
                 file_name="report.txt",
                 file_size=4,
                 virtual_path="/memory/123/files/report.txt",
+                local_path=tmp_path / "sandbox" / "memory" / "123" / "files" / "report.txt",
+                mime_type="text/plain",
+                sha256="file-sha256",
             )
         ]
 
@@ -245,10 +257,13 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
     current_text = captured["messages"][-1]["content"][0]["text"]
     payload = ast.literal_eval(current_text)
     assert "/memory/123/files/report.txt" in payload["content"]
+    assert captured["attachment"]["kind"] == "file"
+    assert captured["attachment"]["mime_type"] == "text/plain"
+    assert captured["attachment"]["sha256"] == "file-sha256"
 
 
 @pytest.mark.asyncio
-async def test_rejected_group_file_message_stages_file_before_gateway(monkeypatch, tmp_path):  # noqa: C901
+async def test_rejected_group_file_message_does_not_stage_file_before_gateway(monkeypatch, tmp_path):  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -335,9 +350,10 @@ async def test_rejected_group_file_message_stages_file_before_gateway(monkeypatc
         ctx.receive_event(bot, event)
         ctx.should_finished()
 
-    assert captured["file_items"][0].file_id == "/dbd89abd-f51a-4160-b8bd-8f10cc27c585"
-    assert captured["memory_dir"] == tmp_path / "sandbox" / "memory" / "1035400922"
-    assert "/memory/1035400922/files/Clear icon cache.bat" in captured["stored_content"]
+    assert "file_items" not in captured
+    assert "memory_dir" not in captured
+    assert "/memory/1035400922/files/Clear icon cache.bat" not in captured["stored_content"]
+    assert "Clear icon cache.bat" in captured["stored_content"]
     assert captured["agent_calls"] == 0
 
 
@@ -897,7 +913,7 @@ async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # 
     assert "[图片]" not in current_content[0]["text"]
     assert "[下方已附加引用图片 1 张]" in current_content[0]["text"]
     assert current_content[1] == {"type": "text", "text": "以下图片来自上面的引用消息："}
-    assert current_content[2]["type"] == "image_url"
+    assert current_content[2]["type"] == "image"
 
 
 @pytest.mark.asyncio
@@ -1172,7 +1188,8 @@ async def test_gateway_approved_weather_request_routes_directly_to_agent(monkeyp
 
     async def fake_run_serialized(_key, coro):
         calls["queue"] += 1
-        return await coro
+        coro.close()
+        return None
 
     class DummyMessagesDb:
         async def insert(self, **_kwargs):
@@ -1322,7 +1339,7 @@ async def test_process_agent_request_sanitizes_final_response(monkeypatch):
         return "这段回复被拦住了"
 
     async def fake_send_messages(_group_id, _message_id, response):
-        captured["sent"] = response["messages"][-1].text
+        captured["sent"] = agent.outgoing_message_content(response["messages"][-1])
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
@@ -1365,7 +1382,8 @@ async def test_gateway_approved_greeting_runs_agent(monkeypatch):  # noqa: C901
 
     async def fake_run_serialized(_key, coro):
         calls["queue"] += 1
-        return await coro
+        coro.close()
+        return None
 
     class DummyMessagesDb:
         async def insert(self, **kwargs):
@@ -1456,7 +1474,8 @@ async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # n
 
     async def fake_run_serialized(_key, coro):
         calls["queue"] += 1
-        return await coro
+        coro.close()
+        return None
 
     class DummyMessagesDb:
         async def insert(self, **_kwargs):
@@ -1547,7 +1566,8 @@ async def test_gateway_approved_closing_message_runs_agent(monkeypatch):  # noqa
 
     async def fake_run_serialized(_key, coro):
         calls["queue"] += 1
-        return await coro
+        coro.close()
+        return None
 
     class DummyMessagesDb:
         async def insert(self, **_kwargs):
@@ -1624,7 +1644,8 @@ async def test_gateway_approved_private_chat_routes_to_agent_without_group_react
 
     async def fake_run_serialized(_key, coro):
         calls["queue"] += 1
-        return await coro
+        coro.close()
+        return None
 
     class DummyMessagesDb:
         async def insert(self, **_kwargs):
@@ -1700,8 +1721,12 @@ async def test_agent_startup_only_cleans_cached_files(monkeypatch):
             calls.append("attachments")
             return 0
 
+        async def repair_legacy_media_attachments(self):
+            calls.append("repair")
+            return 1, 0
+
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_AUTO_CLEANUP", True)
     await agent.on_startup()
 
-    assert calls == ["attachments"]
+    assert calls == ["attachments", "repair"]

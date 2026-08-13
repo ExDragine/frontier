@@ -8,6 +8,9 @@ from nonebot import logger
 
 from utils.alconna import UniMessage
 from utils.browser_capture import screenshot
+from utils.configs import EnvConfig
+from utils.llm_factory import model_supports
+from utils.media import resolve_media, standard_media_block
 
 
 @tool(response_format="content_and_artifact")
@@ -20,7 +23,7 @@ async def webpage_screenshot(
     wait_until: str = "networkidle",
     timeout: int = 30000,
     ready_timeout: int = 15000,
-) -> tuple[str, UniMessage | None]:
+) -> tuple[str | list[dict], UniMessage | None]:
     """对指定网页进行截图并返回图片。
 
     ⚠️ 仅在用户明确要求对指定网页截图时调用，包括：
@@ -58,7 +61,13 @@ async def webpage_screenshot(
         summary = f"网页截图完成: {url}"
         if selector:
             summary += f" (元素: {selector})"
-        return summary, UniMessage.image(raw=image_bytes)
+        content: str | list[dict] = summary
+        if model_supports(EnvConfig.ADVAN_MODEL, "vision", role="advanced"):
+            content = [
+                {"type": "text", "text": summary},
+                standard_media_block(resolve_media(image_bytes, "image")),
+            ]
+        return content, UniMessage.image(raw=image_bytes)
     except Exception as e:
         logger.error(f"网页截图失败 [{url}]: {e}")
         return f"网页截图失败: {e}", None

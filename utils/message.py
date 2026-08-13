@@ -1,5 +1,6 @@
 import ast
 import asyncio
+import hashlib
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -20,6 +21,7 @@ from utils.context_check import ImageCheck, TextCheck
 from utils.database import GroupSettingsManager, MessageDatabase, get_engine
 from utils.http_client import get_http_client
 from utils.markdown_render import markdown_to_image, markdown_to_text
+from utils.media import detect_mime_type
 from utils.signal_llm import signal_structured
 
 httpx_client = get_http_client("message")
@@ -180,10 +182,15 @@ def _reply_check_content_text(content: Any) -> str:
         item_type = item.get("type")
         if item_type == "text":
             parts.append(str(item.get("text", "")))
-        elif item_type == "image_url":
-            parts.append("[图片]")
         elif item_type:
-            parts.append(f"[{item_type}]")
+            labels = {
+                "image": "图片",
+                "image_url": "图片",
+                "audio": "语音",
+                "video": "视频",
+                "file": "文件",
+            }
+            parts.append(f"[{labels.get(item_type, item_type)}]")
     return "\n".join(part for part in parts if part)
 
 
@@ -320,6 +327,8 @@ class StagedMessageFile:
     file_size: int
     virtual_path: str
     local_path: Path
+    mime_type: str = "application/octet-stream"
+    sha256: str | None = None
 
 
 def _media_downloader(url: str, label: str) -> Callable[[], Awaitable[bytes | None]]:
@@ -457,9 +466,11 @@ async def stage_message_files(
         staged_files.append(
             StagedMessageFile(
                 file_name=target_path.name,
-                file_size=file_item.file_size,
+                file_size=len(file_bytes),
                 virtual_path=virtual_path,
                 local_path=target_path,
+                mime_type=detect_mime_type(file_bytes, kind="file", file_name=target_path.name),
+                sha256=hashlib.sha256(file_bytes).hexdigest(),
             )
         )
 
@@ -763,8 +774,7 @@ async def message_gateway(event: MessageEvent, messages: list) -> bool:
             return await _active_trigger_should_reply(plaintext, wake_words)
         return True
     auto_reply_allowed = group_id not in EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST and (
-        not EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE
-        or group_id in EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST
+        not EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE or group_id in EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST
     )
     if group_id != 0 and auto_reply_allowed:
         return await _reply_check_should_reply(group_id, plaintext, messages)

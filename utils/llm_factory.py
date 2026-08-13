@@ -125,7 +125,8 @@ def _normalize_capabilities(capabilities: object) -> set[str]:
     normalized = {
         capability.strip().lower() for capability in capabilities if isinstance(capability, str) and capability.strip()
     }
-    return {"vision" if capability == "image" else capability for capability in normalized}
+    aliases = {"image": "vision", "attachment": "file", "pdf": "file"}
+    return {aliases.get(capability, capability) for capability in normalized}
 
 
 def _model_specific_capabilities(model: str, role: str | None = None) -> set[str]:
@@ -150,7 +151,22 @@ def _model_specific_capabilities(model: str, role: str | None = None) -> set[str
 
 def get_model_capabilities(model: str, *, role: str | None = None) -> set[str]:
     capabilities = _model_specific_capabilities(model, role)
-    return capabilities or {"text"}
+    if capabilities:
+        return capabilities
+
+    profile = get_langchain_model_profile(model, _infer_provider(model))
+    if profile is None:
+        return {"text"}
+    resolved = {"text"} if profile.get("text_inputs") else set()
+    if profile.get("image_inputs") or profile.get("image_url_inputs"):
+        resolved.add("vision")
+    if profile.get("audio_inputs"):
+        resolved.add("audio")
+    if profile.get("video_inputs"):
+        resolved.add("video")
+    if profile.get("pdf_inputs") or profile.get("attachment"):
+        resolved.add("file")
+    return resolved or {"text"}
 
 
 def model_supports(model: str, capability: str, *, role: str | None = None) -> bool:

@@ -130,6 +130,9 @@ class StorageConfig(_FrozenConfig):
     query_message_numbers: int = Field(default=100, ge=1)
     image_enabled: bool = True
     image_ttl_days: int = Field(default=30, ge=1)
+    media_ttl_days: int = Field(default=30, ge=1)
+    max_inline_images: int = Field(default=4, ge=0)
+    max_inline_media_bytes: int = Field(default=20 * 1024 * 1024, ge=0)
     image_auto_cleanup: bool = True
 
 
@@ -589,6 +592,19 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
             "query_message_numbers": _pick(storage, legacy_database, "query_message_numbers", 100),
             "image_enabled": _pick(storage, legacy_image_memory, "image_enabled", True, "enabled"),
             "image_ttl_days": _pick(storage, legacy_image_memory, "image_ttl_days", 30, "ttl_days"),
+            "media_ttl_days": _pick(
+                storage,
+                legacy_image_memory,
+                "media_ttl_days",
+                _pick(storage, legacy_image_memory, "image_ttl_days", 30, "ttl_days"),
+            ),
+            "max_inline_images": _pick(storage, legacy_image_memory, "max_inline_images", 4),
+            "max_inline_media_bytes": _pick(
+                storage,
+                legacy_image_memory,
+                "max_inline_media_bytes",
+                20 * 1024 * 1024,
+            ),
             "image_auto_cleanup": _pick(storage, legacy_image_memory, "image_auto_cleanup", True, "auto_cleanup"),
         },
         "debug": _section(config, "debug"),
@@ -692,6 +708,9 @@ class EnvConfig:
             "QUERY_MESSAGE_NUMBERS": settings.storage.query_message_numbers,
             "IMAGE_ENABLED": settings.storage.image_enabled,
             "IMAGE_TTL_DAYS": settings.storage.image_ttl_days,
+            "MEDIA_TTL_DAYS": settings.storage.media_ttl_days,
+            "MAX_INLINE_IMAGES": settings.storage.max_inline_images,
+            "MAX_INLINE_MEDIA_BYTES": settings.storage.max_inline_media_bytes,
             "IMAGE_AUTO_CLEANUP": settings.storage.image_auto_cleanup,
             "AGENT_DEBUG_MODE": settings.debug.agent_debug_mode,
             "DASHBOARD_PASSWORD": settings.dashboard.password,

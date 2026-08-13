@@ -334,6 +334,30 @@ def test_model_capabilities_treat_image_as_vision(monkeypatch):
     assert factory.model_supports("basic-model", "image", role="basic") is True
 
 
+def test_model_capabilities_fall_back_to_catalog_for_unconfigured_role(monkeypatch):
+    monkeypatch.setattr(factory.EnvConfig, "ADVAN_MODEL", "catalog-model")
+    monkeypatch.setattr(factory.EnvConfig, "ADVAN_MODEL_CAPABILITIES", [])
+    monkeypatch.setattr(
+        factory,
+        "get_langchain_model_profile",
+        lambda *_args: {
+            "text_inputs": True,
+            "image_inputs": True,
+            "audio_inputs": True,
+            "video_inputs": True,
+            "pdf_inputs": True,
+        },
+    )
+
+    assert factory.get_model_capabilities("catalog-model", role="advanced") == {
+        "text",
+        "vision",
+        "audio",
+        "video",
+        "file",
+    }
+
+
 def test_model_capabilities_are_resolved_by_role_for_shared_model(monkeypatch):
     monkeypatch.setattr(factory.EnvConfig, "BASIC_MODEL", "shared-model")
     monkeypatch.setattr(factory.EnvConfig, "ADVAN_MODEL", "shared-model")

@@ -93,6 +93,9 @@ jwt_secret = "secret"
     assert configs.EnvConfig.VIDEO_SECONDS == "8"
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 1
     assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 900
+    assert configs.EnvConfig.MEDIA_TTL_DAYS == configs.EnvConfig.IMAGE_TTL_DAYS == 30
+    assert configs.EnvConfig.MAX_INLINE_IMAGES == 4
+    assert configs.EnvConfig.MAX_INLINE_MEDIA_BYTES == 20 * 1024 * 1024
     assert configs.EnvConfig.VIDEO_POLL_INTERVAL_SECONDS == 15
     assert configs.EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS == 900
     assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False

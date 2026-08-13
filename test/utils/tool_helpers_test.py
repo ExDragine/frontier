@@ -46,3 +46,32 @@ def test_tool_state_view_prefers_injected_binary_inputs():
     assert media is not None
     assert media.data == b"latest"
     assert media.mime_type == "image/jpeg"
+
+
+def test_tool_state_view_decodes_standard_media_blocks():
+    from utils.tool_helpers import ToolStateView
+
+    state = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "base64": base64.b64encode(b"standard-image").decode(),
+                        "mime_type": "image/png",
+                    },
+                    {
+                        "type": "video",
+                        "base64": base64.b64encode(b"standard-video").decode(),
+                        "mime_type": "video/mp4",
+                    },
+                ],
+            }
+        ]
+    }
+
+    view = ToolStateView(state)
+
+    assert [item.data for item in view.iter_media("image_url", "image_url", "data:image/")] == [b"standard-image"]
+    assert [item.data for item in view.iter_media("video_url", "video_url", "data:video/")] == [b"standard-video"]

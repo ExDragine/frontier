@@ -107,6 +107,31 @@ async def test_extract_uni_messages():
     assert result == ["payload"]
 
 
+@pytest.mark.asyncio
+async def test_extract_uni_messages_includes_native_media_from_final_ai_message(monkeypatch):
+    monkeypatch.setattr(
+        cognitive_mod,
+        "_native_media_message",
+        lambda block: f"native:{block['type']}" if block.get("type") in {"image", "audio"} else None,
+    )
+    response = {
+        "messages": [
+            types.SimpleNamespace(type="ai", content=[{"type": "image", "url": "https://example.test/a.png"}]),
+            types.SimpleNamespace(
+                type="ai",
+                content_blocks=[
+                    {"type": "text", "text": "done"},
+                    {"type": "audio", "url": "https://example.test/a.mp3"},
+                ],
+            ),
+        ]
+    }
+
+    result = await cognitive_mod.FrontierCognitive.extract_uni_messages(response)
+
+    assert result == ["native:audio"]
+
+
 def test_env_config_provider_responses_api_defaults():
     from utils.configs import EnvConfig
 
@@ -127,7 +152,9 @@ def test_build_user_content_keeps_images_when_model_supports_vision():
 
     assert isinstance(content, list)
     assert content[0] == {"type": "text", "text": "hello"}
-    assert content[1]["type"] == "image_url"
+    assert content[1]["type"] == "image"
+    assert content[1]["base64"]
+    assert content[1]["mime_type"] == "image/jpeg"
 
 
 def test_filter_messages_for_text_only_model_removes_image_parts(monkeypatch):
@@ -146,6 +173,30 @@ def test_filter_messages_for_text_only_model_removes_image_parts(monkeypatch):
 
     assert filtered[0]["content"] == [{"type": "text", "text": "hello\n\n[图片已省略：当前模型不支持视觉输入]"}]
     assert messages[0]["content"][1]["type"] == "image_url"
+
+
+def test_filter_messages_removes_each_unsupported_media_kind(monkeypatch):
+    supported = {"vision"}
+    monkeypatch.setattr(inputs_mod, "model_supports", lambda _model, capability, **_kwargs: capability in supported)
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "hello"},
+                {"type": "image", "base64": "a", "mime_type": "image/png"},
+                {"type": "audio", "base64": "b", "mime_type": "audio/mpeg"},
+                {"type": "video", "base64": "c", "mime_type": "video/mp4"},
+                {"type": "file", "base64": "d", "mime_type": "application/pdf"},
+            ],
+        }
+    ]
+
+    filtered = inputs_mod.filter_messages_for_model_capabilities(messages, "vision-model")
+
+    assert [part["type"] for part in filtered[0]["content"]] == ["text", "image"]
+    assert "当前模型不支持音频输入" in filtered[0]["content"][0]["text"]
+    assert "当前模型不支持视频输入" in filtered[0]["content"][0]["text"]
+    assert "当前模型不支持文件输入" in filtered[0]["content"][0]["text"]
 
 
 def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
@@ -339,6 +390,7 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
         user_id="u1",
         user_name="test",
         group_id=123,
+        audio_inputs=[b"audio"],
     )
 
     assert "use_responses_api" not in captured
@@ -349,6 +401,7 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     assert captured["payload"]["messages"][0]["content"] == [
         {"type": "text", "text": "hi\n\n[图片已省略：当前模型不支持视觉输入]"}
     ]
+    assert captured["payload"]["audio_inputs"] == [b"audio"]
     assert str(captured["config"]["configurable"]["thread_id"]) == str(runtime_mod.agent_thread_id("u1", 123))
 
 

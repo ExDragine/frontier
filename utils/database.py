@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import datetime
 import hashlib
 import json
@@ -13,6 +12,8 @@ from functools import lru_cache
 from sqlalchemy import Engine, event, inspect, text
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Field, Session, SQLModel, col, create_engine, desc, func, select
+
+from utils.media import ResolvedMedia, resolve_media
 
 DATABASE_FILE = "sqlite:///frontier.db"
 SQLITE_BUSY_TIMEOUT_MS = 5000
@@ -547,21 +548,48 @@ class _MessageAttachmentManager:
         return await _run_database(self.engine, _do)
 
     async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
+        attachments = await self.insert_media(
+            msg_time=msg_time,
+            msg_id=None,
+            user_id=user_id,
+            group_id=group_id,
+            media=[resolve_media(image, "image") for image in images],
+        )
+        return [attachment.physical_path for attachment in attachments]
+
+    async def insert_media(
+        self,
+        *,
+        msg_time: int,
+        msg_id: int | None,
+        user_id: int,
+        group_id: int | None,
+        media: list[ResolvedMedia],
+        source_type: str = "message",
+    ) -> list[MessageAttachment]:
+        """Persist downloaded media and create attachment rows in one DB operation."""
+
         def _do():
             from utils.configs import EnvConfig
 
             now_ms = int(time.time() * 1000)
-            expires_ms = now_ms + EnvConfig.IMAGE_TTL_DAYS * 86400 * 1000
+            expires_ms = now_ms + EnvConfig.MEDIA_TTL_DAYS * 86400 * 1000
             workspace_key = _message_workspace_key(user_id, group_id)
-            paths = []
+            directories = {"image": "images", "audio": "audio", "video": "videos", "file": "files"}
+            inserted: list[MessageAttachment] = []
             with Session(self.engine) as session:
-                for i, image_bytes in enumerate(images):
-                    file_name = f"{msg_time}_{i}.jpg"
-                    file_path, virtual_path = _attachment_paths(user_id, group_id, "images", file_name)
+                for index, item in enumerate(media):
+                    file_name = f"{msg_time}_{index}{item.extension}"
+                    file_path, virtual_path = _attachment_paths(
+                        user_id,
+                        group_id,
+                        directories[item.kind],
+                        file_name,
+                    )
                     full_path = os.path.join(os.getcwd(), file_path)
                     os.makedirs(os.path.dirname(full_path), exist_ok=True)
-                    with open(full_path, "wb") as f:
-                        f.write(image_bytes)
+                    with open(full_path, "wb") as file:
+                        file.write(item.data)
 
                     attachment = session.exec(
                         select(MessageAttachment).where(MessageAttachment.physical_path == file_path).limit(1)
@@ -569,16 +597,16 @@ class _MessageAttachmentManager:
                     if attachment is None:
                         attachment = MessageAttachment(
                             msg_time=msg_time,
-                            msg_id=None,
+                            msg_id=msg_id,
                             user_id=user_id,
                             group_id=group_id,
                             workspace_key=workspace_key,
-                            kind="image",
-                            source_type="message",
+                            kind=item.kind,
+                            source_type=source_type,
                             file_name=file_name,
-                            mime_type="image/jpeg",
-                            file_size=len(image_bytes),
-                            sha256=_sha256_bytes(image_bytes),
+                            mime_type=item.mime_type,
+                            file_size=len(item.data),
+                            sha256=_sha256_bytes(item.data),
                             physical_path=file_path,
                             virtual_path=virtual_path,
                             created_at=now_ms,
@@ -586,22 +614,24 @@ class _MessageAttachmentManager:
                         )
                     else:
                         attachment.msg_time = msg_time
-                        attachment.msg_id = None
+                        attachment.msg_id = msg_id
                         attachment.user_id = user_id
                         attachment.group_id = group_id
                         attachment.workspace_key = workspace_key
-                        attachment.kind = "image"
-                        attachment.source_type = "message"
+                        attachment.kind = item.kind
+                        attachment.source_type = source_type
                         attachment.file_name = file_name
-                        attachment.mime_type = "image/jpeg"
-                        attachment.file_size = len(image_bytes)
-                        attachment.sha256 = _sha256_bytes(image_bytes)
+                        attachment.mime_type = item.mime_type
+                        attachment.file_size = len(item.data)
+                        attachment.sha256 = _sha256_bytes(item.data)
                         attachment.virtual_path = virtual_path
                         attachment.expires_at = expires_ms
                     session.add(attachment)
-                    paths.append(file_path)
+                    inserted.append(attachment)
                 session.commit()
-            return paths
+                for attachment in inserted:
+                    session.refresh(attachment)
+            return inserted
 
         return await _run_database(self.engine, _do)
 
@@ -663,6 +693,67 @@ class _MessageAttachmentManager:
                     cleaned += 1
                 session.commit()
             return cleaned
+
+        return await _run_database(self.engine, _do)
+
+    async def repair_legacy_media_attachments(self, limit: int = 200) -> tuple[int, int]:
+        """Gradually repair legacy image rows whose `.jpg` suffix did not match their bytes.
+
+        Returns ``(verified, corrected)``. A marker in ``metadata_json`` keeps later
+        startups from reopening files that have already been checked.
+        """
+
+        def _do():
+            verified = 0
+            corrected = 0
+            with Session(self.engine) as session:
+                records = session.exec(
+                    select(MessageAttachment)
+                    .where(MessageAttachment.kind == "image")
+                    .order_by(col(MessageAttachment.id))
+                ).all()
+                for record in records:
+                    try:
+                        metadata = json.loads(record.metadata_json or "{}")
+                    except TypeError, ValueError:
+                        metadata = {}
+                    if metadata.get("media_type_verified") is True:
+                        continue
+                    if verified >= limit:
+                        break
+
+                    full_path = os.path.join(os.getcwd(), record.physical_path)
+                    if os.path.isfile(full_path):
+                        with open(full_path, "rb") as file:
+                            resolved = resolve_media(file.read(), "image", file_name=record.file_name)
+                        target_name = f"{os.path.splitext(record.file_name)[0]}{resolved.extension}"
+                        target_full_path = os.path.join(os.path.dirname(full_path), target_name)
+                        if os.path.abspath(target_full_path) != os.path.abspath(full_path):
+                            if os.path.exists(target_full_path):
+                                stem, suffix = os.path.splitext(target_name)
+                                target_name = f"{stem}-{record.id}{suffix}"
+                                target_full_path = os.path.join(os.path.dirname(full_path), target_name)
+                            os.replace(full_path, target_full_path)
+                            record.file_name = target_name
+                            record.physical_path = os.path.join(
+                                os.path.dirname(record.physical_path),
+                                target_name,
+                            )
+                            record.virtual_path = posixpath.join(
+                                posixpath.dirname(record.virtual_path),
+                                target_name,
+                            )
+                            corrected += 1
+                        if record.mime_type != resolved.mime_type:
+                            record.mime_type = resolved.mime_type
+                            corrected += 1
+
+                    metadata["media_type_verified"] = True
+                    record.metadata_json = json.dumps(metadata, ensure_ascii=False)
+                    session.add(record)
+                    verified += 1
+                session.commit()
+            return verified, corrected
 
         return await _run_database(self.engine, _do)
 
@@ -924,40 +1015,41 @@ class MessageDatabase:
         all_msg_times = [m.time for m in messages]
 
         self._attachments.engine = self.engine
-        images_by_time = await self._attachments.select_by_msg_times(all_msg_times, kind="image")
+        attachments_by_time = await self._attachments.select_by_msg_times(all_msg_times)
 
         for message in messages:
-            msg_images = images_by_time.get(message.time, [])
+            msg_attachments = attachments_by_time.get(message.time, [])
             content_text = message.content
-            file_images: list[bytes] = []
-
-            if msg_images:
-                file_images, missing_images = self._attachments.load_files(msg_images)
-                if missing_images:
-                    content_text += "\n" + " ".join("[图片]" for _ in range(missing_images))
-
-            text_str = json.dumps(
-                {
-                    "metadata": build_message_metadata(
-                        timestamp_ms=message.time,
-                        user_id=message.user_id,
-                        group_id=message.group_id,
-                        user_name=message.user_name,
-                    ),
-                    "content": content_text,
-                }
-            )
-
-            if file_images:
-                content = [{"type": "text", "text": text_str}] + [
+            attachment_refs = []
+            missing_kinds: list[str] = []
+            for attachment in msg_attachments:
+                full_path = os.path.join(os.getcwd(), attachment.physical_path)
+                if not os.path.exists(full_path):
+                    missing_kinds.append(attachment.kind)
+                    continue
+                attachment_refs.append(
                     {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(b).decode()}"},
+                        "kind": attachment.kind,
+                        "mime_type": attachment.mime_type,
+                        "file_name": attachment.file_name,
+                        "path": attachment.virtual_path,
                     }
-                    for b in file_images
-                ]
-            else:
-                content = text_str
+                )
+            if missing_kinds:
+                content_text += "\n" + " ".join(f"[{kind}附件已过期]" for kind in missing_kinds)
+
+            payload = {
+                "metadata": build_message_metadata(
+                    timestamp_ms=message.time,
+                    user_id=message.user_id,
+                    group_id=message.group_id,
+                    user_name=message.user_name,
+                ),
+                "content": content_text,
+            }
+            if attachment_refs:
+                payload["attachments"] = attachment_refs
+            content = json.dumps(payload)
 
             if not messages_seq:
                 messages_seq.append({"role": message.role, "content": content})
@@ -975,6 +1067,10 @@ class MessageDatabase:
         self._attachments.engine = self.engine
         return await self._attachments.insert_images(msg_time, user_id, group_id, images)
 
+    async def insert_media(self, **kwargs) -> list[MessageAttachment]:
+        self._attachments.engine = self.engine
+        return await self._attachments.insert_media(**kwargs)
+
     async def insert_attachment(self, **kwargs) -> MessageAttachment:
         self._attachments.engine = self.engine
         return await self._attachments.insert_attachment(**kwargs)
@@ -990,6 +1086,10 @@ class MessageDatabase:
     async def cleanup_expired_attachments(self, now_ms: int | None = None) -> int:
         self._attachments.engine = self.engine
         return await self._attachments.cleanup_expired_attachments(now_ms=now_ms)
+
+    async def repair_legacy_media_attachments(self, limit: int = 200) -> tuple[int, int]:
+        self._attachments.engine = self.engine
+        return await self._attachments.repair_legacy_media_attachments(limit=limit)
 
     async def count_group_messages_since(self, *, group_id: int, since_time: int) -> int:
         def _do():
@@ -1206,6 +1306,7 @@ class MessageDatabase:
                 return session.exec(statement).all()
 
         return await _run_database(self.engine, _do)
+
 
 class EventDatabase:
     def __init__(self):

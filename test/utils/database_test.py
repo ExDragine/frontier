@@ -1,9 +1,11 @@
 # ruff: noqa: S101
 
 import json
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from sqlalchemy import inspect, text
 from sqlmodel import create_engine
 
@@ -18,6 +20,7 @@ from utils.database import (
     MessageDatabase,
     TimeStamp,
 )
+from utils.media import resolve_media
 from utils.message_normalizer import NORMALIZED_VERSION, DerivedMessage
 
 
@@ -97,7 +100,7 @@ async def test_message_database_select_and_prepare(monkeypatch, memory_engine):
 
 
 @pytest.mark.asyncio
-async def test_prepare_message_injects_all_available_images_without_window_limit(monkeypatch, memory_engine):
+async def test_prepare_message_references_all_available_images_without_inlining(monkeypatch, memory_engine):
     database = MessageDatabase()
     database.engine = memory_engine
     Message.metadata.create_all(memory_engine)
@@ -110,14 +113,11 @@ async def test_prepare_message_injects_all_available_images_without_window_limit
 
     prepared = await database.prepare_message(user_id=1, query_numbers=20)
 
-    image_parts = [
-        part
-        for message in prepared
-        if isinstance(message["content"], list)
-        for part in message["content"]
-        if part.get("type") == "image_url"
-    ]
-    assert len(image_parts) == 12
+    payloads = [json.loads(line) for message in prepared for line in message["content"].splitlines()]
+    attachments = [attachment for payload in payloads for attachment in payload.get("attachments", [])]
+    assert len(attachments) == 12
+    assert all(attachment["path"].startswith("/memory/1/images/") for attachment in attachments)
+    assert "base64" not in "".join(message["content"] for message in prepared)
 
 
 @pytest.mark.asyncio
@@ -148,10 +148,16 @@ async def test_prepare_message_injects_images_from_message_attachments(monkeypat
 
     prepared = await database.prepare_message(user_id=1, query_numbers=10, before_time=2000)
 
-    assert isinstance(prepared[0]["content"], list)
-    assert prepared[0]["content"][0]["type"] == "text"
-    image_parts = [part for part in prepared[0]["content"] if part.get("type") == "image_url"]
-    assert len(image_parts) == 1
+    assert isinstance(prepared[0]["content"], str)
+    payload = json.loads(prepared[0]["content"])
+    assert payload["attachments"] == [
+        {
+            "kind": "image",
+            "mime_type": None,
+            "file_name": "1000_0.jpg",
+            "path": "/memory/1/images/1000_0.jpg",
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -175,6 +181,72 @@ async def test_insert_images_records_memory_file_attachment(monkeypatch, memory_
     assert attachment.physical_path == str(expected_path)
     assert attachment.virtual_path == "/memory/123/images/1000_0.jpg"
     assert attachment.file_size == len(b"image-bytes")
+
+
+@pytest.mark.asyncio
+async def test_repair_legacy_media_attachments_corrects_suffix_and_mime(monkeypatch, memory_engine, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+    MessageAttachment.metadata.create_all(memory_engine)
+
+    image_buffer = BytesIO()
+    Image.new("RGB", (2, 2), "blue").save(image_buffer, format="PNG")
+    legacy_path = Path("cache/sandbox/memory/1/images/1000_0.jpg")
+    (tmp_path / legacy_path).parent.mkdir(parents=True)
+    (tmp_path / legacy_path).write_bytes(image_buffer.getvalue())
+    await database.insert_attachment(
+        msg_time=1000,
+        msg_id=101,
+        user_id=1,
+        group_id=None,
+        kind="image",
+        physical_path=str(legacy_path),
+        virtual_path="/memory/1/images/1000_0.jpg",
+        file_name=legacy_path.name,
+        file_size=len(image_buffer.getvalue()),
+        expires_at=9_999_999_999_999,
+        mime_type="image/jpeg",
+    )
+
+    verified, corrected = await database.repair_legacy_media_attachments()
+    attachments = await database.select_image_attachments_by_msg_time(1000)
+
+    assert (verified, corrected) == (1, 2)
+    assert not (tmp_path / legacy_path).exists()
+    assert (tmp_path / "cache/sandbox/memory/1/images/1000_0.png").is_file()
+    assert attachments[0].file_name == "1000_0.png"
+    assert attachments[0].mime_type == "image/png"
+    assert json.loads(attachments[0].metadata_json)["media_type_verified"] is True
+    assert await database.repair_legacy_media_attachments() == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_insert_media_persists_audio_and_video_with_detected_types(monkeypatch, memory_engine, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+    MessageAttachment.metadata.create_all(memory_engine)
+
+    attachments = await database.insert_media(
+        msg_time=1000,
+        msg_id=101,
+        user_id=1,
+        group_id=None,
+        media=[
+            resolve_media(b"RIFF" + b"\x00" * 4 + b"WAVE", "audio"),
+            resolve_media(b"\x00\x00\x00\x18ftypisom", "video"),
+        ],
+    )
+
+    assert [(item.kind, item.mime_type) for item in attachments] == [
+        ("audio", "audio/wav"),
+        ("video", "video/mp4"),
+    ]
+    assert (tmp_path / "cache/sandbox/memory/1/audio/1000_0.wav").is_file()
+    assert (tmp_path / "cache/sandbox/memory/1/videos/1000_1.mp4").is_file()
 
 
 @pytest.mark.asyncio

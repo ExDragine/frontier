@@ -25,6 +25,7 @@ from utils.agent_context import FrontierRuntimeContext
 from utils.configs import EnvConfig
 from utils.harness_profiles import register_frontier_harness_profiles
 from utils.llm_factory import create_llm, provider_uses_responses_api
+from utils.media import inline_media_bytes, media_block_kind
 
 from .capture import detect_browser_capture_intent
 from .inputs import filter_messages_for_model_capabilities
@@ -43,12 +44,36 @@ from .workspace import SKILLS_BACKEND_PATH, build_agent_backend
 register_frontier_harness_profiles()
 
 
+def _native_media_message(block):
+    from utils.alconna import UniMessage
+
+    kind = media_block_kind(block)
+    if kind is None:
+        return None
+    decoded = inline_media_bytes(block)
+    raw = decoded[0] if decoded else None
+    url = block.get("url") if isinstance(block, dict) else None
+    if isinstance(url, str) and url.startswith("data:"):
+        url = None
+    if kind == "image" and (raw is not None or url):
+        return UniMessage.image(raw=raw) if raw is not None else UniMessage.image(url=url)
+    if kind == "audio" and (raw is not None or url):
+        return UniMessage.audio(raw=raw) if raw is not None else UniMessage.audio(url=url)
+    if kind == "video" and (raw is not None or url):
+        return UniMessage.video(raw=raw) if raw is not None else UniMessage.video(url=url)
+    if kind == "file" and url:
+        file_name = str(block.get("name") or block.get("filename") or "attachment")
+        return UniMessage.file(url=url, name=file_name)
+    return None
+
+
 class FrontierAgentState(DeepAgentState):
     """Mutable graph state; identity fields remain as a compatibility bridge for tools."""
 
     user_id: str
     group_id: int | None
     image_inputs: list[bytes]
+    audio_inputs: list[bytes]
     video_inputs: list[bytes]
 
 
@@ -68,17 +93,29 @@ class FrontierCognitive:
 
     @staticmethod
     async def extract_uni_messages(response):
-        """直接从响应中提取 UniMessage 对象。"""
+        """Extract QQ artifacts plus native multimodal blocks from the final AI message."""
         if not response or not isinstance(response, dict):
             logger.warning("⚠️ extract_uni_messages: response 为空或不是字典类型")
             return []
 
         uni_messages = []
-        for message in response.get("messages", []):
+        response_messages = response.get("messages", [])
+        for message in response_messages:
             if getattr(message, "type", None) == "tool" and getattr(message, "artifact", None) is not None:
                 tool_name = getattr(message, "name", "unknown")
                 uni_messages.append(message.artifact)
                 logger.info(f"📤 提取 UniMessage: {tool_name} - 类型: {type(message.artifact)}")
+
+        ai_messages = [message for message in response_messages if getattr(message, "type", None) == "ai"]
+        if ai_messages:
+            final_ai = ai_messages[-1]
+            blocks = getattr(final_ai, "content_blocks", None)
+            if blocks is None:
+                blocks = getattr(final_ai, "content", None)
+            if isinstance(blocks, list):
+                for block in blocks:
+                    if media_message := _native_media_message(block):
+                        uni_messages.append(media_message)
 
         logger.info(f"📨 总共提取到 {len(uni_messages)} 个 UniMessage")
         return uni_messages
@@ -91,6 +128,7 @@ class FrontierCognitive:
         capability: str = "none",
         group_id: int | None = None,
         image_inputs: list[bytes] | None = None,
+        audio_inputs: list[bytes] | None = None,
         video_inputs: list[bytes] | None = None,
         thread_id_override: uuid.UUID | str | None = None,
         wake_word: str | None = None,
@@ -205,6 +243,7 @@ class FrontierCognitive:
                 "user_id": user_id,
                 "group_id": group_id,
                 "image_inputs": image_inputs or [],
+                "audio_inputs": audio_inputs or [],
                 "video_inputs": video_inputs or [],
             }
             stream = await agent.astream_events(
