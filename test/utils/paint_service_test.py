@@ -33,18 +33,25 @@ def _tiny_png_bytes() -> bytes:
 
 
 @pytest.mark.asyncio
-async def test_paint_generates_with_openai_images_api(monkeypatch):
+async def test_paint_generates_with_responses_image_tool(monkeypatch):
     calls = {}
 
-    class DummyImages:
-        async def generate(self, **kwargs):
-            calls["generate"] = kwargs
-            return SimpleNamespace(data=[SimpleNamespace(b64_json=base64.b64encode(b"generated").decode())])
+    class DummyResponses:
+        async def create(self, **kwargs):
+            calls["create"] = kwargs
+            return SimpleNamespace(
+                output=[
+                    SimpleNamespace(
+                        type="image_generation_call",
+                        result=base64.b64encode(b"generated").decode(),
+                    )
+                ]
+            )
 
     class DummyClient:
         def __init__(self, **kwargs):
             calls["client"] = kwargs
-            self.images = DummyImages()
+            self.responses = DummyResponses()
 
         async def close(self):
             calls["closed"] = True
@@ -56,11 +63,28 @@ async def test_paint_generates_with_openai_images_api(monkeypatch):
 
     assert result == b"generated"
     assert calls["client"] == {"api_key": "sk-media", "base_url": "https://media.example.com/v1"}
-    assert calls["generate"] == {
+    assert calls["create"] == {
         "model": "gpt-image-test",
-        "prompt": "a crystal fox",
-        "size": "1536x1024",
-        "quality": "high",
+        "input": [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "a crystal fox"}],
+            }
+        ],
+        "tools": [
+            {
+                "type": "image_generation",
+                "action": "generate",
+                "model": "gpt-image-test",
+                "output_format": "png",
+                "size": "1536x1024",
+                "quality": "high",
+            }
+        ],
+        "tool_choice": {"type": "image_generation"},
+        "store": False,
+        "stream": False,
     }
     assert calls["closed"] is True
 
@@ -69,14 +93,21 @@ async def test_paint_generates_with_openai_images_api(monkeypatch):
 async def test_paint_edits_multiple_reference_images(monkeypatch):
     calls = {}
 
-    class DummyImages:
-        async def edit(self, **kwargs):
-            calls["edit"] = kwargs
-            return SimpleNamespace(data=[SimpleNamespace(b64_json=base64.b64encode(b"edited").decode())])
+    class DummyResponses:
+        async def create(self, **kwargs):
+            calls["create"] = kwargs
+            return {
+                "output": [
+                    {
+                        "type": "image_generation_call",
+                        "result": f"data:image/png;base64,{base64.b64encode(b'edited').decode()}",
+                    }
+                ]
+            }
 
     class DummyClient:
         def __init__(self, **_kwargs):
-            self.images = DummyImages()
+            self.responses = DummyResponses()
 
         async def close(self):
             return None
@@ -87,58 +118,54 @@ async def test_paint_edits_multiple_reference_images(monkeypatch):
     result = await paint_service.paint("turn it into watercolor", [_tiny_png_bytes(), _tiny_png_bytes()])
 
     assert result == b"edited"
-    request = calls["edit"]
+    request = calls["create"]
     assert request["model"] == "gpt-image-test"
-    assert request["prompt"] == "turn it into watercolor"
-    assert request["size"] == "1536x1024"
-    assert request["quality"] == "high"
-    assert len(request["image"]) == 2
-    assert request["image"][0][0] == "reference_0.png"
-    assert request["image"][0][2] == "image/png"
-    assert request["image"][0][1].startswith(b"\x89PNG")
+    assert request["tools"] == [
+        {
+            "type": "image_generation",
+            "action": "edit",
+            "model": "gpt-image-test",
+            "output_format": "png",
+            "size": "1536x1024",
+            "quality": "high",
+        }
+    ]
+    content = request["input"][0]["content"]
+    assert content[0] == {"type": "input_text", "text": "turn it into watercolor"}
+    assert len(content) == 3
+    assert content[1]["type"] == "input_image"
+    assert content[1]["image_url"].startswith("data:image/png;base64,")
+    assert base64.b64decode(content[1]["image_url"].partition(",")[2]).startswith(b"\x89PNG")
 
 
 @pytest.mark.asyncio
-async def test_paint_downloads_url_response(monkeypatch):
-    class DummyResponse:
-        def raise_for_status(self):
-            return None
-
-        async def aread(self):
-            return b"downloaded-image"
-
-    class DummyHttpClient:
-        async def get(self, url):
-            assert url == "https://cdn.example.com/image.png"
-            return DummyResponse()
-
-    class DummyImages:
-        async def generate(self, **_kwargs):
-            return SimpleNamespace(data=[SimpleNamespace(b64_json=None, url="https://cdn.example.com/image.png")])
+async def test_paint_rejects_invalid_responses_base64(monkeypatch):
+    class DummyResponses:
+        async def create(self, **_kwargs):
+            return {"output": [{"type": "image_generation_call", "result": "not base64!"}]}
 
     class DummyClient:
         def __init__(self, **_kwargs):
-            self.images = DummyImages()
+            self.responses = DummyResponses()
 
         async def close(self):
             return None
 
-    _set_paint_config(monkeypatch, base_url="")
+    _set_paint_config(monkeypatch)
     monkeypatch.setattr(paint_service, "AsyncOpenAI", DummyClient)
-    monkeypatch.setattr(paint_service, "httpx_client", DummyHttpClient())
 
-    assert await paint_service.paint("a landscape") == b"downloaded-image"
+    assert await paint_service.paint("a landscape") is None
 
 
 @pytest.mark.asyncio
 async def test_paint_returns_none_for_empty_response(monkeypatch):
-    class DummyImages:
-        async def generate(self, **_kwargs):
-            return SimpleNamespace(data=[])
+    class DummyResponses:
+        async def create(self, **_kwargs):
+            return SimpleNamespace(output=[])
 
     class DummyClient:
         def __init__(self, **_kwargs):
-            self.images = DummyImages()
+            self.responses = DummyResponses()
 
         async def close(self):
             return None
@@ -153,13 +180,13 @@ async def test_paint_returns_none_for_empty_response(monkeypatch):
 async def test_paint_returns_none_on_client_error_and_closes(monkeypatch):
     calls = {}
 
-    class DummyImages:
-        async def generate(self, **_kwargs):
+    class DummyResponses:
+        async def create(self, **_kwargs):
             raise RuntimeError("provider failed")
 
     class DummyClient:
         def __init__(self, **_kwargs):
-            self.images = DummyImages()
+            self.responses = DummyResponses()
 
         async def close(self):
             calls["closed"] = True

@@ -4,15 +4,13 @@ import io
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from typing import Any
 
 from nonebot import logger
 from openai import APIError, AsyncOpenAI
 from PIL import Image
 
 from utils.configs import EnvConfig, get_provider_profile
-from utils.http_client import get_http_client
-
-httpx_client = get_http_client("paint_service")
 
 
 @dataclass(frozen=True)
@@ -68,66 +66,80 @@ def _build_openai_client() -> AsyncOpenAI:
     return AsyncOpenAI(**kwargs)
 
 
-def _image_request_options() -> dict[str, str]:
+def _image_generation_tool(reference_images: list[bytes]) -> dict[str, Any]:
+    tool: dict[str, Any] = {
+        "type": "image_generation",
+        "action": "edit" if reference_images else "generate",
+        "model": EnvConfig.PAINT_MODEL,
+        "output_format": "png",
+    }
     options: dict[str, str] = {}
     if size := str(EnvConfig.PAINT_SIZE).strip():
         options["size"] = size
     if quality := str(EnvConfig.PAINT_QUALITY).strip():
         options["quality"] = quality
-    return options
+    tool.update(options)
+    return tool
 
 
-async def _image_bytes_from_response(response) -> bytes | None:
-    data = getattr(response, "data", None) or []
-    if not data:
-        logger.warning("OpenAI 图片 API 返回空 data")
-        return None
+def _responses_input(prompt: str, reference_images: list[bytes]) -> list[dict[str, Any]]:
+    content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
+    for image in reference_images:
+        encoded = base64.b64encode(_normalize_reference_image(image)).decode("ascii")
+        content.append(
+            {
+                "type": "input_image",
+                "image_url": f"data:image/png;base64,{encoded}",
+            }
+        )
+    return [{"type": "message", "role": "user", "content": content}]
 
-    image = data[0]
-    if encoded := getattr(image, "b64_json", None):
+
+def _response_value(value: Any, key: str) -> Any:
+    if isinstance(value, dict):
+        return value.get(key)
+    return getattr(value, key, None)
+
+
+def _image_bytes_from_response(response: Any) -> bytes | None:
+    output = _response_value(response, "output") or []
+    for item in output:
+        if _response_value(item, "type") != "image_generation_call":
+            continue
+        encoded = _response_value(item, "result")
+        if not isinstance(encoded, str) or not encoded.strip():
+            continue
+        encoded = encoded.strip()
+        if encoded.startswith("data:"):
+            _, separator, encoded = encoded.partition(",")
+            if not separator:
+                continue
         try:
             return base64.b64decode(encoded, validate=True)
         except (binascii.Error, ValueError):
-            logger.warning("OpenAI 图片 API 返回了无效的 base64 图片")
-            return None
+            logger.warning("Responses image_generation 返回了无效的 base64 图片")
+            continue
 
-    if url := getattr(image, "url", None):
-        try:
-            download = await httpx_client.get(url)
-            download.raise_for_status()
-            return await download.aread()
-        except Exception as exc:
-            logger.warning(f"下载 OpenAI 图片结果失败: {exc}")
-            return None
-
-    logger.warning("OpenAI 图片 API 响应中没有 b64_json 或 url")
+    logger.warning("Responses API 响应中没有 image_generation_call 结果")
     return None
 
 
 async def _paint_with_openai(prompt: str, reference_images: list[bytes]) -> bytes | None:
     client = _build_openai_client()
     try:
-        options = _image_request_options()
-        if reference_images:
-            images = [
-                (f"reference_{index}.png", _normalize_reference_image(image), "image/png")
-                for index, image in enumerate(reference_images)
-            ]
-            response = await client.images.edit(
-                model=EnvConfig.PAINT_MODEL,
-                image=images,
-                prompt=prompt,
-                **options,
-            )
-        else:
-            response = await client.images.generate(
-                model=EnvConfig.PAINT_MODEL,
-                prompt=prompt,
-                **options,
-            )
-        return await _image_bytes_from_response(response)
+        # sub2api accepts the image model in both positions, then rewrites the
+        # top-level model to its Codex host model while preserving the tool model.
+        response = await client.responses.create(
+            model=EnvConfig.PAINT_MODEL,
+            input=_responses_input(prompt, reference_images),
+            tools=[_image_generation_tool(reference_images)],
+            tool_choice={"type": "image_generation"},
+            store=False,
+            stream=False,
+        )
+        return _image_bytes_from_response(response)
     except APIError as exc:
-        logger.warning(f"OpenAI 图片 API 调用失败: {exc}")
+        logger.warning(f"Responses image_generation 调用失败: {exc}")
         return None
     finally:
         await client.close()
@@ -141,12 +153,12 @@ async def paint(prompt: str, reference_images: list[bytes] | None = None) -> byt
         return None
 
     logger.info(
-        f"🎨 调用 OpenAI 图片 API, model={EnvConfig.PAINT_MODEL}, "
+        f"🎨 调用 Responses image_generation, model={EnvConfig.PAINT_MODEL}, "
         f"prompt_length={len(prompt)}, references={len(reference_images)}"
     )
 
     try:
         return await _paint_with_openai(prompt, reference_images)
     except Exception as exc:
-        logger.exception(f"💥 调用 OpenAI 图片 API 失败: {exc}")
+        logger.exception(f"💥 调用 Responses image_generation 失败: {exc}")
         return None

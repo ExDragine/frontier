@@ -171,8 +171,9 @@ Dashboard 保存前也会执行相同校验。
 `*_model_provider` 填写供应商 profile 名称，而不是重复填写 URL。例如
 `advanced_model_provider = "openrouter"` 会读取 `[providers.openrouter]`；其中 `type = "openai"`
 决定底层 LangChain 适配器。`paint_model_provider` 和 `video_model_provider` 使用相同规则；模型能力只配置在
-`[models]`，base URL、API key 和 `api_mode` 只配置在供应商 profile。绘图调用
-OpenAI-compatible Images API，视频调用 OpenAI-compatible Videos API。
+`[models]`，base URL、API key 和 `api_mode` 只配置在供应商 profile。绘图通过
+OpenAI-compatible Responses API 的 `image_generation` 工具调用，视频调用
+OpenAI-compatible Videos API。
 
 供应商 profile 名称标识具体服务，`type` 选择 LangChain 适配器，`api_mode` 选择接口协议。
 DeepSeek 可分别配置为 `deepseek + chat_completions`、`openai + responses` 和
