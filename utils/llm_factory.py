@@ -9,7 +9,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
-from models import ModelFeature, ModelInput, ModelOutput, get_model, load_catalog
+from models import ApiMode, ModelFeature, ModelInput, ModelOutput, get_model, load_catalog
 from utils.configs import EnvConfig
 
 if TYPE_CHECKING:
@@ -84,6 +84,13 @@ _PROVIDER_CONFIGS = {
     "google": _google_config,
     "anthropic": _anthropic_config,
     "deepseek": _deepseek_config,
+}
+
+_PROVIDER_API_MODES = {
+    "openai": {ApiMode.CHAT_COMPLETIONS.value, ApiMode.RESPONSES.value},
+    "google": {ApiMode.GENERATE_CONTENT.value},
+    "anthropic": {ApiMode.MESSAGES.value},
+    "deepseek": {ApiMode.CHAT_COMPLETIONS.value},
 }
 
 
@@ -174,10 +181,40 @@ def model_supports(model: str, capability: str, *, role: str | None = None) -> b
     return bool(requested & get_model_capabilities(model, role=role))
 
 
+def _provider_protocol(model: str, profile: dict) -> tuple[str, str]:
+    provider_type = (_clean_optional(profile.get("type")) or _infer_provider(model)).lower()
+    api_mode = _clean_optional(profile.get("api_mode")).lower()
+
+    # 兼容短暂使用过的专用类型和更早的布尔开关；规范化配置不会再输出它们。
+    if provider_type == "deepseek_responses":
+        provider_type = "openai"
+        api_mode = ApiMode.RESPONSES.value
+    elif not api_mode and "use_responses_api" in profile:
+        uses_responses = bool(profile.get("use_responses_api"))
+        api_mode = ApiMode.RESPONSES.value if uses_responses else ApiMode.CHAT_COMPLETIONS.value
+        if provider_type == "deepseek" and uses_responses:
+            provider_type = "openai"
+
+    if not api_mode:
+        api_mode = {
+            "openai": ApiMode.CHAT_COMPLETIONS.value,
+            "google": ApiMode.GENERATE_CONTENT.value,
+            "anthropic": ApiMode.MESSAGES.value,
+            "deepseek": ApiMode.CHAT_COMPLETIONS.value,
+        }.get(provider_type, "")
+
+    supported_modes = _PROVIDER_API_MODES.get(provider_type)
+    if supported_modes is None:
+        raise ValueError(f"未知 LLM provider type: {provider_type!r}")
+    if api_mode not in supported_modes:
+        raise ValueError(f"provider type {provider_type!r} 不支持 api_mode {api_mode!r}")
+    return provider_type, api_mode
+
+
 def provider_uses_responses_api(model: str, provider: str | None = None) -> bool:
     _, profile = _provider_profile(model, provider)
-    provider_type = (_clean_optional(profile.get("type")) or _infer_provider(model)).lower()
-    return provider_type == "openai" and bool(profile.get("use_responses_api", False))
+    _, api_mode = _provider_protocol(model, profile)
+    return api_mode == ApiMode.RESPONSES.value
 
 
 def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile | None:
@@ -231,17 +268,15 @@ def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatMod
     """根据供应商 profile 路由模型，并过滤底层 SDK 不支持的参数。
 
     ``provider`` 指向 ``[providers.<name>]``；未指定时按模型名称推断官方供应商。
-    profile 的 ``type`` 决定底层协议，``use_responses_api`` 仅对 OpenAI 协议生效。
+    profile 的 ``type`` 决定底层 LangChain 适配器，``api_mode`` 决定接口协议。
     """
     if "endpoint" in kwargs:
         raise TypeError("create_llm() 不再接受 endpoint，请通过 provider 选择供应商 profile")
     if "use_responses_api" in kwargs:
-        raise TypeError("create_llm() 不再接受 use_responses_api，请在供应商 profile 中配置")
+        raise TypeError("create_llm() 不再接受 use_responses_api，请在供应商 profile 中配置 api_mode")
     _, profile = _provider_profile(model, provider)
-    provider_type = (_clean_optional(profile.get("type")) or _infer_provider(model)).lower()
-    config = _PROVIDER_CONFIGS.get(provider_type)
-    if config is None:
-        raise ValueError(f"未知 LLM provider type: {provider_type!r}")
+    provider_type, api_mode = _provider_protocol(model, profile)
+    config = _PROVIDER_CONFIGS[provider_type]
 
     cls = config.cls_fn()
     api_key = SecretStr(_clean_optional(profile.get("api_key")))
@@ -251,11 +286,11 @@ def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatMod
             actual_key = config.kwarg_map.get(k, k)
             filtered[actual_key] = v
     if "profile" not in filtered:
-        catalog_profile = get_langchain_model_profile(model, provider_type)
+        catalog_profile = get_langchain_model_profile(model, _infer_provider(model))
         if catalog_profile is not None:
             filtered["profile"] = catalog_profile
     if provider_type == "openai":
-        filtered["use_responses_api"] = bool(profile.get("use_responses_api", False))
+        filtered["use_responses_api"] = api_mode == ApiMode.RESPONSES.value
     base_url = _clean_optional(profile.get("base_url"))
     if base_url and config.base_url_field:
         filtered[config.base_url_field] = base_url

@@ -77,10 +77,15 @@ jwt_secret = "secret"
     assert configs.EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
     assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
     assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
-    assert configs.EnvConfig.LLM_PROVIDERS["openai"]["use_responses_api"] is True
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["use_responses_api"] is False
+    assert configs.EnvConfig.LLM_PROVIDERS["openai"]["api_mode"] == "responses"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_mode"] == "chat_completions"
     assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_key"] == ""
     assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["base_url"] == ""
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_responses"]["type"] == "openai"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_responses"]["base_url"] == "https://api.deepseek.com"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_responses"]["api_mode"] == "responses"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_anthropic"]["type"] == "anthropic"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_anthropic"]["api_mode"] == "messages"
     assert configs.EnvConfig.VIDEO_MODULE_ENABLED is True
     assert configs.EnvConfig.VIDEO_MODEL == "sora-2"
     assert configs.EnvConfig.VIDEO_MODEL_PROVIDER == "video"
@@ -235,14 +240,16 @@ jwt_secret = "secret"
     assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is True
     assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == [1001]
     assert configs.EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == [1002]
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["use_responses_api"] is True
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["type"] == "openai"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_mode"] == "responses"
 
     configs.EnvConfig.reload({"function": {}, "endpoint": {}})
 
     assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False
     assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == []
     assert configs.EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == []
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["use_responses_api"] is False
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["type"] == "deepseek"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_mode"] == "chat_completions"
 
 
 def test_env_config_migrates_legacy_endpoint_profiles(tmp_path, monkeypatch):
@@ -338,10 +345,10 @@ jwt_secret = "secret"
     assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
     assert configs.EnvConfig.LLM_PROVIDERS["openrouter"]["api_key"] == "sk-openrouter"
     assert "capabilities" not in configs.EnvConfig.LLM_PROVIDERS["openrouter"]
-    assert configs.EnvConfig.LLM_PROVIDERS["openrouter"]["use_responses_api"] is True
+    assert configs.EnvConfig.LLM_PROVIDERS["openrouter"]["api_mode"] == "responses"
     assert configs.EnvConfig.LLM_PROVIDERS["anthropic_proxy"]["base_url"] == "https://anthropic-proxy.example.com"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_signal"]["type"] == "deepseek"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_signal"]["use_responses_api"] is True
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_signal"]["type"] == "openai"
+    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_signal"]["api_mode"] == "responses"
     assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_key"] == "sk-deepseek"
     assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["base_url"] == "https://api.deepseek.example/v1"
 
@@ -664,15 +671,15 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
             "providers": {
                 "openai": {
                     "type": "openai",
+                    "api_mode": "responses",
                     "base_url": "https://api.example.com/v1",
                     "api_key": "sk-v2",
-                    "use_responses_api": True,
                 },
                 "openai_chat": {
                     "type": "openai",
+                    "api_mode": "chat_completions",
                     "base_url": "https://chat.example.com/v1",
                     "api_key": "sk-chat",
-                    "use_responses_api": False,
                 },
                 "google": {"type": "google", "base_url": "", "api_key": "google-v2"},
             },
@@ -695,8 +702,8 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
     assert EnvConfig.BASIC_MODEL_PROVIDER == "openai_chat"
     assert EnvConfig.ADVAN_MODEL == "gpt-5.4"
     assert EnvConfig.ADVAN_MODEL_CAPABILITIES == ["text", "vision"]
-    assert EnvConfig.LLM_PROVIDERS["openai_chat"]["use_responses_api"] is False
-    assert EnvConfig.LLM_PROVIDERS["openai"]["use_responses_api"] is True
+    assert EnvConfig.LLM_PROVIDERS["openai_chat"]["api_mode"] == "chat_completions"
+    assert EnvConfig.LLM_PROVIDERS["openai"]["api_mode"] == "responses"
     assert EnvConfig.LLM_PROVIDERS["openai"]["api_key"] == "sk-v2"
     assert EnvConfig.PAINT_MODEL_PROVIDER == "openai"
     assert EnvConfig.PAINT_SIZE == "1536x1024"
@@ -737,12 +744,40 @@ def test_env_toml_example_is_valid_v2_config():
         settings = parse_config(tomllib.load(file))
 
     assert settings.config_version == 2
-    assert settings.providers["openai"].use_responses_api is True
+    assert settings.providers["openai"].api_mode == "responses"
+    assert settings.providers["deepseek"].type == "deepseek"
+    assert settings.providers["deepseek"].api_mode == "chat_completions"
+    assert settings.providers["deepseek_responses"].type == "openai"
+    assert settings.providers["deepseek_responses"].base_url == "https://api.deepseek.com"
+    assert settings.providers["deepseek_responses"].api_mode == "responses"
+    assert settings.providers["deepseek_anthropic"].type == "anthropic"
+    assert settings.providers["deepseek_anthropic"].api_mode == "messages"
     assert settings.models.advanced.provider == "openai"
     assert settings.models.paint.provider == "openai"
     assert settings.models.paint.size == "1024x1024"
     assert settings.models.video.provider == "openai"
     assert settings.models.video.model == "sora-2"
+
+
+def test_legacy_deepseek_responses_type_migrates_to_adapter_and_api_mode():
+    from utils.configs import parse_config
+
+    settings = parse_config(
+        {
+            "config_version": 2,
+            "providers": {
+                "deepseek_agent": {
+                    "type": "deepseek_responses",
+                    "api_key": "sk-deepseek",
+                }
+            },
+        }
+    )
+
+    profile = settings.providers["deepseek_agent"]
+    assert profile.type == "openai"
+    assert profile.base_url == "https://api.deepseek.com"
+    assert profile.api_mode == "responses"
 
 
 @pytest.mark.parametrize(
@@ -766,6 +801,42 @@ def test_env_toml_example_is_valid_v2_config():
         (
             {"config_version": 2, "key": {"openai_api_key": "sk-old"}},
             "不再接受模型 API key",
+        ),
+        (
+            {
+                "config_version": 2,
+                "providers": {"deepseek": {"type": "deepseek", "api_mode": "responses"}},
+            },
+            "不支持 api_mode='responses'",
+        ),
+        (
+            {
+                "config_version": 2,
+                "providers": {
+                    "anthropic_chat": {"type": "anthropic", "api_mode": "chat_completions"}
+                },
+            },
+            "不支持 api_mode='chat_completions'",
+        ),
+        (
+            {
+                "config_version": 2,
+                "providers": {
+                    "conflict": {
+                        "type": "openai",
+                        "api_mode": "responses",
+                        "use_responses_api": False,
+                    }
+                },
+            },
+            "api_mode 与旧字段 use_responses_api 冲突",
+        ),
+        (
+            {
+                "config_version": 2,
+                "providers": {"invalid": {"type": "openai", "api_mode": "response"}},
+            },
+            "api_mode 无效",
         ),
     ],
 )

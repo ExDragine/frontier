@@ -28,6 +28,75 @@ def test_attached_image_placeholders_only_removed_for_successful_downloads(monke
 
 
 @pytest.mark.asyncio
+async def test_group_progress_reporter_sends_only_one_model_preamble(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    sent: list[str] = []
+
+    class DummyUniMessage:
+        def __init__(self, content: str):
+            self.content = content
+
+        @classmethod
+        def text(cls, content: str):
+            return cls(content)
+
+        async def send(self):
+            sent.append(self.content)
+
+    async def allow_text(content: str):
+        return content
+
+    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(agent, "sanitize_outgoing_text", allow_text)
+    reporter = agent._chat_progress_reporter(group_id=123)
+
+    await reporter(agent.ProgressEvent(type="thinking", message="正在思考…"))
+    await reporter(agent.ProgressEvent(type="assistant_preamble", message="我先查一下资料。"))
+    await reporter(agent.ProgressEvent(type="assistant_preamble", message="接着核对来源。"))
+
+    assert sent == ["我先查一下资料。"]
+
+
+@pytest.mark.asyncio
+async def test_private_progress_reporter_keeps_templates_and_two_preambles(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    sent: list[str] = []
+
+    class DummyUniMessage:
+        def __init__(self, content: str):
+            self.content = content
+
+        @classmethod
+        def text(cls, content: str):
+            return cls(content)
+
+        async def send(self):
+            sent.append(self.content)
+
+    async def allow_text(content: str):
+        return content
+
+    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(agent, "sanitize_outgoing_text", allow_text)
+    reporter = agent._chat_progress_reporter(group_id=None)
+
+    await reporter(agent.ProgressEvent(type="thinking", message="正在思考…"))
+    await reporter(agent.ProgressEvent(type="assistant_preamble", message="我先查一下资料。"))
+    await reporter(agent.ProgressEvent(type="assistant_preamble", message="接着核对来源。"))
+    await reporter(agent.ProgressEvent(type="assistant_preamble", message="最后再整理结果。"))
+
+    assert sent == ["正在思考…", "我先查一下资料。", "接着核对来源。"]
+
+
+@pytest.mark.asyncio
 async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # noqa: C901
     import nonebot
 

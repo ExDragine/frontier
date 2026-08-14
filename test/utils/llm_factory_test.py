@@ -113,8 +113,8 @@ def test_claude_routes_to_anthropic(monkeypatch):
         {
             "anthropic": {
                 "type": "anthropic",
+                "api_mode": "messages",
                 "base_url": "https://anthropic.example.com",
-                "use_responses_api": False,
             }
         },
     )
@@ -136,7 +136,7 @@ def test_deepseek_routes_to_deepseek(monkeypatch):
     monkeypatch.setattr(
         factory.EnvConfig,
         "LLM_PROVIDERS",
-        {"deepseek": {"type": "deepseek", "base_url": "", "use_responses_api": False}},
+        {"deepseek": {"type": "deepseek", "api_mode": "chat_completions", "base_url": ""}},
     )
 
     factory.create_llm(model="deepseek-v4-flash", timeout=30, max_retries=2)
@@ -146,8 +146,76 @@ def test_deepseek_routes_to_deepseek(monkeypatch):
     assert kw["model"] == "deepseek-v4-flash"
     assert "api_key" in kw
     assert "api_base" not in kw
+    assert "use_responses_api" not in kw
     assert kw["timeout"] == 30
     assert kw["max_retries"] == 2
+
+
+def test_deepseek_responses_routes_through_chat_openai(monkeypatch):
+    openai_cls = MagicMock()
+    deepseek_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatOpenAI", openai_cls)
+    monkeypatch.setattr(factory, "ChatDeepSeek", deepseek_cls)
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "deepseek_responses": {
+                "type": "openai",
+                "api_mode": "responses",
+                "base_url": "https://api.deepseek.com",
+                "api_key": "sk-deepseek-responses",
+            }
+        },
+    )
+
+    factory.create_llm(
+        model="deepseek-v4-pro",
+        provider="deepseek_responses",
+        timeout=30,
+        reasoning_effort="medium",
+        verbosity="low",
+    )
+
+    openai_cls.assert_called_once()
+    deepseek_cls.assert_not_called()
+    kw = openai_cls.call_args.kwargs
+    assert kw["model"] == "deepseek-v4-pro"
+    assert kw["openai_api_key"].get_secret_value() == "sk-deepseek-responses"
+    assert kw["openai_api_base"] == "https://api.deepseek.com"
+    assert kw["use_responses_api"] is True
+    assert kw["request_timeout"] == 30
+    assert kw["reasoning_effort"] == "medium"
+    assert kw["verbosity"] == "low"
+    assert kw["profile"]["max_input_tokens"] == 1_000_000
+    assert factory.provider_uses_responses_api("deepseek-v4-pro", "deepseek_responses") is True
+
+
+def test_deepseek_anthropic_routes_through_chat_anthropic(monkeypatch):
+    anthropic_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatAnthropic", anthropic_cls)
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "deepseek_anthropic": {
+                "type": "anthropic",
+                "api_mode": "messages",
+                "base_url": "https://api.deepseek.com/anthropic",
+                "api_key": "sk-deepseek-anthropic",
+            }
+        },
+    )
+
+    factory.create_llm(model="deepseek-v4-pro", provider="deepseek_anthropic", timeout=30)
+
+    kw = anthropic_cls.call_args.kwargs
+    assert kw["model"] == "deepseek-v4-pro"
+    assert kw["anthropic_api_key"].get_secret_value() == "sk-deepseek-anthropic"
+    assert kw["anthropic_api_url"] == "https://api.deepseek.com/anthropic"
+    assert kw["default_request_timeout"] == 30
+    assert "use_responses_api" not in kw
+    assert factory.provider_uses_responses_api("deepseek-v4-pro", "deepseek_anthropic") is False
 
 
 def test_deepseek_provider_profile_overrides_api_key_and_base_url(monkeypatch):
@@ -159,9 +227,9 @@ def test_deepseek_provider_profile_overrides_api_key_and_base_url(monkeypatch):
         {
             "deepseek_signal": {
                 "type": "deepseek",
+                "api_mode": "chat_completions",
                 "base_url": "https://deepseek.example.com/v1",
                 "api_key": "sk-deepseek-profile",
-                "use_responses_api": False,
             }
         },
     )
@@ -261,9 +329,9 @@ def test_provider_profile_can_set_type_base_url_and_api_key(monkeypatch):
         {
             "anthropic_proxy": {
                 "type": "anthropic",
+                "api_mode": "messages",
                 "base_url": "https://anthropic-proxy.example.com",
                 "api_key": "ant-profile",
-                "use_responses_api": False,
             }
         },
     )
@@ -284,9 +352,9 @@ def test_provider_profile_controls_openai_base_url_and_responses_api(monkeypatch
         {
             "openrouter": {
                 "type": "openai",
+                "api_mode": "chat_completions",
                 "base_url": "https://openrouter.example.com/api/v1",
                 "api_key": "sk-openrouter",
-                "use_responses_api": False,
             }
         },
     )
@@ -387,8 +455,8 @@ def test_provider_capabilities_do_not_override_model_capabilities(monkeypatch):
         {
             "text_gateway": {
                 "type": "openai",
+                "api_mode": "responses",
                 "capabilities": ["text", "vision"],
-                "use_responses_api": True,
             }
         },
     )

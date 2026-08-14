@@ -156,7 +156,7 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 `env.toml` 的关键部分：
 - `[bot]`: 主 system prompt；不再保存机器人名称。
 - `[models]`: 对话、绘图和视频模型 ID、供应商 profile 引用及模型能力。
-- `[providers.*]`: 供应商协议类型、base URL、可选 API key 和 Responses API 开关。
+- `[providers.*]`: LangChain 适配器类型、API 协议、base URL 和可选 API key。
 - `[key]`: NASA、GitHub 等非模型服务密钥；模型密钥统一放在供应商 profile。
 - `[features]` / `[agent]`: 功能开关和 Agent 推理等级。
 - `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]`: 访问策略。
@@ -170,9 +170,15 @@ Dashboard 保存前也会执行相同校验。
 
 `*_model_provider` 填写供应商 profile 名称，而不是重复填写 URL。例如
 `advanced_model_provider = "openrouter"` 会读取 `[providers.openrouter]`；其中 `type = "openai"`
-决定底层协议。`paint_model_provider` 和 `video_model_provider` 使用相同规则；模型能力只配置在
-`[models]`，base URL、API key 和 `use_responses_api` 只配置在供应商 profile。绘图调用
+决定底层 LangChain 适配器。`paint_model_provider` 和 `video_model_provider` 使用相同规则；模型能力只配置在
+`[models]`，base URL、API key 和 `api_mode` 只配置在供应商 profile。绘图调用
 OpenAI-compatible Images API，视频调用 OpenAI-compatible Videos API。
+
+供应商 profile 名称标识具体服务，`type` 选择 LangChain 适配器，`api_mode` 选择接口协议。
+DeepSeek 可分别配置为 `deepseek + chat_completions`、`openai + responses` 和
+`anthropic + messages`；后两种接口的官方地址分别为 `https://api.deepseek.com` 和
+`https://api.deepseek.com/anthropic`。图片和文件输入目前不应交给这些 DeepSeek profile。
+旧版 `use_responses_api` 和短暂使用过的 `type = "deepseek_responses"` 会自动迁移。
 
 机器人名称只来自 `.env` 的 `NICKNAME`。数组第一项作为默认显示名称，全部非空项都可
 作为全局唤醒词；某个群在数据库中配置了自定义唤醒词后，以该群的数据库配置为准。

@@ -9,6 +9,7 @@ import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
 from models import (
+    ApiMode,
     ModelFeature,
     ModelStatus,
     get_model,
@@ -122,6 +123,13 @@ def test_get_model_and_unknown_model() -> None:
     assert canonical_case_model is not None
     assert canonical_case_model.id == "Ling-2.6-1T"
     assert get_model("custom", "private-model") is None
+
+
+def test_deepseek_v4_models_advertise_responses_api() -> None:
+    for model_id in ("deepseek-v4-flash", "deepseek-v4-pro"):
+        model = get_model("deepseek", model_id)
+        assert model is not None
+        assert ApiMode.RESPONSES in model.capabilities.api_modes
 
 
 def test_list_models_filters_provider_feature_and_status() -> None:

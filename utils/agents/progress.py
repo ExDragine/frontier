@@ -20,6 +20,7 @@ class ProgressEvent:
         "tool_result",
         "subagent_start",
         "subagent_done",
+        "assistant_preamble",
         "text_delta",
         "done",
     ]
@@ -104,12 +105,14 @@ async def collect_progress(stream, reporter: ProgressReporter | None) -> None:  
 
     async def consume_messages() -> None:
         first_message = True
-        text_buffer = ""
         async for message in stream.messages:
             if first_message:
                 await emit_progress(reporter, ProgressEvent(type="thinking", message="正在思考…"))
                 first_message = False
+            message_text = ""
+            text_buffer = ""
             async for chunk in message.text:
+                message_text += chunk
                 text_buffer += chunk
                 while "\n\n" in text_buffer:
                     index = text_buffer.index("\n\n")
@@ -117,6 +120,28 @@ async def collect_progress(stream, reporter: ProgressReporter | None) -> None:  
                     text_buffer = text_buffer[index + 2 :]
                     if paragraph:
                         await emit_progress(reporter, ProgressEvent(type="text_delta", message=paragraph))
+
+            # 每个 stream.messages 条目对应一次模型调用。只有带工具调用的
+            # AI 文本才是“边做边说”的过程发言；无工具调用的消息是终止回复，
+            # 继续交给正常的最终回复链路，避免重复发送。
+            try:
+                tool_calls = await message.tool_calls
+            except (AttributeError, TypeError):
+                tool_calls = getattr(getattr(message, "output_message", None), "tool_calls", None)
+            except Exception as exc:
+                logger.debug(f"读取模型消息工具调用失败，跳过过程发言: {type(exc).__name__}: {exc}")
+                tool_calls = None
+
+            preamble = message_text.strip()
+            if preamble and tool_calls:
+                await emit_progress(
+                    reporter,
+                    ProgressEvent(
+                        type="assistant_preamble",
+                        message=preamble,
+                        detail={"tool_call_count": len(tool_calls)},
+                    ),
+                )
 
     async def safe_consume(coro) -> None:
         try:

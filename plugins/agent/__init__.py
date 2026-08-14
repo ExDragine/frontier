@@ -13,7 +13,7 @@ from nonebot.adapters.milky.event import MessageEvent
 
 require("nonebot_plugin_alconna")
 
-from utils.agents import FrontierCognitive, ProgressEvent, agent_thread_id, run_serialized
+from utils.agents import FrontierCognitive, ProgressEvent, ProgressReporter, agent_thread_id, run_serialized
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
@@ -95,11 +95,35 @@ def _remove_attached_image_placeholders(text: str, attached_images: int) -> str:
     return "\n".join(lines).strip()
 
 
-async def _private_chat_reporter(event: ProgressEvent) -> None:
-    """私聊场景的进度事件消费者 —— 向用户发送当前 Agent 正在做什么。"""
-    match event.type:
-        case "thinking" | "subagent_start" | "tool_call":
+def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
+    """构造会话级进度消费者，并将模型的工具调用前言作为过程发言发送。"""
+    spoken_messages: set[str] = set()
+    spoken_count = 0
+    max_spoken_messages = 1 if group_id is not None else 2
+
+    async def reporter(event: ProgressEvent) -> None:
+        nonlocal spoken_count
+
+        if event.type == "assistant_preamble":
+            content = event.message.strip()
+            if not content or content in spoken_messages or spoken_count >= max_spoken_messages:
+                return
+
+            sanitized = await sanitize_outgoing_text(content)
+            # 风险审核改写后的拦截提示不作为过程发言发送，最终回复仍会正常审核。
+            if not sanitized or sanitized != content:
+                return
+
+            spoken_messages.add(content)
+            spoken_count += 1
+            await UniMessage.text(content).send()
+            return
+
+        # 群聊只展示模型主动写出的过程发言，避免工具模板消息刷屏。
+        if group_id is None and event.type in {"thinking", "subagent_start", "tool_call"}:
             await UniMessage.text(event.message).send()
+
+    return reporter
 
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
@@ -203,7 +227,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         video_inputs=context.videos,
         wake_word=triggered_wake or None,
         group_member_role=_group_member_role(context.event),
-        progress_reporter=_private_chat_reporter if context.group_id is None else None,
+        progress_reporter=_chat_progress_reporter(context.group_id),
         user_text=context.text,
     )
 

@@ -17,6 +17,24 @@ dotenv.load_dotenv()
 CONFIG_VERSION = 2
 CONFIG_PATH = Path(os.getenv("FRONTIER_CONFIG", "env.toml"))
 _DEFAULT_DASHBOARD_JWT_SECRET = "frontier-dashboard-default-secret"  # noqa: S105
+_DEEPSEEK_RESPONSES_BASE_URL = "https://api.deepseek.com"
+_DEEPSEEK_ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
+_API_MODE_CHAT_COMPLETIONS = "chat_completions"
+_API_MODE_RESPONSES = "responses"
+_API_MODE_MESSAGES = "messages"
+_API_MODE_GENERATE_CONTENT = "generate_content"
+_VALID_API_MODES = {
+    _API_MODE_CHAT_COMPLETIONS,
+    _API_MODE_RESPONSES,
+    _API_MODE_MESSAGES,
+    _API_MODE_GENERATE_CONTENT,
+}
+_PROVIDER_API_MODES = {
+    "openai": {_API_MODE_CHAT_COMPLETIONS, _API_MODE_RESPONSES},
+    "google": {_API_MODE_GENERATE_CONTENT},
+    "anthropic": {_API_MODE_MESSAGES},
+    "deepseek": {_API_MODE_CHAT_COMPLETIONS},
+}
 
 
 class _FrozenConfig(BaseModel):
@@ -71,9 +89,9 @@ class ProviderProfile(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
 
     type: str = ""
+    api_mode: str = ""
     base_url: str = ""
     api_key: str = ""
-    use_responses_api: bool = False
 
 
 class KeyConfig(_FrozenConfig):
@@ -255,6 +273,111 @@ def _validate_v2_model_provider_sections(
             raise ValueError(f"[providers.{name}] 必须是供应商 table")
         if "capabilities" in raw_profile:
             raise ValueError(f"[providers.{name}] 不再接受 capabilities，请配置到对应模型")
+        api_mode = raw_profile.get("api_mode")
+        if api_mode is not None and (not isinstance(api_mode, str) or api_mode.strip().lower() not in _VALID_API_MODES):
+            raise ValueError(f"[providers.{name}].api_mode 无效: {api_mode!r}")
+        if "use_responses_api" in raw_profile and api_mode is not None:
+            uses_responses = bool(raw_profile["use_responses_api"])
+            if (api_mode.strip().lower() == _API_MODE_RESPONSES) != uses_responses:
+                raise ValueError(
+                    f"[providers.{name}] 的 api_mode 与旧字段 use_responses_api 冲突；请只保留 api_mode"
+                )
+
+
+def _default_api_mode(provider_type: str, *, legacy_openai_responses: bool = False) -> str:
+    if provider_type == "deepseek_responses":
+        return _API_MODE_RESPONSES
+    if provider_type == "openai":
+        return _API_MODE_RESPONSES if legacy_openai_responses else _API_MODE_CHAT_COMPLETIONS
+    return {
+        "google": _API_MODE_GENERATE_CONTENT,
+        "anthropic": _API_MODE_MESSAGES,
+        "deepseek": _API_MODE_CHAT_COMPLETIONS,
+    }.get(provider_type, "")
+
+
+def _legacy_api_mode(provider_type: str, use_responses_api: bool) -> str:
+    if provider_type in {"openai", "deepseek", "deepseek_responses"}:
+        return _API_MODE_RESPONSES if use_responses_api else _API_MODE_CHAT_COMPLETIONS
+    return _default_api_mode(provider_type)
+
+
+def _migrate_legacy_responses_adapter(profile: dict[str, Any], used_legacy_flag: bool) -> None:
+    provider_type = str(profile.get("type", "")).strip().lower()
+    if provider_type == "deepseek_responses":
+        profile["type"] = "openai"
+        profile["api_mode"] = _API_MODE_RESPONSES
+        profile["base_url"] = profile.get("base_url") or _DEEPSEEK_RESPONSES_BASE_URL
+    elif used_legacy_flag and provider_type == "deepseek" and profile.get("api_mode") == _API_MODE_RESPONSES:
+        profile["type"] = "openai"
+        profile["base_url"] = profile.get("base_url") or _DEEPSEEK_RESPONSES_BASE_URL
+
+
+def _validate_normalized_provider_protocols(provider_profiles: dict[str, dict[str, Any]]) -> None:
+    for name, profile in provider_profiles.items():
+        provider_type = str(profile.get("type", "")).strip().lower()
+        api_mode = str(profile.get("api_mode", "")).strip().lower()
+        profile["type"] = provider_type
+        profile["api_mode"] = api_mode
+        supported_modes = _PROVIDER_API_MODES.get(provider_type)
+        if supported_modes is None:
+            continue
+        if api_mode not in supported_modes:
+            raise ValueError(
+                f"[providers.{name}] 的 type={provider_type!r} 不支持 api_mode={api_mode!r}"
+            )
+
+
+def _normalize_modern_provider_profile(
+    name: str,
+    raw_profile: Mapping[str, Any],
+    existing: Mapping[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    profile = dict(raw_profile)
+    used_legacy_flag = "use_responses_api" in profile
+    provider_type = str(
+        profile.pop("provider", profile.get("type", existing.get("type", name if existing else "")))
+    ).strip().lower()
+    profile["type"] = provider_type
+    legacy_response_value = profile.pop("use_responses_api", None)
+    if "api_mode" not in profile:
+        if used_legacy_flag:
+            profile["api_mode"] = _legacy_api_mode(provider_type, bool(legacy_response_value))
+        elif existing and provider_type == existing.get("type"):
+            profile["api_mode"] = existing.get("api_mode", "")
+        else:
+            profile["api_mode"] = _default_api_mode(provider_type)
+    profile.pop("capabilities", None)
+    normalized = {**existing, **profile}
+    _migrate_legacy_responses_adapter(normalized, used_legacy_flag)
+    return normalized, used_legacy_flag or "api_mode" in raw_profile
+
+
+def _normalize_legacy_provider_profile(
+    raw_profile: Mapping[str, Any],
+    existing: Mapping[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    profile = dict(raw_profile)
+    used_legacy_flag = "use_responses_api" in profile
+    provider_type = str(profile.get("type") or profile.get("provider") or existing.get("type", "")).strip().lower()
+    if "api_mode" in profile:
+        api_mode = profile["api_mode"]
+    elif used_legacy_flag:
+        api_mode = _legacy_api_mode(provider_type, bool(profile["use_responses_api"]))
+    elif existing.get("api_mode"):
+        api_mode = existing["api_mode"]
+    else:
+        api_mode = _default_api_mode(provider_type, legacy_openai_responses=True)
+    normalized = {
+        **existing,
+        "type": provider_type,
+        "api_mode": api_mode,
+        "base_url": profile.get("base_url") or existing.get("base_url", ""),
+        # 旧版 endpoint profile 的空密钥会回退到 [key] 中对应供应商的密钥。
+        "api_key": profile.get("api_key") or existing.get("api_key", ""),
+    }
+    _migrate_legacy_responses_adapter(normalized, used_legacy_flag)
+    return normalized, used_legacy_flag or "api_mode" in profile
 
 
 def _normalize_provider_profiles(
@@ -266,60 +389,58 @@ def _normalize_provider_profiles(
     profiles: dict[str, dict[str, Any]] = {
         "openai": {
             "type": "openai",
+            "api_mode": _API_MODE_RESPONSES,
             "base_url": _pick(providers, legacy_endpoint, "openai_base_url", ""),
             "api_key": keys.get("openai_api_key", ""),
-            "use_responses_api": True,
         },
         "google": {
             "type": "google",
+            "api_mode": _API_MODE_GENERATE_CONTENT,
             "base_url": "",
             "api_key": keys.get("google_api_key", ""),
-            "use_responses_api": False,
         },
         "anthropic": {
             "type": "anthropic",
+            "api_mode": _API_MODE_MESSAGES,
             "base_url": _pick(providers, keys, "anthropic_base_url", ""),
             "api_key": keys.get("anthropic_api_key", ""),
-            "use_responses_api": False,
         },
         "deepseek": {
             "type": "deepseek",
+            "api_mode": _API_MODE_CHAT_COMPLETIONS,
             "base_url": _pick(providers, keys, "deepseek_base_url", "", "deepseek_api_base"),
             "api_key": keys.get("deepseek_api_key", ""),
-            "use_responses_api": False,
+        },
+        "deepseek_responses": {
+            "type": "openai",
+            "api_mode": _API_MODE_RESPONSES,
+            "base_url": _DEEPSEEK_RESPONSES_BASE_URL,
+            "api_key": keys.get("deepseek_api_key", ""),
+        },
+        "deepseek_anthropic": {
+            "type": "anthropic",
+            "api_mode": _API_MODE_MESSAGES,
+            "base_url": _DEEPSEEK_ANTHROPIC_BASE_URL,
+            "api_key": keys.get("deepseek_api_key", ""),
         },
     }
-    explicit_responses: set[str] = set()
+    explicit_api_modes: set[str] = set()
     for name, raw_profile in providers.items():
         if not isinstance(raw_profile, Mapping):
             continue
-        profile = dict(raw_profile)
-        if "use_responses_api" in profile:
-            explicit_responses.add(name)
-        profile["type"] = profile.pop("provider", profile.get("type", name if name in profiles else ""))
-        profile.pop("capabilities", None)
-        profiles[name] = {**profiles.get(name, {}), **profile}
+        normalized, explicit_mode = _normalize_modern_provider_profile(name, raw_profile, profiles.get(name, {}))
+        profiles[name] = normalized
+        if explicit_mode:
+            explicit_api_modes.add(name)
 
     for name, raw_profile in legacy_profiles.items():
         if not isinstance(raw_profile, Mapping):
             continue
-        profile = dict(raw_profile)
-        if "use_responses_api" in profile:
-            explicit_responses.add(name)
-        existing = profiles.get(name, {})
-        provider_type = profile.get("type") or profile.get("provider") or existing.get("type", "")
-        migrated = {
-            "type": provider_type,
-            "base_url": profile.get("base_url") or existing.get("base_url", ""),
-            # 旧版 endpoint profile 的空密钥会回退到 [key] 中对应供应商的密钥。
-            "api_key": profile.get("api_key") or existing.get("api_key", ""),
-            "use_responses_api": profile.get(
-                "use_responses_api",
-                existing.get("use_responses_api", provider_type == "openai"),
-            ),
-        }
-        profiles[name] = {**existing, **migrated}
-    return profiles, explicit_responses
+        normalized, explicit_mode = _normalize_legacy_provider_profile(raw_profile, profiles.get(name, {}))
+        profiles[name] = normalized
+        if explicit_mode:
+            explicit_api_modes.add(name)
+    return profiles, explicit_api_modes
 
 
 def _normalize_model_roles(
@@ -327,7 +448,7 @@ def _normalize_model_roles(
     legacy_endpoint: Mapping[str, Any],
     legacy_profiles: Mapping[str, Any],
     provider_profiles: dict[str, dict[str, Any]],
-    explicit_responses: set[str],
+    explicit_api_modes: set[str],
 ) -> dict[str, dict[str, Any]]:
     def model_role(prefix: str, legacy_prefix: str, defaults: tuple[Any, str, list[str], bool]) -> dict[str, Any]:
         default_model, default_provider, default_capabilities, default_responses = defaults
@@ -353,15 +474,17 @@ def _normalize_model_roles(
             if response_key in models
             else legacy_endpoint.get(legacy_response_key, default_responses)
         )
-        if provider_ref and response_explicit and provider_ref not in explicit_responses:
-            provider_profiles.setdefault(
+        if provider_ref and response_explicit and provider_ref not in explicit_api_modes:
+            profile = provider_profiles.setdefault(
                 provider_ref,
                 {
                     "type": provider_name or provider_ref,
                     "base_url": "",
-                    "use_responses_api": bool(response_value),
                 },
-            )["use_responses_api"] = bool(response_value)
+            )
+            provider_type = str(profile.get("type", "")).strip().lower()
+            profile["api_mode"] = _legacy_api_mode(provider_type, bool(response_value))
+            _migrate_legacy_responses_adapter(profile, used_legacy_flag=True)
         return {
             "model": role_value("model", default_model),
             "provider": provider_ref,
@@ -397,9 +520,9 @@ def _legacy_media_provider(
         suffix += 1
     profiles[name] = {
         "type": "openai",
+        "api_mode": _API_MODE_CHAT_COMPLETIONS,
         "base_url": base_url,
         "api_key": api_key,
-        "use_responses_api": False,
     }
     return name
 
@@ -493,7 +616,7 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
     config_version = config.get("config_version", 1)
     _validate_v2_model_provider_sections(config_version, models, providers, keys)
     legacy_profiles = _section(config, "llm_endpoints")
-    provider_profiles, explicit_responses = _normalize_provider_profiles(
+    provider_profiles, explicit_api_modes = _normalize_provider_profiles(
         providers,
         legacy_endpoint,
         keys,
@@ -504,8 +627,9 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
         legacy_endpoint,
         legacy_profiles,
         provider_profiles,
-        explicit_responses,
+        explicit_api_modes,
     )
+    _validate_normalized_provider_protocols(provider_profiles)
     media_models = _normalize_media_models(models, legacy_endpoint, keys, provider_profiles)
 
     paint_enabled = _pick(features, legacy_function, "paint_enabled", True, "paint_module_enabled")

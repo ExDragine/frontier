@@ -107,7 +107,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 
 `FrontierCognitive.chat_agent()` 的关键行为：
 - 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，Signal 判断使用 `EnvConfig.SIGNAL_MODEL`。
-- 当模型引用的供应商 `use_responses_api` 为 true 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；Chat Completions 路径会跳过这些参数。
+- 当模型引用的供应商 `api_mode` 为 `responses` 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；其他协议路径会跳过这些参数。
 - 根据模型自身的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
 - 主 Agent 不直接持有记忆工具；同步 `memory-agent` 使用基础模型检索和总结当前会话历史。纯文本地球数据由同步 `earth-data-agent` 查询，媒体类地球工具保留在主 Agent。
 - 专用子代理定义位于 `utils/agents/subagents/`，使用 `create_agent()` 构建独立图并包装为 `CompiledSubAgent`；builder 只接收所需工具列表，避免反向依赖工具注册器。
@@ -153,7 +153,7 @@ Prompt 加载链：
 
 模型路由规则：
 - 显式 `*_model_provider` 优先。
-- 所有 `*_model_provider`（包括 paint/video）均指向 `[providers.<name>]`；供应商 profile 管理协议类型、base URL、API key 和 Responses API 开关。
+- 所有 `*_model_provider`（包括 paint/video）均指向 `[providers.<name>]`；供应商 profile 用 `type` 管理 LangChain 适配器、用 `api_mode` 管理协议，并统一保存 base URL 和 API key。
 - Paint/Video 服务使用 OpenAI-compatible Images/Videos API，因此对应 provider 的 `type` 必须为 `openai`。
 - 没有显式 provider 时，`llm_factory.py` 会根据模型名前缀推断：`deepseek*`、`gemini-*`、`claude-*`，其余走 OpenAI-compatible。
 

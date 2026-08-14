@@ -22,6 +22,7 @@
         ],
         "api_modes": [
           "chat_completions",
+          "responses",
           "messages"
         ]
       },
@@ -45,6 +46,10 @@
         },
         {
           "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/guides/responses_api/",
           "verified_at": "2026-07-15"
         }
       ]
@@ -70,6 +75,7 @@
         ],
         "api_modes": [
           "chat_completions",
+          "responses",
           "messages"
         ]
       },
@@ -93,6 +99,10 @@
         },
         {
           "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
+          "verified_at": "2026-07-15"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/guides/responses_api/",
           "verified_at": "2026-07-15"
         }
       ]

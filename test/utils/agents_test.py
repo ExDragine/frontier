@@ -135,8 +135,8 @@ async def test_extract_uni_messages_includes_native_media_from_final_ai_message(
 def test_env_config_provider_responses_api_defaults():
     from utils.configs import EnvConfig
 
-    assert EnvConfig.LLM_PROVIDERS["openai"]["use_responses_api"] is True
-    assert EnvConfig.LLM_PROVIDERS["deepseek"]["use_responses_api"] is False
+    assert EnvConfig.LLM_PROVIDERS["openai"]["api_mode"] == "responses"
+    assert EnvConfig.LLM_PROVIDERS["deepseek"]["api_mode"] == "chat_completions"
 
 
 def test_build_user_content_omits_images_when_model_lacks_vision():
@@ -729,6 +729,7 @@ class TestProgressEvent:
             "tool_result",
             "subagent_start",
             "subagent_done",
+            "assistant_preamble",
             "text_delta",
             "done",
         ]
@@ -1005,6 +1006,61 @@ class TestCollectProgress:
 
         text_delta_calls = [c for c in reporter.call_args_list if c[0][0].type == "text_delta"]
         assert len(text_delta_calls) == 0, "Trailing text should be buffered, not emitted"
+
+    @pytest.mark.asyncio
+    async def test_tool_calling_message_emits_assistant_preamble(self):
+        """带正文和工具调用的模型消息应产生用户可见的过程发言。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from utils.agents.progress import collect_progress
+
+        mock_text = MagicMock()
+        mock_text.__aiter__.return_value = iter(["我先查询一下最新数据。"])
+
+        class AwaitableToolCalls:
+            def __await__(self):
+                async def resolve():
+                    return [{"name": "search", "args": {}}]
+
+                return resolve().__await__()
+
+        mock_msg = MagicMock()
+        mock_msg.text = mock_text
+        mock_msg.tool_calls = AwaitableToolCalls()
+        reporter = AsyncMock()
+
+        await collect_progress(self._mock_stream(messages=[mock_msg]), reporter)
+
+        preambles = [call.args[0] for call in reporter.call_args_list if call.args[0].type == "assistant_preamble"]
+        assert len(preambles) == 1
+        assert preambles[0].message == "我先查询一下最新数据。"
+        assert preambles[0].detail == {"tool_call_count": 1}
+
+    @pytest.mark.asyncio
+    async def test_terminal_message_does_not_emit_assistant_preamble(self):
+        """无工具调用的终止消息只由最终回复链路发送。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from utils.agents.progress import collect_progress
+
+        mock_text = MagicMock()
+        mock_text.__aiter__.return_value = iter(["这是最终答案。"])
+
+        class AwaitableToolCalls:
+            def __await__(self):
+                async def resolve():
+                    return []
+
+                return resolve().__await__()
+
+        mock_msg = MagicMock()
+        mock_msg.text = mock_text
+        mock_msg.tool_calls = AwaitableToolCalls()
+        reporter = AsyncMock()
+
+        await collect_progress(self._mock_stream(messages=[mock_msg]), reporter)
+
+        assert not [call for call in reporter.call_args_list if call.args[0].type == "assistant_preamble"]
 
 
 class TestChatAgentStreaming:
