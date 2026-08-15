@@ -50,6 +50,9 @@ content-check = [
   "torchao",
   "transformers",
 ]
+dsh = [
+  "deepseek-harness-sdk==0.1.0rc6; (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'linux' and platform_machine == 'aarch64') or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+]
 
 [tool.uv.sources]
 torch = [

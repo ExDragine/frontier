@@ -1777,7 +1777,7 @@ async def test_gateway_approved_private_chat_routes_to_agent_without_group_react
 
 
 @pytest.mark.asyncio
-async def test_agent_startup_only_cleans_cached_files(monkeypatch):
+async def test_agent_startup_cleans_cached_files_and_schedules_daily_job(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -1794,8 +1794,47 @@ async def test_agent_startup_only_cleans_cached_files(monkeypatch):
             calls.append("repair")
             return 1, 0
 
+    class DummyScheduler:
+        def add_job(self, func, trigger, **kwargs):
+            calls.append((func, trigger, kwargs))
+
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "scheduler", DummyScheduler())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_AUTO_CLEANUP", True)
     await agent.on_startup()
 
-    assert calls == ["attachments", "repair"]
+    assert calls[:2] == ["attachments", "repair"]
+    func, trigger, kwargs = calls[2]
+    assert func is agent.run_daily_cache_cleanup
+    assert trigger == "cron"
+    assert kwargs["id"] == agent.CACHE_CLEANUP_JOB_ID
+    assert kwargs["hour"] == 4
+    assert kwargs["timezone"] == "Asia/Shanghai"
+
+
+@pytest.mark.asyncio
+async def test_daily_cache_cleanup_cleans_attachments_and_dsh(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    calls = []
+
+    class DummyMessagesDb:
+        async def cleanup_expired_attachments(self):
+            calls.append("attachments")
+            return 2
+
+    class DummyDshService:
+        async def cleanup_cache(self):
+            calls.append("dsh")
+            return 3
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "dsh_service", DummyDshService())
+    monkeypatch.setattr(agent.EnvConfig, "IMAGE_AUTO_CLEANUP", True)
+
+    await agent.run_daily_cache_cleanup()
+
+    assert calls == ["attachments", "dsh"]

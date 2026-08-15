@@ -39,6 +39,7 @@ UniMessage 文本、图片、视频或文件回复
 | `plugins/agent` | 核心对话引擎：消息处理、回复门控、内容安全、Deep Agent 调度、回复渲染 |
 | `plugins/clockwork` | APScheduler 定时任务：提醒、用户自动任务、每日新闻、APOD、地震/NRC 等推送 |
 | `plugins/dashboard` | Web 管理面板：JWT 登录、状态、消息浏览、配置管理、任务管理 |
+| `plugins/dsh` | `/dsh` DeepSeek Harness Agent |
 | `plugins/playground` | `/paint` 图片生成、`/video` 视频生成、戳一戳响应 |
 | `plugins/toolbox` | `/update`、`/restart`、`/model`、`/set wake`、`/vehelp` 等管理命令 |
 
@@ -103,6 +104,18 @@ cp env.toml.example env.toml
 uv sync --extra content-check
 ```
 
+DeepSeek Harness Agent 默认不安装。SDK runtime 当前仅支持 Linux x64/arm64 和
+macOS arm64；Windows 主机需要在 WSL2 中运行 Frontier：
+
+```bash
+uv sync --extra dsh
+```
+
+`/dsh <任务>` 对所有用户开放，并使用 `cache/dsh/` 下的独立工作区和会话。
+为兼容 WSL2，Harness 使用裸本地 Bash 和文件后端，不提供操作系统级 sandbox；它可以
+访问 Frontier 进程有权访问的所有路径，当前实现仍应视为实验性功能。每天北京时间
+04:00 会清理闲置的 DSH workspace/session；正在执行的 scope 会保留到下一次清理。
+
 编辑 `.env` 和 `env.toml` 后启动：
 
 ```bash
@@ -159,6 +172,7 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 - `[providers.*]`: LangChain 适配器类型、API 协议、base URL 和可选 API key。
 - `[key]`: NASA、GitHub 等非模型服务密钥；模型密钥统一放在供应商 profile。
 - `[features]` / `[agent]`: 功能开关和 Agent 推理等级。
+- `[dsh]`: DeepSeek Harness 模型、供应商 profile 和输出上限。
 - `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]`: 访问策略。
 - `[limits]` / `[notifications]` / `[storage]`: 限流超时、定时推送群和存储设置。
 - `[dashboard]`: 管理面板密码、JWT secret、过期时间。
@@ -218,6 +232,7 @@ frontier/
 ├── plugins/
 │   ├── agent/          # 核心消息入口和 Agent 调度
 │   ├── clockwork/      # 定时任务系统
+│   ├── dsh/            # /dsh 实验 Agent
 │   ├── dashboard/      # FastAPI Dashboard
 │   ├── playground/     # /paint 和 /video
 │   └── toolbox/        # 管理命令

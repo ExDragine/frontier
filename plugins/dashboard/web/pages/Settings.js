@@ -118,6 +118,7 @@ const SettingsPage = {
             { key: 'key', label: '密钥管理' },
             { key: 'features', label: '功能开关' },
             { key: 'agent', label: 'Agent' },
+            { key: 'dsh', label: 'DSH 实验' },
             { key: 'agent_policy', label: 'Agent 权限' },
             { key: 'auto_reply_policy', label: '自动回复' },
             { key: 'paint_policy', label: '绘图权限' },

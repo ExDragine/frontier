@@ -12,8 +12,12 @@ from nonebot import get_bot, get_driver, logger, on_message, require
 from nonebot.adapters.milky.event import MessageEvent
 
 require("nonebot_plugin_alconna")
+require("nonebot_plugin_apscheduler")
+
+from nonebot_plugin_apscheduler import scheduler
 
 from utils.agents import FrontierCognitive, ProgressEvent, ProgressReporter, agent_thread_id, run_serialized
+from utils.agents.dsh import dsh_service
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
@@ -42,6 +46,7 @@ driver = get_driver()
 common = on_message(priority=10)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CACHE_CLEANUP_JOB_ID = "frontier_daily_cache_cleanup"
 
 
 @dataclass(slots=True)
@@ -294,6 +299,37 @@ async def on_startup():
                     logger.info("已校验历史媒体附件: %s，修正: %s", verified, corrected)
         except Exception as exc:
             logger.warning("消息附件维护失败: %s: %s", type(exc).__name__, exc)
+
+    scheduler.add_job(
+        run_daily_cache_cleanup,
+        "cron",
+        id=CACHE_CLEANUP_JOB_ID,
+        hour=4,
+        minute=0,
+        timezone="Asia/Shanghai",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=3600,
+    )
+
+
+async def run_daily_cache_cleanup() -> None:
+    """Run bounded cache maintenance once per day."""
+    if EnvConfig.IMAGE_AUTO_CLEANUP:
+        try:
+            cleaned_attachments = await messages_db.cleanup_expired_attachments()
+            if cleaned_attachments:
+                logger.info("每日清理过期消息附件: %s", cleaned_attachments)
+        except Exception as exc:
+            logger.warning("每日消息附件清理失败: %s: %s", type(exc).__name__, exc)
+
+    try:
+        cleaned_scopes = await dsh_service.cleanup_cache()
+        if cleaned_scopes:
+            logger.info("每日清理 DSH 缓存 scope: %s", cleaned_scopes)
+    except Exception as exc:
+        logger.warning("每日 DSH 缓存清理失败: %s: %s", type(exc).__name__, exc)
 
 
 @common.handle()

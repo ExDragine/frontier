@@ -859,3 +859,27 @@ def test_nickname_rejects_non_string_array_items():
 
     with pytest.raises(ValueError, match="每一项"):
         load_nicknames('["Frontier", 1]')
+
+
+def test_dsh_config_uses_defaults():
+    from utils.configs import parse_config
+
+    settings = parse_config({})
+
+    assert settings.dsh.provider == "deepseek"
+    assert settings.dsh.model == "deepseek-v4-flash"
+    assert settings.dsh.max_tokens == 49_152
+
+
+def test_dsh_config_accepts_explicit_values():
+    from utils.configs import parse_config
+
+    settings = parse_config(
+        {
+            "dsh": {"provider": "relay", "model": "deepseek-custom", "max_tokens": 8192},
+        }
+    )
+
+    assert settings.dsh.provider == "relay"
+    assert settings.dsh.model == "deepseek-custom"
+    assert settings.dsh.max_tokens == 8192
