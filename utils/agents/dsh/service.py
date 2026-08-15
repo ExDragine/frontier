@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import hashlib
 import shutil
-from collections import OrderedDict
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,6 +59,7 @@ class _LaunchSettings:
 class _WorkspaceRuntime:
     harness: Any
     fingerprint: tuple[str, str, int, str | None, str, float]
+    session_namespace: str = field(default_factory=lambda: uuid.uuid4().hex)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -135,15 +136,11 @@ class DshAgentService:
         root_dir: str | Path | None = None,
         harness_factory: HarnessFactory | None = None,
         cordis_path: str | Path | None = None,
-        max_runtimes: int = 2,
     ) -> None:
-        if max_runtimes < 1:
-            raise ValueError("max_runtimes must be at least 1")
         self._root_dir = Path(root_dir).resolve() if root_dir is not None else None
         self._harness_factory = harness_factory or _default_harness_factory
         self._cordis_path = Path(cordis_path).resolve() if cordis_path is not None else Path(__file__).with_name("cordis.yml")
-        self._max_runtimes = max_runtimes
-        self._runtimes: OrderedDict[str, _WorkspaceRuntime] = OrderedDict()
+        self._runtimes: dict[str, _WorkspaceRuntime] = {}
         self._active_scopes: dict[str, int] = {}
         self._registry_lock = asyncio.Lock()
 
@@ -204,12 +201,9 @@ class DshAgentService:
             async with self._registry_lock:
                 runtime = self._runtimes.get(scope_id)
                 if runtime is not None and runtime.fingerprint == settings.fingerprint:
-                    self._runtimes.move_to_end(scope_id)
                     return runtime
                 if runtime is not None:
                     stale = self._runtimes.pop(scope_id)
-                elif len(self._runtimes) >= self._max_runtimes:
-                    _stale_scope, stale = self._runtimes.popitem(last=False)
                 else:
                     runtime = _WorkspaceRuntime(
                         harness=self._new_harness(scope_id, settings),
@@ -264,6 +258,7 @@ class DshAgentService:
     ) -> Any:
         loop = asyncio.get_running_loop()
         progress_futures: list[Any] = []
+        runtime_session_id = f"{session_id}-{runtime.session_namespace}"
 
         def on_notification(notification: Any) -> None:
             event = notification_to_progress(notification)
@@ -277,7 +272,7 @@ class DshAgentService:
                     asyncio.to_thread(
                         runtime.harness.run,
                         prompt,
-                        session_id=session_id,
+                        session_id=runtime_session_id,
                         on_notification=on_notification,
                     )
                 )

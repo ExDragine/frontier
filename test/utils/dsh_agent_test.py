@@ -96,7 +96,10 @@ async def test_service_reuses_runtime_per_workspace_and_streams_progress(monkeyp
 
     assert first.final_response == second.final_response == "done"
     assert len(created) == 1
-    assert created[0].runs == [("first", "session-1"), ("second", "session-1")]
+    assert created[0].runs[0][0] == "first"
+    assert created[0].runs[1][0] == "second"
+    assert created[0].runs[0][1] == created[0].runs[1][1]
+    assert created[0].runs[0][1].startswith("session-1-")
     assert created[0].kwargs["provider"] == "deepseek-official"
     assert created[0].kwargs["model"] == "deepseek-v4-flash"
     assert created[0].kwargs["base_url"] == "https://deepseek.example"
@@ -129,7 +132,7 @@ async def test_service_uses_distinct_runtime_for_each_workspace(monkeypatch, tmp
 
 
 @pytest.mark.asyncio
-async def test_service_evicts_oldest_workspace_runtime(monkeypatch, tmp_path):
+async def test_service_does_not_evict_workspace_runtimes(monkeypatch, tmp_path):
     _configure(monkeypatch)
     created = []
 
@@ -138,12 +141,39 @@ async def test_service_evicts_oldest_workspace_runtime(monkeypatch, tmp_path):
         created.append(harness)
         return harness
 
-    service = DshAgentService(root_dir=tmp_path, harness_factory=factory, max_runtimes=1)
+    service = DshAgentService(root_dir=tmp_path, harness_factory=factory)
     await service.run("one", workspace_key="dm:1", session_id="s1")
     await service.run("two", workspace_key="dm:2", session_id="s2")
 
     assert len(created) == 2
+    assert created[0].closed == 0
+    assert created[1].closed == 0
+    await service.close()
     assert created[0].closed == 1
+    assert created[1].closed == 1
+
+
+@pytest.mark.asyncio
+async def test_service_uses_new_session_id_after_runtime_rebuild(monkeypatch, tmp_path):
+    _configure(monkeypatch)
+    created = []
+
+    def factory(**kwargs):
+        harness = FakeHarness(kwargs)
+        created.append(harness)
+        return harness
+
+    service = DshAgentService(root_dir=tmp_path, harness_factory=factory)
+    await service.run("before cleanup", workspace_key="dm:1", session_id="stable-session")
+    first_session_id = created[0].runs[0][1]
+
+    await service.cleanup_cache()
+    await service.run("after cleanup", workspace_key="dm:1", session_id="stable-session")
+    second_session_id = created[1].runs[0][1]
+
+    assert first_session_id.startswith("stable-session-")
+    assert second_session_id.startswith("stable-session-")
+    assert first_session_id != second_session_id
     await service.close()
 
 
