@@ -315,3 +315,77 @@ async def test_dsh_agent_reports_empty_response_after_recovery():
 
     assert "没有生成文本回复" in result["response"]["messages"][0].content
     assert "finish_reason=completed" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_dsh_agent_reports_structured_model_error():
+    class FakeService:
+        async def run(self, *_args, **_kwargs):
+            return SimpleNamespace(
+                final_response="",
+                finish_reason="error",
+                events=[
+                    {
+                        "type": "turn/end",
+                        "data": {
+                            "reason": {
+                                "kind": "error",
+                                "error": {
+                                    "message": "model rejected request",
+                                    "code": "bad_request",
+                                    "status": 400,
+                                },
+                            }
+                        },
+                    }
+                ],
+                notifications=[],
+            )
+
+    result = await DshAgent(FakeService()).chat_agent(
+        "task",
+        workspace_key="dm:1",
+        session_id="session-1",
+    )
+
+    message = result["response"]["messages"][0].content
+    assert "model rejected request" in message
+    assert "code=bad_request" in message
+    assert "HTTP 400" in message
+    assert "finish_reason=error" not in message
+
+
+@pytest.mark.asyncio
+async def test_dsh_agent_redacts_secret_from_model_error():
+    class FakeService:
+        async def run(self, *_args, **_kwargs):
+            return SimpleNamespace(
+                final_response="",
+                finish_reason="error",
+                events=[
+                    {
+                        "type": "turn/end",
+                        "data": {
+                            "reason": {
+                                "kind": "error",
+                                "error": {
+                                    "message": "Authorization: Bearer secret-token API_KEY=top-secret",
+                                    "code": "auth_error",
+                                },
+                            }
+                        },
+                    }
+                ],
+                notifications=[],
+            )
+
+    result = await DshAgent(FakeService()).chat_agent(
+        "task",
+        workspace_key="dm:1",
+        session_id="session-1",
+    )
+
+    message = result["response"]["messages"][0].content
+    assert "secret-token" not in message
+    assert "top-secret" not in message
+    assert message.count("[REDACTED]") == 2
