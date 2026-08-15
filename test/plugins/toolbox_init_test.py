@@ -7,7 +7,6 @@ import pytest
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.adapters.milky.model.common import Group, Member
 from nonebot.adapters.milky.model.message import IncomingMessage
-from nonebot_plugin_alconna import UniMessage
 from nonebug import App
 
 from plugins import toolbox
@@ -29,11 +28,77 @@ async def test_on_startup_creates_files(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_handle_setting_default(monkeypatch):
+@pytest.mark.parametrize(
+    ("paint_enabled", "video_enabled", "expected_lines"),
+    [
+        (
+            True,
+            True,
+            [
+                "├ 对话模型：advanced-test",
+                "├ 辅助模型：basic-test",
+                "├ 绘图模型：paint-test",
+                "└ 视频模型：video-test",
+            ],
+        ),
+        (
+            False,
+            True,
+            [
+                "├ 对话模型：advanced-test",
+                "├ 辅助模型：basic-test",
+                "└ 视频模型：video-test",
+            ],
+        ),
+        (
+            True,
+            False,
+            [
+                "├ 对话模型：advanced-test",
+                "├ 辅助模型：basic-test",
+                "└ 绘图模型：paint-test",
+            ],
+        ),
+        (
+            False,
+            False,
+            [
+                "├ 对话模型：advanced-test",
+                "└ 辅助模型：basic-test",
+            ],
+        ),
+    ],
+)
+async def test_handle_setting_default(monkeypatch, paint_enabled, video_enabled, expected_lines):
+    sent = []
+
     async def fake_message_extract(*_args, **_kwargs):
         return "", [], [], []
 
-    monkeypatch.setattr("plugins.toolbox.message_extract", fake_message_extract)
+    class DummyMessage:
+        def __init__(self, text):
+            self.text = text
+
+        async def send(self, *_args, **_kwargs):
+            sent.append(self.text)
+
+    class DummyUniMessage:
+        @classmethod
+        def text(cls, text):
+            return DummyMessage(text)
+
+    monkeypatch.setattr(toolbox, "message_extract", fake_message_extract)
+    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(toolbox.EnvConfig, "ADVAN_MODEL", "advanced-test")
+    monkeypatch.setattr(toolbox.EnvConfig, "ADVAN_MODEL_PROVIDER", "advanced-provider")
+    monkeypatch.setattr(toolbox.EnvConfig, "BASIC_MODEL", "basic-test")
+    monkeypatch.setattr(toolbox.EnvConfig, "BASIC_MODEL_PROVIDER", "basic-provider")
+    monkeypatch.setattr(toolbox.EnvConfig, "PAINT_MODEL", "paint-test")
+    monkeypatch.setattr(toolbox.EnvConfig, "PAINT_MODEL_PROVIDER", "paint-provider")
+    monkeypatch.setattr(toolbox.EnvConfig, "VIDEO_MODEL", "video-test")
+    monkeypatch.setattr(toolbox.EnvConfig, "VIDEO_MODEL_PROVIDER", "video-provider")
+    monkeypatch.setattr(toolbox.EnvConfig, "PAINT_MODULE_ENABLED", paint_enabled)
+    monkeypatch.setattr(toolbox.EnvConfig, "VIDEO_MODULE_ENABLED", video_enabled)
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -64,12 +129,18 @@ async def test_handle_setting_default(monkeypatch):
         )
         event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
 
-        async def fake_send(self, *args, **kwargs):
-            return None
-
-        monkeypatch.setattr(UniMessage, "send", fake_send)
         ctx.receive_event(bot, event)
         ctx.should_finished()
+
+    assert sent == ["🤖 当前模型配置\n" + "\n".join(expected_lines)]
+
+
+def test_model_display_name_uses_model_bank_and_falls_back(monkeypatch):
+    monkeypatch.setattr(toolbox, "get_provider_profile", lambda _provider: {"type": "openai"})
+
+    assert toolbox._model_display_name("deepseek-v4-flash", "relay") == "DeepSeek V4 Flash"
+    assert toolbox._model_display_name("gpt-image-2", "relay") == "GPT Image 2"
+    assert toolbox._model_display_name("custom-model", "relay") == "custom-model"
 
 
 def test_collect_update_commits_returns_empty_for_same_head():

@@ -16,8 +16,9 @@ from nonebot.permission import SUPERUSER
 
 require("nonebot_plugin_alconna")
 
+from models import get_model_display_name
 from utils.alconna import Target, UniMessage
-from utils.configs import EnvConfig
+from utils.configs import EnvConfig, get_provider_profile
 from utils.database import GroupSettingsManager, get_engine
 from utils.markdown_render import html_to_image
 from utils.message import (
@@ -67,6 +68,14 @@ async def _get_vep_menu() -> bytes:
 
 
 SET_WAKE_KEY = "wake_word"
+
+
+def _model_display_name(model: str, provider: str) -> str:
+    try:
+        provider_type = str(get_provider_profile(provider).get("type", "")).strip().lower()
+    except ValueError:
+        provider_type = ""
+    return get_model_display_name(provider_type, model)
 
 
 def _is_group_admin_or_owner(event: MessageEvent) -> bool:
@@ -383,12 +392,36 @@ async def handle_setting(event: MessageEvent):
     text, images, *_ = await message_extract(event.data.segments)
     text = text.replace("/model", "")
     if not text:
-        await UniMessage.text(
-            f"当前默认模型为: {EnvConfig.ADVAN_MODEL}\n"
-            f"当前辅助模型为: {EnvConfig.BASIC_MODEL}\n"
-            f"当前绘图模型为: {EnvConfig.PAINT_MODEL}\n"
-            f"当前视频模型为: {EnvConfig.VIDEO_MODEL}"
-        ).send()
+        models = [
+            (
+                "对话模型",
+                _model_display_name(EnvConfig.ADVAN_MODEL, EnvConfig.ADVAN_MODEL_PROVIDER),
+            ),
+            (
+                "辅助模型",
+                _model_display_name(EnvConfig.BASIC_MODEL, EnvConfig.BASIC_MODEL_PROVIDER),
+            ),
+        ]
+        if EnvConfig.PAINT_MODULE_ENABLED:
+            models.append(
+                (
+                    "绘图模型",
+                    _model_display_name(EnvConfig.PAINT_MODEL, EnvConfig.PAINT_MODEL_PROVIDER),
+                )
+            )
+        if EnvConfig.VIDEO_MODULE_ENABLED:
+            models.append(
+                (
+                    "视频模型",
+                    _model_display_name(EnvConfig.VIDEO_MODEL, EnvConfig.VIDEO_MODEL_PROVIDER),
+                )
+            )
+
+        model_lines = [
+            f"{'└' if index == len(models) - 1 else '├'} {label}：{model}"
+            for index, (label, model) in enumerate(models)
+        ]
+        await UniMessage.text("🤖 当前模型配置\n" + "\n".join(model_lines)).send()
 
 
 @restart.handle()

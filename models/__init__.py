@@ -1,4 +1,4 @@
-from .catalog import get_model, list_models, load_catalog
+from .catalog import get_model, get_model_display_name, list_models, load_catalog
 from .types import (
     ApiMode,
     LocalizedDescription,
@@ -24,6 +24,7 @@ __all__ = [
     "ModelSource",
     "ModelStatus",
     "get_model",
+    "get_model_display_name",
     "list_models",
     "load_catalog",
 ]

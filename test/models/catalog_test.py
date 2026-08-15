@@ -13,6 +13,7 @@ from models import (
     ModelFeature,
     ModelStatus,
     get_model,
+    get_model_display_name,
     list_models,
     load_catalog,
 )
@@ -44,6 +45,15 @@ def test_catalog_matches_json_schema() -> None:
         provider_data = _load_resource(provider_entry["file"])
         Draft202012Validator(provider_schema, format_checker=FormatChecker()).validate(provider_data)
         assert provider_data["provider"] == provider_entry["id"]
+
+
+def test_lobehub_names_match_json_schema_and_counts() -> None:
+    names = _load_resource("lobehub_names.json")
+    schema = _load_resource("lobehub_names.schema.json")
+
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(names)
+    assert names["provider_count"] == len(names["providers"])
+    assert names["model_count"] == sum(len(models) for models in names["providers"].values())
 
 
 def test_catalog_invariants() -> None:
@@ -123,6 +133,13 @@ def test_get_model_and_unknown_model() -> None:
     assert canonical_case_model is not None
     assert canonical_case_model.id == "Ling-2.6-1T"
     assert get_model("custom", "private-model") is None
+
+
+def test_get_model_display_name_uses_lobehub_overlay_without_affecting_unknown_models() -> None:
+    assert get_model_display_name("openai", "gpt-image-2") == "GPT Image 2"
+    assert get_model_display_name("openai", "gateway/openai/gpt-image-2") == "GPT Image 2"
+    assert get_model_display_name("openai", "gpt-5.6-sol") == "GPT-5.6 Sol"
+    assert get_model_display_name("private", "custom-model") == "custom-model"
 
 
 def test_deepseek_v4_models_advertise_responses_api() -> None:

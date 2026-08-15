@@ -81,6 +81,67 @@ def get_model(provider: str, model_id: str) -> ModelCard | None:
     )
 
 
+@lru_cache(maxsize=1)
+def _load_lobehub_names() -> dict[str, dict[str, str]]:
+    resource = files("models").joinpath("data/lobehub_names.json")
+    with resource.open("r", encoding="utf-8") as names_file:
+        raw = json.load(names_file)
+    providers = raw.get("providers")
+    if not isinstance(providers, dict):
+        raise ValueError("LobeHub model names snapshot has no providers")
+    return {
+        str(provider).casefold(): {
+            str(model_id).casefold(): str(display_name)
+            for model_id, display_name in models.items()
+            if isinstance(display_name, str) and display_name.strip()
+        }
+        for provider, models in providers.items()
+        if isinstance(models, dict)
+    }
+
+
+def _model_id_candidates(model_id: str) -> tuple[str, ...]:
+    parts = model_id.strip().split("/")
+    candidates = []
+    for index in range(len(parts)):
+        candidate = "/".join(parts[index:]).casefold()
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    return tuple(candidates)
+
+
+def get_model_display_name(provider: str, model_id: str) -> str:
+    """Resolve a friendly name without using third-party data for capabilities."""
+    provider_key = provider.strip().casefold()
+    candidates = _model_id_candidates(model_id)
+    lobehub_names = _load_lobehub_names()
+
+    provider_names = lobehub_names.get(provider_key, {})
+    for candidate in candidates:
+        if display_name := provider_names.get(candidate):
+            return display_name
+
+    for candidate in candidates:
+        if card := get_model(provider_key, candidate):
+            return card.display_name
+
+    for candidate in candidates:
+        matches = {
+            display_name.casefold(): display_name
+            for models in lobehub_names.values()
+            if (display_name := models.get(candidate))
+        }
+        if len(matches) == 1:
+            return next(iter(matches.values()))
+
+    catalog = load_catalog().models
+    for candidate in candidates:
+        matches = [model for model in catalog if model.id.casefold() == candidate]
+        if len(matches) == 1:
+            return matches[0].display_name
+    return model_id
+
+
 def list_models(
     provider: str | None = None,
     feature: ModelFeature | str | None = None,

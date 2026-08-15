@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/exdragine/frontier-model-catalog/lobehub_names.schema.json",
+  "title": "Frontier LobeHub Display Name Overlay",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "provider_count",
+    "model_count",
+    "providers"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package",
+        "version",
+        "registry",
+        "tarball",
+        "integrity",
+        "git_commit",
+        "license",
+        "license_url"
+      ],
+      "properties": {
+        "package": {"const": "model-bank"},
+        "version": {"type": "string", "minLength": 1},
+        "registry": {"const": "https://registry.npmjs.org/model-bank"},
+        "tarball": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://registry\\.npmjs\\.org/model-bank/-/"
+        },
+        "integrity": {"type": "string", "pattern": "^sha512-"},
+        "git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "license": {"const": "LobeHub Community License"},
+        "license_url": {"type": "string", "format": "uri"}
+      }
+    },
+    "provider_count": {"type": "integer", "minimum": 1},
+    "model_count": {"type": "integer", "minimum": 1},
+    "providers": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z0-9_-]+$"},
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
