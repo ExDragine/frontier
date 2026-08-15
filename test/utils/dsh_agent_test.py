@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from utils.agents.dsh.agent import DshAgent
+from utils.agents.dsh.agent import DSH_EMPTY_RESPONSE_RECOVERY_PROMPT, DshAgent
 from utils.agents.dsh.service import DshAgentService, notification_to_progress
 
 
@@ -270,3 +270,48 @@ async def test_dsh_agent_adapts_successful_result():
     assert result["response"]["messages"][0].content == "answer"
     assert result["uni_messages"] == []
     assert "error" not in result
+
+
+@pytest.mark.asyncio
+async def test_dsh_agent_recovers_completed_empty_response():
+    class FakeService:
+        def __init__(self):
+            self.prompts = []
+
+        async def run(self, prompt, *_args, **_kwargs):
+            self.prompts.append(prompt)
+            if len(self.prompts) == 1:
+                return SimpleNamespace(
+                    final_response="",
+                    finish_reason="completed",
+                    events=[{"type": "turn/end"}],
+                    notifications=[],
+                )
+            return SimpleNamespace(final_response="recovered", finish_reason="completed")
+
+    service = FakeService()
+    result = await DshAgent(service).chat_agent(
+        "task",
+        workspace_key="dm:1",
+        session_id="session-1",
+    )
+
+    assert service.prompts == ["task", DSH_EMPTY_RESPONSE_RECOVERY_PROMPT]
+    assert result["response"]["messages"][0].content == "recovered"
+    assert "error" not in result
+
+
+@pytest.mark.asyncio
+async def test_dsh_agent_reports_empty_response_after_recovery():
+    class FakeService:
+        async def run(self, *_args, **_kwargs):
+            return SimpleNamespace(final_response="", finish_reason="completed", events=[], notifications=[])
+
+    result = await DshAgent(FakeService()).chat_agent(
+        "task",
+        workspace_key="dm:1",
+        session_id="session-1",
+    )
+
+    assert "没有生成文本回复" in result["response"]["messages"][0].content
+    assert "finish_reason=completed" in result["error"]

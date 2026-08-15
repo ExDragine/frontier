@@ -11,6 +11,12 @@ from utils.agents.progress import ProgressEvent, ProgressReporter, emit_progress
 
 from .service import DshAgentService, DshConfigurationError, DshUnavailableError, dsh_service
 
+DSH_EMPTY_RESPONSE_RECOVERY_PROMPT = (
+    "The previous turn completed without a user-visible final response. "
+    "Do not repeat any actions and do not call tools. Reply now with a concise final summary "
+    "of the outcome, including any errors or incomplete work."
+)
+
 
 class DshAgent:
     def __init__(self, service: DshAgentService | None = None) -> None:
@@ -33,9 +39,29 @@ class DshAgent:
                 progress_reporter=progress_reporter,
             )
             response = str(getattr(result, "final_response", "") or "").strip()
-            if not response:
-                response = "DSH 已结束，但没有生成文本回复。"
             finish_reason = getattr(result, "finish_reason", None)
+            if not response and finish_reason == "completed":
+                logger.warning(
+                    "DSH completed without assistant message; retrying final summary "
+                    "(events=%s, notifications=%s)",
+                    len(getattr(result, "events", ()) or ()),
+                    len(getattr(result, "notifications", ()) or ()),
+                )
+                await emit_progress(
+                    progress_reporter,
+                    ProgressEvent(type="thinking", message="DSH 正在整理最终回复…"),
+                )
+                result = await self.service.run(
+                    DSH_EMPTY_RESPONSE_RECOVERY_PROMPT,
+                    workspace_key=workspace_key,
+                    session_id=session_id,
+                    progress_reporter=progress_reporter,
+                )
+                response = str(getattr(result, "final_response", "") or "").strip()
+                finish_reason = getattr(result, "finish_reason", None)
+            if not response:
+                reason = str(finish_reason or "unknown")
+                raise DshUnavailableError(f"运行结束但没有生成文本回复（finish_reason={reason}）")
             await emit_progress(
                 progress_reporter,
                 ProgressEvent(type="done", message="DSH 已完成", detail={"finish_reason": finish_reason}),
