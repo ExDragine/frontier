@@ -109,7 +109,10 @@ async def test_markdown_to_image_calls(monkeypatch, tmp_path):
     assert result == b"img"
     assert list((tmp_path / "cache").glob("*.html")) == []
 
+    assert factory.playwright is not None
+    assert factory.playwright.chromium.browser is not None
     page = factory.playwright.chromium.browser.page
+    assert page is not None
     assert "html[data-frontier-ready='true']" in page.selectors
     assert len(page.routes) == 1
     assert "https?" in page.routes[0][0].pattern

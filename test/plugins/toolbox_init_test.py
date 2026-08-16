@@ -5,6 +5,7 @@ import types
 
 import pytest
 from nonebot.adapters.milky.event import MessageEvent
+from nonebot.adapters.milky.message import Message
 from nonebot.adapters.milky.model.common import Group, Member
 from nonebot.adapters.milky.model.message import IncomingMessage
 from nonebug import App
@@ -127,7 +128,9 @@ async def test_handle_setting_default(monkeypatch, paint_enabled, video_enabled,
                 shut_up_end_time=0,
             ),
         )
-        event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+        event = MessageEvent(
+            data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message()
+        )
 
         ctx.receive_event(bot, event)
         ctx.should_finished()

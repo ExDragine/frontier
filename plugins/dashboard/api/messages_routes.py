@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlmodel import Session, func, select
+from sqlmodel import Session, col, func, select
 
 from utils.database import Message, get_engine
 
@@ -78,8 +78,8 @@ async def list_groups(user: dict = AUTH_DEPENDENCY):
     with Session(engine) as session:
         statement = (
             select(Message.group_id, func.count().label("count"))
-            .where(Message.group_id.is_not(None))  # type: ignore
-            .group_by(Message.group_id)
+            .where(col(Message.group_id).is_not(None))
+            .group_by(col(Message.group_id))
             .order_by(func.count().desc())
         )
         results = session.exec(statement).all()
@@ -93,7 +93,7 @@ async def list_users(user: dict = AUTH_DEPENDENCY):
     with Session(engine) as session:
         statement = (
             select(Message.user_id, Message.user_name, func.count().label("count"))
-            .group_by(Message.user_id)
+            .group_by(col(Message.user_id))
             .order_by(func.count().desc())
             .limit(200)
         )

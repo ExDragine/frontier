@@ -125,7 +125,7 @@ def test_mcp_get_tools_skips_failed_server(load_tool_module, monkeypatch, caplog
             pass
 
     client_module = types.ModuleType("langchain_mcp_adapters.client")
-    client_module.MultiServerMCPClient = FakeMultiServerMCPClient
+    client_module.__dict__["MultiServerMCPClient"] = FakeMultiServerMCPClient
     monkeypatch.setitem(sys.modules, "langchain_mcp_adapters.client", client_module)
     mod = load_tool_module("mcp_client")
 
@@ -213,7 +213,7 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
 
     mcp_module = types.ModuleType(f"{package_name}.mcp_client")
-    mcp_module.mcp_get_tools = lambda: [FakeBaseTool("mcp_tool")]
+    mcp_module.__dict__["mcp_get_tools"] = lambda: [FakeBaseTool("mcp_tool")]
     monkeypatch.setitem(sys.modules, f"{package_name}.mcp_client", mcp_module)
 
     spec = importlib.util.spec_from_file_location(
@@ -221,6 +221,7 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         tools_dir / "__init__.py",
         submodule_search_locations=[str(tools_dir)],
     )
+    assert spec is not None
     module = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, package_name, module)
     assert spec.loader is not None

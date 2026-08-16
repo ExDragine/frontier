@@ -1,3 +1,5 @@
+from typing import cast
+
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot
@@ -8,6 +10,8 @@ from utils.milky_tools import (
     format_records,
     resolve_group_id,
 )
+
+_DEFAULT_CONFIG = cast(RunnableConfig, None)
 
 
 @tool(response_format="content")
@@ -72,14 +76,14 @@ async def get_group_list(no_cache: bool = False) -> str:
 async def get_group_info(
     group_id: int | None = None,
     no_cache: bool = False,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """获取群信息。
     Args:
         group_id: 可选群号，未传时使用当前群聊
         no_cache: 是否强制不使用缓存
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     group = await get_bot().get_group_info(group_id=resolved_group_id, no_cache=no_cache)
@@ -90,14 +94,14 @@ async def get_group_info(
 async def get_group_member_list(
     group_id: int | None = None,
     no_cache: bool = False,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """获取群成员列表。
     Args:
         group_id: 可选群号，未传时使用当前群聊
         no_cache: 是否强制不使用缓存
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     members = await get_bot().get_group_member_list(group_id=resolved_group_id, no_cache=no_cache)
@@ -109,7 +113,7 @@ async def get_group_member_info(
     user_id: int,
     group_id: int | None = None,
     no_cache: bool = False,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """获取群成员信息。
     Args:
@@ -117,7 +121,7 @@ async def get_group_member_info(
         group_id: 可选群号，未传时使用当前群聊
         no_cache: 是否强制不使用缓存
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     member = await get_bot().get_group_member_info(group_id=resolved_group_id, user_id=user_id, no_cache=no_cache)

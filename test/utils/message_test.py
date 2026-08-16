@@ -6,10 +6,16 @@ import subprocess
 import sys
 import types
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
 from utils import message as message_module
+
+
+async def _message_gateway(event: object, messages: list[Any]) -> bool:
+    """Adapt structurally complete test doubles to the concrete adapter event type."""
+    return await message_module.message_gateway(cast(Any, event), messages)
 
 
 class DummyUniMessage:
@@ -420,7 +426,7 @@ async def test_message_gateway_blacklist(monkeypatch):
         to_me = False
 
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [1])
-    result = await message_module.message_gateway(DummyEvent(), [])
+    result = await _message_gateway(DummyEvent(), [])
     assert result is False
 
 
@@ -448,7 +454,7 @@ async def test_message_gateway_whitelist_numeric_id(monkeypatch):
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_PERSON_LIST", [12345])  # int from TOML
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    result = await message_module.message_gateway(DummyEvent(), [])
+    result = await _message_gateway(DummyEvent(), [])
     assert result is True
 
 
@@ -476,7 +482,7 @@ async def test_message_gateway_whitelist_dm_allowed(monkeypatch):
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_PERSON_LIST", [12345])
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    result = await message_module.message_gateway(DummyEvent(), [])
+    result = await _message_gateway(DummyEvent(), [])
     assert result is True
 
 
@@ -491,7 +497,7 @@ async def test_message_gateway_auto_reply_blacklist_skips_reply_check(monkeypatc
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST", [5])
     monkeypatch.setattr(message_module, "_reply_check_should_reply", fail_if_called)
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
+    result = await _message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
 
     assert result is False
 
@@ -511,9 +517,9 @@ async def test_message_gateway_auto_reply_whitelist_controls_reply_check(monkeyp
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST", [5])
     monkeypatch.setattr(message_module, "_reply_check_should_reply", fake_reply_check)
 
-    allowed = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
+    allowed = await _message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
     message_module.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST = [6]
-    denied = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
+    denied = await _message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
 
     assert allowed is True
     assert denied is False
@@ -533,7 +539,7 @@ async def test_message_gateway_auto_reply_blacklist_takes_precedence(monkeypatch
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST", [5])
     monkeypatch.setattr(message_module, "_reply_check_should_reply", fail_if_called)
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
+    result = await _message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
 
     assert result is False
 
@@ -551,16 +557,16 @@ async def test_message_gateway_auto_reply_policy_does_not_block_active_trigger(m
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST", [5])
     monkeypatch.setattr(message_module, "_reply_check_should_reply", fail_if_called)
 
-    mentioned = await message_module.message_gateway(
+    mentioned = await _message_gateway(
         DummyTestGroupEvent("这个报错怎么解决？", is_tome=True, to_me=False),
         [],
     )
-    marked_to_me = await message_module.message_gateway(
+    marked_to_me = await _message_gateway(
         DummyTestGroupEvent("帮我看看这个报错", is_tome=False, to_me=True),
         [],
     )
     monkeypatch.setattr(message_module, "_get_wake_words", lambda _group_id: ["Frontier"])
-    wake_word = await message_module.message_gateway(DummyTestGroupEvent("Frontier 帮我看看这个报错"), [])
+    wake_word = await _message_gateway(DummyTestGroupEvent("Frontier 帮我看看这个报错"), [])
 
     assert mentioned is True
     assert marked_to_me is True
@@ -576,7 +582,7 @@ async def test_message_gateway_auto_reply_policy_does_not_block_private_chat(mon
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST", [])
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST", [0])
 
-    result = await message_module.message_gateway(DummyDmEvent("帮我看看这个报错"), [])
+    result = await _message_gateway(DummyDmEvent("帮我看看这个报错"), [])
 
     assert result is True
 
@@ -591,7 +597,7 @@ async def test_message_gateway_group_active_trigger_can_stay_silent_for_low_info
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("哈哈哈", is_tome=True, to_me=True), [])
+    result = await _message_gateway(DummyTestGroupEvent("哈哈哈", is_tome=True, to_me=True), [])
 
     assert result is False
 
@@ -607,7 +613,7 @@ async def test_message_gateway_group_wake_word_only_can_stay_silent(monkeypatch)
     monkeypatch.setattr(message_module, "_get_wake_words", lambda _group_id: ["Frontier"])
     monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("Frontier"), [])
+    result = await _message_gateway(DummyTestGroupEvent("Frontier"), [])
 
     assert result is False
 
@@ -622,7 +628,7 @@ async def test_message_gateway_group_active_trigger_allows_clear_request(monkeyp
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
 
-    result = await message_module.message_gateway(
+    result = await _message_gateway(
         DummyTestGroupEvent("这个报错怎么解决？", is_tome=True, to_me=True),
         [],
     )
@@ -644,7 +650,7 @@ async def test_message_gateway_group_active_trigger_allows_short_image_edit_requ
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("P一下", is_tome=True, to_me=True), [])
+    result = await _message_gateway(DummyTestGroupEvent("P一下", is_tome=True, to_me=True), [])
 
     assert result is True
     assert calls == 0
@@ -665,7 +671,7 @@ async def test_message_gateway_group_active_trigger_allows_non_low_info_without_
     monkeypatch.setattr(message_module, "_get_wake_words", lambda _group_id: ["Frontier"])
     monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("Frontier 那个"), [])
+    result = await _message_gateway(DummyTestGroupEvent("Frontier 那个"), [])
 
     assert result is True
     assert calls == 0
@@ -682,7 +688,7 @@ async def test_message_gateway_group_active_trigger_blocks_stop_intent(monkeypat
     monkeypatch.setattr(message_module, "_get_wake_words", lambda _group_id: ["Frontier"])
     monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("Frontier 别回了"), [])
+    result = await _message_gateway(DummyTestGroupEvent("Frontier 别回了"), [])
 
     assert result is False
 
@@ -697,7 +703,7 @@ async def test_message_gateway_private_active_trigger_is_not_silenced(monkeypatc
     monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
 
-    result = await message_module.message_gateway(DummyDmEvent("哈哈哈"), [])
+    result = await _message_gateway(DummyDmEvent("哈哈哈"), [])
 
     assert result is True
 
@@ -715,7 +721,7 @@ async def test_message_gateway_test_group_reply_check_does_not_mutate_messages(m
     patch_reply_check_prompt(monkeypatch, "{name}")
     messages = [{"role": "user", "content": "history"}]
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), messages)
+    result = await _message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), messages)
 
     assert result is False
     assert messages == [{"role": "user", "content": "history"}]
@@ -747,7 +753,7 @@ async def test_message_gateway_test_group_reply_check_strips_image_data(monkeypa
         }
     ]
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), messages)
+    result = await _message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), messages)
 
     assert result is False
     assert captured["system_prompt"] == "bot=Frontier"
@@ -773,7 +779,7 @@ async def test_message_gateway_test_group_skips_casual_messages(monkeypatch):
     monkeypatch.setattr(message_module, "signal_structured", fake_signal_structured)
     patch_reply_check_prompt(monkeypatch, "{name}")
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("哈哈确实"), [])
+    result = await _message_gateway(DummyTestGroupEvent("哈哈确实"), [])
 
     assert result is False
     assert calls == 0
@@ -796,8 +802,8 @@ async def test_message_gateway_test_group_reply_check_has_group_cooldown(monkeyp
     monkeypatch.setattr(message_module.time, "monotonic", lambda: 1000.0)
     patch_reply_check_prompt(monkeypatch, "{name}")
 
-    first = await message_module.message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
-    second = await message_module.message_gateway(DummyTestGroupEvent("这个问题有人知道吗？"), [])
+    first = await _message_gateway(DummyTestGroupEvent("这个报错怎么解决？"), [])
+    second = await _message_gateway(DummyTestGroupEvent("这个问题有人知道吗？"), [])
 
     assert first is False
     assert second is False
@@ -825,8 +831,8 @@ async def test_message_gateway_test_group_active_group_requires_strong_signal(mo
     )
     patch_reply_check_prompt(monkeypatch, "{name}")
 
-    normal_question = await message_module.message_gateway(DummyTestGroupEvent("这个东西怎么处理比较好？"), [])
-    strong_question = await message_module.message_gateway(DummyTestGroupEvent("求助，这个报错怎么解决？"), [])
+    normal_question = await _message_gateway(DummyTestGroupEvent("这个东西怎么处理比较好？"), [])
+    strong_question = await _message_gateway(DummyTestGroupEvent("求助，这个报错怎么解决？"), [])
 
     assert normal_question is False
     assert strong_question is False
@@ -857,7 +863,7 @@ async def test_message_gateway_test_group_uses_database_assistant_reply_cooldown
     )
     patch_reply_check_prompt(monkeypatch, "{name}")
 
-    result = await message_module.message_gateway(DummyTestGroupEvent("求助，这个报错怎么解决？"), [])
+    result = await _message_gateway(DummyTestGroupEvent("求助，这个报错怎么解决？"), [])
 
     assert result is False
     assert calls == 0

@@ -1,9 +1,11 @@
 # ruff: noqa: S101, S106
 
 import types
+from typing import cast
 
 import pytest
 from fastapi import HTTPException
+from starlette.requests import Request
 
 from plugins.dashboard.api import auth_routes, messages_routes, settings_routes, status_routes, tasks_routes
 
@@ -13,7 +15,7 @@ async def test_login_rate_limit(monkeypatch):
     monkeypatch.setattr(auth_routes, "check_rate_limit", lambda _ip: False)
     request = types.SimpleNamespace(client=types.SimpleNamespace(host="127.0.0.1"))
     with pytest.raises(HTTPException):
-        await auth_routes.login(request, auth_routes.LoginRequest(password="x"))
+        await auth_routes.login(cast(Request, request), auth_routes.LoginRequest(password="x"))
 
 
 @pytest.mark.asyncio

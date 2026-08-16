@@ -120,7 +120,7 @@ def test_load_catalog_returns_frozen_typed_data() -> None:
     assert catalog.catalog_version == "2026.7.15"
     assert len(catalog.models) == expected_model_count
     with pytest.raises(AttributeError):
-        catalog.updated_at = "2000-01-01"  # type: ignore[misc]
+        catalog.__setattr__("updated_at", "2000-01-01")
 
 
 def test_get_model_and_unknown_model() -> None:

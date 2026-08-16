@@ -7,6 +7,7 @@ import json
 import sys
 import types
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -159,8 +160,8 @@ async def test_start_is_singleton_and_stop_cancels_listener(monkeypatch):
         started.set()
         await asyncio.Future()
 
-    async def handler(_data, *, is_snapshot):
-        return is_snapshot
+    async def handler(data: dict[str, Any], *, is_snapshot: bool) -> None:
+        del data, is_snapshot
 
     monkeypatch.setattr(service, "_run", blocked_run)
 
@@ -212,6 +213,7 @@ async def test_cenc_event_is_sent_once_and_continues_after_group_error(monkeypat
     )
 
     assert not hasattr(cenc_handler, "httpx_client")
+    assert database.value is not None
     assert json.loads(database.value) == ["event-1"]
     assert len(rendered) == 1
     assert rendered[0][0] == "eq_cenc"
@@ -249,6 +251,7 @@ async def test_cenc_low_magnitude_can_be_promoted_by_later_report(monkeypatch):
     )
 
     assert below_threshold.output_summary == "cenc ignored: below threshold"
+    assert database.value is not None
     assert json.loads(database.value) == ["event-1"]
     assert rendered == [True]
     assert promoted.output_summary == "cenc sent 0 group(s)"
@@ -297,6 +300,7 @@ async def test_cenc_snapshot_freshness_and_invalid_payload(monkeypatch):
     assert fresh.output_summary == "cenc sent 0 group(s)"
     assert invalid_time.output_summary == "cenc snapshot baseline stored"
     assert invalid_payload.output_summary == "cenc ignored: invalid payload"
+    assert database.value is not None
     assert json.loads(database.value) == ["stale", "fresh", "invalid-time"]
     assert rendered == [True]
 
@@ -328,6 +332,7 @@ async def test_cenc_dedup_history_blocks_late_revision_after_another_event(monke
         _cenc_payload(event_id="event-a", report_id="late-report", report_num=3, magnitude=4.8)
     )
 
+    assert database.value is not None
     assert json.loads(database.value) == ["event-a", "event-b"]
     assert rendered == [True, True]
     assert late_revision.output_summary == "cenc ignored: duplicate event"

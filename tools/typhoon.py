@@ -7,7 +7,7 @@ import base64
 import secrets
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from jinja2 import Environment, FileSystemLoader
 from langchain_core.tools import tool
@@ -71,7 +71,13 @@ _FORECAST_COLORS: dict[str, str] = {
 _icon_cache: dict[str, str] = {}
 
 # ── 图层叠加 ──
-_OVERLAY_CONFIG = {
+class _OverlayConfig(TypedDict):
+    api_url: str
+    bounds: list[list[float]]
+    label: str
+
+
+_OVERLAY_CONFIG: dict[str, _OverlayConfig] = {
     "cloud": {
         "api_url": "https://p.wztf121.com/product/Redar/cloud_zjwater_t_12.json",
         "bounds": [[0.02, 80.02], [60.01, 179.96]],
@@ -468,8 +474,8 @@ async def get_typhoon_info(
     )
 
     images: list[UniMessage] = []
-    for t, r in zip(targets, results):
-        if isinstance(r, Exception):
+    for t, r in zip(targets, results, strict=True):
+        if isinstance(r, BaseException):
             logger.error("台风「%s」渲染失败: %s", t.get("name", "?"), r)
             continue
         if r is not None:

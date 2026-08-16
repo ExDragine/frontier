@@ -1225,7 +1225,7 @@ class MessageDatabase:
                 """
             )
 
-        rows = session.exec(query.bindparams(**params)).all()
+        rows = session.connection().execute(query, params).all()
         ids = [int(row[0]) for row in rows]
         if not ids:
             return []

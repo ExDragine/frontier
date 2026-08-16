@@ -3,9 +3,11 @@
 import ast
 import asyncio
 import types
+from typing import Any, cast
 
 import pytest
 from nonebot.adapters.milky.event import MessageEvent
+from nonebot.adapters.milky.message import Message
 from nonebot.adapters.milky.model.common import Friend, FriendCategory, Group, Member
 from nonebot.adapters.milky.model.message import IncomingMessage
 from nonebug import App
@@ -192,7 +194,7 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -312,7 +314,7 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -338,7 +340,7 @@ async def test_rejected_group_file_message_does_not_stage_file_before_gateway(mo
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
     from plugins import agent
 
-    captured = {"agent_calls": 0}
+    captured: dict[str, Any] = {"agent_calls": 0}
 
     class DummyMessagesDb:
         async def insert(self, **kwargs):
@@ -411,7 +413,7 @@ async def test_rejected_group_file_message_does_not_stage_file_before_gateway(mo
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=False, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=False, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -529,7 +531,7 @@ async def test_agent_stores_expanded_forward_message_and_derived_nodes(monkeypat
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -627,7 +629,7 @@ async def test_agent_does_not_duplicate_normalized_video_marker(monkeypatch):  #
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -728,7 +730,7 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -822,7 +824,7 @@ async def test_rejected_reply_does_not_resolve_quoted_images(monkeypatch):  # no
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -967,7 +969,7 @@ async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # 
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -1014,7 +1016,7 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
 
     context = agent.AgentRequestContext(
         bot=None,
-        event=types.SimpleNamespace(
+        event=cast(Any, types.SimpleNamespace)(
             self_id="1",
             get_plaintext=lambda: "hi",
             data=types.SimpleNamespace(
@@ -1083,7 +1085,7 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
 
     context_a = agent.AgentRequestContext(
         bot=None,
-        event=types.SimpleNamespace(self_id="1", get_plaintext=lambda: "first"),
+        event=cast(Any, types.SimpleNamespace)(self_id="1", get_plaintext=lambda: "first"),
         user_id="456",
         user_name="Bob",
         event_id=1,
@@ -1096,7 +1098,7 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
     )
     context_b = agent.AgentRequestContext(
         bot=None,
-        event=types.SimpleNamespace(self_id="1", get_plaintext=lambda: "second"),
+        event=cast(Any, types.SimpleNamespace)(self_id="1", get_plaintext=lambda: "second"),
         user_id="456",
         user_name="Bob",
         event_id=2,
@@ -1231,7 +1233,7 @@ async def test_gateway_approved_message_routes_directly_to_agent(monkeypatch):  
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -1324,7 +1326,7 @@ async def test_gateway_approved_weather_request_routes_directly_to_agent(monkeyp
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -1365,7 +1367,7 @@ async def test_process_agent_request_passes_configured_capability_directly(monke
 
     context = agent.AgentRequestContext(
         bot=None,
-        event=types.SimpleNamespace(self_id="1"),
+        event=cast(Any, types.SimpleNamespace)(self_id="1"),
         user_id="456",
         user_name="Bob",
         event_id=1,
@@ -1419,7 +1421,7 @@ async def test_process_agent_request_sanitizes_final_response(monkeypatch):
 
     context = agent.AgentRequestContext(
         bot=None,
-        event=types.SimpleNamespace(self_id="1"),
+        event=cast(Any, types.SimpleNamespace)(self_id="1"),
         user_id="456",
         user_name="Bob",
         event_id=1,
@@ -1519,7 +1521,7 @@ async def test_gateway_approved_greeting_runs_agent(monkeypatch):  # noqa: C901
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -1612,7 +1614,7 @@ async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # n
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -1691,7 +1693,7 @@ async def test_gateway_approved_closing_message_runs_agent(monkeypatch):  # noqa
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -1709,7 +1711,7 @@ async def test_gateway_approved_private_chat_routes_to_agent_without_group_react
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
     from plugins import agent
 
-    calls = {"queue": 0, "reactions": []}
+    calls: dict[str, Any] = {"queue": 0, "reactions": []}
 
     async def fake_run_serialized(_key, coro):
         calls["queue"] += 1
@@ -1764,7 +1766,7 @@ async def test_gateway_approved_private_chat_routes_to_agent_without_group_react
         group=None,
         group_member=None,
     )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()

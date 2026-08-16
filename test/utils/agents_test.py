@@ -4,6 +4,7 @@ import asyncio
 import os
 import types
 import uuid
+from typing import Any, Literal, cast
 
 import pytest
 
@@ -373,9 +374,11 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
-    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    frontier.backend = None
+    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
+    frontier.earth_data_subagent = cast(
+        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
+    )
+    cast(Any, frontier).backend = None
 
     await frontier.chat_agent(
         messages=[
@@ -432,9 +435,11 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
-    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    frontier.working_dir = str(tmp_path / "sandbox")
+    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
+    frontier.earth_data_subagent = cast(
+        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
+    )
+    cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
         messages=[{"role": "user", "content": "hi"}],
@@ -482,7 +487,7 @@ def test_build_agent_backend_creates_empty_soul_memory(tmp_path):
     assert soul_md.is_file()
     assert soul_md.read_bytes() == b""
     assert not (memory_dir / "AGENTS.md").exists()
-    assert backend.routes["/memory/123/"].root_dir == str(memory_dir)
+    assert cast(Any, backend.routes["/memory/123/"]).root_dir == str(memory_dir)
 
 
 def test_build_agent_backend_recovers_non_utf8_soul_memory(tmp_path):
@@ -499,7 +504,7 @@ def test_build_agent_backend_recovers_non_utf8_soul_memory(tmp_path):
     backups = list(memory_dir.glob("SOUL.md.corrupt-*"))
     assert len(backups) == 1
     assert backups[0].read_bytes() == corrupt_content
-    assert backend.routes["/memory/123/"].root_dir == str(memory_dir)
+    assert cast(Any, backend.routes["/memory/123/"]).root_dir == str(memory_dir)
 
 
 def test_build_agent_backend_preserves_valid_utf8_soul_memory(tmp_path):
@@ -543,9 +548,11 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
-    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    frontier.working_dir = str(tmp_path / "sandbox")
+    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
+    frontier.earth_data_subagent = cast(
+        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
+    )
+    cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
         messages=[{"role": "user", "content": "hi"}],
@@ -588,9 +595,11 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
-    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    frontier.working_dir = str(tmp_path / "sandbox")
+    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
+    frontier.earth_data_subagent = cast(
+        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
+    )
+    cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
         messages=[{"role": "user", "content": "hi"}],
@@ -642,9 +651,11 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
-    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    frontier.backend = None
+    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
+    frontier.earth_data_subagent = cast(
+        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
+    )
+    cast(Any, frontier).backend = None
 
     await frontier.chat_agent(
         messages=[{"role": "user", "content": "hi"}],
@@ -686,9 +697,11 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
-    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    frontier.working_dir = os.getcwd()
+    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
+    frontier.earth_data_subagent = cast(
+        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
+    )
+    cast(Any, frontier).working_dir = os.getcwd()
 
     await frontier.chat_agent(
         messages=[{"role": "user", "content": "hi"}],
@@ -723,7 +736,18 @@ class TestProgressEvent:
     def test_all_type_literals_valid(self):
         from utils.agents.progress import ProgressEvent
 
-        valid_types = [
+        valid_types: list[
+            Literal[
+                "thinking",
+                "tool_call",
+                "tool_result",
+                "subagent_start",
+                "subagent_done",
+                "assistant_preamble",
+                "text_delta",
+                "done",
+            ]
+        ] = [
             "thinking",
             "tool_call",
             "tool_result",

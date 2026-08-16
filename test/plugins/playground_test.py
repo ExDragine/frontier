@@ -4,6 +4,7 @@ import types
 
 import pytest
 from nonebot.adapters.milky.event import MessageEvent
+from nonebot.adapters.milky.message import Message
 from nonebot.adapters.milky.model.common import Group, Member
 from nonebot.adapters.milky.model.message import IncomingMessage
 from nonebot_plugin_alconna import UniMessage
@@ -67,7 +68,9 @@ def _event(text: str, *, user_id: int = 456, group_id: int = 123) -> MessageEven
             shut_up_end_time=0,
         ),
     )
-    return MessageEvent(data=incoming, to_me=True, time=0, self_id="1")
+    return MessageEvent(
+        data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message()
+    )
 
 
 def _install_message_spies(monkeypatch):

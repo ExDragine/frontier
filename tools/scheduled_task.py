@@ -2,11 +2,13 @@
 
 import json
 import time
-from typing import Any
+from typing import Any, cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot
+
+_DEFAULT_CONFIG = cast(RunnableConfig, None)
 
 
 def _configurable(config: RunnableConfig | None) -> dict:
@@ -113,7 +115,7 @@ async def create_scheduled_task(
     trigger_args: dict,
     target_type: str | None = None,
     target_id: str | int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """创建统一自动任务，到点后由 Agent 执行 prompt 并投递最终回复。
 
@@ -139,7 +141,7 @@ async def create_scheduled_task(
 
 
 @tool(response_format="content")
-async def list_my_scheduled_tasks(include_archived: bool = False, config: RunnableConfig = None) -> str:
+async def list_my_scheduled_tasks(include_archived: bool = False, config: RunnableConfig = _DEFAULT_CONFIG) -> str:
     """列出当前用户创建的自动任务。"""
     from plugins.clockwork import task_manager
 
@@ -182,18 +184,18 @@ async def _manage_my_task(job_id: str, config: RunnableConfig | None, operation:
 
 
 @tool(response_format="content")
-async def cancel_my_scheduled_task(job_id: str, config: RunnableConfig = None) -> str:
+async def cancel_my_scheduled_task(job_id: str, config: RunnableConfig = _DEFAULT_CONFIG) -> str:
     """取消当前用户自己的自动任务。"""
     return await _manage_my_task(job_id, config, "cancel")
 
 
 @tool(response_format="content")
-async def pause_my_scheduled_task(job_id: str, config: RunnableConfig = None) -> str:
+async def pause_my_scheduled_task(job_id: str, config: RunnableConfig = _DEFAULT_CONFIG) -> str:
     """暂停当前用户自己的自动任务。"""
     return await _manage_my_task(job_id, config, "pause")
 
 
 @tool(response_format="content")
-async def resume_my_scheduled_task(job_id: str, config: RunnableConfig = None) -> str:
+async def resume_my_scheduled_task(job_id: str, config: RunnableConfig = _DEFAULT_CONFIG) -> str:
     """恢复当前用户自己的自动任务。"""
     return await _manage_my_task(job_id, config, "resume")

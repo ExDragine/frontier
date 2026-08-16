@@ -92,6 +92,13 @@ def _resolve_update_value(section: str, key: str, original_value, new_value):
     return new_value
 
 
+def _table_values(value: Any, section: str) -> dict[str, Any]:
+    unwrapped = value.unwrap()
+    if not isinstance(unwrapped, dict):
+        raise HTTPException(status_code=422, detail=f"配置段 '{section}' 必须是表")
+    return unwrapped
+
+
 def _backup_config():
     """备份当前配置文件"""
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
@@ -150,7 +157,7 @@ async def update_section(section: str, body: SectionUpdate, user: dict = AUTH_DE
         raise HTTPException(status_code=404, detail=f"配置段 '{section}' 不存在")
 
     # 获取原始值以处理脱敏字段
-    original = dict(doc[section])
+    original = _table_values(doc[section], section)
     sensitive = SENSITIVE_FIELDS.get(section, set())
 
     new_values = body.config

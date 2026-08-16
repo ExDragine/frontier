@@ -73,6 +73,7 @@ def test_resolve_local_path_root_dir_takes_priority_over_absolute_path(tmp_path)
     (sandbox / "real.txt").write_text("shadow")
     result = resolve_local_path("/real.txt", root_dir=str(sandbox))
     assert result == (sandbox / "real.txt").resolve()
+    assert result is not None
     assert result.read_text() == "shadow"
 
 

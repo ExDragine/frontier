@@ -29,7 +29,7 @@ def reminder_mod(load_tool_module, monkeypatch):
     """Load reminder module with clockwork task_manager stubbed out."""
     clockwork_stub = types.ModuleType("plugins.clockwork")
     mock_tm = _make_clockwork_task_manager_stub()
-    clockwork_stub.task_manager = mock_tm
+    clockwork_stub.__dict__["task_manager"] = mock_tm
     monkeypatch.setitem(sys.modules, "plugins.clockwork", clockwork_stub)
 
     if "plugins" not in sys.modules:

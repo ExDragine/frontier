@@ -158,7 +158,8 @@ def segments_to_text(segments: list[dict] | None) -> str:
     parts: list[str] = []
     for segment in segments:
         segment_type = segment.get("type", "")
-        data = segment.get("data") if isinstance(segment.get("data"), dict) else segment
+        segment_data = segment.get("data")
+        data = segment_data if isinstance(segment_data, dict) else segment
         if segment_type == "text":
             parts.append(str(data.get("text", "")))
         else:

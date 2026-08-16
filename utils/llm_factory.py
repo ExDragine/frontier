@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import ModelProfile
@@ -294,4 +294,5 @@ def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatMod
     base_url = _clean_optional(profile.get("base_url"))
     if base_url and config.base_url_field:
         filtered[config.base_url_field] = base_url
-    return cls(**{config.api_key_field: api_key, "model": model, **filtered, **config.static_kwargs})
+    constructor: Callable[..., BaseChatModel] = cast(Any, cls)
+    return constructor(**{config.api_key_field: api_key, "model": model, **filtered, **config.static_kwargs})

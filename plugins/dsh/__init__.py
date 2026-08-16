@@ -64,7 +64,10 @@ async def handle_dsh(event: MessageEvent) -> None:
         timeout=float(EnvConfig.AGENT_JOB_TIMEOUT_SECONDS) + 10,
     )
     response = result.get("response") if isinstance(result, dict) else None
-    messages = response.get("messages") if isinstance(response, dict) else None
+    if not isinstance(response, dict):
+        await UniMessage.text("🧪 DSH 没有返回可发送的内容。").send()
+        return
+    messages = response.get("messages")
     if not messages:
         await UniMessage.text("🧪 DSH 没有返回可发送的内容。").send()
         return

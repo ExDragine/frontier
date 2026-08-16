@@ -6,8 +6,10 @@ import json
 import sys
 import types
 from pathlib import Path
+from typing import cast
 
 import pytest
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlmodel import create_engine
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "plugins"
@@ -86,7 +88,7 @@ def task_manager(tmp_path):
     TaskExecutionHistory.metadata.create_all(engine)
     ScheduledTaskMetadata.metadata.create_all(engine)
     scheduler = DummyScheduler()
-    manager = TaskManager(scheduler, engine)
+    manager = TaskManager(cast(AsyncIOScheduler, scheduler), engine)
     manager.set_job_func(lambda job_id: None)
     return manager
 

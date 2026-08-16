@@ -10,7 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from nonebot import logger
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from utils.database import ensure_database_performance_indexes
 
@@ -502,7 +502,7 @@ class TaskManager:
         with Session(self.engine) as session:
             statement = select(ScheduledTaskMetadata)
             if job_ids:
-                statement = statement.where(ScheduledTaskMetadata.job_id.in_(job_ids))  # type: ignore[attr-defined]
+                statement = statement.where(col(ScheduledTaskMetadata.job_id).in_(job_ids))
             items = session.exec(statement).all()
             return {item.job_id: item for item in items}
 

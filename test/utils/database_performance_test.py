@@ -1,6 +1,7 @@
 # ruff: noqa: S101
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import inspect, text
@@ -192,7 +193,7 @@ def test_database_diagnostics_reports_pragmas_counts_indexes_and_fts(tmp_path: P
     monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
     database = MessageDatabase()
 
-    diagnostics = db_module.get_database_diagnostics(database.engine)
+    diagnostics = cast(dict[str, Any], db_module.get_database_diagnostics(database.engine))
 
     assert diagnostics["sqlite_version"]
     assert diagnostics["fts5_supported"] is True

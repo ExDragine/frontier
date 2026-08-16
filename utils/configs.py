@@ -787,6 +787,92 @@ class EnvConfig:
 
     settings: ClassVar[FrontierSettings]
 
+    # Bot identity
+    BOT_NAME: ClassVar[str]
+    BOT_NICKNAMES: ClassVar[list[str]]
+    SYSTEM_PROMPT: ClassVar[str]
+
+    # Model roles and provider profiles
+    BASIC_MODEL: ClassVar[str]
+    BASIC_MODEL_PROVIDER: ClassVar[str]
+    BASIC_MODEL_CAPABILITIES: ClassVar[list[str]]
+    SIGNAL_MODEL: ClassVar[str]
+    SIGNAL_MODEL_PROVIDER: ClassVar[str]
+    SIGNAL_MODEL_CAPABILITIES: ClassVar[list[str]]
+    ADVAN_MODEL: ClassVar[str]
+    ADVAN_MODEL_PROVIDER: ClassVar[str]
+    ADVAN_MODEL_CAPABILITIES: ClassVar[list[str]]
+    PAINT_MODEL: ClassVar[str]
+    PAINT_MODEL_PROVIDER: ClassVar[str]
+    PAINT_SIZE: ClassVar[str]
+    PAINT_QUALITY: ClassVar[str]
+    VIDEO_MODEL: ClassVar[str]
+    VIDEO_MODEL_PROVIDER: ClassVar[str]
+    VIDEO_SIZE: ClassVar[str]
+    VIDEO_SECONDS: ClassVar[str]
+    LLM_PROVIDERS: ClassVar[dict[str, dict[str, Any]]]
+
+    # External credentials
+    NASA_API_KEY: ClassVar[SecretStr]
+    GITHUB_PAT: ClassVar[SecretStr]
+
+    # Feature switches and agent settings
+    AGENT_MODULE_ENABLED: ClassVar[bool]
+    PAINT_MODULE_ENABLED: ClassVar[bool]
+    VIDEO_MODULE_ENABLED: ClassVar[bool]
+    AGENT_CAPABILITY: ClassVar[str]
+    DSH_MODEL_PROVIDER: ClassVar[str]
+    DSH_MODEL: ClassVar[str]
+    DSH_MAX_TOKENS: ClassVar[int]
+
+    # Access policies
+    AGENT_WHITELIST_MODE: ClassVar[bool]
+    AGENT_WHITELIST_PERSON_LIST: ClassVar[list[int | str]]
+    AGENT_WHITELIST_GROUP_LIST: ClassVar[list[int | str]]
+    AGENT_BLACKLIST_PERSON_LIST: ClassVar[list[int | str]]
+    AGENT_BLACKLIST_GROUP_LIST: ClassVar[list[int | str]]
+    AGENT_AUTO_REPLY_WHITELIST_MODE: ClassVar[bool]
+    AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST: ClassVar[list[int | str]]
+    AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST: ClassVar[list[int | str]]
+    PAINT_WHITELIST_MODE: ClassVar[bool]
+    PAINT_WHITELIST_PERSON_LIST: ClassVar[list[int | str]]
+    PAINT_WHITELIST_GROUP_LIST: ClassVar[list[int | str]]
+    PAINT_BLACKLIST_PERSON_LIST: ClassVar[list[int | str]]
+    PAINT_BLACKLIST_GROUP_LIST: ClassVar[list[int | str]]
+
+    # Rate limits and timeouts
+    PAINT_RATE_LIMIT_MAX_REQUESTS: ClassVar[int]
+    PAINT_RATE_LIMIT_WINDOW_SECONDS: ClassVar[int]
+    VIDEO_RATE_LIMIT_MAX_REQUESTS: ClassVar[int]
+    VIDEO_RATE_LIMIT_WINDOW_SECONDS: ClassVar[int]
+    VIDEO_POLL_INTERVAL_SECONDS: ClassVar[int]
+    VIDEO_POLL_TIMEOUT_SECONDS: ClassVar[int]
+    AGENT_LLM_TIMEOUT_SECONDS: ClassVar[int]
+    AGENT_JOB_TIMEOUT_SECONDS: ClassVar[int]
+
+    # Notification targets
+    TEST_GROUP_ID: ClassVar[list[int | str]]
+    ANNOUNCE_GROUP_ID: ClassVar[list[int | str]]
+    APOD_GROUP_ID: ClassVar[list[int | str]]
+    EARTH_NOW_GROUP_ID: ClassVar[list[int | str]]
+    NEWS_SUMMARY_GROUP_ID: ClassVar[list[int | str]]
+    EARTHQUAKE_GROUP_ID: ClassVar[list[int | str]]
+    NRC_MERCHANT_GROUP_ID: ClassVar[list[int | str]]
+
+    # Storage, diagnostics, and dashboard
+    QUERY_MESSAGE_NUMBERS: ClassVar[int]
+    IMAGE_ENABLED: ClassVar[bool]
+    IMAGE_TTL_DAYS: ClassVar[int]
+    MEDIA_TTL_DAYS: ClassVar[int]
+    MAX_INLINE_IMAGES: ClassVar[int]
+    MAX_INLINE_MEDIA_BYTES: ClassVar[int]
+    IMAGE_AUTO_CLEANUP: ClassVar[bool]
+    AGENT_DEBUG_MODE: ClassVar[bool]
+    DASHBOARD_PASSWORD: ClassVar[str]
+    DASHBOARD_JWT_SECRET: ClassVar[str]
+    DASHBOARD_JWT_EXPIRE_HOURS: ClassVar[int]
+    CONTENT_CHECK_ENABLED: ClassVar[bool]
+
     @classmethod
     def reload(cls, config: Mapping[str, Any], *, warn: bool = False) -> None:
         settings = parse_config(config)

@@ -2,6 +2,7 @@
 
 import types
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from sqlmodel import create_engine
@@ -10,6 +11,17 @@ from utils import database as db_module
 from utils.database import Message, MessageAttachment, MessageDatabase
 from utils.message_normalizer import NORMALIZED_VERSION, segments_to_raw_json
 from utils.reply_context import build_reply_context
+
+
+async def _build_reply_context(bot: object, event: object, reply_seq: int, group_id: int | None, messages_db: object):
+    """Adapt structurally complete test doubles at the production API boundary."""
+    return await build_reply_context(
+        bot,
+        cast(Any, event),
+        reply_seq,
+        group_id,
+        cast(Any, messages_db),
+    )
 
 
 @pytest.mark.asyncio
@@ -91,7 +103,7 @@ async def test_build_reply_context_expands_forwarded_messages_into_message_db():
         data=types.SimpleNamespace(message_scene="group", peer_id=123),
     )
 
-    quote_text, images = await build_reply_context(DummyBot(), event, 900, 123, DummyMessagesDb())
+    quote_text, images = await _build_reply_context(DummyBot(), event, 900, 123, DummyMessagesDb())
 
     assert images == []
     assert "Bob: 外层消息" in quote_text
@@ -147,7 +159,7 @@ async def test_build_reply_context_loads_quoted_images_from_attachments(monkeypa
         data=types.SimpleNamespace(message_scene="group", peer_id=123),
     )
 
-    quote_text, images = await build_reply_context(DummyBot(), event, 900, 123, database)
+    quote_text, images = await _build_reply_context(DummyBot(), event, 900, 123, database)
 
     assert images == [b"quoted-image"]
     assert "用户(Alice): 看图" in quote_text
@@ -190,7 +202,7 @@ async def test_build_reply_context_marks_unavailable_unindexed_image():
         data=types.SimpleNamespace(message_scene="group", peer_id=123),
     )
 
-    quote_text, images = await build_reply_context(DummyBot(), event, 900, 123, DummyMessagesDb())
+    quote_text, images = await _build_reply_context(DummyBot(), event, 900, 123, DummyMessagesDb())
 
     assert images == []
     assert "[图片:照片]" not in quote_text
@@ -246,7 +258,7 @@ async def test_build_reply_context_rebuilds_stale_forward_quote_from_raw_segment
         data=types.SimpleNamespace(message_scene="group", peer_id=123),
     )
 
-    quote_text, images = await build_reply_context(DummyBot(), event, 900, 123, database)
+    quote_text, images = await _build_reply_context(DummyBot(), event, 900, 123, database)
     stored = await database.select_by_msg_id(msg_id=900, group_id=123)
 
     assert images == []

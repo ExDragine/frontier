@@ -1,18 +1,19 @@
+import importlib
 import re
 from typing import Any, Literal
 
 
 class ImageCheck:
     def __init__(self, model_name: str = "Falconsai/nsfw_image_detection") -> None:
-        import torch
-        from torchao.quantization import Int8WeightOnlyConfig, quantize_
-        from transformers import AutoModelForImageClassification, ViTImageProcessor
+        torch = importlib.import_module("torch")
+        quantization = importlib.import_module("torchao.quantization")
+        transformers = importlib.import_module("transformers")
 
         self._torch = torch
-        self.model = AutoModelForImageClassification.from_pretrained(model_name)
-        self.processor = ViTImageProcessor.from_pretrained(model_name)
+        self.model = transformers.AutoModelForImageClassification.from_pretrained(model_name)
+        self.processor = transformers.ViTImageProcessor.from_pretrained(model_name)
         self.model.eval()
-        quantize_(self.model, Int8WeightOnlyConfig(version=2))
+        quantization.quantize_(self.model, quantization.Int8WeightOnlyConfig(version=2))
 
     async def predict(self, img):
         if img.mode != "RGB":
@@ -27,14 +28,16 @@ class ImageCheck:
 
 class TextCheck:
     def __init__(self, model_name: str = "Qwen/Qwen3Guard-Gen-0.6B"):
-        from torchao.quantization import Int8WeightOnlyConfig, quantize_
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        quantization = importlib.import_module("torchao.quantization")
+        transformers = importlib.import_module("transformers")
 
         # load the tokenizer and the model
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto", device_map="auto")
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+        self.model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_name, torch_dtype="auto", device_map="auto"
+        )
         self.model.eval()
-        quantize_(self.model, Int8WeightOnlyConfig(version=2))
+        quantization.quantize_(self.model, quantization.Int8WeightOnlyConfig(version=2))
 
     def extract_label_and_categories(self, content):
         safe_pattern = r"Safety: (Safe|Unsafe|Controversial)"

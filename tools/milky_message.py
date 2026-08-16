@@ -1,3 +1,5 @@
+from typing import cast
+
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot
@@ -10,6 +12,8 @@ from utils.milky_tools import (
     resolve_user_id,
 )
 
+_DEFAULT_CONFIG = cast(RunnableConfig, None)
+
 
 def _format_message_response(response) -> str:
     return f"message_seq={response.message_seq} time={response.time}"
@@ -19,14 +23,14 @@ def _format_message_response(response) -> str:
 async def send_private_message(
     message_text: str,
     user_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """发送私聊文本消息。
     Args:
         message_text: 消息文本
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
     """
-    resolved_user_id, error = resolve_user_id(user_id, config)
+    resolved_user_id, error = resolve_user_id(user_id, dict(config or {}))
     if error:
         return error
     response = await get_bot().send_private_message(user_id=resolved_user_id, message=message_text)
@@ -37,14 +41,14 @@ async def send_private_message(
 async def send_group_message(
     message_text: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """发送群文本消息。
     Args:
         message_text: 消息文本
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     response = await get_bot().send_group_message(group_id=resolved_group_id, message=message_text)
@@ -56,7 +60,7 @@ async def get_message(
     message_scene: str,
     message_seq: int,
     peer_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """获取单条消息。
     Args:
@@ -64,7 +68,7 @@ async def get_message(
         message_seq: 消息序列号
         peer_id: 可选会话 ID，未传时按场景从当前上下文推断
     """
-    resolved_peer_id, error = resolve_peer(message_scene, peer_id, config)
+    resolved_peer_id, error = resolve_peer(message_scene, peer_id, dict(config or {}))
     if error:
         return error
     message = await get_bot().get_message(
@@ -98,14 +102,14 @@ async def get_forwarded_messages(forward_id: str) -> str:
 async def recall_private_message(
     message_seq: int,
     user_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """撤回私聊消息。
     Args:
         message_seq: 消息序列号
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
     """
-    resolved_user_id, error = resolve_user_id(user_id, config)
+    resolved_user_id, error = resolve_user_id(user_id, dict(config or {}))
     if error:
         return error
     await get_bot().recall_private_message(user_id=resolved_user_id, message_seq=message_seq)
@@ -116,14 +120,14 @@ async def recall_private_message(
 async def recall_group_message(
     message_seq: int,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """撤回群消息。
     Args:
         message_seq: 消息序列号
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     await get_bot().recall_group_message(group_id=resolved_group_id, message_seq=message_seq)
@@ -135,7 +139,7 @@ async def mark_message_as_read(
     message_scene: str,
     message_seq: int,
     peer_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """标记消息为已读。
     Args:
@@ -143,7 +147,7 @@ async def mark_message_as_read(
         message_seq: 消息序列号，该消息及更早消息会被标为已读
         peer_id: 可选会话 ID，未传时按场景从当前上下文推断
     """
-    resolved_peer_id, error = resolve_peer(message_scene, peer_id, config)
+    resolved_peer_id, error = resolve_peer(message_scene, peer_id, dict(config or {}))
     if error:
         return error
     await get_bot().mark_message_as_read(

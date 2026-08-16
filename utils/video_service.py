@@ -3,9 +3,13 @@ import base64
 import binascii
 import inspect
 from dataclasses import dataclass
+from typing import cast
 
 from nonebot import logger
 from openai import AsyncOpenAI
+from openai.types.video_create_params import InputReference, VideoCreateParams
+from openai.types.video_seconds import VideoSeconds
+from openai.types.video_size import VideoSize
 
 from utils.configs import EnvConfig, get_provider_profile
 from utils.http_client import get_http_client
@@ -70,19 +74,11 @@ def _build_openai_client() -> AsyncOpenAI:
     profile = get_provider_profile(EnvConfig.VIDEO_MODEL_PROVIDER)
     if str(profile.get("type", "")).strip().lower() != "openai":
         raise ValueError("video_model_provider 必须引用 type = 'openai' 的 provider")
-    kwargs = {"api_key": str(profile.get("api_key", ""))}
-    if base_url := str(profile.get("base_url", "")).strip():
-        kwargs["base_url"] = base_url
-    return AsyncOpenAI(**kwargs)
-
-
-def _video_create_options() -> dict[str, str]:
-    options: dict[str, str] = {"model": EnvConfig.VIDEO_MODEL}
-    if size := str(EnvConfig.VIDEO_SIZE).strip():
-        options["size"] = size
-    if seconds := str(EnvConfig.VIDEO_SECONDS).strip():
-        options["seconds"] = seconds
-    return options
+    api_key = str(profile.get("api_key", ""))
+    base_url = str(profile.get("base_url", "")).strip()
+    if base_url:
+        return AsyncOpenAI(api_key=api_key, base_url=base_url)
+    return AsyncOpenAI(api_key=api_key)
 
 
 async def _create_video_job(
@@ -103,10 +99,16 @@ async def _create_video_job(
         image,
         default_mime_type=_guess_image_mime_type(image) if isinstance(image, bytes) else "image/jpeg",
     )
-    options = _video_create_options()
+    options = VideoCreateParams(prompt=prompt, model=EnvConfig.VIDEO_MODEL)
     if image_ref is not None:
-        options["input_reference"] = _file_tuple(image_ref, stem="reference")
-    return await client.videos.create(prompt=prompt, **options)
+        options["input_reference"] = cast(InputReference, _file_tuple(image_ref, stem="reference"))
+    size = str(EnvConfig.VIDEO_SIZE).strip()
+    if size:
+        options["size"] = cast(VideoSize, size)
+    seconds = str(EnvConfig.VIDEO_SECONDS).strip()
+    if seconds:
+        options["seconds"] = cast(VideoSeconds, seconds)
+    return await client.videos.create(**options)
 
 
 async def _poll_video_job(client: AsyncOpenAI, job):

@@ -1,6 +1,7 @@
 # ruff: noqa: S101
 
 import importlib
+import importlib.machinery
 import importlib.util
 import os
 import sys
@@ -40,8 +41,8 @@ def pytest_configure(config):
     import nonebot
     import nonebot.plugin.load as plugin_load
 
-    plugin_load.require = lambda *_args, **_kwargs: None
-    nonebot.require = plugin_load.require
+    plugin_load.__dict__["require"] = lambda *_args, **_kwargs: None
+    nonebot.__dict__["require"] = plugin_load.require
     try:
         nonebot.init(**config.stash[NONEBOT_INIT_KWARGS])
     except Exception as exc:
@@ -52,8 +53,8 @@ def pytest_sessionstart(session):
     import nonebot
     import nonebot.plugin.load as plugin_load
 
-    plugin_load.require = lambda *_args, **_kwargs: None
-    nonebot.require = plugin_load.require
+    plugin_load.__dict__["require"] = lambda *_args, **_kwargs: None
+    nonebot.__dict__["require"] = plugin_load.require
 
 
 # Ensure repo root is importable during collection
@@ -170,8 +171,8 @@ def reset_env_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
             return None
         return plugin_load.load_plugin(name)
 
-    plugin_load.require = safe_require
-    nonebot.require = safe_require
+    plugin_load.__dict__["require"] = safe_require
+    nonebot.__dict__["require"] = safe_require
     if "utils.configs" in sys.modules:
         importlib.reload(sys.modules["utils.configs"])
     yield

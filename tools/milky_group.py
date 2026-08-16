@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from langchain.tools import ToolRuntime
 from langchain_core.runnables import RunnableConfig
@@ -12,6 +12,8 @@ _GROUP_REQUEST_TYPES = {"join_request", "invited_join_request"}
 _REACTION_TYPES = {"face", "emoji"}
 _GROUP_ADMIN_ROLES = {"admin", "owner"}
 _GROUP_ADMIN_REQUIRED_MESSAGE = "只有目标群的群主或管理员才能执行此群管理操作。"
+_DEFAULT_CONFIG = cast(RunnableConfig, None)
+_DEFAULT_RUNTIME = cast(ToolRuntime[FrontierRuntimeContext, dict], None)
 
 
 def _configurable(config: RunnableConfig | None) -> dict:
@@ -30,12 +32,17 @@ def _role_from_value(value: Any) -> str | None:
     return str(value)
 
 
-def _runtime_context(runtime: ToolRuntime | None) -> FrontierRuntimeContext | None:
+def _runtime_context(
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] | None,
+) -> FrontierRuntimeContext | None:
     context = getattr(runtime, "context", None)
     return context if isinstance(context, FrontierRuntimeContext) else None
 
 
-def _group_member_role(config: RunnableConfig | None, runtime: ToolRuntime | None = None) -> str | None:
+def _group_member_role(
+    config: RunnableConfig | None,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] | None = None,
+) -> str | None:
     context = _runtime_context(runtime)
     if context is not None:
         return context.group_member_role
@@ -43,7 +50,10 @@ def _group_member_role(config: RunnableConfig | None, runtime: ToolRuntime | Non
     return _role_from_value(cfg.get("group_member_role")) or _role_from_value(cfg.get("group_member"))
 
 
-def _config_group_id(config: RunnableConfig | None, runtime: ToolRuntime | None = None) -> int | None:
+def _config_group_id(
+    config: RunnableConfig | None,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] | None = None,
+) -> int | None:
     context = _runtime_context(runtime)
     if context is not None:
         return context.group_id
@@ -59,7 +69,7 @@ def _config_group_id(config: RunnableConfig | None, runtime: ToolRuntime | None 
 def _require_group_admin_or_owner(
     group_id: int,
     config: RunnableConfig | None,
-    runtime: ToolRuntime | None = None,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] | None = None,
 ) -> str | None:
     if _config_group_id(config, runtime) != group_id:
         return _GROUP_ADMIN_REQUIRED_MESSAGE
@@ -71,13 +81,13 @@ def _require_group_admin_or_owner(
 def _resolve_admin_group(
     group_id: int | None,
     config: RunnableConfig | None,
-    runtime: ToolRuntime | None = None,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] | None = None,
 ) -> tuple[int | None, str | None]:
     context = _runtime_context(runtime)
     context_group_id = context.group_id if context is not None else None
-    resolved_group_id, error = resolve_group_id(group_id if group_id is not None else context_group_id, config)
-    if error:
-        return None, error
+    resolved_group_id, error = resolve_group_id(group_id if group_id is not None else context_group_id, dict(config or {}))
+    if error or resolved_group_id is None:
+        return None, error or "无法解析群号。"
     permission_error = _require_group_admin_or_owner(resolved_group_id, config, runtime)
     if permission_error:
         return None, permission_error
@@ -161,8 +171,8 @@ def _normalize_group_request_type(notification_type: str) -> str | None:
 async def set_group_name(
     new_group_name: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """设置群名称。
     Args:
@@ -170,8 +180,8 @@ async def set_group_name(
         group_id: 可选群号，未传时使用当前群聊
     """
     resolved_group_id, error = _resolve_admin_group(group_id, config, runtime)
-    if error:
-        return error
+    if error or resolved_group_id is None:
+        return error or "无法解析群号。"
     await get_bot().set_group_name(group_id=resolved_group_id, new_group_name=new_group_name)
     return f"已将群 {resolved_group_id} 的名称设置为：{new_group_name}"
 
@@ -180,8 +190,8 @@ async def set_group_name(
 async def set_group_avatar(
     image_uri: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """设置群头像，支持 file://、http(s)://、base64:// 或本地文件路径。
     Args:
@@ -189,8 +199,8 @@ async def set_group_avatar(
         group_id: 可选群号，未传时使用当前群聊
     """
     resolved_group_id, error = _resolve_admin_group(group_id, config, runtime)
-    if error:
-        return error
+    if error or resolved_group_id is None:
+        return error or "无法解析群号。"
     await get_bot().set_group_avatar(group_id=resolved_group_id, **binary_kwargs_from_uri(image_uri))
     return f"已更新群 {resolved_group_id} 的头像"
 
@@ -200,8 +210,8 @@ async def set_group_member_card(
     user_id: int,
     card: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """设置群成员名片。
     Args:
@@ -221,8 +231,8 @@ async def set_group_member_special_title(
     user_id: int,
     special_title: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """设置群成员专属头衔。
     Args:
@@ -246,8 +256,8 @@ async def set_group_member_admin(
     user_id: int,
     is_set: bool = True,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """设置或取消群管理员。
     Args:
@@ -268,8 +278,8 @@ async def set_group_member_mute(
     user_id: int,
     duration: int = 0,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """设置群成员禁言，duration 为 0 时取消禁言。
     Args:
@@ -292,8 +302,8 @@ async def set_group_member_mute(
 async def set_group_whole_mute(
     is_mute: bool = True,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """设置或取消群全员禁言。
     Args:
@@ -313,8 +323,8 @@ async def kick_group_member(
     user_id: int,
     reject_add_request: bool = False,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """踢出群成员。
     Args:
@@ -337,15 +347,15 @@ async def kick_group_member(
 @tool(response_format="content")
 async def get_group_announcements(
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """获取群公告列表。
     Args:
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
-    if error:
-        return error
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
+    if error or resolved_group_id is None:
+        return error or "无法解析群号。"
     announcements = await get_bot().get_group_announcements(group_id=resolved_group_id)
     return _format_announcements(resolved_group_id, announcements)
 
@@ -355,8 +365,8 @@ async def send_group_announcement(
     content: str,
     image_uri: str | None = None,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """发送群公告，可附带图片。
     Args:
@@ -379,8 +389,8 @@ async def send_group_announcement(
 async def delete_group_announcement(
     announcement_id: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """删除群公告。
     Args:
@@ -399,7 +409,7 @@ async def get_group_essence_messages(
     page_index: int = 0,
     page_size: int = 20,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """获取群精华消息列表。
     Args:
@@ -407,9 +417,9 @@ async def get_group_essence_messages(
         page_size: 每页数量，范围 1-100
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
-    if error:
-        return error
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
+    if error or resolved_group_id is None:
+        return error or "无法解析群号。"
     if page_index < 0:
         return "页码索引不能为负数。"
     page_size = max(1, min(page_size, 100))
@@ -426,8 +436,8 @@ async def set_group_essence_message(
     message_seq: int,
     is_set: bool = True,
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """设置或取消群精华消息。
     Args:
@@ -446,8 +456,8 @@ async def set_group_essence_message(
 @tool(response_format="content")
 async def quit_group(
     group_id: int | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """退出群聊。
     Args:
@@ -467,7 +477,7 @@ async def send_group_message_reaction(
     reaction_type: Literal["face", "emoji"] = "face",
     is_add: bool = True,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """发送或移除群消息表情回应。
     Args:
@@ -479,7 +489,7 @@ async def send_group_message_reaction(
     """
     if reaction_type not in _REACTION_TYPES:
         return "reaction_type 仅支持 face 或 emoji。"
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     await get_bot().send_group_message_reaction(
@@ -497,14 +507,14 @@ async def send_group_message_reaction(
 async def send_group_nudge(
     user_id: int,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """发送群戳一戳。
     Args:
         user_id: 被戳的群成员 QQ 号
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     await get_bot().send_group_nudge(group_id=resolved_group_id, user_id=user_id)
@@ -538,8 +548,8 @@ async def accept_group_request(
     notification_type: str,
     group_id: int,
     is_filtered: bool = False,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """同意入群或邀请他人入群请求。
     Args:
@@ -571,8 +581,8 @@ async def reject_group_request(
     group_id: int,
     is_filtered: bool = False,
     reason: str | None = None,
-    config: RunnableConfig = None,
-    runtime: ToolRuntime[FrontierRuntimeContext, dict] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
     """拒绝入群或邀请他人入群请求。
     Args:

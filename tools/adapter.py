@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -7,6 +8,8 @@ from nonebot.adapters.milky.message import MessageSegment
 
 from utils.alconna import UniMessage
 from utils.milky_tools import resolve_group_id, resolve_local_path, validate_url
+
+_DEFAULT_CONFIG = cast(RunnableConfig, None)
 
 
 def _resolve_message_local_path(source: str, workspace_dir: str | None):
@@ -18,7 +21,7 @@ def _resolve_message_local_path(source: str, workspace_dir: str | None):
 
 
 @tool(response_format="content_and_artifact")
-async def send_image(source: str, config: RunnableConfig = None) -> tuple[str, UniMessage]:
+async def send_image(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage]:
     """发送图片工具，支持本地路径或远程 URL
     Args:
         source: 本地文件的绝对路径（如 /tmp/photo.png）或远程 URL
@@ -31,7 +34,7 @@ async def send_image(source: str, config: RunnableConfig = None) -> tuple[str, U
 
 
 @tool(response_format="content_and_artifact")
-async def send_audio(source: str, config: RunnableConfig = None) -> tuple[str, UniMessage]:
+async def send_audio(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage]:
     """发送音频文件工具（以文件形式呈现，区别于语音），支持本地路径或远程 URL
     Args:
         source: 本地文件的绝对路径（如 /tmp/music.mp3）或远程 URL
@@ -44,7 +47,7 @@ async def send_audio(source: str, config: RunnableConfig = None) -> tuple[str, U
 
 
 @tool(response_format="content_and_artifact")
-async def send_voice(source: str, config: RunnableConfig = None) -> tuple[str, UniMessage]:
+async def send_voice(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage]:
     """发送语音消息工具（以对讲/语音条形式呈现），支持本地路径或远程 URL
     Args:
         source: 本地文件的绝对路径（如 /tmp/voice.wav）或远程 URL
@@ -57,7 +60,7 @@ async def send_voice(source: str, config: RunnableConfig = None) -> tuple[str, U
 
 
 @tool(response_format="content_and_artifact")
-async def send_video(source: str, config: RunnableConfig = None) -> tuple[str, UniMessage]:
+async def send_video(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage]:
     """发送视频工具，支持本地路径或远程 URL
     Args:
         source: 本地文件的绝对路径（如 /tmp/clip.mp4）或远程 URL
@@ -79,7 +82,7 @@ async def send_emoji(emoji_id: str) -> tuple[str, UniMessage]:
 
 
 @tool(response_format="content_and_artifact")
-async def send_file(path_or_url: str, name: str, config: RunnableConfig = None) -> tuple[str, UniMessage]:
+async def send_file(path_or_url: str, name: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage]:
     """发送文件工具，支持本地路径或远程 URL
     Args:
         path_or_url: 本地文件的绝对路径（如 /tmp/report.pdf）或远程 URL
@@ -107,14 +110,14 @@ def _mention(user_id: str | int) -> MessageSegment:
 async def send_at(
     user_id: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """@ 某个用户
     Args:
         user_id: 目标用户的 QQ 号或用户 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     response = await get_bot().send_group_message(
@@ -127,13 +130,13 @@ async def send_at(
 @tool(response_format="content")
 async def send_at_all(
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """@ 全体成员
     Args:
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     response = await get_bot().send_group_message(
@@ -148,7 +151,7 @@ async def send_text_with_at(
     user_id: str,
     text: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """@ 某个用户并附带文字内容，适合回复或提醒特定用户
     Args:
@@ -156,7 +159,7 @@ async def send_text_with_at(
         text: 附带的文字内容
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     response = await get_bot().send_group_message(

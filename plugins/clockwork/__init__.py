@@ -12,9 +12,9 @@ from .task_models import ScheduledTaskMetadata, TaskConfig, TaskExecutionHistory
 
 # 初始化任务管理系统
 engine = get_engine()
-task_manager = TaskManager(scheduler, engine)
-task_executor = TaskExecutor(task_manager)
-task_manager.set_job_func(task_executor.execute)
+task_manager_instance = TaskManager(scheduler, engine)
+task_executor = TaskExecutor(task_manager_instance)
+task_manager_instance.set_job_func(task_executor.execute)
 
 driver = get_driver()
 _REMOVED_TASKS = {
@@ -24,6 +24,12 @@ _REMOVED_TASKS = {
 
 # 导入命令和处理器（必须在 task_manager 创建之后）
 from . import agent_task_handler, task_commands, task_handlers  # noqa: E402, F401, I001
+
+# Importing ``plugins.clockwork.task_manager`` installs the submodule on the
+# package under the same name. Re-export the manager instance only after the
+# imports above so callers keep the established public API without leaving the
+# internal name ambiguous to type checkers.
+task_manager: TaskManager = task_manager_instance
 
 
 # ==================== 任务管理系统初始化 ====================
@@ -78,7 +84,7 @@ async def init_task_system():
             handler_function="nrc_merchant_alert",
             trigger_type="cron",
             trigger_args={"hour": "8,12,16,20", "minute": "10"},
-            group_ids=EnvConfig.NRC_MERCHANT_GROUP_ID,
+            group_ids=[int(group_id) for group_id in EnvConfig.NRC_MERCHANT_GROUP_ID],
             description="每天定时检测远行商人是否上架目标商品（国王球、棱镜球、炫彩精灵蛋、祝福项坠、首领血脉秘药），有则推送提醒",
             metadata=ScheduledTaskMetadata(
                 job_id="nrc_merchant_alert",

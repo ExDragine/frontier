@@ -4,6 +4,7 @@ import asyncio
 import threading
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -291,7 +292,7 @@ async def test_dsh_agent_adapts_successful_result():
         async def run(self, *_args, **_kwargs):
             return SimpleNamespace(final_response="answer", finish_reason="completed")
 
-    result = await DshAgent(FakeService()).chat_agent(
+    result = await DshAgent(cast(DshAgentService, FakeService())).chat_agent(
         "task",
         workspace_key="dm:1",
         session_id="session-1",
@@ -320,7 +321,7 @@ async def test_dsh_agent_recovers_completed_empty_response():
             return SimpleNamespace(final_response="recovered", finish_reason="completed")
 
     service = FakeService()
-    result = await DshAgent(service).chat_agent(
+    result = await DshAgent(cast(DshAgentService, service)).chat_agent(
         "task",
         workspace_key="dm:1",
         session_id="session-1",
@@ -337,7 +338,7 @@ async def test_dsh_agent_reports_empty_response_after_recovery():
         async def run(self, *_args, **_kwargs):
             return SimpleNamespace(final_response="", finish_reason="completed", events=[], notifications=[])
 
-    result = await DshAgent(FakeService()).chat_agent(
+    result = await DshAgent(cast(DshAgentService, FakeService())).chat_agent(
         "task",
         workspace_key="dm:1",
         session_id="session-1",
@@ -372,7 +373,7 @@ async def test_dsh_agent_reports_structured_model_error():
                 notifications=[],
             )
 
-    result = await DshAgent(FakeService()).chat_agent(
+    result = await DshAgent(cast(DshAgentService, FakeService())).chat_agent(
         "task",
         workspace_key="dm:1",
         session_id="session-1",
@@ -409,7 +410,7 @@ async def test_dsh_agent_redacts_secret_from_model_error():
                 notifications=[],
             )
 
-    result = await DshAgent(FakeService()).chat_agent(
+    result = await DshAgent(cast(DshAgentService, FakeService())).chat_agent(
         "task",
         workspace_key="dm:1",
         session_id="session-1",

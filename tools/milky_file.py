@@ -1,10 +1,13 @@
 from pathlib import Path
+from typing import cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot
 
 from utils.milky_tools import binary_kwargs_from_uri, format_files_info, resolve_group_id, resolve_user_id
+
+_DEFAULT_CONFIG = cast(RunnableConfig, None)
 
 
 def _file_name_from_uri(file_uri: str, file_name: str | None, root_dir: str | None = None) -> str | None:
@@ -21,7 +24,7 @@ async def upload_private_file(
     file_uri: str,
     file_name: str | None = None,
     user_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """上传私聊文件。
     Args:
@@ -29,7 +32,7 @@ async def upload_private_file(
         file_name: 文件名；使用 URL/base64 时建议显式提供
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
     """
-    resolved_user_id, error = resolve_user_id(user_id, config)
+    resolved_user_id, error = resolve_user_id(user_id, dict(config or {}))
     if error:
         return error
     workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
@@ -47,7 +50,7 @@ async def upload_group_file(
     file_name: str | None = None,
     parent_folder_id: str | None = None,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """上传群文件。
     Args:
@@ -56,7 +59,7 @@ async def upload_group_file(
         parent_folder_id: 可选父文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
@@ -78,7 +81,7 @@ async def get_private_file_download_url(
     file_id: str,
     file_hash: str,
     user_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """获取私聊文件下载链接。
     Args:
@@ -86,7 +89,7 @@ async def get_private_file_download_url(
         file_hash: 文件 TriSHA1 哈希
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
     """
-    resolved_user_id, error = resolve_user_id(user_id, config)
+    resolved_user_id, error = resolve_user_id(user_id, dict(config or {}))
     if error:
         return error
     return await get_bot().get_private_file_download_url(
@@ -98,14 +101,14 @@ async def get_private_file_download_url(
 async def get_group_file_download_url(
     file_id: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """获取群文件下载链接。
     Args:
         file_id: 文件 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     return await get_bot().get_group_file_download_url(group_id=resolved_group_id, file_id=file_id)
@@ -115,16 +118,16 @@ async def get_group_file_download_url(
 async def get_group_files(
     parent_folder_id: str | None = None,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """获取群文件列表。
     Args:
         parent_folder_id: 可选父文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
-    if error:
-        return error
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
+    if error or resolved_group_id is None:
+        return error or "无法解析群号。"
     info = await get_bot().get_group_files(group_id=resolved_group_id, parent_folder_id=parent_folder_id)
     return format_files_info(resolved_group_id, info)
 
@@ -135,7 +138,7 @@ async def move_group_file(
     parent_folder_id: str = "/",
     target_folder_id: str = "/",
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """移动群文件。
     Args:
@@ -144,7 +147,7 @@ async def move_group_file(
         target_folder_id: 目标文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     await get_bot().move_group_file(
@@ -162,7 +165,7 @@ async def rename_group_file(
     new_file_name: str,
     parent_folder_id: str = "/",
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """重命名群文件。
     Args:
@@ -171,7 +174,7 @@ async def rename_group_file(
         parent_folder_id: 文件所在文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     await get_bot().rename_group_file(
@@ -187,14 +190,14 @@ async def rename_group_file(
 async def delete_group_file(
     file_id: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """删除群文件。
     Args:
         file_id: 文件 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     await get_bot().delete_group_file(group_id=resolved_group_id, file_id=file_id)
@@ -205,14 +208,14 @@ async def delete_group_file(
 async def create_group_folder(
     folder_name: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """创建群文件夹。
     Args:
         folder_name: 文件夹名
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     folder_id = await get_bot().create_group_folder(group_id=resolved_group_id, folder_name=folder_name)
@@ -224,7 +227,7 @@ async def rename_group_folder(
     folder_id: str,
     new_folder_name: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """重命名群文件夹。
     Args:
@@ -232,7 +235,7 @@ async def rename_group_folder(
         new_folder_name: 新文件夹名
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     await get_bot().rename_group_folder(
@@ -247,14 +250,14 @@ async def rename_group_folder(
 async def delete_group_folder(
     folder_id: str,
     group_id: int | None = None,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """删除群文件夹。
     Args:
         folder_id: 文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, config)
+    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
     if error:
         return error
     await get_bot().delete_group_folder(group_id=resolved_group_id, folder_id=folder_id)

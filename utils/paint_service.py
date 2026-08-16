@@ -4,10 +4,17 @@ import io
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, cast
 
 from nonebot import logger
 from openai import APIError, AsyncOpenAI
+from openai.types.responses import EasyInputMessageParam, ResponseInputParam
+from openai.types.responses.response_create_params import ResponseCreateParamsNonStreaming
+from openai.types.responses.response_input_image_param import ResponseInputImageParam
+from openai.types.responses.response_input_message_content_list_param import ResponseInputContentParam
+from openai.types.responses.response_input_text_param import ResponseInputTextParam
+from openai.types.responses.tool_choice_types_param import ToolChoiceTypesParam
+from openai.types.responses.tool_param import ImageGeneration
 from PIL import Image
 
 from utils.configs import EnvConfig, get_provider_profile
@@ -60,39 +67,41 @@ def _build_openai_client() -> AsyncOpenAI:
     profile = get_provider_profile(EnvConfig.PAINT_MODEL_PROVIDER)
     if str(profile.get("type", "")).strip().lower() != "openai":
         raise ValueError("paint_model_provider 必须引用 type = 'openai' 的 provider")
-    kwargs = {"api_key": str(profile.get("api_key", ""))}
-    if base_url := str(profile.get("base_url", "")).strip():
-        kwargs["base_url"] = base_url
-    return AsyncOpenAI(**kwargs)
+    api_key = str(profile.get("api_key", ""))
+    base_url = str(profile.get("base_url", "")).strip()
+    if base_url:
+        return AsyncOpenAI(api_key=api_key, base_url=base_url)
+    return AsyncOpenAI(api_key=api_key)
 
 
-def _image_generation_tool(reference_images: list[bytes]) -> dict[str, Any]:
-    tool: dict[str, Any] = {
+def _image_generation_tool(reference_images: list[bytes]) -> ImageGeneration:
+    tool: ImageGeneration = {
         "type": "image_generation",
         "action": "edit" if reference_images else "generate",
         "model": EnvConfig.PAINT_MODEL,
         "output_format": "png",
     }
-    options: dict[str, str] = {}
     if size := str(EnvConfig.PAINT_SIZE).strip():
-        options["size"] = size
+        tool["size"] = size
     if quality := str(EnvConfig.PAINT_QUALITY).strip():
-        options["quality"] = quality
-    tool.update(options)
+        tool["quality"] = cast(Literal["low", "medium", "high", "auto"], quality)
     return tool
 
 
-def _responses_input(prompt: str, reference_images: list[bytes]) -> list[dict[str, Any]]:
-    content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
+def _responses_input(prompt: str, reference_images: list[bytes]) -> ResponseInputParam:
+    content: list[ResponseInputContentParam] = [ResponseInputTextParam(type="input_text", text=prompt)]
     for image in reference_images:
         encoded = base64.b64encode(_normalize_reference_image(image)).decode("ascii")
         content.append(
-            {
-                "type": "input_image",
-                "image_url": f"data:image/png;base64,{encoded}",
-            }
+            cast(
+                ResponseInputImageParam,
+                {
+                    "type": "input_image",
+                    "image_url": f"data:image/png;base64,{encoded}",
+                },
+            )
         )
-    return [{"type": "message", "role": "user", "content": content}]
+    return cast(ResponseInputParam, [EasyInputMessageParam(type="message", role="user", content=content)])
 
 
 def _response_value(value: Any, key: str) -> Any:
@@ -129,14 +138,15 @@ async def _paint_with_openai(prompt: str, reference_images: list[bytes]) -> byte
     try:
         # sub2api accepts the image model in both positions, then rewrites the
         # top-level model to its Codex host model while preserving the tool model.
-        response = await client.responses.create(
+        params = ResponseCreateParamsNonStreaming(
             model=EnvConfig.PAINT_MODEL,
             input=_responses_input(prompt, reference_images),
             tools=[_image_generation_tool(reference_images)],
-            tool_choice={"type": "image_generation"},
+            tool_choice=ToolChoiceTypesParam(type="image_generation"),
             store=False,
             stream=False,
         )
+        response = await client.responses.create(**params)
         return _image_bytes_from_response(response)
     except APIError as exc:
         logger.warning(f"Responses image_generation 调用失败: {exc}")

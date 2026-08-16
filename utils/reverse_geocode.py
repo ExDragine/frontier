@@ -39,6 +39,19 @@ def _trim_description(text: str) -> str:
     return text[:25]  # 略放宽到 25 字
 
 
+def _response_text(content: str | list[str | dict]) -> str:
+    """Normalize LangChain's text or structured content into plain text."""
+    if isinstance(content, str):
+        return content
+    parts: list[str] = []
+    for block in content:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, dict) and isinstance(block.get("text"), str):
+            parts.append(block["text"])
+    return "".join(parts)
+
+
 async def reverse_geocode(lat: float, lng: float) -> str:
     """查询 GCJ-02 坐标对应的海域或行政区划描述。
 
@@ -69,7 +82,7 @@ async def reverse_geocode(lat: float, lng: float) -> str:
                 HumanMessage(content=f"经纬度 ({lat:.2f}, {lng:.2f}) GCJ-02 坐标位于哪里？"),
             ]
         )
-        desc = _trim_description(response.content)
+        desc = _trim_description(_response_text(response.content))
         logger.debug("逆地理编码: (%.2f, %.2f) → %s", lat, lng, desc)
         return desc
     except Exception as e:

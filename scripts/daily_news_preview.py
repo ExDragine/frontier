@@ -11,6 +11,7 @@ import zoneinfo
 from pathlib import Path
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.sessions import Connection
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -26,7 +27,7 @@ clockwork_pkg.__path__ = [str(PLUGINS_DIR / "clockwork")]
 sys.modules.setdefault("plugins.clockwork", clockwork_pkg)
 
 tools_stub = types.ModuleType("tools")
-tools_stub.agent_tools = types.SimpleNamespace(
+tools_stub.__dict__["agent_tools"] = types.SimpleNamespace(
     mcp_tools=[],
     web_tools=[],
     main_tools=[],
@@ -42,7 +43,7 @@ from plugins.clockwork.task_handlers import (  # noqa: E402
 from utils.markdown_render import html_to_image  # noqa: E402
 
 
-EXA_MCP_CONFIG = {
+EXA_MCP_CONFIG: dict[str, Connection] = {
     "exa": {
         "command": "npx",
         "args": [

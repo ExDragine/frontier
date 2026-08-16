@@ -1,22 +1,26 @@
+from typing import cast
+
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot
 
 from utils.milky_tools import format_records, resolve_user_id
 
+_DEFAULT_CONFIG = cast(RunnableConfig, None)
+
 
 @tool(response_format="content")
 async def send_friend_nudge(
     user_id: int | None = None,
     is_self: bool = False,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """发送好友戳一戳。
     Args:
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
         is_self: 是否向自己发送
     """
-    resolved_user_id, error = resolve_user_id(user_id, config)
+    resolved_user_id, error = resolve_user_id(user_id, dict(config or {}))
     if error:
         return error
     await get_bot().send_friend_nudge(user_id=resolved_user_id, is_self=is_self)

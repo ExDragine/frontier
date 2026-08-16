@@ -2,6 +2,7 @@
 
 import datetime
 import zoneinfo
+from typing import cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -10,6 +11,7 @@ from tools.scheduled_task import create_scheduled_task_record
 
 _SHANGHAI = zoneinfo.ZoneInfo("Asia/Shanghai")
 _TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S")
+_DEFAULT_CONFIG = cast(RunnableConfig, None)
 
 
 def _parse_time(raw: str) -> datetime.datetime | None:
@@ -26,7 +28,7 @@ async def create_reminder(
     reminder_text: str,
     remind_time: str,
     private: bool = False,
-    config: RunnableConfig = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
     """创建定时提醒。到达指定时间后自动发送提醒消息给用户。
 

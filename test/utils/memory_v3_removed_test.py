@@ -3,6 +3,7 @@
 import sys
 import types
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -49,9 +50,11 @@ async def test_chat_agent_does_not_import_or_append_memory_v3_context(monkeypatc
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
-    frontier.earth_data_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    frontier.working_dir = str(tmp_path / "sandbox")
+    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
+    frontier.earth_data_subagent = cast(
+        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
+    )
+    cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
         messages=[{"role": "user", "content": "hi"}],

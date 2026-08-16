@@ -186,7 +186,9 @@ class FrontierCognitive:
         earth_data_subagent = getattr(self, "earth_data_subagent", None) or build_earth_data_subagent(
             agent_tools.earth_query_tools
         )
-        middleware = [
+        # These third-party middleware classes intentionally use different
+        # context type parameters while sharing the same runtime protocol.
+        middleware: list[Any] = [
             PIIMiddleware(
                 "api_key",
                 detector=r"sk-[a-zA-Z0-9]{32}",
@@ -271,6 +273,8 @@ class FrontierCognitive:
                 "error": str(exc),
             }
 
+        if response is None:
+            response = {}
         uni_messages = await FrontierCognitive.extract_uni_messages(response)
         ai_messages = [message for message in response.get("messages", []) if getattr(message, "type", None) == "ai"]
         final_response = ai_messages[-1] if ai_messages else AIMessage("智能代理处理完成，但没有生成响应。")
