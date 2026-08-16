@@ -109,7 +109,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，Signal 判断使用 `EnvConfig.SIGNAL_MODEL`。
 - 当模型引用的供应商 `api_mode` 为 `responses` 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；其他协议路径会跳过这些参数。
 - 根据模型自身的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
-- 主 Agent 不直接持有记忆工具；同步 `memory-agent` 使用基础模型检索和总结当前会话历史。纯文本地球数据由同步 `earth-data-agent` 查询，媒体类地球工具保留在主 Agent。
+- 主 Agent 不直接持有记忆工具；`memory-agent` 检索会话历史，`research-agent` 使用有次数上限的 Exa / Tavily 工具搜索和核验网络资料，`document-agent` 继承当前 backend 并仅读分析 workspace / memory 文件。一次性只读查询工具通过 PTC 交给主 Agent，媒体工件与平台写操作保留为主 Agent 直接工具。
 - 专用子代理定义位于 `utils/agents/subagents/`，使用 `create_agent()` 构建独立图并包装为 `CompiledSubAgent`；builder 只接收所需工具列表，避免反向依赖工具注册器。
 - Frontier 为四类模型 provider 注册统一 Harness Profile，关闭 Deep Agents 自动添加且工具面重复的 `general-purpose` subagent。
 - 模型目录会转换为 LangChain `ModelProfile` 注入模型实例，为 Deep Agents 提供上下文窗口、输出上限和能力元数据；目录外模型继续按未知模型降级。

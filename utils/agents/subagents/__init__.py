@@ -1,6 +1,7 @@
 """Specialized Deep Agent subagent builders."""
 
-from .earth_data import build_earth_data_subagent
+from .document import build_document_subagent
 from .memory import build_memory_subagent
+from .research import build_research_subagent
 
-__all__ = ["build_earth_data_subagent", "build_memory_subagent"]
+__all__ = ["build_document_subagent", "build_memory_subagent", "build_research_subagent"]

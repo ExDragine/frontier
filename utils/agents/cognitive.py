@@ -15,6 +15,7 @@ from langchain.agents.middleware import (
     ProviderToolSearchMiddleware,
     ToolRetryMiddleware,
 )
+from langchain.agents.middleware.types import AgentMiddleware
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_quickjs import CodeInterpreterMiddleware
@@ -38,7 +39,7 @@ from .progress import (
 )
 from .prompts import load_system_prompt as compose_system_prompt
 from .runtime import agent_thread_id
-from .subagents import build_earth_data_subagent, build_memory_subagent
+from .subagents import build_document_subagent, build_memory_subagent, build_research_subagent
 from .workspace import SKILLS_BACKEND_PATH, build_agent_backend
 
 register_frontier_harness_profiles()
@@ -83,26 +84,35 @@ WEB_SEARCH_PROMPT_HINT = (
 )
 
 
-def attach_native_web_search_tool(effective_tools: list, system_prompt: str) -> str:
-    """模型路由支持时，挂载服务端原生 web_search 内置工具。
+class NativeWebSearchMiddleware(AgentMiddleware):
+    """Inject provider-native web search only after local-tool middleware.
 
-    DeepSeek Responses 的 web_search 由服务端执行，只能作为 provider 内置工具
-    dict 传入；langchain create_agent 会自动将其排除出本地 ToolNode。
-    返回追加搜索提示后的 system_prompt。
+    Provider tool specs are dictionaries. Keeping them out of the agent's base
+    tool list prevents PTC and other local-tool middleware from dereferencing
+    ``tool.name`` on a dict.
     """
-    if not model_supports_native_web_search(EnvConfig.ADVAN_MODEL, EnvConfig.ADVAN_MODEL_PROVIDER):
-        logger.debug("当前模型路由不支持服务端原生 web_search，跳过挂载")
-        return system_prompt
-    logger.info("主 Agent 已挂载服务端原生 web_search 工具")
-    effective_tools.append({"type": "web_search"})
-    return system_prompt + WEB_SEARCH_PROMPT_HINT
+
+    @staticmethod
+    def _request_with_web_search(request):
+        if any(isinstance(tool, dict) and tool.get("type") == "web_search" for tool in request.tools):
+            return request
+        return request.override(tools=[*request.tools, {"type": "web_search"}])
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._request_with_web_search(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._request_with_web_search(request))
 
 
 class FrontierCognitive:
     def __init__(self):
-        self.tools = agent_tools.main_tools
+        self.tools = agent_tools.direct_tools
+        self.ptc_tools = agent_tools.ptc_tools
         self.memory_subagent = build_memory_subagent(agent_tools.subagent_tools["memory"])
-        self.earth_data_subagent = build_earth_data_subagent(agent_tools.earth_query_tools)
+        research_tools = agent_tools.research_tools
+        self.research_subagent = build_research_subagent(research_tools) if research_tools else None
+        self.document_subagent = build_document_subagent()
 
     @staticmethod
     def load_system_prompt(
@@ -200,16 +210,24 @@ class FrontierCognitive:
             if restricted_tool.name in ("ens_normal", "ens_professional"):
                 effective_tools.append(restricted_tool)
 
-        # PTC 白名单只需本地执行工具；dict 形式的 provider 内置工具（web_search）
-        # 没有 .name 属性，须在挂载前计算。
-        ptc_tool_names = [tool.name for tool in effective_tools] if effective_tools else []
-        system_prompt = attach_native_web_search_tool(effective_tools, system_prompt)
+        ptc_tools = list(getattr(self, "ptc_tools", []))
+        native_web_search = model_supports_native_web_search(
+            EnvConfig.ADVAN_MODEL,
+            EnvConfig.ADVAN_MODEL_PROVIDER,
+        )
+        if native_web_search:
+            logger.info("主 Agent 已挂载服务端原生 web_search 工具")
+            system_prompt += WEB_SEARCH_PROMPT_HINT
+        else:
+            logger.debug("当前模型路由不支持服务端原生 web_search，跳过挂载")
         memory_subagent = getattr(self, "memory_subagent", None) or build_memory_subagent(
             agent_tools.subagent_tools["memory"]
         )
-        earth_data_subagent = getattr(self, "earth_data_subagent", None) or build_earth_data_subagent(
-            agent_tools.earth_query_tools
-        )
+        subagents = [memory_subagent]
+        if research_subagent := getattr(self, "research_subagent", None):
+            subagents.append(research_subagent)
+        if document_subagent := getattr(self, "document_subagent", None):
+            subagents.append(document_subagent)
         # These third-party middleware classes intentionally use different
         # context type parameters while sharing the same runtime protocol.
         middleware: list[Any] = [
@@ -221,16 +239,18 @@ class FrontierCognitive:
             ToolRetryMiddleware(),
             ModelRetryMiddleware(),
             FilesystemFileSearchMiddleware(root_path=workspace_dir),
-            CodeInterpreterMiddleware(ptc=ptc_tool_names),
+            CodeInterpreterMiddleware(ptc=ptc_tools),
         ]
         if any(name in EnvConfig.ADVAN_MODEL.lower() for name in ("gpt", "claude")):
-            middleware.append(ProviderToolSearchMiddleware(searchable_tools=ptc_tool_names))
+            middleware.append(ProviderToolSearchMiddleware(searchable_tools=effective_tools))
+        if native_web_search:
+            middleware.append(NativeWebSearchMiddleware())
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
             system_prompt=system_prompt,
             tools=effective_tools,
-            subagents=[memory_subagent, earth_data_subagent],
+            subagents=subagents,
             middleware=middleware,
             skills=[SKILLS_BACKEND_PATH],
             memory=[f"/memory/{workspace_key}/SOUL.md"],

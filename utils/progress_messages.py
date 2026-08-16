@@ -220,7 +220,8 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
 # ── 子代理消息映射 ─────────────────────────────────────────────────────────
 _SUBAGENT_MESSAGE_MAP: dict[str, str] = {
     "memory-agent": "正在检索聊天记忆…",
-    "earth-data-agent": "正在查询地球与气象数据…",
+    "research-agent": "正在搜索并交叉核验资料…",
+    "document-agent": "正在阅读并整理文档…",
     "code-explorer": "启动代码探索子代理…",
     "code-reviewer": "启动代码审查子代理…",
     "feature-dev": "启动功能开发子代理…",

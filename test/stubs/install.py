@@ -36,6 +36,7 @@ def install_all_third_party_stubs():
     install_stub(
         "deepagents",
         CompiledSubAgent=dict,
+        SubAgent=dict,
         GeneralPurposeSubagentProfile=type(
             "GeneralPurposeSubagentProfile",
             (),
@@ -81,11 +82,17 @@ def install_all_third_party_stubs():
             "FilesystemFileSearchMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}
         ),
         ModelRetryMiddleware=type("ModelRetryMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
+        ModelCallLimitMiddleware=type(
+            "ModelCallLimitMiddleware", (), {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)}
+        ),
         PIIMiddleware=type("PIIMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
         ProviderToolSearchMiddleware=type(
             "ProviderToolSearchMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}
         ),
         ToolRetryMiddleware=type("ToolRetryMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
+        ToolCallLimitMiddleware=type(
+            "ToolCallLimitMiddleware", (), {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)}
+        ),
     )
     install_stub(
         "langchain.messages",
@@ -115,9 +122,11 @@ def install_all_third_party_stubs():
     install_stub(
         "tools.agent_tools",
         main_tools=[],
+        direct_tools=[],
+        ptc_tools=[],
+        research_tools=[],
         mcp_tools=[],
         restricted_tools=[],
-        earth_query_tools=[],
         tool_metadata={},
         subagent_tools={
             "main": [],

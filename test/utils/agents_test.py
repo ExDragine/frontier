@@ -91,7 +91,9 @@ def test_frontier_load_system_prompt_includes_markdown_rendering_rules(monkeypat
     assert prompt.index("You are Frontier.") < prompt.index("# Frontier Deep Agent 全局操作规范")
     assert prompt.index("# Frontier Deep Agent 全局操作规范") < prompt.index("【Markdown 渲染规范】")
     assert prompt.count("memory-agent") == 1
-    assert prompt.count("earth-data-agent") == 1
+    assert prompt.count("research-agent") == 1
+    assert prompt.count("document-agent") == 1
+    assert "earth-data-agent" not in prompt
     assert prompt.count("`/skills/ens-weather/SKILL.md`") == 1
     assert "动态人设文件路径为 `/memory/123/SOUL.md`" in prompt
 
@@ -220,18 +222,24 @@ def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
     assert filtered == messages
 
 
-def test_frontier_cognitive_uses_main_tools(monkeypatch):
-    monkeypatch.setattr(cognitive_mod.agent_tools, "main_tools", ["main-tool"], raising=False)
+def test_frontier_cognitive_separates_direct_ptc_and_memory_tools(monkeypatch):
+    monkeypatch.setattr(cognitive_mod.agent_tools, "direct_tools", ["direct-tool"], raising=False)
+    monkeypatch.setattr(cognitive_mod.agent_tools, "ptc_tools", ["ptc-tool"], raising=False)
+    monkeypatch.setattr(cognitive_mod.agent_tools, "research_tools", ["research-tool"], raising=False)
     memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
-    earth_subagent = {"name": "earth-data-agent", "description": "earth", "runnable": object()}
+    research_subagent = {"name": "research-agent", "description": "research", "runnable": object()}
+    document_subagent = {"name": "document-agent", "description": "document", "tools": []}
     monkeypatch.setattr(cognitive_mod, "build_memory_subagent", lambda _tools: memory_subagent)
-    monkeypatch.setattr(cognitive_mod, "build_earth_data_subagent", lambda _tools: earth_subagent)
+    monkeypatch.setattr(cognitive_mod, "build_research_subagent", lambda _tools: research_subagent)
+    monkeypatch.setattr(cognitive_mod, "build_document_subagent", lambda: document_subagent)
 
     frontier = cognitive_mod.FrontierCognitive()
 
-    assert frontier.tools == ["main-tool"]
+    assert frontier.tools == ["direct-tool"]
+    assert frontier.ptc_tools == ["ptc-tool"]
     assert frontier.memory_subagent is memory_subagent
-    assert frontier.earth_data_subagent is earth_subagent
+    assert frontier.research_subagent is research_subagent
+    assert frontier.document_subagent is document_subagent
     assert not hasattr(frontier, "subagents")
 
 
@@ -239,8 +247,9 @@ def test_memory_subagent_uses_dedicated_progress_message():
     assert progress_mod.subagent_message("memory-agent") == "正在检索聊天记忆…"
 
 
-def test_earth_data_subagent_uses_dedicated_progress_message():
-    assert progress_mod.subagent_message("earth-data-agent") == "正在查询地球与气象数据…"
+def test_bounded_subagents_use_dedicated_progress_messages():
+    assert progress_mod.subagent_message("research-agent") == "正在搜索并交叉核验资料…"
+    assert progress_mod.subagent_message("document-agent") == "正在阅读并整理文档…"
 
 
 @pytest.mark.asyncio
@@ -407,9 +416,6 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
-    frontier.earth_data_subagent = cast(
-        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    )
     cast(Any, frontier).backend = None
 
     await frontier.chat_agent(
@@ -468,8 +474,11 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
-    frontier.earth_data_subagent = cast(
-        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
+    frontier.research_subagent = cast(
+        Any, {"name": "research-agent", "description": "research", "runnable": object()}
+    )
+    frontier.document_subagent = cast(
+        Any, {"name": "document-agent", "description": "document", "tools": []}
     )
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
@@ -492,7 +501,11 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert captured["skills"] == ["/skills"]
     assert captured["memory"] == ["/memory/123/SOUL.md"]
     assert "动态人设文件路径为 `/memory/123/SOUL.md`" in captured["system_prompt"]
-    assert captured["subagents"] == [frontier.memory_subagent, frontier.earth_data_subagent]
+    assert captured["subagents"] == [
+        frontier.memory_subagent,
+        frontier.research_subagent,
+        frontier.document_subagent,
+    ]
     assert captured["state_schema"] is cognitive_mod.FrontierAgentState
     assert captured["context_schema"] is cognitive_mod.FrontierRuntimeContext
     assert captured["permissions"][0].mode == "deny"
@@ -581,9 +594,6 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
-    frontier.earth_data_subagent = cast(
-        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    )
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -628,9 +638,6 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
-    frontier.earth_data_subagent = cast(
-        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    )
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -684,9 +691,6 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
-    frontier.earth_data_subagent = cast(
-        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    )
     cast(Any, frontier).backend = None
 
     await frontier.chat_agent(
@@ -730,9 +734,6 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
-    frontier.earth_data_subagent = cast(
-        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    )
     cast(Any, frontier).working_dir = os.getcwd()
 
     await frontier.chat_agent(
@@ -982,7 +983,7 @@ class TestCollectProgress:
 
         from utils.agents.progress import collect_progress
 
-        subagent = types.SimpleNamespace(name="earth-data-agent", status="completed")
+        subagent = types.SimpleNamespace(name="memory-agent", status="completed")
         reporter = AsyncMock()
 
         await collect_progress(self._mock_stream(subagents=[subagent]), reporter)

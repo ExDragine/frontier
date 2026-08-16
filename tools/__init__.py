@@ -9,9 +9,41 @@ from .mcp_client import mcp_get_tools
 # 跳过不应暴露给 Agent 的模块
 _EXCLUDED_MODULES = {"__init__", "mcp_client"}
 
-_SUBAGENT_GROUPS = ("astro", "earth", "memory", "divination", "external")
+_DOMAIN_GROUPS = ("astro", "earth", "memory", "divination", "external")
 _RESTRICTED_GROUPS = ("restricted",)
-_ALL_TOOL_GROUPS = ("main", *_SUBAGENT_GROUPS, *_RESTRICTED_GROUPS)
+_ALL_TOOL_GROUPS = ("main", *_DOMAIN_GROUPS, *_RESTRICTED_GROUPS)
+
+# PTC is reserved for side-effect-free, text/structured queries. Artifact
+# tools and tools with unknown or mutating behavior remain regular Agent tools
+# so their ToolMessage metadata, retries, and UniMessage artifacts are kept.
+_PTC_READ_ONLY_MODULES = {
+    "comet",
+    "deepseek_balance",
+    "earthquake",
+    "iching",
+    "radar",
+    "rocket",
+    "space_weather",
+    "tarot",
+    "weather",
+}
+_PTC_READ_PREFIXES = {
+    "milky_file": ("get_",),
+    "milky_friend": ("get_",),
+    "milky_group": ("get_",),
+    "milky_message": ("get_",),
+    "milky_system": ("get_",),
+    "scheduled_task": ("list_",),
+}
+_RESEARCH_TOOL_NAMES = {
+    "tavily_crawl",
+    "tavily_extract",
+    "tavily_map",
+    "tavily_research",
+    "tavily_search",
+    "web_fetch_exa",
+    "web_search_exa",
+}
 
 _TOOL_MODULE_GROUPS = {
     "adapter": "main",
@@ -79,12 +111,10 @@ class ModuleTools:
             self.tool_metadata,
         ) = _discover_tools()
 
-        # 仅将通用领域工具暴露给主 Agent；memory 和纯文本 earth 查询由专用 subagent 独占。
-        for group in ("astro", "divination"):
+        # memory 由专用 subagent 独占；其他领域工具由主 Agent
+        # 再按 direct / PTC 执行通道分流。
+        for group in ("astro", "earth", "divination"):
             self.subagent_tools["main"].extend(self.subagent_tools[group])
-        self.subagent_tools["main"].extend(
-            tool for tool in self.subagent_tools["earth"] if getattr(tool, "response_format", None) != "content"
-        )
 
     @property
     def mcp_tools(self):
@@ -101,13 +131,32 @@ class ModuleTools:
         return self.subagent_tools.get("restricted", [])
 
     @property
-    def earth_query_tools(self):
-        return [tool for tool in self.subagent_tools.get("earth", []) if getattr(tool, "response_format", None) == "content"]
+    def ptc_tools(self):
+        """Return one-shot, read-only tools exposed only through PTC."""
+        return [tool for tool in self.main_tools if self._uses_ptc(tool)]
+
+    @property
+    def direct_tools(self):
+        """Return artifact-producing, mutating, or unclassified tools."""
+        return [tool for tool in self.main_tools if not self._uses_ptc(tool) and tool.name not in _RESEARCH_TOOL_NAMES]
+
+    @property
+    def research_tools(self):
+        """Return bounded web research tools owned by the research subagent."""
+        return [tool for tool in self.mcp_tools if tool.name in _RESEARCH_TOOL_NAMES]
 
     @property
     def main_tools(self):
         _ = self.mcp_tools  # 确保 MCP 工具已加载
         return self.subagent_tools["main"]
+
+    def _uses_ptc(self, tool: BaseTool) -> bool:
+        if getattr(tool, "response_format", None) != "content":
+            return False
+        module = self.tool_metadata.get(tool.name, {}).get("module", "")
+        if module in _PTC_READ_ONLY_MODULES:
+            return True
+        return tool.name.startswith(_PTC_READ_PREFIXES.get(module, ()))
 
 _AGENT_TOOLS = None
 

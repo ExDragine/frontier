@@ -174,9 +174,11 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "milky_file": types.SimpleNamespace(upload_group_file=FakeBaseTool("upload_group_file")),
         "milky_friend": types.SimpleNamespace(send_friend_nudge=FakeBaseTool("send_friend_nudge")),
         "milky_group": types.SimpleNamespace(set_group_name=FakeBaseTool("set_group_name")),
-        "milky_message": types.SimpleNamespace(get_message=FakeBaseTool("get_message")),
-        "milky_system": types.SimpleNamespace(get_login_info=FakeBaseTool("get_login_info")),
-        "deepseek_balance": types.SimpleNamespace(get_deepseek_api_balance=FakeBaseTool("get_deepseek_api_balance")),
+        "milky_message": types.SimpleNamespace(get_message=FakeBaseTool("get_message", "content")),
+        "milky_system": types.SimpleNamespace(get_login_info=FakeBaseTool("get_login_info", "content")),
+        "deepseek_balance": types.SimpleNamespace(
+            get_deepseek_api_balance=FakeBaseTool("get_deepseek_api_balance", "content")
+        ),
         "aurora": types.SimpleNamespace(aurora_live=FakeBaseTool("aurora_live")),
         "satellite": types.SimpleNamespace(
             get_fy4b_satellite_image=FakeBaseTool("get_fy4b_satellite_image"),
@@ -195,8 +197,8 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
             search_messages=FakeBaseTool("search_messages"),
             get_history_messages=FakeBaseTool("get_history_messages"),
         ),
-        "iching": types.SimpleNamespace(iching_divination=FakeBaseTool("iching_divination")),
-        "unknown_local": types.SimpleNamespace(mystery_tool=FakeBaseTool("mystery_tool")),
+        "iching": types.SimpleNamespace(iching_divination=FakeBaseTool("iching_divination", "content")),
+        "unknown_local": types.SimpleNamespace(mystery_tool=FakeBaseTool("mystery_tool", "content")),
     }
 
     def fake_iter_modules(_paths):
@@ -213,7 +215,13 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
 
     mcp_module = types.ModuleType(f"{package_name}.mcp_client")
-    mcp_module.__dict__["mcp_get_tools"] = lambda: [FakeBaseTool("mcp_tool")]
+    mcp_module.__dict__["mcp_get_tools"] = lambda: [
+        FakeBaseTool("mcp_tool"),
+        FakeBaseTool("tavily_extract", "content"),
+        FakeBaseTool("tavily_search", "content"),
+        FakeBaseTool("web_search_exa", "content"),
+        FakeBaseTool("web_fetch_exa", "content"),
+    ]
     monkeypatch.setitem(sys.modules, f"{package_name}.mcp_client", mcp_module)
 
     spec = importlib.util.spec_from_file_location(
@@ -240,10 +248,17 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_paint",
         "get_video",
         "mcp_tool",
+        "tavily_extract",
+        "tavily_search",
+        "web_search_exa",
+        "web_fetch_exa",
         "mystery_tool",
         "aurora_live",
         "get_fy4b_satellite_image",
         "get_static_china_radar",
+        "get_china_earthquake",
+        "get_usgs_significant_earthquakes",
+        "get_available_china_radar_areas",
         "iching_divination",
     }
     assert "research" not in groups
@@ -257,11 +272,42 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_available_china_radar_areas",
         "get_static_china_radar",
     }
-    assert {tool.name for tool in module.agent_tools.earth_query_tools} == {
+    ptc_names = {tool.name for tool in module.agent_tools.ptc_tools}
+    direct_names = {tool.name for tool in module.agent_tools.direct_tools}
+    research_names = {tool.name for tool in module.agent_tools.research_tools}
+    assert ptc_names == {
+        "get_message",
+        "get_login_info",
+        "get_deepseek_api_balance",
         "get_china_earthquake",
         "get_usgs_significant_earthquakes",
         "get_available_china_radar_areas",
+        "iching_divination",
     }
+    assert direct_names == {
+        "send_image",
+        "upload_group_file",
+        "send_friend_nudge",
+        "set_group_name",
+        "get_paint",
+        "get_video",
+        "mcp_tool",
+        "mystery_tool",
+        "aurora_live",
+        "get_fy4b_satellite_image",
+        "get_static_china_radar",
+    }
+    assert research_names == {"tavily_extract", "tavily_search", "web_search_exa", "web_fetch_exa"}
+    assert ptc_names.isdisjoint(direct_names)
+    assert ptc_names.isdisjoint(research_names)
+    assert direct_names.isdisjoint(research_names)
+    assert ptc_names | direct_names | research_names == {tool.name for tool in module.agent_tools.main_tools}
     assert {tool.name for tool in groups["memory"]} == {"search_messages", "get_history_messages"}
     assert {tool.name for tool in groups["divination"]} == {"iching_divination"}
-    assert {tool.name for tool in groups["external"]} == {"mcp_tool"}
+    assert {tool.name for tool in groups["external"]} == {
+        "mcp_tool",
+        "tavily_extract",
+        "tavily_search",
+        "web_search_exa",
+        "web_fetch_exa",
+    }
