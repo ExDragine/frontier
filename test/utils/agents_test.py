@@ -312,6 +312,37 @@ async def test_assistant_agent_uses_signal_model_config(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_assistant_agent_uses_daily_news_model_role(monkeypatch):
+    import types
+
+    captured = {}
+
+    class DummyAgent:
+        async def ainvoke(self, _payload):
+            return {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok")]}
+
+    monkeypatch.setattr(assistant_mod, "create_agent", lambda **_kwargs: DummyAgent())
+
+    def capturing_create_llm(model, **kwargs):
+        captured.update(kwargs)
+        captured["model"] = model
+        return object()
+
+    monkeypatch.setattr(assistant_mod, "create_llm", capturing_create_llm)
+    monkeypatch.setattr(assistant_mod.EnvConfig, "DAILY_NEWS_MODEL", "deepseek-v4-flash")
+    monkeypatch.setattr(assistant_mod.EnvConfig, "DAILY_NEWS_MODEL_PROVIDER", "deepseek_responses")
+
+    await assistant_mod.assistant_agent(
+        user_prompt="生成早报",
+        use_model="deepseek-v4-flash",
+        model_role="daily_news",
+    )
+
+    assert captured["model"] == "deepseek-v4-flash"
+    assert captured["provider"] == "deepseek_responses"
+
+
+@pytest.mark.asyncio
 async def test_assistant_agent_parses_structured_response_from_ai_json_text(monkeypatch):
     from pydantic import BaseModel
 

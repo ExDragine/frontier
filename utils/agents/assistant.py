@@ -16,7 +16,7 @@ from .inputs import build_user_content
 
 def configured_model_route(
     model: str,
-    role: Literal["basic", "signal", "advanced"] | None = None,
+    role: Literal["basic", "signal", "advanced", "daily_news"] | None = None,
 ) -> dict[str, str]:
     if role == "basic":
         return {"provider": EnvConfig.BASIC_MODEL_PROVIDER}
@@ -24,12 +24,16 @@ def configured_model_route(
         return {"provider": EnvConfig.SIGNAL_MODEL_PROVIDER}
     if role == "advanced":
         return {"provider": EnvConfig.ADVAN_MODEL_PROVIDER}
+    if role == "daily_news":
+        return {"provider": EnvConfig.DAILY_NEWS_MODEL_PROVIDER}
     if model == EnvConfig.BASIC_MODEL:
         return {"provider": EnvConfig.BASIC_MODEL_PROVIDER}
     if model == EnvConfig.ADVAN_MODEL:
         return {"provider": EnvConfig.ADVAN_MODEL_PROVIDER}
     if model == EnvConfig.SIGNAL_MODEL:
         return {"provider": EnvConfig.SIGNAL_MODEL_PROVIDER}
+    if model == EnvConfig.DAILY_NEWS_MODEL:
+        return {"provider": EnvConfig.DAILY_NEWS_MODEL_PROVIDER}
     return {}
 
 
@@ -75,7 +79,7 @@ async def assistant_agent(
     system_prompt: str = "",
     user_prompt: str = "",
     use_model: str | None = None,
-    model_role: Literal["basic", "signal", "advanced"] | None = None,
+    model_role: Literal["basic", "signal", "advanced", "daily_news"] | None = None,
     tools=None,
     response_format=None,
     middleware=None,

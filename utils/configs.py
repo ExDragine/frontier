@@ -76,6 +76,13 @@ class ModelsConfig(_FrozenConfig):
         )
     )
     advanced: ModelConfig = Field(default_factory=ModelConfig)
+    daily_news: ModelConfig = Field(
+        default_factory=lambda: ModelConfig(
+            model="deepseek-v4-flash",
+            provider="deepseek_responses",
+            capabilities=("text",),
+        )
+    )
     paint: PaintModelConfig = Field(default_factory=lambda: PaintModelConfig(provider="openai"))
     video: VideoModelConfig = Field(
         default_factory=lambda: VideoModelConfig(
@@ -502,6 +509,11 @@ def _normalize_model_roles(
         "basic": model_role("basic", "basic", ("", "", [], True)),
         "signal": model_role("signal", "signal", ("deepseek-v4-flash", "deepseek", ["text"], False)),
         "advanced": model_role("advanced", "advan", ("", "", [], True)),
+        "daily_news": model_role(
+            "daily_news",
+            "daily_news",
+            ("deepseek-v4-flash", "deepseek_responses", ["text"], True),
+        ),
     }
 
 
@@ -802,6 +814,9 @@ class EnvConfig:
     ADVAN_MODEL: ClassVar[str]
     ADVAN_MODEL_PROVIDER: ClassVar[str]
     ADVAN_MODEL_CAPABILITIES: ClassVar[list[str]]
+    DAILY_NEWS_MODEL: ClassVar[str]
+    DAILY_NEWS_MODEL_PROVIDER: ClassVar[str]
+    DAILY_NEWS_MODEL_CAPABILITIES: ClassVar[list[str]]
     PAINT_MODEL: ClassVar[str]
     PAINT_MODEL_PROVIDER: ClassVar[str]
     PAINT_SIZE: ClassVar[str]
@@ -893,6 +908,9 @@ class EnvConfig:
             "ADVAN_MODEL": model.advanced.model,
             "ADVAN_MODEL_PROVIDER": model.advanced.provider,
             "ADVAN_MODEL_CAPABILITIES": list(model.advanced.capabilities),
+            "DAILY_NEWS_MODEL": model.daily_news.model,
+            "DAILY_NEWS_MODEL_PROVIDER": model.daily_news.provider,
+            "DAILY_NEWS_MODEL_CAPABILITIES": list(model.daily_news.capabilities),
             "PAINT_MODEL": model.paint.model,
             "PAINT_MODEL_PROVIDER": model.paint.provider,
             "PAINT_SIZE": model.paint.size,

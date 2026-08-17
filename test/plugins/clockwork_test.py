@@ -309,7 +309,7 @@ async def test_daily_news_uses_general_news_tools_and_custom_layout(monkeypatch)
     monkeypatch.setattr(task_handlers_module, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(task_handlers_module.httpx_client, "get", fail_if_http_get_called)
     monkeypatch.setattr(task_handlers_module.EnvConfig, "NEWS_SUMMARY_GROUP_ID", [101, 202])
-    monkeypatch.setattr(task_handlers_module, "tools", ["web-search-tool"])
+    monkeypatch.setattr(task_handlers_module, "model_supports_native_web_search", lambda *_args: True)
     monkeypatch.setattr(task_handlers_module, "load_daily_news_css", lambda: ".news-hero {} .impact {} .watch-card {}")
 
     result = await task_handlers_module.daily_news()
@@ -325,8 +325,9 @@ async def test_daily_news_uses_general_news_tools_and_custom_layout(monkeypatch)
     assert "不要输出 HTML" in calls[0]["system_prompt"]
     assert narrow_topic not in calls[0]["user_prompt"]
     assert narrow_topic not in calls[0]["system_prompt"]
-    assert calls[0]["kwargs"]["use_model"] == task_handlers_module.EnvConfig.ADVAN_MODEL
-    assert calls[0]["kwargs"]["tools"] == ["web-search-tool"]
+    assert calls[0]["kwargs"]["use_model"] == task_handlers_module.EnvConfig.DAILY_NEWS_MODEL
+    assert calls[0]["kwargs"]["model_role"] == "daily_news"
+    assert calls[0]["kwargs"]["tools"] == [{"type": "web_search"}]
     assert "response_format" not in calls[0]["kwargs"]
     assert "今日要闻候选" in calls[1]["user_prompt"]
     assert "整理成严格 JSON" in calls[1]["system_prompt"]
@@ -346,16 +347,21 @@ async def test_daily_news_uses_general_news_tools_and_custom_layout(monkeypatch)
     assert result.messages_sent == 2
 
 
-def test_daily_news_tools_only_expose_search_tools():
+def test_daily_news_tools_use_native_web_search_for_supported_responses_model(monkeypatch):
     task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
-    selected_tools = task_handlers_module._daily_news_tools(
-        [
-            types.SimpleNamespace(name="web_search_exa"),
-            types.SimpleNamespace(name="web_fetch_exa"),
-        ]
-    )
+    monkeypatch.setattr(task_handlers_module, "model_supports_native_web_search", lambda *_args: True)
 
-    assert {tool.name for tool in selected_tools} == {"web_search_exa"}
+    selected_tools = task_handlers_module._daily_news_tools()
+
+    assert selected_tools == [{"type": "web_search"}]
+
+
+def test_daily_news_tools_reject_model_without_native_search(monkeypatch):
+    task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
+    monkeypatch.setattr(task_handlers_module, "model_supports_native_web_search", lambda *_args: False)
+
+    with pytest.raises(ValueError, match="支持原生 web_search 的 Responses API"):
+        task_handlers_module._daily_news_tools()
 
 
 @pytest.mark.asyncio
@@ -426,7 +432,7 @@ async def test_build_daily_news_artifacts_returns_material_payload_and_html(monk
         )
 
     monkeypatch.setattr(task_handlers_module, "assistant_agent", fake_assistant_agent)
-    monkeypatch.setattr(task_handlers_module, "tools", ["web-search-tool"])
+    monkeypatch.setattr(task_handlers_module, "model_supports_native_web_search", lambda *_args: True)
 
     artifacts = await task_handlers_module.build_daily_news_artifacts(
         now_cn=datetime.datetime(2026, 5, 21, 9, 30, tzinfo=datetime.UTC)
@@ -443,23 +449,13 @@ async def test_build_daily_news_artifacts_returns_material_payload_and_html(monk
 
 
 @pytest.mark.asyncio
-async def test_daily_news_skips_exa_mcp_rate_limit(monkeypatch):
+async def test_daily_news_rejects_non_native_search_configuration(monkeypatch):
     task_handlers_module = importlib.import_module("plugins.clockwork.task_handlers")
 
-    async def rate_limited_assistant_agent(*_args, **_kwargs):
-        raise RuntimeError("web_search_exa failed: 429 Too Many Requests")
+    monkeypatch.setattr(task_handlers_module, "model_supports_native_web_search", lambda *_args: False)
 
-    async def fail_if_rendered(*_args, **_kwargs):
-        raise AssertionError("rate-limited daily news should not be rendered")
-
-    monkeypatch.setattr(task_handlers_module, "assistant_agent", rate_limited_assistant_agent)
-    monkeypatch.setattr(task_handlers_module, "html_to_image", fail_if_rendered)
-
-    result = await task_handlers_module.daily_news()
-
-    assert result.groups_sent == []
-    assert result.messages_sent == 0
-    assert result.output_summary == "daily_news skipped: no research material"
+    with pytest.raises(ValueError, match="支持原生 web_search 的 Responses API"):
+        await task_handlers_module.daily_news()
 
 
 @pytest.mark.asyncio
@@ -470,6 +466,7 @@ async def test_daily_news_does_not_swallow_unrelated_research_error(monkeypatch)
         raise RuntimeError("advanced model unavailable")
 
     monkeypatch.setattr(task_handlers_module, "assistant_agent", broken_assistant_agent)
+    monkeypatch.setattr(task_handlers_module, "model_supports_native_web_search", lambda *_args: True)
 
     with pytest.raises(RuntimeError, match="advanced model unavailable"):
         await task_handlers_module.daily_news()

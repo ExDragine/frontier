@@ -77,6 +77,9 @@ jwt_secret = "secret"
     assert configs.EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
     assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
     assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
+    assert configs.EnvConfig.DAILY_NEWS_MODEL == "deepseek-v4-flash"
+    assert configs.EnvConfig.DAILY_NEWS_MODEL_PROVIDER == "deepseek_responses"
+    assert configs.EnvConfig.DAILY_NEWS_MODEL_CAPABILITIES == ["text"]
     assert configs.EnvConfig.LLM_PROVIDERS["openai"]["api_mode"] == "responses"
     assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_mode"] == "chat_completions"
     assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_key"] == ""
@@ -659,6 +662,9 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
                 "advanced_model": "gpt-5.4",
                 "advanced_model_provider": "openai",
                 "advanced_model_capabilities": ["text", "vision"],
+                "daily_news_model": "deepseek-v4-pro",
+                "daily_news_model_provider": "deepseek_responses",
+                "daily_news_model_capabilities": ["text"],
                 "paint_model": "gpt-image-1.5",
                 "paint_model_provider": "openai",
                 "paint_size": "1536x1024",
@@ -702,6 +708,8 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
     assert EnvConfig.BASIC_MODEL_PROVIDER == "openai_chat"
     assert EnvConfig.ADVAN_MODEL == "gpt-5.4"
     assert EnvConfig.ADVAN_MODEL_CAPABILITIES == ["text", "vision"]
+    assert EnvConfig.DAILY_NEWS_MODEL == "deepseek-v4-pro"
+    assert EnvConfig.DAILY_NEWS_MODEL_PROVIDER == "deepseek_responses"
     assert EnvConfig.LLM_PROVIDERS["openai_chat"]["api_mode"] == "chat_completions"
     assert EnvConfig.LLM_PROVIDERS["openai"]["api_mode"] == "responses"
     assert EnvConfig.LLM_PROVIDERS["openai"]["api_key"] == "sk-v2"
@@ -753,6 +761,8 @@ def test_env_toml_example_is_valid_v2_config():
     assert settings.providers["deepseek_anthropic"].type == "anthropic"
     assert settings.providers["deepseek_anthropic"].api_mode == "messages"
     assert settings.models.advanced.provider == "openai"
+    assert settings.models.daily_news.model == "deepseek-v4-flash"
+    assert settings.models.daily_news.provider == "deepseek_responses"
     assert settings.models.paint.provider == "openai"
     assert settings.models.paint.size == "1024x1024"
     assert settings.models.video.provider == "openai"

@@ -141,6 +141,7 @@ def _model_specific_capabilities(model: str, role: str | None = None) -> set[str
         "basic": (EnvConfig.BASIC_MODEL, EnvConfig.BASIC_MODEL_CAPABILITIES),
         "signal": (EnvConfig.SIGNAL_MODEL, EnvConfig.SIGNAL_MODEL_CAPABILITIES),
         "advanced": (EnvConfig.ADVAN_MODEL, EnvConfig.ADVAN_MODEL_CAPABILITIES),
+        "daily_news": (EnvConfig.DAILY_NEWS_MODEL, EnvConfig.DAILY_NEWS_MODEL_CAPABILITIES),
     }
     if role is not None:
         configured = role_capabilities.get(role)
@@ -215,6 +216,25 @@ def provider_uses_responses_api(model: str, provider: str | None = None) -> bool
     _, profile = _provider_profile(model, provider)
     _, api_mode = _provider_protocol(model, profile)
     return api_mode == ApiMode.RESPONSES.value
+
+
+def model_supports_native_web_search(model: str, provider: str | None = None) -> bool:
+    """Return whether this route exposes an OpenAI Responses-style web search tool."""
+    if not provider_uses_responses_api(model, provider):
+        return False
+
+    parts = model.split("/")
+    candidates = ["/".join(parts[index:]) for index in range(len(parts))]
+    inferred_provider = _infer_provider(model)
+    card = next((match for candidate in candidates if (match := get_model(inferred_provider, candidate))), None)
+    if card is None:
+        catalog = load_catalog().models
+        for candidate in candidates:
+            matches = [item for item in catalog if item.id.lower() == candidate.lower()]
+            if len(matches) == 1:
+                card = matches[0]
+                break
+    return card is not None and ModelFeature.WEB_SEARCH in card.capabilities.features
 
 
 def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile | None:

@@ -18,7 +18,8 @@
         "features": [
           "reasoning",
           "tool_calling",
-          "structured_output"
+          "structured_output",
+          "web_search"
         ],
         "api_modes": [
           "chat_completions",
@@ -50,7 +51,7 @@
         },
         {
           "url": "https://api-docs.deepseek.com/guides/responses_api/",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-08-17"
         }
       ]
     },
@@ -71,7 +72,8 @@
         "features": [
           "reasoning",
           "tool_calling",
-          "structured_output"
+          "structured_output",
+          "web_search"
         ],
         "api_modes": [
           "chat_completions",
@@ -103,7 +105,7 @@
         },
         {
           "url": "https://api-docs.deepseek.com/guides/responses_api/",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-08-17"
         }
       ]
     }

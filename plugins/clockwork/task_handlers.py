@@ -16,11 +16,11 @@ from nonebot_plugin_alconna import Image, Target, Text, UniMessage
 from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 
-from tools import agent_tools
 from utils.agents import assistant_agent
 from utils.configs import EnvConfig
 from utils.database import EventDatabase
 from utils.http_client import HTTPError, get_http_client
+from utils.llm_factory import model_supports_native_web_search
 from utils.markdown_render import html_to_image, playwright_render
 
 from .task_models import TaskRunResult
@@ -28,10 +28,9 @@ from .task_models import TaskRunResult
 # 共享的资源
 event_database = EventDatabase()
 httpx_client = get_http_client("task_handlers")
-tools = agent_tools.mcp_tools
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
-DAILY_NEWS_SEARCH_TOOL_NAMES = {"web_search_exa"}
+DAILY_NEWS_NATIVE_WEB_SEARCH_TOOL = {"type": "web_search"}
 
 NEWS_HISTORY_KEY = "daily_news_recent_titles"
 
@@ -89,44 +88,16 @@ def load_daily_news_css() -> str:
     return (TEMPLATES_DIR / "daily_news.css").read_text(encoding="utf-8")
 
 
-def _daily_news_tools(available_tools=None) -> list:
-    available_tools = list(tools if available_tools is None else available_tools)
-    search_tools = [tool for tool in available_tools if getattr(tool, "name", "") in DAILY_NEWS_SEARCH_TOOL_NAMES]
-    return search_tools or available_tools
-
-
-def _is_exa_rate_limit_error(exc: BaseException) -> bool:
-    """判断异常链是否来自 Exa MCP 的 429 限流。"""
-    pending = [exc]
-    seen: set[int] = set()
-    messages: list[str] = []
-    rate_limited = False
-
-    while pending:
-        current = pending.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
-        messages.append(str(current).lower())
-
-        status_code = getattr(current, "status_code", None)
-        response = getattr(current, "response", None)
-        if status_code == 429 or getattr(response, "status_code", None) == 429:
-            rate_limited = True
-
-        if isinstance(current, BaseExceptionGroup):
-            pending.extend(current.exceptions)
-        if current.__cause__ is not None:
-            pending.append(current.__cause__)
-        if current.__context__ is not None:
-            pending.append(current.__context__)
-
-    error_text = "\n".join(messages)
-    is_exa = "web_search_exa" in error_text or "mcp.exa.ai" in error_text or "exa mcp" in error_text
-    is_rate_limit = rate_limited or any(
-        marker in error_text for marker in ("429", "too many requests", "rate limit", "rate_limit")
-    )
-    return is_exa and is_rate_limit
+def _daily_news_tools() -> list[dict[str, str]]:
+    model = EnvConfig.DAILY_NEWS_MODEL
+    provider = EnvConfig.DAILY_NEWS_MODEL_PROVIDER
+    if not model_supports_native_web_search(model, provider):
+        raise ValueError(
+            "日报模型必须使用支持原生 web_search 的 Responses API；"
+            "请检查 [models] daily_news_model/provider 与对应 [providers.*] 配置"
+        )
+    # DeepSeek Responses 原生 web_search 由服务端执行，不能包装为本地 function tool。
+    return [DAILY_NEWS_NATIVE_WEB_SEARCH_TOOL.copy()]
 
 
 def _source_text(value) -> str:
@@ -227,18 +198,13 @@ async def build_daily_news_artifacts(
     _now_cn, today, period, report_time = daily_news_context(now_cn)
     system_prompt, user_prompt = daily_news_research_prompts(today, period, report_time, recent_titles)
 
-    try:
-        material = await assistant_agent(
-            system_prompt,
-            user_prompt,
-            use_model=EnvConfig.ADVAN_MODEL,
-            tools=_daily_news_tools(),
-        )
-    except Exception as exc:
-        if not _is_exa_rate_limit_error(exc):
-            raise
-        logger.warning("Exa MCP 触发限流，本次每日新闻跳过: %s", exc)
-        return None
+    material = await assistant_agent(
+        system_prompt,
+        user_prompt,
+        use_model=EnvConfig.DAILY_NEWS_MODEL,
+        model_role="daily_news",
+        tools=_daily_news_tools(),
+    )
     if not material:
         logger.warning("每日新闻素材包为空，跳过推送")
         return None

@@ -194,6 +194,9 @@ DeepSeek 可分别配置为 `deepseek + chat_completions`、`openai + responses`
 `anthropic + messages`；后两种接口的官方地址分别为 `https://api.deepseek.com` 和
 `https://api.deepseek.com/anthropic`。图片和文件输入目前不应交给这些 DeepSeek profile。
 旧版 `use_responses_api` 和短暂使用过的 `type = "deepseek_responses"` 会自动迁移。
+每日新闻使用独立的 `daily_news_model` / `daily_news_model_provider` 配置，默认通过
+DeepSeek V4 的官方 Responses API 直接调用服务端 `web_search`，不再依赖 Exa MCP。
+如果替换日报模型，该模型目录和 provider 协议也必须声明支持 Responses 原生联网搜索。
 
 机器人名称只来自 `.env` 的 `NICKNAME`。数组第一项作为默认显示名称，全部非空项都可
 作为全局唤醒词；某个群在数据库中配置了自定义唤醒词后，以该群的数据库配置为准。

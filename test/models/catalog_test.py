@@ -117,7 +117,7 @@ def test_load_catalog_returns_frozen_typed_data() -> None:
     expected_model_count = sum(len(_load_resource(entry["file"])["models"]) for entry in manifest["providers"])
 
     assert catalog.schema_version == "1.1"
-    assert catalog.catalog_version == "2026.7.15"
+    assert catalog.catalog_version == "2026.8.17"
     assert len(catalog.models) == expected_model_count
     with pytest.raises(AttributeError):
         catalog.__setattr__("updated_at", "2000-01-01")
@@ -142,11 +142,12 @@ def test_get_model_display_name_uses_lobehub_overlay_without_affecting_unknown_m
     assert get_model_display_name("private", "custom-model") == "custom-model"
 
 
-def test_deepseek_v4_models_advertise_responses_api() -> None:
+def test_deepseek_v4_models_advertise_responses_api_and_web_search() -> None:
     for model_id in ("deepseek-v4-flash", "deepseek-v4-pro"):
         model = get_model("deepseek", model_id)
         assert model is not None
         assert ApiMode.RESPONSES in model.capabilities.api_modes
+        assert ModelFeature.WEB_SEARCH in model.capabilities.features
 
 
 def test_list_models_filters_provider_feature_and_status() -> None:

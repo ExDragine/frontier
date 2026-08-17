@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1",
-  "catalog_version": "2026.7.15",
-  "updated_at": "2026-07-15",
+  "catalog_version": "2026.8.17",
+  "updated_at": "2026-08-17",
   "providers": [
     {
       "id": "ai21",

@@ -189,6 +189,7 @@ def test_deepseek_responses_routes_through_chat_openai(monkeypatch):
     assert kw["verbosity"] == "low"
     assert kw["profile"]["max_input_tokens"] == 1_000_000
     assert factory.provider_uses_responses_api("deepseek-v4-pro", "deepseek_responses") is True
+    assert factory.model_supports_native_web_search("deepseek-v4-pro", "deepseek_responses") is True
 
 
 def test_deepseek_anthropic_routes_through_chat_anthropic(monkeypatch):
@@ -216,6 +217,7 @@ def test_deepseek_anthropic_routes_through_chat_anthropic(monkeypatch):
     assert kw["default_request_timeout"] == 30
     assert "use_responses_api" not in kw
     assert factory.provider_uses_responses_api("deepseek-v4-pro", "deepseek_anthropic") is False
+    assert factory.model_supports_native_web_search("deepseek-v4-pro", "deepseek_anthropic") is False
 
 
 def test_deepseek_provider_profile_overrides_api_key_and_base_url(monkeypatch):
