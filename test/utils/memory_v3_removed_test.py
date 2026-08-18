@@ -47,6 +47,7 @@ async def test_chat_agent_does_not_import_or_append_memory_v3_context(monkeypatc
     monkeypatch.setattr(
         cognitive_mod.FrontierCognitive, "load_system_prompt", staticmethod(lambda *_args, **_kwargs: "base prompt")
     )
+    monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args, **_kwargs: False)
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []

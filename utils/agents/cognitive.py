@@ -9,13 +9,13 @@ from typing import Any
 from deepagents import FilesystemPermission, create_deep_agent
 from deepagents.graph import DeepAgentState
 from langchain.agents.middleware import (
+    AgentMiddleware,
     FilesystemFileSearchMiddleware,
     ModelRetryMiddleware,
     PIIMiddleware,
     ProviderToolSearchMiddleware,
     ToolRetryMiddleware,
 )
-from langchain.agents.middleware.types import AgentMiddleware
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_quickjs import CodeInterpreterMiddleware

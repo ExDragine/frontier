@@ -634,6 +634,7 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
     monkeypatch.setattr(
         cognitive_mod.FrontierCognitive, "load_system_prompt", staticmethod(lambda *_args, **_kwargs: "base prompt")
     )
+    monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args, **_kwargs: False)
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
@@ -764,6 +765,7 @@ async def _run_chat_agent_with_web_search(
 
     def fake_create_deep_agent(**kwargs):
         captured["tools"] = list(kwargs.get("tools") or [])
+        captured["middleware"] = list(kwargs.get("middleware") or [])
         captured["system_prompt"] = kwargs.get("system_prompt", "")
         return DummyAgent()
 
@@ -780,9 +782,6 @@ async def _run_chat_agent_with_web_search(
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
     frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
-    frontier.earth_data_subagent = cast(
-        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
-    )
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -798,7 +797,8 @@ async def _run_chat_agent_with_web_search(
 async def test_chat_agent_injects_native_web_search_when_supported(monkeypatch, tmp_path):
     captured = await _run_chat_agent_with_web_search(monkeypatch, tmp_path, supported=True)
 
-    assert {"type": "web_search"} in captured["tools"]
+    assert {"type": "web_search"} not in captured["tools"]
+    assert isinstance(captured["middleware"][-1], cognitive_mod.NativeWebSearchMiddleware)
     assert "web_search" in captured["system_prompt"]
 
 
@@ -807,7 +807,28 @@ async def test_chat_agent_skips_web_search_when_route_unsupported(monkeypatch, t
     captured = await _run_chat_agent_with_web_search(monkeypatch, tmp_path, supported=False)
 
     assert {"type": "web_search"} not in captured["tools"]
-    assert "web_search" not in captured["system_prompt"]
+    assert not any(isinstance(item, cognitive_mod.NativeWebSearchMiddleware) for item in captured["middleware"])
+    assert cognitive_mod.WEB_SEARCH_PROMPT_HINT not in captured["system_prompt"]
+
+
+def test_native_web_search_middleware_injects_provider_tool_at_model_boundary():
+    request = types.SimpleNamespace(tools=[types.SimpleNamespace(name="local_tool")])
+
+    def override(**changes):
+        return types.SimpleNamespace(**{**request.__dict__, **changes})
+
+    request.override = override
+    captured = {}
+
+    def handler(updated_request):
+        captured["tools"] = updated_request.tools
+        return "ok"
+
+    result = cognitive_mod.NativeWebSearchMiddleware().wrap_model_call(request, handler)
+
+    assert result == "ok"
+    assert captured["tools"][0].name == "local_tool"
+    assert captured["tools"][1] == {"type": "web_search"}
 
 
 @pytest.mark.asyncio

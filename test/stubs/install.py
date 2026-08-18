@@ -78,6 +78,7 @@ def install_all_third_party_stubs():
     )
     install_stub(
         "langchain.agents.middleware",
+        AgentMiddleware=type("AgentMiddleware", (), {}),
         FilesystemFileSearchMiddleware=type(
             "FilesystemFileSearchMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}
         ),
