@@ -398,6 +398,7 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     monkeypatch.setattr(cognitive_mod, "create_llm", capturing_create_llm)
     monkeypatch.setattr(cognitive_mod.EnvConfig, "ADVAN_MODEL_PROVIDER", "openrouter")
     monkeypatch.setattr(cognitive_mod, "provider_uses_responses_api", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
         cognitive_mod, "filter_messages_for_model_capabilities", inputs_mod.filter_messages_for_model_capabilities
     )
@@ -741,6 +742,90 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
     )
 
     assert captured["timeout"] == 1234
+
+
+async def _run_chat_agent_with_web_search(
+    monkeypatch,
+    tmp_path,
+    *,
+    supported: bool,
+    model: str | None = None,
+) -> dict:
+    """构造 chat_agent 运行环境并捕获 create_deep_agent 的 tools/system_prompt 参数。"""
+
+    class DummyAgent:
+        async def astream_events(self, payload, config=None, context=None, version=None):
+            return _FakeStream(
+                {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
+            )
+
+    captured = {}
+
+    def fake_create_deep_agent(**kwargs):
+        captured["tools"] = list(kwargs.get("tools") or [])
+        captured["system_prompt"] = kwargs.get("system_prompt", "")
+        return DummyAgent()
+
+    monkeypatch.setattr(cognitive_mod, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(cognitive_mod, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        cognitive_mod, "filter_messages_for_model_capabilities", lambda messages, *_args, **_kwargs: messages
+    )
+    monkeypatch.setattr(cognitive_mod, "provider_uses_responses_api", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args, **_kwargs: supported)
+    if model is not None:
+        monkeypatch.setattr(cognitive_mod.EnvConfig, "ADVAN_MODEL", model)
+
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
+    frontier.tools = []
+    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
+    frontier.earth_data_subagent = cast(
+        Any, {"name": "earth-data-agent", "description": "earth", "runnable": object()}
+    )
+    cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
+
+    await frontier.chat_agent(
+        messages=[{"role": "user", "content": "hi"}],
+        user_id="u1",
+        user_name="test",
+        group_id=123,
+    )
+    return captured
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_injects_native_web_search_when_supported(monkeypatch, tmp_path):
+    captured = await _run_chat_agent_with_web_search(monkeypatch, tmp_path, supported=True)
+
+    assert {"type": "web_search"} in captured["tools"]
+    assert "web_search" in captured["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_skips_web_search_when_route_unsupported(monkeypatch, tmp_path):
+    captured = await _run_chat_agent_with_web_search(monkeypatch, tmp_path, supported=False)
+
+    assert {"type": "web_search"} not in captured["tools"]
+    assert "web_search" not in captured["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_provider_tool_search_excludes_native_provider_tools(monkeypatch, tmp_path):
+    captured_searchable_tools = []
+
+    class DummyProviderToolSearchMiddleware:
+        def __init__(self, *, searchable_tools):
+            captured_searchable_tools.append(searchable_tools)
+
+    monkeypatch.setattr(cognitive_mod, "ProviderToolSearchMiddleware", DummyProviderToolSearchMiddleware)
+    await _run_chat_agent_with_web_search(
+        monkeypatch,
+        tmp_path,
+        supported=True,
+        model="gpt-5.4",
+    )
+
+    assert captured_searchable_tools == [[]]
 
 
 class TestProgressEvent:

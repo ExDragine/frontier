@@ -24,7 +24,7 @@ from tools import agent_tools
 from utils.agent_context import FrontierRuntimeContext
 from utils.configs import EnvConfig
 from utils.harness_profiles import register_frontier_harness_profiles
-from utils.llm_factory import create_llm, provider_uses_responses_api
+from utils.llm_factory import create_llm, model_supports_native_web_search, provider_uses_responses_api
 from utils.media import inline_media_bytes, media_block_kind
 
 from .capture import detect_browser_capture_intent
@@ -75,6 +75,27 @@ class FrontierAgentState(DeepAgentState):
     image_inputs: list[bytes]
     audio_inputs: list[bytes]
     video_inputs: list[bytes]
+
+
+WEB_SEARCH_PROMPT_HINT = (
+    "\n\n你拥有 web_search 工具，可以搜索实时网络信息。"
+    "涉及最新新闻、实时数据或你不确定的最新事实时，优先使用 web_search 查证，不要凭记忆编造。"
+)
+
+
+def attach_native_web_search_tool(effective_tools: list, system_prompt: str) -> str:
+    """模型路由支持时，挂载服务端原生 web_search 内置工具。
+
+    DeepSeek Responses 的 web_search 由服务端执行，只能作为 provider 内置工具
+    dict 传入；langchain create_agent 会自动将其排除出本地 ToolNode。
+    返回追加搜索提示后的 system_prompt。
+    """
+    if not model_supports_native_web_search(EnvConfig.ADVAN_MODEL, EnvConfig.ADVAN_MODEL_PROVIDER):
+        logger.debug("当前模型路由不支持服务端原生 web_search，跳过挂载")
+        return system_prompt
+    logger.info("主 Agent 已挂载服务端原生 web_search 工具")
+    effective_tools.append({"type": "web_search"})
+    return system_prompt + WEB_SEARCH_PROMPT_HINT
 
 
 class FrontierCognitive:
@@ -179,7 +200,10 @@ class FrontierCognitive:
             if restricted_tool.name in ("ens_normal", "ens_professional"):
                 effective_tools.append(restricted_tool)
 
+        # PTC 白名单只需本地执行工具；dict 形式的 provider 内置工具（web_search）
+        # 没有 .name 属性，须在挂载前计算。
         ptc_tool_names = [tool.name for tool in effective_tools] if effective_tools else []
+        system_prompt = attach_native_web_search_tool(effective_tools, system_prompt)
         memory_subagent = getattr(self, "memory_subagent", None) or build_memory_subagent(
             agent_tools.subagent_tools["memory"]
         )
@@ -200,7 +224,7 @@ class FrontierCognitive:
             CodeInterpreterMiddleware(ptc=ptc_tool_names),
         ]
         if any(name in EnvConfig.ADVAN_MODEL.lower() for name in ("gpt", "claude")):
-            middleware.append(ProviderToolSearchMiddleware(searchable_tools=effective_tools))
+            middleware.append(ProviderToolSearchMiddleware(searchable_tools=ptc_tool_names))
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,

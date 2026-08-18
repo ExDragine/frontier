@@ -192,6 +192,49 @@ def test_deepseek_responses_routes_through_chat_openai(monkeypatch):
     assert factory.model_supports_native_web_search("deepseek-v4-pro", "deepseek_responses") is True
 
 
+def test_deepseek_native_web_search_accepts_official_v1_base_url(monkeypatch):
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "official_deepseek": {
+                "type": "openai",
+                "api_mode": "responses",
+                "base_url": "https://api.deepseek.com/v1/",
+                "api_key": "sk-deepseek-responses",
+            }
+        },
+    )
+
+    assert factory.model_supports_native_web_search("deepseek-future-model", "official_deepseek") is True
+
+
+@pytest.mark.parametrize(
+    ("model", "base_url"),
+    [
+        ("deepseek-v4-pro", "https://openrouter.ai/api/v1"),
+        ("deepseek-v4-pro", "https://api.deepseek.com.example.com"),
+        ("deepseek-v4-pro", "https://api.deepseek.com/anthropic"),
+        ("gpt-5.4", "https://api.deepseek.com"),
+    ],
+)
+def test_native_web_search_rejects_non_official_deepseek_routes(monkeypatch, model, base_url):
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "responses_proxy": {
+                "type": "openai",
+                "api_mode": "responses",
+                "base_url": base_url,
+                "api_key": "sk-test",
+            }
+        },
+    )
+
+    assert factory.model_supports_native_web_search(model, "responses_proxy") is False
+
+
 def test_deepseek_anthropic_routes_through_chat_anthropic(monkeypatch):
     anthropic_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatAnthropic", anthropic_cls)

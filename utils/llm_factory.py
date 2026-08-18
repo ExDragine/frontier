@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urlsplit
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import ModelProfile
@@ -219,22 +220,25 @@ def provider_uses_responses_api(model: str, provider: str | None = None) -> bool
 
 
 def model_supports_native_web_search(model: str, provider: str | None = None) -> bool:
-    """Return whether this route exposes an OpenAI Responses-style web search tool."""
-    if not provider_uses_responses_api(model, provider):
+    """Return whether this is an official DeepSeek model using the Responses API."""
+    _, profile = _provider_profile(model, provider)
+    provider_type, api_mode = _provider_protocol(model, profile)
+    if provider_type != "openai" or api_mode != ApiMode.RESPONSES.value:
         return False
 
-    parts = model.split("/")
-    candidates = ["/".join(parts[index:]) for index in range(len(parts))]
-    inferred_provider = _infer_provider(model)
-    card = next((match for candidate in candidates if (match := get_model(inferred_provider, candidate))), None)
-    if card is None:
-        catalog = load_catalog().models
-        for candidate in candidates:
-            matches = [item for item in catalog if item.id.lower() == candidate.lower()]
-            if len(matches) == 1:
-                card = matches[0]
-                break
-    return card is not None and ModelFeature.WEB_SEARCH in card.capabilities.features
+    base_url = _clean_optional(profile.get("base_url"))
+    parsed_base_url = urlsplit(base_url)
+    normalized_path = parsed_base_url.path.rstrip("/")
+    if (
+        parsed_base_url.scheme.lower() != "https"
+        or (parsed_base_url.hostname or "").lower() != "api.deepseek.com"
+        or normalized_path not in {"", "/v1"}
+        or parsed_base_url.query
+        or parsed_base_url.fragment
+    ):
+        return False
+
+    return _infer_provider(model) == "deepseek"
 
 
 def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile | None:
