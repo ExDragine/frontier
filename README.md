@@ -37,9 +37,9 @@ UniMessage 文本、图片、视频或文件回复
 | 插件 | 功能 |
 |------|------|
 | `plugins/agent` | 核心对话引擎：消息处理、回复门控、内容安全、Deep Agent 调度、回复渲染 |
+| `plugins/acp` | `/acp` 外部 ACP Agent 桥接 |
 | `plugins/clockwork` | APScheduler 定时任务：提醒、用户自动任务、每日新闻、APOD、地震/NRC 等推送 |
 | `plugins/dashboard` | Web 管理面板：JWT 登录、状态、消息浏览、配置管理、任务管理 |
-| `plugins/dsh` | `/dsh` DeepSeek Harness Agent |
 | `plugins/playground` | `/paint` 图片生成、`/video` 视频生成、戳一戳响应 |
 | `plugins/toolbox` | `/update`、`/restart`、`/model`、`/set wake`、`/vehelp` 等管理命令 |
 
@@ -105,17 +105,36 @@ cp env.toml.example env.toml
 uv sync --extra content-check
 ```
 
-DeepSeek Harness Agent 默认不安装。SDK runtime 当前仅支持 Linux x64/arm64 和
-macOS arm64；Windows 主机需要在 WSL2 中运行 Frontier：
+[Agent Client Protocol (ACP)](https://agentclientprotocol.com/) 桥接也作为可选能力安装：
 
 ```bash
-uv sync --extra dsh
+uv sync --extra acp
+cp acp.json.example acp.json
 ```
 
-`/dsh <任务>` 对所有用户开放，并使用 `cache/dsh/` 下的独立工作区和会话。
-为兼容 WSL2，Harness 使用裸本地 Bash 和文件后端，不提供操作系统级 sandbox；它可以
-访问 Frontier 进程有权访问的所有路径，当前实现仍应视为实验性功能。每天北京时间
-04:00 会清理闲置的 DSH workspace/session；正在执行的 scope 会保留到下一次清理。
+在 `acp.json` 中配置一个或多个通过 stdio 提供 ACP v1 的 Agent 后，可使用
+`/acp <任务>`，或通过 `/acp --agent <名称> <任务>` 选择 Agent。`/acp --list`、
+`/acp --cancel` 和 `/acp --reset` 分别用于查看、取消当前 turn 和重建会话；命令访问
+沿用 `env.toml` 的 `[agent_policy]`。
+每个群聊或私聊 scope 使用 `cache/acp/workspaces/` 下的独立工作区。ACP Agent 是本地
+子进程，工作区并非操作系统 sandbox；它仍可能访问 Frontier 进程有权限读取的其他路径。
+`permission_policy` 默认为 `deny`，只有明确将其改为 `allow_once` 或 `allow_always` 时，
+Frontier 才会自动批准 Agent 的工具权限请求。需要 ACP 协议认证的 Agent 可通过
+`auth_method` 指定其在初始化阶段公布的认证方式 ID。`inherit_env` 是显式环境变量白名单，
+只会把列出的宿主变量传给对应子进程；缺少任何一项都会拒绝启动。每日缓存维护会关闭闲置
+ACP 进程并删除其 workspace；正在执行的 scope 不受影响。
+
+DeepSeek Harness 不再使用 Frontier 内置的 SDK/JSON-RPC 适配层，而是作为普通 ACP Agent
+接入。官方仓库提供 `pnpm run demo:acp` 的 JSON-RPC stdio server；`acp.json.example`
+已包含对应配置。使用前克隆并构建
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，将示例中的绝对路径替换为
+本机 checkout，并在 Frontier 进程环境中设置 `DEEPSEEK_API_KEY`，然后使用
+`/acp --agent dsh <任务>`。DSH 仍处于
+developer preview，建议将 checkout 固定到经过验证的 commit。
+
+DSH 当前的官方 ACP 自动化接口只发送已提交的 assistant 文本/图片，不公开推理、工具活动、
+计划等实时进度；因此 Frontier 能收到最终结果和权限请求，但不会复现原 `/dsh` 的专用进度事件。
+DSH 的模型、供应商、会话和工具配置均由 DSH 自己管理，不再读取 `env.toml` 的专用 `[dsh]` 段。
 
 编辑 `.env` 和 `env.toml` 后启动：
 
@@ -156,7 +175,8 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 ```
 
 容器会把 Hugging Face 和 Torch 缓存写入 `frontier_cache` volume。首次部署前需要准备
-`.env`、`env.toml`、`mcp.json` 和 `frontier.db`；这些运行时文件不会复制进镜像层。
+`.env`、`env.toml`、`mcp.json` 和 `frontier.db`；启用 ACP 时还需准备 `acp.json`。
+这些运行时文件不会复制进镜像层。
 如果曾用旧 Dockerfile 构建过镜像，建议删除旧镜像并轮换本地配置中的外部服务凭据。
 
 ## 配置
@@ -166,6 +186,7 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 | `.env` | NoneBot 环境变量，以及由 `NICKNAME` 管理的机器人全局名称和别名 |
 | `env.toml` | Frontier 应用配置：system prompt、模型、API key、功能开关、速率限制、任务群组、Dashboard |
 | `mcp.json` | MCP 外部工具服务器定义 |
+| `acp.json` | ACP Agent 子进程、权限策略和超时定义 |
 
 `env.toml` 的关键部分：
 - `[bot]`: 主 system prompt；不再保存机器人名称。
@@ -173,7 +194,6 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 - `[providers.*]`: LangChain 适配器类型、API 协议、base URL 和可选 API key。
 - `[key]`: NASA、GitHub 等非模型服务密钥；模型密钥统一放在供应商 profile。
 - `[features]` / `[agent]`: 功能开关和 Agent 推理等级。
-- `[dsh]`: DeepSeek Harness 模型、供应商 profile 和输出上限。
 - `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]`: 访问策略。
 - `[limits]` / `[notifications]` / `[storage]`: 限流超时、定时推送群和存储设置。
 - `[dashboard]`: 管理面板密码、JWT secret、过期时间。
@@ -235,8 +255,8 @@ API 前缀：
 frontier/
 ├── plugins/
 │   ├── agent/          # 核心消息入口和 Agent 调度
+│   ├── acp/            # /acp 外部 Agent 桥接
 │   ├── clockwork/      # 定时任务系统
-│   ├── dsh/            # /dsh 实验 Agent
 │   ├── dashboard/      # FastAPI Dashboard
 │   ├── playground/     # /paint 和 /video
 │   └── toolbox/        # 管理命令
@@ -251,6 +271,7 @@ frontier/
 ├── docs/               # 设计文档和实现计划
 ├── cache/              # 运行时缓存和 sandbox
 ├── frontier.db         # 默认 SQLite 数据库
+├── acp.json.example
 ├── env.toml.example
 ├── mcp.json.example
 └── pyproject.toml

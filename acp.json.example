@@ -1,0 +1,19 @@
+{
+  "default": "dsh",
+  "agents": {
+    "dsh": {
+      "command": "pnpm",
+      "args": [
+        "--dir",
+        "/absolute/path/to/deepseek-harness",
+        "run",
+        "demo:acp"
+      ],
+      "env": {},
+      "inherit_env": ["DEEPSEEK_API_KEY"],
+      "auth_method": null,
+      "permission_policy": "deny",
+      "timeout_seconds": 600
+    }
+  }
+}

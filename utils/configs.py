@@ -116,12 +116,6 @@ class AgentConfig(_FrozenConfig):
     reasoning_effort: str = "medium"
 
 
-class DshAgentConfig(_FrozenConfig):
-    provider: str = "deepseek"
-    model: str = "deepseek-v4-flash"
-    max_tokens: int = Field(default=49_152, ge=1)
-
-
 class AccessPolicy(_FrozenConfig):
     whitelist_mode: bool = False
     whitelist_person_list: tuple[int | str, ...] = ()
@@ -189,7 +183,6 @@ class FrontierSettings(_FrozenConfig):
     keys: KeyConfig = Field(default_factory=KeyConfig)
     features: FeatureConfig = Field(default_factory=FeatureConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
-    dsh: DshAgentConfig = Field(default_factory=DshAgentConfig)
     agent_policy: AccessPolicy = Field(default_factory=AccessPolicy)
     auto_reply_policy: AutoReplyPolicy = Field(default_factory=AutoReplyPolicy)
     paint_policy: AccessPolicy = Field(default_factory=AccessPolicy)
@@ -622,7 +615,6 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
     legacy_function = _section(config, "function")
     features = _section(config, "features")
     agent = _section(config, "agent")
-    dsh = _section(config, "dsh")
     agent_policy = _section(config, "agent_policy")
     auto_reply_policy = _section(config, "auto_reply_policy")
     paint_policy = _section(config, "paint_policy")
@@ -682,11 +674,6 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
             ),
         },
         "agent": {"reasoning_effort": _pick(agent, legacy_function, "reasoning_effort", "medium", "agent_capability")},
-        "dsh": {
-            "provider": dsh.get("provider", "deepseek"),
-            "model": dsh.get("model", "deepseek-v4-flash"),
-            "max_tokens": dsh.get("max_tokens", 49_152),
-        },
         "agent_policy": {
             field: _pick(agent_policy, legacy_function, field, default, f"agent_{field}")
             for field, default in (
@@ -836,10 +823,6 @@ class EnvConfig:
     PAINT_MODULE_ENABLED: ClassVar[bool]
     VIDEO_MODULE_ENABLED: ClassVar[bool]
     AGENT_CAPABILITY: ClassVar[str]
-    DSH_MODEL_PROVIDER: ClassVar[str]
-    DSH_MODEL: ClassVar[str]
-    DSH_MAX_TOKENS: ClassVar[int]
-
     # Access policies
     AGENT_WHITELIST_MODE: ClassVar[bool]
     AGENT_WHITELIST_PERSON_LIST: ClassVar[list[int | str]]
@@ -926,9 +909,6 @@ class EnvConfig:
             "PAINT_MODULE_ENABLED": settings.features.paint_enabled,
             "VIDEO_MODULE_ENABLED": settings.features.video_enabled,
             "AGENT_CAPABILITY": settings.agent.reasoning_effort,
-            "DSH_MODEL_PROVIDER": settings.dsh.provider,
-            "DSH_MODEL": settings.dsh.model,
-            "DSH_MAX_TOKENS": settings.dsh.max_tokens,
             "AGENT_WHITELIST_MODE": settings.agent_policy.whitelist_mode,
             "AGENT_WHITELIST_PERSON_LIST": list(settings.agent_policy.whitelist_person_list),
             "AGENT_WHITELIST_GROUP_LIST": list(settings.agent_policy.whitelist_group_list),

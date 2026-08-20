@@ -324,6 +324,7 @@ package-lock.json
 .idea
 .vscode
 mcp.json
+acp.json
 .claude
 cache/
 sandbox/

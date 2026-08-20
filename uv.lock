@@ -26,6 +26,18 @@ wheels = [
 ]
 
 [[package]]
+name = "agent-client-protocol"
+version = "0.12.1"
+source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/9d/95/2c28ca34e545ce0282e88272aa3a8abdf8f3f926a0492f567ea11acd071b/agent_client_protocol-0.12.1.tar.gz", hash = "sha256:9963ccb590ed96d7dc542c9c023e90676fc76b1c6562e21a9ee112f4fbcb0095" }
+wheels = [
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/21/61/0a2186c8ca53cf464767d4c4fb7fd9e23f48ce4547c2fa0d1c83a4d52410/agent_client_protocol-0.12.1-py3-none-any.whl", hash = "sha256:aaf3cc301ed87d9e2c4ccb91adfe1cd58784355f6ce7e513f50e7ca2391862ef" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.5"
 source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }
@@ -522,28 +534,6 @@ wheels = [
 ]
 
 [[package]]
-name = "deepseek-harness-runtime-bin"
-version = "0.1.0rc6"
-source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }
-wheels = [
-    { url = "https://mirrors.cloud.tencent.com/pypi/packages/72/19/548c84e9d02683612b6a3a23571d68480c657ef5f4aa1e3c656898ee1824/deepseek_harness_runtime_bin-0.1.0rc6-py3-none-macosx_14_0_arm64.whl", hash = "sha256:2bbd65edd52dfc340d74f88a890e8031a272a820e58406c2de1f5f5dee51bd9f" },
-    { url = "https://mirrors.cloud.tencent.com/pypi/packages/f6/0b/d9128f0b3edc5ab5fc6d8746e669c924bd23fd017e645796b3b439dd0eb3/deepseek_harness_runtime_bin-0.1.0rc6-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:99d0ef334a4e3cb178d7b0302bbdd01c8dde6068ee5fe8b01e074541db5c7747" },
-    { url = "https://mirrors.cloud.tencent.com/pypi/packages/c6/26/1c6bc9c26618ca5b2f155a428d4c0c5d5174b68077cccbc10a1629bb3611/deepseek_harness_runtime_bin-0.1.0rc6-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:d7261d3bdadfa8d10ab03fd06c6bbc66a182ae27d39892a0eb7c2ce9d63a5448" },
-]
-
-[[package]]
-name = "deepseek-harness-sdk"
-version = "0.1.0rc6"
-source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }
-dependencies = [
-    { name = "deepseek-harness-runtime-bin" },
-    { name = "pydantic" },
-]
-wheels = [
-    { url = "https://mirrors.cloud.tencent.com/pypi/packages/47/10/efd7ad88cd6140be4883d055abf9acd7fa8e5424a20de8a224d310e67f2f/deepseek_harness_sdk-0.1.0rc6-py3-none-any.whl", hash = "sha256:8a05421be4298196cf94383e0a3164b020f5f5977a8d30019cc5add64cb208eb" },
-]
-
-[[package]]
 name = "distlib"
 version = "0.4.3"
 source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }
@@ -646,15 +636,15 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+acp = [
+    { name = "agent-client-protocol" },
+]
 content-check = [
     { name = "accelerate" },
     { name = "torch", version = "2.13.0", source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
     { name = "torchao" },
     { name = "transformers" },
-]
-dsh = [
-    { name = "deepseek-harness-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 
 [package.dev-dependencies]
@@ -672,10 +662,10 @@ lint = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate", marker = "extra == 'content-check'" },
+    { name = "agent-client-protocol", marker = "extra == 'acp'", specifier = ">=0.12.1,<0.13" },
     { name = "bcrypt" },
     { name = "beautifulsoup4" },
     { name = "deepagents" },
-    { name = "deepseek-harness-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'dsh') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'dsh') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'dsh')", specifier = "==0.1.0rc6" },
     { name = "gitpython" },
     { name = "httpx2", extras = ["http2"] },
     { name = "imageio-ffmpeg" },
@@ -703,7 +693,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'content-check'" },
     { name = "websockets" },
 ]
-provides-extras = ["content-check", "dsh"]
+provides-extras = ["content-check", "acp"]
 
 [package.metadata.requires-dev]
 dev = [

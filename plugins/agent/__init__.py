@@ -17,7 +17,7 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 from utils.agents import FrontierCognitive, ProgressEvent, ProgressReporter, agent_thread_id, run_serialized
-from utils.agents.dsh import dsh_service
+from utils.agents.acp import acp_service
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
@@ -325,11 +325,11 @@ async def run_daily_cache_cleanup() -> None:
             logger.warning("每日消息附件清理失败: %s: %s", type(exc).__name__, exc)
 
     try:
-        cleaned_scopes = await dsh_service.cleanup_cache()
+        cleaned_scopes = await acp_service.cleanup_cache()
         if cleaned_scopes:
-            logger.info("每日清理 DSH 缓存 scope: %s", cleaned_scopes)
+            logger.info("每日清理 ACP 缓存 scope: %s", cleaned_scopes)
     except Exception as exc:
-        logger.warning("每日 DSH 缓存清理失败: %s: %s", type(exc).__name__, exc)
+        logger.warning("每日 ACP 缓存清理失败: %s: %s", type(exc).__name__, exc)
 
 
 @common.handle()
