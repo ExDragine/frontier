@@ -66,6 +66,8 @@ class AcpAgentConfig:
     args: tuple[str, ...] = ()
     env: tuple[tuple[str, str], ...] = ()
     inherit_env: tuple[str, ...] = ()
+    description: str | None = None
+    expose_as_subagent: bool = False
     auth_method: str | None = None
     permission_policy: PermissionPolicy = "deny"
     timeout_seconds: float = 600.0
@@ -80,6 +82,8 @@ class AcpAgentConfig:
                 (name, _environment_value_fingerprint(os.environ.get(name)))
                 for name in self.inherit_env
             ),
+            self.description,
+            self.expose_as_subagent,
             self.auth_method,
             self.permission_policy,
             self.timeout_seconds,
@@ -133,7 +137,7 @@ def _sdk() -> ModuleType:
     try:
         import acp
     except ImportError as exc:
-        raise AcpUnavailableError("未安装 ACP Python SDK；请使用 `uv sync --extra acp` 安装") from exc
+        raise AcpUnavailableError("未安装 ACP Python SDK；请运行 `uv sync` 安装项目依赖") from exc
     return acp
 
 
@@ -163,7 +167,7 @@ def _inherit_env_names(agent_name: str, value: Any) -> tuple[str, ...]:
     return tuple(value)
 
 
-def _agent_config(name: str, value: Any) -> AcpAgentConfig:
+def _agent_config(name: str, value: Any) -> AcpAgentConfig:  # noqa: C901
     if not isinstance(value, dict):
         raise AcpConfigurationError(f"agents.{name} 必须是对象")
     unknown = set(value) - {
@@ -171,6 +175,8 @@ def _agent_config(name: str, value: Any) -> AcpAgentConfig:
         "args",
         "env",
         "inherit_env",
+        "description",
+        "expose_as_subagent",
         "auth_method",
         "permission_policy",
         "timeout_seconds",
@@ -200,6 +206,20 @@ def _agent_config(name: str, value: Any) -> AcpAgentConfig:
             f"agents.{name}.env 与 inherit_env 不能重复定义: {', '.join(sorted(overlap))}"
         )
 
+    description = value.get("description")
+    if description is not None and (
+        not isinstance(description, str)
+        or not description.strip()
+        or len(description.strip()) > 500
+    ):
+        raise AcpConfigurationError(
+            f"agents.{name}.description 必须是 1 到 500 字符的字符串或省略"
+        )
+
+    expose_as_subagent = value.get("expose_as_subagent", False)
+    if not isinstance(expose_as_subagent, bool):
+        raise AcpConfigurationError(f"agents.{name}.expose_as_subagent 必须是布尔值")
+
     auth_method = value.get("auth_method")
     if auth_method is not None and (not isinstance(auth_method, str) or not auth_method.strip()):
         raise AcpConfigurationError(f"agents.{name}.auth_method 必须是非空字符串或省略")
@@ -219,6 +239,8 @@ def _agent_config(name: str, value: Any) -> AcpAgentConfig:
         args=tuple(args),
         env=tuple(sorted(env.items())),
         inherit_env=inherit_env,
+        description=description.strip() if isinstance(description, str) else None,
+        expose_as_subagent=expose_as_subagent,
         auth_method=auth_method.strip() if isinstance(auth_method, str) else None,
         permission_policy=permission_policy,
         timeout_seconds=float(timeout),
@@ -516,6 +538,15 @@ class AcpAgentService:
     def available_agents(self) -> tuple[str, tuple[str, ...]]:
         config = load_acp_config(self._config_path)
         return config.default_agent, tuple(sorted(config.agents))
+
+    def subagent_configs(self) -> tuple[tuple[str, AcpAgentConfig], ...]:
+        """Return ACP agents explicitly opted into Deep Agents delegation."""
+        config = load_acp_config(self._config_path)
+        return tuple(
+            (name, agent_config)
+            for name, agent_config in sorted(config.agents.items())
+            if agent_config.expose_as_subagent
+        )
 
     def _resolve_config(self, agent_name: str | None) -> tuple[str, AcpAgentConfig]:
         config = load_acp_config(self._config_path)

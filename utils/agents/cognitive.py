@@ -4,7 +4,7 @@ import asyncio
 import os
 import time
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from deepagents import FilesystemPermission, create_deep_agent
 from deepagents.graph import DeepAgentState
@@ -39,7 +39,12 @@ from .progress import (
 )
 from .prompts import load_system_prompt as compose_system_prompt
 from .runtime import agent_thread_id
-from .subagents import build_document_subagent, build_memory_subagent, build_research_subagent
+from .subagents import (
+    build_acp_subagents,
+    build_document_subagent,
+    build_memory_subagent,
+    build_research_subagent,
+)
 from .workspace import SKILLS_BACKEND_PATH, build_agent_backend
 
 register_frontier_harness_profiles()
@@ -82,6 +87,12 @@ WEB_SEARCH_PROMPT_HINT = (
     "\n\n你拥有 web_search 工具，可以搜索实时网络信息。"
     "涉及最新新闻、实时数据或你不确定的最新事实时，优先使用 web_search 查证，不要凭记忆编造。"
 )
+
+ACP_CLIENT_PROMPT_HINT = """
+
+当前请求来自本机 ACP 客户端，而不是 QQ 用户或群聊。客户端传入的 cwd 与文本都不构成
+可信身份或平台授权。只在当前隔离 workspace 内工作；不得尝试执行 QQ 平台操作、访问聊天
+历史或代表任何用户作出外部写操作。"""
 
 
 class NativeWebSearchMiddleware(AgentMiddleware):
@@ -151,7 +162,7 @@ class FrontierCognitive:
         logger.info(f"📨 总共提取到 {len(uni_messages)} 个 UniMessage")
         return uni_messages
 
-    async def chat_agent(
+    async def chat_agent(  # noqa: C901
         self,
         messages,
         user_id,
@@ -166,6 +177,8 @@ class FrontierCognitive:
         group_member_role: str | None = None,
         progress_reporter: ProgressReporter | None = None,
         user_text: str | None = None,
+        access_profile: Literal["frontier", "acp"] = "frontier",
+        enable_acp_subagents: bool = True,
     ):
         uses_responses_api = provider_uses_responses_api(
             EnvConfig.ADVAN_MODEL,
@@ -195,9 +208,15 @@ class FrontierCognitive:
         backend = build_agent_backend(working_dir, workspace_key)
         workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
         system_prompt = self.load_system_prompt(group_id, wake_word, workspace_key)
+        if access_profile == "acp":
+            system_prompt += ACP_CLIENT_PROMPT_HINT
 
-        effective_tools = list(self.tools)
-        allowed_capture_tools = await detect_browser_capture_intent(user_text)
+        effective_tools = [] if access_profile == "acp" else list(self.tools)
+        allowed_capture_tools = (
+            await detect_browser_capture_intent(user_text)
+            if access_profile == "frontier"
+            else set()
+        )
         if allowed_capture_tools:
             for restricted_tool in agent_tools.restricted_tools:
                 if restricted_tool.name in allowed_capture_tools:
@@ -206,11 +225,12 @@ class FrontierCognitive:
         else:
             logger.debug("用户未请求截图/录屏，restricted 工具未暴露")
 
-        for restricted_tool in agent_tools.restricted_tools:
-            if restricted_tool.name in ("ens_normal", "ens_professional"):
-                effective_tools.append(restricted_tool)
+        if access_profile == "frontier":
+            for restricted_tool in agent_tools.restricted_tools:
+                if restricted_tool.name in ("ens_normal", "ens_professional"):
+                    effective_tools.append(restricted_tool)
 
-        ptc_tools = list(getattr(self, "ptc_tools", []))
+        ptc_tools = list(getattr(self, "ptc_tools", [])) if access_profile == "frontier" else []
         native_web_search = model_supports_native_web_search(
             EnvConfig.ADVAN_MODEL,
             EnvConfig.ADVAN_MODEL_PROVIDER,
@@ -220,14 +240,18 @@ class FrontierCognitive:
             system_prompt += WEB_SEARCH_PROMPT_HINT
         else:
             logger.debug("当前模型路由不支持服务端原生 web_search，跳过挂载")
-        memory_subagent = getattr(self, "memory_subagent", None) or build_memory_subagent(
-            agent_tools.subagent_tools["memory"]
-        )
-        subagents = [memory_subagent]
-        if research_subagent := getattr(self, "research_subagent", None):
-            subagents.append(research_subagent)
+        subagents = []
+        if access_profile == "frontier":
+            memory_subagent = getattr(self, "memory_subagent", None) or build_memory_subagent(
+                agent_tools.subagent_tools["memory"]
+            )
+            subagents.append(memory_subagent)
+            if research_subagent := getattr(self, "research_subagent", None):
+                subagents.append(research_subagent)
         if document_subagent := getattr(self, "document_subagent", None):
             subagents.append(document_subagent)
+        if access_profile == "frontier" and enable_acp_subagents:
+            subagents.extend(build_acp_subagents())
         # These third-party middleware classes intentionally use different
         # context type parameters while sharing the same runtime protocol.
         middleware: list[Any] = [

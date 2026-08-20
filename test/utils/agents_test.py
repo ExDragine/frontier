@@ -522,6 +522,62 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     )
 
 
+@pytest.mark.asyncio
+async def test_chat_agent_acp_profile_removes_platform_tools_memory_and_delegation(
+    monkeypatch, tmp_path
+):
+    captured = {}
+
+    class DummyAgent:
+        async def astream_events(self, input=None, config=None, context=None, version=None):
+            captured["payload"] = input
+            return _FakeStream(
+                {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok")]},
+            )
+
+    monkeypatch.setattr(
+        cognitive_mod,
+        "create_deep_agent",
+        lambda **kwargs: (captured.update(kwargs) or DummyAgent()),
+    )
+    monkeypatch.setattr(cognitive_mod, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        cognitive_mod,
+        "filter_messages_for_model_capabilities",
+        lambda messages, *_args, **_kwargs: messages,
+    )
+    monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args: False)
+
+    async def unexpected_capture_check(_text):
+        raise AssertionError("ACP profile must not run the QQ browser-capture gate")
+
+    monkeypatch.setattr(cognitive_mod, "detect_browser_capture_intent", unexpected_capture_check)
+    monkeypatch.setattr(
+        cognitive_mod,
+        "build_acp_subagents",
+        lambda: (_ for _ in ()).throw(AssertionError("ACP profile must not delegate to ACP")),
+    )
+
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
+    frontier.tools = [types.SimpleNamespace(name="send_group_message")]
+    frontier.ptc_tools = [types.SimpleNamespace(name="get_group_info")]
+    frontier.memory_subagent = cast(Any, {"name": "memory-agent"})
+    frontier.research_subagent = cast(Any, {"name": "research-agent"})
+    frontier.document_subagent = cast(Any, {"name": "document-agent", "tools": []})
+    cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
+
+    await frontier.chat_agent(
+        messages=[{"role": "user", "content": "hi"}],
+        user_id="acp-session",
+        user_name="ACP client",
+        access_profile="acp",
+    )
+
+    assert captured["tools"] == []
+    assert captured["subagents"] == [frontier.document_subagent]
+    assert "可信身份或平台授权" in captured["system_prompt"]
+
+
 def test_build_agent_backend_creates_empty_soul_memory(tmp_path):
     working_dir = tmp_path / "sandbox"
     memory_dir = working_dir / "memory" / "123"

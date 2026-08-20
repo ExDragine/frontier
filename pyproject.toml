@@ -5,6 +5,7 @@ description = "A bot"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+  "agent-client-protocol>=0.12.1,<0.13",
   "nonebot2[fastapi]",
   "nonebot-plugin-alconna",
   "nonebot-plugin-apscheduler",
@@ -34,7 +35,6 @@ dependencies = [
 
 [project.optional-dependencies]
 content-check = ["accelerate", "torch", "torchao", "transformers"]
-acp = ["agent-client-protocol>=0.12.1,<0.13"]
 
 [tool.uv.sources]
 torch = [

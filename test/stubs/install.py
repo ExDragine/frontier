@@ -16,6 +16,18 @@ from .dummies import (
 )
 
 
+class DummyRunnableLambda:
+    def __init__(self, func, afunc=None, name=None):
+        self.func = afunc or func
+        self.name = name
+
+    async def ainvoke(self, value, config=None):
+        result = self.func(value, config or {})
+        if hasattr(result, "__await__"):
+            return await result
+        return result
+
+
 def install_stub(module_name: str, **attrs):
     """在 sys.modules 中安装假模块，阻止真实库被导入。"""
     module = types.ModuleType(module_name)
@@ -99,7 +111,11 @@ def install_all_third_party_stubs():
         "langchain.messages",
         AIMessage=type("AIMessage", (), {"__init__": lambda self, content=None: setattr(self, "content", content)}),
     )
-    install_stub("langchain_core.runnables", RunnableConfig=dict)
+    install_stub(
+        "langchain_core.runnables",
+        RunnableConfig=dict,
+        RunnableLambda=DummyRunnableLambda,
+    )
     install_stub("langchain_core.language_models", ModelProfile=dict)
     install_stub("langchain_core.tools", tool=fake_tool)
     install_stub("langchain_openai", ChatOpenAI=type("ChatOpenAI", (), {"__init__": lambda self, **_kw: None}))

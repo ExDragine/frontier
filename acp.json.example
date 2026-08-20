@@ -11,6 +11,8 @@
       ],
       "env": {},
       "inherit_env": ["DEEPSEEK_API_KEY"],
+      "description": "使用 DeepSeek Harness 处理需要独立编码、审查或验证的复杂任务。",
+      "expose_as_subagent": true,
       "auth_method": null,
       "permission_policy": "deny",
       "timeout_seconds": 600

@@ -105,10 +105,10 @@ cp env.toml.example env.toml
 uv sync --extra content-check
 ```
 
-[Agent Client Protocol (ACP)](https://agentclientprotocol.com/) 桥接也作为可选能力安装：
+[Agent Client Protocol (ACP)](https://agentclientprotocol.com/) 是 Frontier 的内置能力。
+复制配置后即可接入一个或多个外部 ACP Agent：
 
 ```bash
-uv sync --extra acp
 cp acp.json.example acp.json
 ```
 
@@ -123,6 +123,28 @@ Frontier 才会自动批准 Agent 的工具权限请求。需要 ACP 协议认�
 `auth_method` 指定其在初始化阶段公布的认证方式 ID。`inherit_env` 是显式环境变量白名单，
 只会把列出的宿主变量传给对应子进程；缺少任何一项都会拒绝启动。每日缓存维护会关闭闲置
 ACP 进程并删除其 workspace；正在执行的 scope 不受影响。
+
+将某个 Agent 的 `expose_as_subagent` 设为 `true` 后，它会以 `acp-<名称>` 注册为
+DeepAgents 子代理，主 Agent 可以按 `description` 将任务委托给它。子代理返回的媒体会保存到
+当前 Frontier workspace 的 `/acp-artifacts/`，不会把大段 base64 直接塞回模型上下文。
+该开关默认关闭，避免仅用于 `/acp` 的进程被模型意外调用。
+
+Frontier 自身也提供 ACP v1 stdio server，可供 ACP 客户端（包括日后的独立前端或其他
+Agent）启动：
+
+```bash
+uv run python scripts/frontier_acp.py
+```
+
+这个入口复用同一个 `FrontierCognitive` 执行链，支持文本、图片和音频输入，并把已清洗的
+进度、工具状态、最终文本及内联媒体映射为 ACP 更新。每个 ACP session 使用独立的内部
+身份、thread 和 sandbox workspace；客户端传入的 `cwd` 只作为协议元数据，不会成为文件
+访问授权。为防止权限继承和 Agent 环路，ACP 入站会话不暴露 QQ 平台工具、聊天记忆和
+ACP 子代理，只保留隔离 workspace、文档分析及模型原生能力。
+
+当前 Python SDK 的稳定协议是 ACP v1，因此 server 与 client 以 v1 为兼容基线；ACP v2
+仍处于草案阶段，后续会在 SDK 提供稳定协商支持后并行增加 v2 turn/state 生命周期，而不
+破坏现有 v1 配置。
 
 DeepSeek Harness 不再使用 Frontier 内置的 SDK/JSON-RPC 适配层，而是作为普通 ACP Agent
 接入。官方仓库提供 `pnpm run demo:acp` 的 JSON-RPC stdio server；`acp.json.example`

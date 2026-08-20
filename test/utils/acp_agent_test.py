@@ -163,6 +163,8 @@ def _write_config(path, *, policy="deny", auth_method=None):
         "command": "demo-acp",
         "args": ["--stdio"],
         "env": {"DEMO": "1"},
+        "description": "Demo ACP agent",
+        "expose_as_subagent": True,
         "permission_policy": policy,
         "timeout_seconds": 10,
     }
@@ -187,6 +189,8 @@ def test_load_acp_config_validates_default_and_policy(tmp_path):
 
     assert config.default_agent == "demo"
     assert config.agents["demo"].args == ("--stdio",)
+    assert config.agents["demo"].description == "Demo ACP agent"
+    assert config.agents["demo"].expose_as_subagent is True
     assert config.agents["demo"].permission_policy == "allow_once"
 
     raw = json.loads(path.read_text(encoding="utf-8"))
