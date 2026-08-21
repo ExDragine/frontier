@@ -96,14 +96,9 @@ def _has_agent_access(event: MessageEvent) -> bool:
 
 
 def _progress_reporter(group_id: int | None) -> ProgressReporter:
-    sent_thinking = False
-
     async def reporter(event: ProgressEvent) -> None:
-        nonlocal sent_thinking
+        # 群聊统一静默处理中间事件，只在任务结束后发送最终结果。
         if group_id is not None:
-            if event.type in {"thinking", "tool_call", "assistant_preamble"} and not sent_thinking:
-                sent_thinking = True
-                await UniMessage.text("🔌 ACP Agent 正在处理任务…").send()
             return
         if event.type not in {"thinking", "tool_call", "tool_result", "assistant_preamble"}:
             return

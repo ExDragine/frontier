@@ -31,6 +31,31 @@ def test_acp_command_reuses_agent_access_policy(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_group_acp_progress_reporter_blocks_intermediate_messages(monkeypatch):
+    sent: list[str] = []
+
+    class DummyUniMessage:
+        def __init__(self, content: str):
+            self.content = content
+
+        @classmethod
+        def text(cls, content: str):
+            return cls(content)
+
+        async def send(self):
+            sent.append(self.content)
+
+    monkeypatch.setattr(acp, "UniMessage", DummyUniMessage)
+    reporter = acp._progress_reporter(group_id=123)
+
+    await reporter(acp.ProgressEvent(type="thinking", message="raw thought"))
+    await reporter(acp.ProgressEvent(type="tool_call", message="running tool"))
+    await reporter(acp.ProgressEvent(type="assistant_preamble", message="working on it"))
+
+    assert sent == []
+
+
+@pytest.mark.asyncio
 async def test_acp_command_runs_prompt_with_media(monkeypatch):
     captured = {}
     sent_responses = []

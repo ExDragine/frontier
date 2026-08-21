@@ -30,7 +30,7 @@ def test_attached_image_placeholders_only_removed_for_successful_downloads(monke
 
 
 @pytest.mark.asyncio
-async def test_group_progress_reporter_sends_only_one_model_preamble(monkeypatch):
+async def test_group_progress_reporter_blocks_all_intermediate_messages(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -57,10 +57,12 @@ async def test_group_progress_reporter_sends_only_one_model_preamble(monkeypatch
     reporter = agent._chat_progress_reporter(group_id=123)
 
     await reporter(agent.ProgressEvent(type="thinking", message="正在思考…"))
+    await reporter(agent.ProgressEvent(type="tool_call", message="正在搜索…"))
+    await reporter(agent.ProgressEvent(type="subagent_start", message="正在委派…"))
     await reporter(agent.ProgressEvent(type="assistant_preamble", message="我先查一下资料。"))
     await reporter(agent.ProgressEvent(type="assistant_preamble", message="接着核对来源。"))
 
-    assert sent == ["我先查一下资料。"]
+    assert sent == []
 
 
 @pytest.mark.asyncio

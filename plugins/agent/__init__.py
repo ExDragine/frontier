@@ -101,13 +101,17 @@ def _remove_attached_image_placeholders(text: str, attached_images: int) -> str:
 
 
 def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
-    """构造会话级进度消费者，并将模型的工具调用前言作为过程发言发送。"""
+    """构造会话级进度消费者；群聊静默，私聊保留有限进度提示。"""
     spoken_messages: set[str] = set()
     spoken_count = 0
-    max_spoken_messages = 1 if group_id is not None else 2
+    max_spoken_messages = 2
 
     async def reporter(event: ProgressEvent) -> None:
         nonlocal spoken_count
+
+        # 群聊只发送最终回复和媒体工件，避免中间推理叙述刷屏或泄露。
+        if group_id is not None:
+            return
 
         if event.type == "assistant_preamble":
             content = event.message.strip()
@@ -124,8 +128,7 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
             await UniMessage.text(content).send()
             return
 
-        # 群聊只展示模型主动写出的过程发言，避免工具模板消息刷屏。
-        if group_id is None and event.type in {"thinking", "subagent_start", "tool_call"}:
+        if event.type in {"thinking", "subagent_start", "tool_call"}:
             await UniMessage.text(event.message).send()
 
     return reporter
