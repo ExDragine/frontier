@@ -9,26 +9,55 @@ from dataclasses import dataclass
 from pathlib import Path
 from signal import SIGINT
 
+from arclet.alconna import Alconna, Args, Arparma, MultiVar, Subcommand
 from git import Repo
 from nonebot import get_driver, logger, on_command, require
-from nonebot.adapters.milky.event import GroupMessageEvent, MessageEvent
+from nonebot.adapters.milky.event import MessageEvent
 from nonebot.permission import SUPERUSER
 
 require("nonebot_plugin_alconna")
 
 from models import get_model_display_name
-from utils.alconna import Target, UniMessage
+from utils.alconna import AlconnaQuery, Query, Target, UniMessage, on_alconna
 from utils.configs import EnvConfig, get_provider_profile
 from utils.database import GroupSettingsManager, get_engine
 from utils.markdown_render import html_to_image
-from utils.message import (
-    message_extract,
-)
 
 driver = get_driver()
 updater = on_command("update", priority=1, block=True, aliases={"更新"}, permission=SUPERUSER)
-setting = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
-set_cmd = on_command("set", priority=2, block=True, aliases={"设置"})
+model_cmd = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
+settings = on_alconna(
+    Alconna(
+        "set",
+        Subcommand("model", alias={"模型"}, help_text="查看当前模型配置"),
+        Subcommand(
+            "wake",
+            Subcommand(
+                "add",
+                Args["word", MultiVar(str, "*")],
+                alias={"添加"},
+                help_text="添加群聊唤醒词",
+            ),
+            Subcommand(
+                "remove",
+                Args["word", MultiVar(str, "*")],
+                alias={"移除", "删除"},
+                help_text="移除群聊唤醒词",
+            ),
+            Subcommand("clear", alias={"清空"}, help_text="清空群聊唤醒词"),
+            alias={"唤醒词"},
+            help_text="查看或管理群聊唤醒词",
+        ),
+    ),
+    aliases={"设置"},
+    skip_for_unmatch=False,
+    auto_send_output=False,
+    use_cmd_start=True,
+    priority=2,
+    block=True,
+)
+_WAKE_ADD_WORDS_QUERY = AlconnaQuery("wake.add.word")
+_WAKE_REMOVE_WORDS_QUERY = AlconnaQuery("wake.remove.word")
 vehelp_cmd = on_command("vehelp", priority=2, block=True, aliases={"专业模式", "vep菜单"})
 restart = on_command("restart", priority=3, block=True, aliases={"重启"}, permission=SUPERUSER)
 
@@ -51,6 +80,23 @@ class UpdateLockInfo:
     start_time: float
     old_head: str = ""
     trigger_group_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SetMenuItem:
+    command: str
+    description: str
+    group_only: bool = False
+    admin_only: bool = False
+
+
+SET_MENU_ITEMS = (
+    SetMenuItem("/set model", "查看当前模型配置（兼容 /model）"),
+    SetMenuItem("/set wake", "查看当前群唤醒词", group_only=True),
+    SetMenuItem("/set wake add <词>", "添加唤醒词", group_only=True, admin_only=True),
+    SetMenuItem("/set wake remove <词>", "移除唤醒词", group_only=True, admin_only=True),
+    SetMenuItem("/set wake clear", "清空唤醒词", group_only=True, admin_only=True),
+)
 
 
 async def _get_vep_menu() -> bytes:
@@ -78,14 +124,77 @@ def _model_display_name(model: str, provider: str) -> str:
     return get_model_display_name(provider_type, model)
 
 
+def _event_group_id(event: MessageEvent) -> int | None:
+    if getattr(event.data, "message_scene", None) != "group":
+        return None
+    group = getattr(event.data, "group", None)
+    group_id = getattr(group, "group_id", None)
+    return int(group_id) if group_id is not None else None
+
+
 def _is_group_admin_or_owner(event: MessageEvent) -> bool:
     """检查发送者是否为群主或管理员。"""
-    if not isinstance(event, GroupMessageEvent):
+    if _event_group_id(event) is None:
         return False
-    member = event.data.group_member
-    if member and member.role in ("admin", "owner"):
-        return True
-    return False
+    member = getattr(event.data, "group_member", None)
+    return bool(member and member.role in ("admin", "owner"))
+
+
+def _render_set_menu(event: MessageEvent) -> str:
+    is_group = _event_group_id(event) is not None
+    is_admin = _is_group_admin_or_owner(event)
+    visible_items = [
+        item
+        for item in SET_MENU_ITEMS
+        if (is_group or not item.group_only) and (is_admin or not item.admin_only)
+    ]
+    lines = [
+        f"{'└' if index == len(visible_items) - 1 else '├'} {item.command} — {item.description}"
+        for index, item in enumerate(visible_items)
+    ]
+    return "⚙️ 设置菜单\n" + "\n".join(lines)
+
+
+def _current_model_summary() -> str:
+    models = [
+        (
+            "对话模型",
+            _model_display_name(EnvConfig.ADVAN_MODEL, EnvConfig.ADVAN_MODEL_PROVIDER),
+        ),
+        (
+            "辅助模型",
+            _model_display_name(EnvConfig.BASIC_MODEL, EnvConfig.BASIC_MODEL_PROVIDER),
+        ),
+    ]
+    if EnvConfig.PAINT_MODULE_ENABLED:
+        models.append(
+            (
+                "绘图模型",
+                _model_display_name(EnvConfig.PAINT_MODEL, EnvConfig.PAINT_MODEL_PROVIDER),
+            )
+        )
+    if EnvConfig.VIDEO_MODULE_ENABLED:
+        models.append(
+            (
+                "视频模型",
+                _model_display_name(EnvConfig.VIDEO_MODEL, EnvConfig.VIDEO_MODEL_PROVIDER),
+            )
+        )
+
+    model_lines = [
+        f"{'└' if index == len(models) - 1 else '├'} {label}：{model}"
+        for index, (label, model) in enumerate(models)
+    ]
+    return "🤖 当前模型配置\n" + "\n".join(model_lines)
+
+
+async def _send_current_model_summary() -> None:
+    await UniMessage.text(_current_model_summary()).send()
+
+
+async def _is_plain_wake(_event, _bot, _state, result: Arparma) -> bool:
+    wake = result.query("wake", None)
+    return wake is not None and not wake.subcommands
 
 
 def _group_settings() -> GroupSettingsManager:
@@ -247,90 +356,78 @@ async def _set_wake_clear(group_id: int) -> str:
     return f"✅ 已清空 {count} 个唤醒词，将使用默认唤醒词「{EnvConfig.BOT_NAME}」。"
 
 
-@set_cmd.handle()
-async def handle_set(event: MessageEvent):  # noqa: C901
-    text, *_ = await message_extract(event.data.segments)
-    text = text.removeprefix("/set").removeprefix("设置").strip()
+@settings.assign("$main")
+async def handle_set_menu(event: MessageEvent):
+    await UniMessage.text(_render_set_menu(event)).send()
 
-    group_id = event.data.group.group_id if event.data.group else 0
-    if group_id == 0:
+
+@settings.assign("model")
+async def handle_set_model():
+    await _send_current_model_summary()
+
+
+@settings.assign("wake", additional=_is_plain_wake)
+async def handle_set_wake_show(event: MessageEvent):
+    group_id = _event_group_id(event)
+    if group_id is None:
         await UniMessage.text("⚠️ 此命令仅支持群聊。").send()
         return
+    await UniMessage.text(await _set_wake_show(group_id)).send()
 
-    # 尝试匹配旧命令别名 /set model
-    if text.startswith("model ") or text == "model":
-        await _handle_set_model()
+
+@settings.assign("wake.add")
+async def handle_set_wake_add(
+    event: MessageEvent,
+    words: Query[tuple[str, ...]] = _WAKE_ADD_WORDS_QUERY,
+):
+    group_id = _event_group_id(event)
+    if group_id is None:
+        await UniMessage.text("⚠️ 此命令仅支持群聊。").send()
         return
-
-    # /set wake ...
-    if not text.startswith("wake"):
-        await UniMessage.text(
-            "可用子命令：\n"
-            "/set wake              — 查看当前唤醒词\n"
-            "/set wake add <词>     — 添加唤醒词\n"
-            "/set wake remove <词>  — 移除唤醒词\n"
-            "/set wake clear        — 清空唤醒词"
-        ).send()
-        return
-
-    args = text.removeprefix("wake").strip()
-
-    # /set wake — 查看
-    if not args:
-        await UniMessage.text(await _set_wake_show(group_id)).send()
-        return
-
-    # 写操作需要管理员权限
     if not _is_group_admin_or_owner(event):
         await UniMessage.text("⚠️ 只有群主或管理员才能修改唤醒词。").send()
         return
-
-    # /set wake clear
-    if args == "clear":
-        await UniMessage.text(await _set_wake_clear(group_id)).send()
-        return
-
-    # /set wake add <词>
-    if args.startswith("add "):
-        await UniMessage.text(await _set_wake_add(group_id, args.removeprefix("add "))).send()
-        return
-    if args.startswith("add"):
-        # "add" 后必须有内容
+    word = " ".join(words.result)
+    if not word:
         await UniMessage.text("⚠️ 用法：/set wake add <唤醒词>").send()
         return
+    await UniMessage.text(await _set_wake_add(group_id, word)).send()
 
-    # /set wake remove <词>
-    if args.startswith("remove "):
-        await UniMessage.text(await _set_wake_remove(group_id, args.removeprefix("remove "))).send()
+
+@settings.assign("wake.remove")
+async def handle_set_wake_remove(
+    event: MessageEvent,
+    words: Query[tuple[str, ...]] = _WAKE_REMOVE_WORDS_QUERY,
+):
+    group_id = _event_group_id(event)
+    if group_id is None:
+        await UniMessage.text("⚠️ 此命令仅支持群聊。").send()
         return
-    if args.startswith("remove"):
+    if not _is_group_admin_or_owner(event):
+        await UniMessage.text("⚠️ 只有群主或管理员才能修改唤醒词。").send()
+        return
+    word = " ".join(words.result)
+    if not word:
         await UniMessage.text("⚠️ 用法：/set wake remove <唤醒词>").send()
         return
-
-    # 未知子命令
-    await UniMessage.text(
-        "用法：\n"
-        "/set wake              — 查看唤醒词\n"
-        "/set wake add <词>     — 添加\n"
-        "/set wake remove <词>  — 移除\n"
-        "/set wake clear        — 清空"
-    ).send()
+    await UniMessage.text(await _set_wake_remove(group_id, word)).send()
 
 
-# ── /set model (保留旧兼容) ─────────────────────────────────
+@settings.assign("wake.clear")
+async def handle_set_wake_clear(event: MessageEvent):
+    group_id = _event_group_id(event)
+    if group_id is None:
+        await UniMessage.text("⚠️ 此命令仅支持群聊。").send()
+        return
+    if not _is_group_admin_or_owner(event):
+        await UniMessage.text("⚠️ 只有群主或管理员才能修改唤醒词。").send()
+        return
+    await UniMessage.text(await _set_wake_clear(group_id)).send()
 
 
-async def _handle_set_model():
-    """/set model 的过渡兼容处理，提示用户使用 /model 或待实现群级别 model。"""
-    await UniMessage.text(
-        f"当前默认模型为: {EnvConfig.ADVAN_MODEL}\n"
-        f"当前辅助模型为: {EnvConfig.BASIC_MODEL}\n"
-        f"当前绘图模型为: {EnvConfig.PAINT_MODEL}\n\n"
-        "提示：使用 /model 命令查看或切换模型。"
-    ).send()
-
-
-# ── 原有命令 ────────────────────────────────────────────────
+@model_cmd.handle()
+async def handle_model():
+    await _send_current_model_summary()
 
 
 @driver.on_startup
@@ -385,43 +482,6 @@ async def handle_updater(event: MessageEvent):
             os.remove(".lock")
         logger.error(f"更新失败: {e}")
         await UniMessage.text(f"❌ 更新失败: {str(e)}").send()
-
-
-@setting.handle()
-async def handle_setting(event: MessageEvent):
-    text, images, *_ = await message_extract(event.data.segments)
-    text = text.replace("/model", "")
-    if not text:
-        models = [
-            (
-                "对话模型",
-                _model_display_name(EnvConfig.ADVAN_MODEL, EnvConfig.ADVAN_MODEL_PROVIDER),
-            ),
-            (
-                "辅助模型",
-                _model_display_name(EnvConfig.BASIC_MODEL, EnvConfig.BASIC_MODEL_PROVIDER),
-            ),
-        ]
-        if EnvConfig.PAINT_MODULE_ENABLED:
-            models.append(
-                (
-                    "绘图模型",
-                    _model_display_name(EnvConfig.PAINT_MODEL, EnvConfig.PAINT_MODEL_PROVIDER),
-                )
-            )
-        if EnvConfig.VIDEO_MODULE_ENABLED:
-            models.append(
-                (
-                    "视频模型",
-                    _model_display_name(EnvConfig.VIDEO_MODEL, EnvConfig.VIDEO_MODEL_PROVIDER),
-                )
-            )
-
-        model_lines = [
-            f"{'└' if index == len(models) - 1 else '├'} {label}：{model}"
-            for index, (label, model) in enumerate(models)
-        ]
-        await UniMessage.text("🤖 当前模型配置\n" + "\n".join(model_lines)).send()
 
 
 @restart.handle()

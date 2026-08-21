@@ -14,6 +14,59 @@ from plugins import toolbox
 from plugins.toolbox import on_startup
 
 
+def _group_message_event(text: str, *, role: str = "member", sender_id: int = 456) -> MessageEvent:
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=1,
+        sender_id=sender_id,
+        time=0,
+        segments=[{"type": "text", "data": {"text": text}}],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=sender_id,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role=role,
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    return MessageEvent(
+        data=incoming,
+        to_me=True,
+        time=0,
+        self_id="1",
+        message=Message(),
+        original_message=Message(),
+    )
+
+
+def _capture_unimessage_text(monkeypatch) -> list[str]:
+    sent: list[str] = []
+
+    class DummyMessage:
+        def __init__(self, text):
+            self.text = text
+
+        async def send(self, *_args, **_kwargs):
+            sent.append(self.text)
+
+    class DummyUniMessage:
+        @classmethod
+        def text(cls, text):
+            return DummyMessage(text)
+
+    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
+    return sent
+
+
 @pytest.mark.asyncio
 async def test_on_startup_creates_files(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
@@ -70,11 +123,8 @@ async def test_on_startup_creates_files(monkeypatch, tmp_path):
         ),
     ],
 )
-async def test_handle_setting_default(monkeypatch, paint_enabled, video_enabled, expected_lines):
+async def test_handle_model_default(monkeypatch, paint_enabled, video_enabled, expected_lines):
     sent = []
-
-    async def fake_message_extract(*_args, **_kwargs):
-        return "", [], [], []
 
     class DummyMessage:
         def __init__(self, text):
@@ -88,7 +138,6 @@ async def test_handle_setting_default(monkeypatch, paint_enabled, video_enabled,
         def text(cls, text):
             return DummyMessage(text)
 
-    monkeypatch.setattr(toolbox, "message_extract", fake_message_extract)
     monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(toolbox.EnvConfig, "ADVAN_MODEL", "advanced-test")
     monkeypatch.setattr(toolbox.EnvConfig, "ADVAN_MODEL_PROVIDER", "advanced-provider")
@@ -136,6 +185,178 @@ async def test_handle_setting_default(monkeypatch, paint_enabled, video_enabled,
         ctx.should_finished()
 
     assert sent == ["🤖 当前模型配置\n" + "\n".join(expected_lines)]
+
+
+def test_set_menu_filters_group_admin_commands_by_context():
+    private_event = types.SimpleNamespace(
+        data=types.SimpleNamespace(message_scene="friend", group=None, group_member=None)
+    )
+    member_event = types.SimpleNamespace(
+        data=types.SimpleNamespace(
+            message_scene="group",
+            group=types.SimpleNamespace(group_id=123),
+            group_member=types.SimpleNamespace(role="member"),
+        )
+    )
+    admin_event = types.SimpleNamespace(
+        data=types.SimpleNamespace(
+            message_scene="group",
+            group=types.SimpleNamespace(group_id=123),
+            group_member=types.SimpleNamespace(role="admin"),
+        )
+    )
+    temp_event = types.SimpleNamespace(
+        data=types.SimpleNamespace(
+            message_scene="temp",
+            group=types.SimpleNamespace(group_id=123),
+            group_member=types.SimpleNamespace(role="admin"),
+        )
+    )
+
+    private_menu = toolbox._render_set_menu(private_event)
+    member_menu = toolbox._render_set_menu(member_event)
+    admin_menu = toolbox._render_set_menu(admin_event)
+    temp_menu = toolbox._render_set_menu(temp_event)
+
+    assert "/set model" in private_menu
+    assert "/set wake" not in private_menu
+    assert "/set wake" in member_menu
+    assert "/set wake add" not in member_menu
+    assert "/set wake add" in admin_menu
+    assert "/set wake remove" in admin_menu
+    assert "/set wake clear" in admin_menu
+    assert "/set wake" not in temp_menu
+
+
+@pytest.mark.asyncio
+async def test_set_root_routes_to_context_menu(monkeypatch):
+    sent = _capture_unimessage_text(monkeypatch)
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, _group_message_event("/set", sender_id=461))
+        ctx.should_finished()
+
+    assert len(sent) == 1
+    assert "/set model" in sent[0]
+    assert "/set wake" in sent[0]
+    assert "/set wake add" not in sent[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("command", "sender_id"),
+    [
+        ("/set unknown", 462),
+        ("/set model extra", 463),
+        ("/set wake unknown", 464),
+        ("/set wake clear extra", 465),
+        ("/set --help", 466),
+    ],
+)
+async def test_set_invalid_subcommand_routes_to_context_menu(monkeypatch, command, sender_id):
+    sent = _capture_unimessage_text(monkeypatch)
+
+    async def fail_route(*_args, **_kwargs):
+        raise AssertionError("invalid commands must not execute a settings action")
+
+    monkeypatch.setattr(toolbox, "_send_current_model_summary", fail_route)
+    monkeypatch.setattr(toolbox, "_set_wake_show", fail_route)
+    monkeypatch.setattr(toolbox, "_set_wake_clear", fail_route)
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(
+            bot,
+            _group_message_event(command, role="admin", sender_id=sender_id),
+        )
+        ctx.should_finished()
+
+    assert len(sent) == 1
+    assert sent[0].startswith("⚙️ 设置菜单\n")
+    assert "/set wake clear" in sent[0]
+
+
+@pytest.mark.asyncio
+async def test_set_model_routes_to_shared_model_summary(monkeypatch):
+    sent = _capture_unimessage_text(monkeypatch)
+    monkeypatch.setattr(toolbox, "_current_model_summary", lambda: "model summary")
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, _group_message_event("/set model", sender_id=457))
+        ctx.should_finished()
+
+    assert sent == ["model summary"]
+
+
+@pytest.mark.asyncio
+async def test_set_wake_routes_to_group_lookup(monkeypatch):
+    sent = _capture_unimessage_text(monkeypatch)
+    requested_group_ids = []
+
+    async def fake_set_wake_show(group_id):
+        requested_group_ids.append(group_id)
+        return "wake summary"
+
+    monkeypatch.setattr(toolbox, "_set_wake_show", fake_set_wake_show)
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, _group_message_event("/set wake", sender_id=458))
+        ctx.should_finished()
+
+    assert requested_group_ids == [123]
+    assert sent == ["wake summary"]
+
+
+@pytest.mark.asyncio
+async def test_set_wake_add_routes_all_words_for_admin(monkeypatch):
+    sent = _capture_unimessage_text(monkeypatch)
+    additions = []
+
+    async def fake_set_wake_add(group_id, word):
+        additions.append((group_id, word))
+        return "wake added"
+
+    monkeypatch.setattr(toolbox, "_set_wake_add", fake_set_wake_add)
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(
+            bot,
+            _group_message_event("/set wake add hello world", role="admin", sender_id=459),
+        )
+        ctx.should_finished()
+
+    assert additions == [(123, "hello world")]
+    assert sent == ["wake added"]
+
+
+@pytest.mark.asyncio
+async def test_set_wake_add_rejects_group_member(monkeypatch):
+    sent = _capture_unimessage_text(monkeypatch)
+
+    async def fail_set_wake_add(*_args, **_kwargs):
+        raise AssertionError("group members must not modify wake words")
+
+    monkeypatch.setattr(toolbox, "_set_wake_add", fail_set_wake_add)
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(
+            bot,
+            _group_message_event("/set wake add hello", role="member", sender_id=460),
+        )
+        ctx.should_finished()
+
+    assert sent == ["⚠️ 只有群主或管理员才能修改唤醒词。"]
 
 
 def test_model_display_name_uses_model_bank_and_falls_back(monkeypatch):
