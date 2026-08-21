@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from PIL import Image as PILImage
+from PIL import ImageOps
 
 MediaKind = Literal["image", "audio", "video", "file"]
 
@@ -21,6 +22,7 @@ _IMAGE_FORMAT_MIME = {
     "PNG": "image/png",
     "WEBP": "image/webp",
 }
+MODEL_IMAGE_MIME_TYPES = frozenset({"image/gif", "image/jpeg", "image/png", "image/webp"})
 _MIME_EXTENSIONS = {
     "application/pdf": ".pdf",
     "application/vnd.ms-powerpoint": ".ppt",
@@ -174,6 +176,51 @@ def resolve_media(
         extension=extension_for_mime(mime_type, fallback_name=file_name),
         file_name=file_name,
     )
+
+
+def normalize_image_for_model(data: bytes) -> ResolvedMedia | None:
+    """Validate an image and convert unsupported formats for model APIs.
+
+    Responses-compatible providers accept GIF, JPEG, PNG, and WebP. Supported
+    input is preserved byte-for-byte after Pillow validates it; other decodable
+    formats are converted to PNG when they contain transparency, otherwise JPEG.
+    Invalid image bytes return ``None`` so one bad attachment can't fail the
+    entire model request.
+    """
+    try:
+        with PILImage.open(BytesIO(data)) as image:
+            image_format = str(image.format or "").upper()
+            image.verify()
+
+        mime_type = _IMAGE_FORMAT_MIME.get(image_format)
+        if mime_type in MODEL_IMAGE_MIME_TYPES:
+            return ResolvedMedia(
+                kind="image",
+                data=data,
+                mime_type=mime_type,
+                extension=extension_for_mime(mime_type),
+            )
+
+        with PILImage.open(BytesIO(data)) as image:
+            image.seek(0)
+            normalized = ImageOps.exif_transpose(image)
+            normalized.load()
+            has_alpha = normalized.mode in {"LA", "RGBA"} or "transparency" in normalized.info
+            output = BytesIO()
+            if has_alpha:
+                normalized.convert("RGBA").save(output, format="PNG")
+                converted_mime = "image/png"
+            else:
+                normalized.convert("RGB").save(output, format="JPEG", quality=90)
+                converted_mime = "image/jpeg"
+        return ResolvedMedia(
+            kind="image",
+            data=output.getvalue(),
+            mime_type=converted_mime,
+            extension=extension_for_mime(converted_mime),
+        )
+    except (OSError, SyntaxError, ValueError):
+        return None
 
 
 def standard_media_block(media: ResolvedMedia) -> dict[str, Any]:

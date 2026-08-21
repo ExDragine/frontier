@@ -9,6 +9,7 @@ from utils.media import (
     detect_mime_type,
     inline_media_bytes,
     media_block_kind,
+    normalize_image_for_model,
     resolve_media,
     standard_media_block,
 )
@@ -59,3 +60,27 @@ def test_legacy_video_url_remains_supported():
 
     assert media_block_kind(block) == "video"
     assert inline_media_bytes(block) == (payload, "video/mp4")
+
+
+def test_normalize_image_for_model_preserves_supported_image():
+    payload = _image_bytes("PNG")
+
+    normalized = normalize_image_for_model(payload)
+
+    assert normalized is not None
+    assert normalized.data == payload
+    assert normalized.mime_type == "image/png"
+
+
+def test_normalize_image_for_model_converts_unsupported_image():
+    payload = _image_bytes("BMP")
+
+    normalized = normalize_image_for_model(payload)
+
+    assert normalized is not None
+    assert normalized.mime_type == "image/jpeg"
+    assert normalized.data.startswith(b"\xff\xd8\xff")
+
+
+def test_normalize_image_for_model_rejects_invalid_bytes():
+    assert normalize_image_for_model(b"not-an-image") is None

@@ -1,12 +1,15 @@
 # ruff: noqa: S101
 
 import asyncio
+import base64
 import os
 import types
 import uuid
+from io import BytesIO
 from typing import Any, Literal, cast
 
 import pytest
+from PIL import Image
 
 from utils.agents import assistant as assistant_mod
 from utils.agents import cognitive as cognitive_mod
@@ -17,6 +20,16 @@ from utils.agents import runtime as runtime_mod
 from utils.agents import workspace as workspace_mod
 
 # ── 共享 async 迭代工具 ──────────────────────────────────────────
+
+
+def _standard_test_image_block() -> dict[str, str]:
+    output = BytesIO()
+    Image.new("RGB", (2, 2), "blue").save(output, format="PNG")
+    return {
+        "type": "image",
+        "base64": base64.b64encode(output.getvalue()).decode(),
+        "mime_type": "image/png",
+    }
 
 
 class _AsyncIter:
@@ -184,9 +197,9 @@ def test_filter_messages_removes_each_unsupported_media_kind(monkeypatch):
     messages = [
         {
             "role": "user",
-            "content": [
-                {"type": "text", "text": "hello"},
-                {"type": "image", "base64": "a", "mime_type": "image/png"},
+                "content": [
+                    {"type": "text", "text": "hello"},
+                    _standard_test_image_block(),
                 {"type": "audio", "base64": "b", "mime_type": "audio/mpeg"},
                 {"type": "video", "base64": "c", "mime_type": "video/mp4"},
                 {"type": "file", "base64": "d", "mime_type": "application/pdf"},
@@ -202,6 +215,53 @@ def test_filter_messages_removes_each_unsupported_media_kind(monkeypatch):
     assert "当前模型不支持文件输入" in filtered[0]["content"][0]["text"]
 
 
+def test_filter_messages_converts_unsupported_inline_image(monkeypatch):
+    monkeypatch.setattr(inputs_mod, "model_supports", lambda *_args, **_kwargs: True)
+    output = BytesIO()
+    Image.new("RGB", (2, 2), "blue").save(output, format="BMP")
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "hello"},
+                {
+                    "type": "image",
+                    "base64": base64.b64encode(output.getvalue()).decode(),
+                    "mime_type": "image/bmp",
+                },
+            ],
+        }
+    ]
+
+    filtered = inputs_mod.filter_messages_for_model_capabilities(messages, "vision-model")
+
+    assert filtered[0]["content"][1]["mime_type"] == "image/jpeg"
+    assert base64.b64decode(filtered[0]["content"][1]["base64"]).startswith(b"\xff\xd8\xff")
+
+
+def test_filter_messages_omits_invalid_inline_image(monkeypatch):
+    monkeypatch.setattr(inputs_mod, "model_supports", lambda *_args, **_kwargs: True)
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "hello"},
+                {
+                    "type": "image",
+                    "base64": base64.b64encode(b"not-an-image").decode(),
+                    "mime_type": "image/jpeg",
+                },
+            ],
+        }
+    ]
+
+    filtered = inputs_mod.filter_messages_for_model_capabilities(messages, "vision-model")
+
+    assert filtered[0]["content"] == [
+        {"type": "text", "text": "hello\n\n[图片已省略：图片无效或无法转换为受支持的格式]"}
+    ]
+
+
 def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
     monkeypatch.setattr(assistant_mod.EnvConfig, "BASIC_MODEL", "shared-model")
     monkeypatch.setattr(assistant_mod.EnvConfig, "ADVAN_MODEL", "shared-model")
@@ -210,9 +270,9 @@ def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
     messages = [
         {
             "role": "user",
-            "content": [
-                {"type": "text", "text": "hello"},
-                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,abc"}},
+                "content": [
+                    {"type": "text", "text": "hello"},
+                    _standard_test_image_block(),
             ],
         }
     ]
