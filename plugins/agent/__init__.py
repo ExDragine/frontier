@@ -47,6 +47,7 @@ common = on_message(priority=10)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CACHE_CLEANUP_JOB_ID = "frontier_daily_cache_cleanup"
+EMPTY_CURRENT_MESSAGE_PROMPT = "[用户叫了你一声]"
 
 
 @dataclass(slots=True)
@@ -136,7 +137,7 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
     messages = list(history_messages or [])
-    combined_text = f"{context.text}{context.quoted_text}".strip()
+    combined_text = f"{context.text}{context.quoted_text}".strip() or EMPTY_CURRENT_MESSAGE_PROMPT
     remaining_bytes = EnvConfig.MAX_INLINE_MEDIA_BYTES
     remaining_images = EnvConfig.MAX_INLINE_IMAGES
 

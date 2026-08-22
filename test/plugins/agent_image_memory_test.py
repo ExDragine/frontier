@@ -1048,6 +1048,46 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
 
 
 @pytest.mark.asyncio
+async def test_process_agent_request_interprets_empty_text_as_user_calling_bot(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {}
+
+    class DummyCognitive:
+        async def chat_agent(self, messages, *_args, **_kwargs):
+            captured["messages"] = messages
+            return {"response": {"messages": [types.SimpleNamespace(text="在呢")]}, "uni_messages": []}
+
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "send_messages", _noop)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+
+    context = agent.AgentRequestContext(
+        bot=None,
+        event=cast(Any, types.SimpleNamespace)(self_id="1", get_plaintext=lambda: ""),
+        user_id="456",
+        user_name="Bob",
+        event_id=1,
+        group_id=None,
+        msg_time=1000,
+        text="",
+        quoted_images=[],
+        images=[],
+        videos=[],
+    )
+
+    await agent._process_agent_request(context)
+
+    current_text = captured["messages"][-1]["content"][0]["text"]
+    payload = ast.literal_eval(current_text)
+    assert payload["content"] == "[用户叫了你一声]"
+
+
+@pytest.mark.asyncio
 async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch):
     import nonebot
 

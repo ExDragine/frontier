@@ -300,7 +300,9 @@ async def _active_trigger_should_reply(plaintext: str, wake_words: list[str]) ->
     trigger_text = _active_trigger_content(plaintext, wake_words)
     compact_text = re.sub(r"[\W_]+", "", trigger_text.lower())
     if not compact_text:
-        return False
+        # 仅发送唤醒词或只 @ Bot 时，NoneBot 可能已经把可见文本剥离为空。
+        # 这仍然是一次明确的呼唤，应交给 Agent 自然回应。
+        return True
     if any(keyword in compact_text for keyword in ACTIVE_TRIGGER_STOP_KEYWORDS):
         return False
     if compact_text in ACTIVE_TRIGGER_LOW_INFO_PHRASES:

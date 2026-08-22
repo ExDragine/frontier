@@ -603,7 +603,7 @@ async def test_message_gateway_group_active_trigger_can_stay_silent_for_low_info
 
 
 @pytest.mark.asyncio
-async def test_message_gateway_group_wake_word_only_can_stay_silent(monkeypatch):
+async def test_message_gateway_group_wake_word_only_is_treated_as_a_call(monkeypatch):
     async def fail_if_called(*_args, **_kwargs):
         raise AssertionError("empty wake-word trigger should not call Signal LLM")
 
@@ -615,7 +615,22 @@ async def test_message_gateway_group_wake_word_only_can_stay_silent(monkeypatch)
 
     result = await _message_gateway(DummyTestGroupEvent("Frontier"), [])
 
-    assert result is False
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_message_gateway_group_empty_mention_is_treated_as_a_call(monkeypatch):
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("empty mention should not call Signal LLM")
+
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
+    monkeypatch.setattr(message_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
+    monkeypatch.setattr(message_module, "signal_structured", fail_if_called)
+
+    result = await _message_gateway(DummyTestGroupEvent("", is_tome=True, to_me=True), [])
+
+    assert result is True
 
 
 @pytest.mark.asyncio
