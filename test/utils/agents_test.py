@@ -108,6 +108,7 @@ def test_frontier_load_system_prompt_includes_markdown_rendering_rules(monkeypat
     assert prompt.count("document-agent") == 1
     assert "earth-data-agent" not in prompt
     assert prompt.count("`/skills/ens-weather/SKILL.md`") == 1
+    assert prompt.count("`/skills/eli5/SKILL.md`") == 1
     assert "动态人设文件路径为 `/memory/123/SOUL.md`" in prompt
 
 
