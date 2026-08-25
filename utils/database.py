@@ -1,20 +1,28 @@
 import asyncio
-import datetime
 import hashlib
 import json
 import logging
 import os
 import posixpath
+import shutil
+import threading
 import time
-import zoneinfo
+from contextlib import contextmanager
 from functools import lru_cache
 from math import ceil
 
-from sqlalchemy import Engine, Index, UniqueConstraint, event, inspect, text
+from sqlalchemy import Engine, Index, UniqueConstraint, and_, event, inspect, or_, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Field, Session, SQLModel, col, create_engine, desc, func, select
 
+from utils.agents.message_envelope import (
+    build_agent_attachment_payload,
+    build_agent_message_payload,
+    content_for_persisted_images,
+    serialize_agent_payload,
+)
+from utils.agents.runtime import conversation_workspace_key
 from utils.media import ResolvedMedia, resolve_media
 
 DATABASE_FILE = "sqlite:///frontier.db"
@@ -24,71 +32,57 @@ SQLITE_MMAP_SIZE_BYTES = 256 * 1024 * 1024
 MESSAGE_FTS_MIN_QUERY_LENGTH = 3
 MESSAGE_SOURCE_TYPE_NORMAL = "message"
 MESSAGE_SOURCE_TYPE_FORWARD_NODE = "forward_node"
-MESSAGE_TOKEN_ESTIMATE_VERSION = 2
-AGENT_MESSAGE_SCHEMA = "frontier.qq_message.v1"
-CONVERSATION_SUMMARY_SCHEMA = "frontier.conversation_summary.v1"
+MESSAGE_TOKEN_ESTIMATE_VERSION = 7
+_ATTACHMENT_KIND_DIRECTORIES = {
+    "image": "images",
+    "audio": "audio",
+    "video": "videos",
+    "file": "files",
+}
 logger = logging.getLogger(__name__)
+_ATTACHMENT_WRITE_LOCKS = tuple(threading.Lock() for _ in range(64))
 
 
-def estimate_stored_message_tokens(content: str, user_name: str | None = None) -> int:
-    """Provider-neutral estimate used for SQL watermarks and pagination."""
-    # The model-facing envelope adds stable identity, scope, timestamp and
-    # optional reply/attachment fields around the original message.
-    chars = len(content) + len(user_name or "") + 240
-    return max(1, ceil(chars / 1.8) + 4)
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
-def serialize_agent_payload(payload: dict[str, object]) -> str:
-    """Serialize a model-facing envelope as compact, readable UTF-8 JSON."""
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+@contextmanager
+def _lock_attachment_paths(paths: list[str]):
+    indexes = sorted(
+        {
+            int.from_bytes(hashlib.sha256(os.path.abspath(path).encode("utf-8")).digest()[:2], "big")
+            % len(_ATTACHMENT_WRITE_LOCKS)
+            for path in paths
+        }
+    )
+    locks = [_ATTACHMENT_WRITE_LOCKS[index] for index in indexes]
+    for lock in locks:
+        lock.acquire()
+    try:
+        yield
+    finally:
+        for lock in reversed(locks):
+            lock.release()
 
 
-def build_agent_message_payload(
-    *,
-    timestamp_ms: int,
-    user_id: int | str,
-    group_id: int | None,
-    user_name: str | None,
-    role: str,
+def estimate_stored_message_tokens(
     content: str,
-    msg_id: int | None = None,
-    user_nickname: str | None = None,
-    user_card: str | None = None,
-    is_current: bool = False,
-    attachments: list[dict[str, object]] | None = None,
-    reply_to: dict[str, object] | None = None,
-) -> dict[str, object]:
-    """Build the provider-neutral boundary for one original platform message."""
-    display_name = (user_card or user_name or user_nickname or str(user_id)).strip()
-    sender: dict[str, object] = {
-        "user_id": str(user_id),
-        "display_name": display_name,
-        "role": "assistant" if role == "assistant" else "user",
-    }
-    if user_nickname and user_nickname != display_name:
-        sender["nickname"] = user_nickname
-    if user_card:
-        sender["card"] = user_card
-
-    payload: dict[str, object] = {
-        "schema": AGENT_MESSAGE_SCHEMA,
-        "message_id": str(msg_id) if msg_id is not None else None,
-        "time": datetime.datetime.fromtimestamp(int(timestamp_ms / 1000))
-        .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
-        .strftime("%Y-%m-%d %H:%M:%S"),
-        "chat": {
-            "type": "group" if group_id is not None else "private",
-            "group_id": str(group_id) if group_id is not None else None,
-        },
-        "sender": sender,
-        "is_current": is_current,
-        "content": content,
-    }
-    if reply_to:
-        payload["reply_to"] = reply_to
-    if attachments:
-        payload["attachments"] = attachments
-    return payload
+    user_name: str | None = None,
+    *,
+    reply_context_json: str | None = None,
+    serialized_payload: str | None = None,
+) -> int:
+    """Provider-neutral estimate used for SQL watermarks and pagination."""
+    # Prefer the exact rendered envelope. The fallback remains conservative for
+    # legacy rows and includes the denormalized reply snapshot, which may be much
+    # larger than the current message itself.
+    chars = (
+        len(serialized_payload)
+        if serialized_payload is not None
+        else len(content) + len(user_name or "") + len(reply_context_json or "") + 240
+    )
+    return max(1, ceil(chars / 1.8) + 4)
 
 
 async def _run_in_thread(func, *args, **kwargs):
@@ -164,6 +158,7 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_message_group_role_time ON message (group_id, role, time DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_message_group_msg_id_time ON message (group_id, msg_id, time DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_message_source_parent ON message (source_type, parent_msg_time)",
+                "CREATE INDEX IF NOT EXISTS ix_message_context_updated ON message (context_updated_at, time)",
                 (
                     "CREATE INDEX IF NOT EXISTS ix_message_private_user_time "
                     "ON message (user_id, time DESC) WHERE group_id IS NULL"
@@ -172,8 +167,13 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
         )
 
     if "messageattachment" in table_names:
+        deduplicate_message_attachments(engine)
         statements.extend(
             [
+                (
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ux_messageattachment_path_msg_time "
+                    "ON messageattachment (physical_path, msg_time)"
+                ),
                 "CREATE INDEX IF NOT EXISTS ix_messageattachment_msg_time ON messageattachment (msg_time)",
                 "CREATE INDEX IF NOT EXISTS ix_messageattachment_expires_at ON messageattachment (expires_at)",
                 "CREATE INDEX IF NOT EXISTS ix_messageattachment_scope ON messageattachment (workspace_key, kind)",
@@ -230,6 +230,17 @@ def ensure_message_schema(engine: Engine) -> None:
         ("user_nickname", "ALTER TABLE message ADD COLUMN user_nickname TEXT"),
         ("user_card", "ALTER TABLE message ADD COLUMN user_card TEXT"),
         ("reply_context_json", "ALTER TABLE message ADD COLUMN reply_context_json TEXT"),
+        ("model_content", "ALTER TABLE message ADD COLUMN model_content TEXT"),
+        ("sender_user_id", "ALTER TABLE message ADD COLUMN sender_user_id INTEGER"),
+        ("bot_user_id", "ALTER TABLE message ADD COLUMN bot_user_id INTEGER"),
+        (
+            "directly_mentions_bot",
+            "ALTER TABLE message ADD COLUMN directly_mentions_bot INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "context_updated_at",
+            "ALTER TABLE message ADD COLUMN context_updated_at INTEGER NOT NULL DEFAULT 0",
+        ),
     ]
     statements = [statement for column, statement in column_migrations if column not in columns]
     if not statements:
@@ -237,6 +248,34 @@ def ensure_message_schema(engine: Engine) -> None:
     with engine.begin() as conn:
         for statement in statements:
             conn.execute(text(statement))
+        if "sender_user_id" not in columns:
+            # Existing private assistant rows overloaded user_id with the peer
+            # scope, so only unambiguous legacy authors can be backfilled.
+            conn.execute(
+                text(
+                    "UPDATE message SET sender_user_id = user_id "
+                    "WHERE group_id IS NOT NULL OR role != 'assistant'"
+                )
+            )
+
+
+def ensure_conversation_summary_schema(engine: Engine) -> None:
+    """Add validity metadata to databases created before summary invalidation."""
+    inspector = inspect(engine)
+    if "conversation_summary" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("conversation_summary")}
+    with engine.begin() as connection:
+        if "invalidated_at" not in columns:
+            connection.execute(
+                text("ALTER TABLE conversation_summary ADD COLUMN invalidated_at INTEGER")
+            )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_conversation_summary_scope_valid_version "
+                "ON conversation_summary (scope_type, scope_id, invalidated_at, version DESC)"
+            )
+        )
 
 
 def _table_exists(conn, table_name: str) -> bool:
@@ -448,24 +487,6 @@ def _fts_query(value: str) -> str:
     return f'"{escaped}"'
 
 
-def build_message_metadata(
-    *,
-    timestamp_ms: int,
-    user_id: int | str,
-    group_id: int | None,
-    user_name: str | None,
-) -> dict[str, object]:
-    return {
-        "time": datetime.datetime.fromtimestamp(int(timestamp_ms / 1000))
-        .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
-        .strftime("%Y-%m-%d %H:%M:%S"),
-        "user_name": user_name,
-        "chat_type": "group" if group_id is not None else "private",
-        "group_id": group_id,
-        "user_id": str(user_id),
-    }
-
-
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str
@@ -480,6 +501,7 @@ class Message(SQLModel, table=True):
     user_name: str | None
     role: str
     content: str
+    model_content: str | None = None
     raw_segments_json: str | None = None
     normalized_version: int = 0
     normalized_status: str = "legacy"
@@ -492,6 +514,124 @@ class Message(SQLModel, table=True):
     user_nickname: str | None = None
     user_card: str | None = None
     reply_context_json: str | None = None
+    sender_user_id: int | None = None
+    bot_user_id: int | None = None
+    directly_mentions_bot: bool = False
+    context_updated_at: int = 0
+
+
+def resolve_message_sender_user_id(message: Message) -> int | None:
+    """Return the real author while safely handling legacy private assistants."""
+    sender_user_id = getattr(message, "sender_user_id", None)
+    if sender_user_id is not None:
+        return int(sender_user_id)
+    if getattr(message, "group_id", None) is None and getattr(message, "role", "user") == "assistant":
+        # Legacy private assistant rows stored the peer in user_id to preserve
+        # scope. Treat the author as unknown instead of impersonating that peer.
+        return None
+    return int(message.user_id)
+
+
+def _message_reply_payload(message: Message) -> dict[str, object] | None:
+    if not message.reply_context_json:
+        return None
+    try:
+        parsed_reply = json.loads(message.reply_context_json)
+    except json.JSONDecodeError:
+        logger.warning("忽略损坏的引用消息上下文: msg_time=%s", message.time)
+        return None
+    return parsed_reply if isinstance(parsed_reply, dict) else None
+
+
+def _message_agent_payload(
+    message: Message,
+    *,
+    content: str | None = None,
+    attachments: list[dict[str, object]] | None = None,
+    include_reply_to: bool = True,
+) -> dict[str, object]:
+    stored_model_content = getattr(message, "model_content", None)
+    resolved_content = stored_model_content if stored_model_content is not None else message.content
+    return build_agent_message_payload(
+        timestamp_ms=message.time,
+        msg_id=message.msg_id,
+        user_id=resolve_message_sender_user_id(message),
+        group_id=message.group_id,
+        user_name=message.user_name,
+        user_nickname=message.user_nickname,
+        user_card=message.user_card,
+        role=message.role,
+        content=resolved_content if content is None else content,
+        attachments=attachments,
+        reply_to=_message_reply_payload(message) if include_reply_to else None,
+        bot_user_id=message.bot_user_id,
+        directly_mentions_bot=message.directly_mentions_bot,
+    )
+
+
+def _attachment_agent_payload(attachment: MessageAttachment) -> dict[str, object]:
+    return dict(
+        build_agent_attachment_payload(
+            kind=attachment.kind,
+            mime_type=attachment.mime_type,
+            file_name=attachment.file_name,
+            path=attachment.virtual_path,
+        )
+    )
+
+
+def _estimate_message_model_tokens(
+    message: Message,
+    *,
+    attachments: list[dict[str, object]] | None = None,
+) -> int:
+    serialized = serialize_agent_payload(_message_agent_payload(message, attachments=attachments))
+    return estimate_stored_message_tokens(
+        message.content,
+        message.user_name,
+        reply_context_json=message.reply_context_json,
+        serialized_payload=serialized,
+    )
+
+
+_REPLY_CONTEXT_UNSET = object()
+
+
+def _refresh_message_model_state(
+    session: Session,
+    msg_time: int,
+    *,
+    reply_context_json: str | None | object = _REPLY_CONTEXT_UNSET,
+) -> None:
+    """Rebuild all attachment-derived message fields inside one transaction."""
+    message = session.get(Message, msg_time)
+    if message is None:
+        return
+    if reply_context_json is not _REPLY_CONTEXT_UNSET:
+        message.reply_context_json = reply_context_json  # type: ignore[assignment]
+    attachments = session.exec(
+        select(MessageAttachment)
+        .where(MessageAttachment.msg_time == msg_time)
+        .order_by(col(MessageAttachment.file_name))
+    ).all()
+    model_content = content_for_persisted_images(
+        message.content,
+        sum(attachment.kind == "image" for attachment in attachments),
+    )
+    message.model_content = None if model_content == message.content else model_content
+    message.estimated_tokens = _estimate_message_model_tokens(
+        message,
+        attachments=[_attachment_agent_payload(attachment) for attachment in attachments],
+    )
+    message.token_estimate_version = MESSAGE_TOKEN_ESTIMATE_VERSION
+    message.context_updated_at = _now_ms()
+    session.add(message)
+    _invalidate_conversation_summaries_for_message(session, message)
+
+
+def _refresh_message_model_states(session: Session, msg_times: set[int]) -> None:
+    for msg_time in sorted(msg_times):
+        _refresh_message_model_state(session, msg_time)
 
 
 class ConversationSummary(SQLModel, table=True):
@@ -500,6 +640,13 @@ class ConversationSummary(SQLModel, table=True):
         UniqueConstraint("scope_type", "scope_id", "version", name="uq_conversation_summary_version"),
         Index("ix_conversation_summary_scope_version", "scope_type", "scope_id", "version"),
         Index("ix_conversation_summary_scope_end", "scope_type", "scope_id", "source_end_time"),
+        Index(
+            "ix_conversation_summary_scope_valid_version",
+            "scope_type",
+            "scope_id",
+            "invalidated_at",
+            "version",
+        ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -515,6 +662,70 @@ class ConversationSummary(SQLModel, table=True):
     model: str
     prompt_version: int = 1
     created_at: int
+    invalidated_at: int | None = None
+
+
+def _invalidate_conversation_summaries_for_message(session: Session, message: Message) -> None:
+    """Invalidate active summaries whose cursor has already passed this source row."""
+    if message.source_type != MESSAGE_SOURCE_TYPE_NORMAL:
+        return
+    scopes = [
+        and_(
+            ConversationSummary.scope_type == "private",
+            ConversationSummary.scope_id == str(message.user_id),
+        )
+    ]
+    if message.group_id is not None:
+        scopes.append(
+            and_(
+                ConversationSummary.scope_type == "group",
+                ConversationSummary.scope_id == str(message.group_id),
+            )
+        )
+    session.exec(
+        update(ConversationSummary)
+        .where(col(ConversationSummary.invalidated_at).is_(None))
+        .where(ConversationSummary.source_end_time >= message.time)
+        .where(or_(*scopes))
+        .values(invalidated_at=_now_ms())
+    )
+
+
+def _conversation_summary_dependencies_current(
+    session: Session,
+    summary: ConversationSummary,
+    *,
+    expected_base_summary_id: int | None,
+    expected_source_context: dict[int, int] | None,
+    expected_source_after_time: int | None,
+) -> bool:
+    """Validate every immutable input used to generate a candidate summary."""
+    if expected_base_summary_id is not None:
+        active_base_id = session.exec(
+            select(ConversationSummary.id)
+            .where(ConversationSummary.id == expected_base_summary_id)
+            .where(col(ConversationSummary.invalidated_at).is_(None))
+        ).first()
+        if active_base_id != expected_base_summary_id:
+            return False
+    if expected_source_context is None:
+        return True
+
+    source_conditions = [
+        Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL,
+        Message.time <= summary.source_end_time,
+    ]
+    if summary.scope_type == "group":
+        source_conditions.append(Message.group_id == int(summary.scope_id))
+    else:
+        source_conditions.append(Message.user_id == int(summary.scope_id))
+    if expected_source_after_time is not None:
+        source_conditions.append(Message.time > expected_source_after_time)
+    current_source = {
+        message.time: message.context_updated_at
+        for message in session.exec(select(Message).where(*source_conditions)).all()
+    }
+    return current_source == expected_source_context
 
 
 class TimeStamp(SQLModel, table=True):
@@ -523,6 +734,10 @@ class TimeStamp(SQLModel, table=True):
 
 
 class MessageAttachment(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("physical_path", "msg_time", name="uq_messageattachment_path_msg_time"),
+    )
+
     id: int | None = Field(default=None, primary_key=True)
     msg_time: int = Field(index=True)
     msg_id: int | None = Field(default=None, index=True)
@@ -542,6 +757,39 @@ class MessageAttachment(SQLModel, table=True):
     metadata_json: str = "{}"
 
 
+def deduplicate_message_attachments(engine: Engine) -> int:
+    """Collapse legacy/concurrent duplicate rows before enforcing uniqueness."""
+    removed = 0
+    affected_message_times: set[int] = set()
+    with Session(engine) as session:
+        duplicate_keys = session.exec(
+            select(MessageAttachment.physical_path, MessageAttachment.msg_time)
+            .group_by(MessageAttachment.physical_path, MessageAttachment.msg_time)
+            .having(func.count() > 1)
+        ).all()
+        for physical_path, msg_time in duplicate_keys:
+            records = session.exec(
+                select(MessageAttachment)
+                .where(MessageAttachment.physical_path == physical_path)
+                .where(MessageAttachment.msg_time == msg_time)
+                .order_by(col(MessageAttachment.id))
+            ).all()
+            keeper, *duplicates = records
+            keeper.expires_at = max(record.expires_at for record in records)
+            session.add(keeper)
+            for record in duplicates:
+                session.delete(record)
+                removed += 1
+            affected_message_times.add(msg_time)
+        if removed:
+            session.flush()
+            _refresh_message_model_states(session, affected_message_times)
+            session.commit()
+    if removed:
+        logger.warning("已合并 %s 条重复消息附件索引", removed)
+    return removed
+
+
 class GroupSettings(SQLModel, table=True):
     __tablename__ = "group_settings"
     id: int | None = Field(default=None, primary_key=True)
@@ -552,7 +800,7 @@ class GroupSettings(SQLModel, table=True):
 
 
 def _message_workspace_key(user_id: int, group_id: int | None) -> str:
-    return str(group_id) if group_id is not None else str(user_id)
+    return conversation_workspace_key(user_id, group_id)
 
 
 def _attachment_paths(user_id: int, group_id: int | None, *parts: str) -> tuple[str, str]:
@@ -575,6 +823,405 @@ def _prune_empty_attachment_dirs(path: str) -> None:
         except OSError:
             break
         current = os.path.dirname(current)
+
+
+def _legacy_attachment_target(
+    record: MessageAttachment,
+) -> tuple[str, str, str] | None:
+    target_workspace_key = _message_workspace_key(record.user_id, record.group_id)
+    legacy_workspace_key = str(record.group_id if record.group_id is not None else record.user_id)
+    if record.workspace_key != legacy_workspace_key:
+        # Only the former numeric Frontier layout is safe to rewrite; custom or
+        # foreign workspace keys retain their own contract.
+        return None
+
+    legacy_root = os.path.normpath(os.path.join("cache", "sandbox", "memory", legacy_workspace_key))
+    source_path = os.path.normpath(record.physical_path)
+    relative_path = os.path.relpath(source_path, legacy_root)
+    if relative_path == os.pardir or relative_path.startswith(os.pardir + os.sep):
+        logger.warning("跳过不在旧 workspace 根目录内的附件迁移: attachment_id=%s", record.id)
+        return None
+    target_root = os.path.join("cache", "sandbox", "memory", target_workspace_key)
+    return target_workspace_key, source_path, os.path.join(target_root, relative_path)
+
+
+def _atomic_copy2(source_path: str, target_path: str) -> None:
+    """Copy through a same-directory temporary file before atomic publication."""
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    temp_path = os.path.join(
+        os.path.dirname(target_path),
+        f".{os.path.basename(target_path)}.frontier-migrate-{os.getpid()}-{time.time_ns()}",
+    )
+    try:
+        shutil.copy2(source_path, temp_path)
+        with open(temp_path, "rb") as copied_file:
+            os.fsync(copied_file.fileno())
+        os.replace(temp_path, target_path)
+    finally:
+        try:
+            os.remove(temp_path)
+        except FileNotFoundError:
+            pass
+
+
+def _copy_legacy_attachment(record: MessageAttachment, source_path: str, target_path: str) -> str | None:
+    source_full_path = os.path.join(os.getcwd(), source_path)
+    target_full_path = os.path.join(os.getcwd(), target_path)
+    if not os.path.isfile(source_full_path):
+        return target_path
+    try:
+        if not os.path.exists(target_full_path):
+            _atomic_copy2(source_full_path, target_full_path)
+            return target_path
+        if os.path.isfile(target_full_path):
+            if _sha256_file(source_full_path) == _sha256_file(target_full_path):
+                return target_path
+        stem, suffix = os.path.splitext(target_path)
+        source_digest = _sha256_file(source_full_path)
+        conflict_stem = f"{stem}-legacy-{record.id}-{source_digest[:10]}"
+        conflict_path = f"{conflict_stem}{suffix}"
+        counter = 2
+        while os.path.exists(conflict_full_path := os.path.join(os.getcwd(), conflict_path)):
+            if _sha256_file(conflict_full_path) == source_digest:
+                return conflict_path
+            conflict_path = f"{conflict_stem}-{counter}{suffix}"
+            counter += 1
+        _atomic_copy2(source_full_path, conflict_full_path)
+        return conflict_path
+    except OSError as exc:
+        logger.warning(
+            "旧附件 workspace 迁移失败，保留原记录: attachment_id=%s error=%s",
+            record.id,
+            exc,
+        )
+        return None
+
+
+def migrate_legacy_attachment_workspaces(engine: Engine) -> int:
+    """Copy indexed legacy attachments into typed group/private workspaces.
+
+    Unindexed files such as SOUL.md remain available for the separate scope
+    migration; successfully re-indexed media no longer needs a legacy copy.
+    """
+    migrated = 0
+    migrated_source_paths: set[str] = set()
+    with Session(engine) as session:
+        records = session.exec(
+            select(MessageAttachment).where(
+                ~col(MessageAttachment.workspace_key).like("group-%"),
+                ~col(MessageAttachment.workspace_key).like("dm-%"),
+            )
+        ).all()
+        affected_message_times: set[int] = set()
+        for record in records:
+            target = _legacy_attachment_target(record)
+            if target is None:
+                continue
+            target_workspace_key, source_path, requested_target_path = target
+            target_path = _copy_legacy_attachment(record, source_path, requested_target_path)
+            if target_path is None:
+                continue
+
+            existing_target = session.exec(
+                select(MessageAttachment)
+                .where(MessageAttachment.physical_path == target_path)
+                .where(MessageAttachment.msg_time == record.msg_time)
+                .where(MessageAttachment.id != record.id)
+                .limit(1)
+            ).first()
+            if existing_target is not None:
+                existing_target.expires_at = max(existing_target.expires_at, record.expires_at)
+                existing_target.created_at = min(existing_target.created_at, record.created_at)
+                session.add(existing_target)
+                session.delete(record)
+                affected_message_times.add(record.msg_time)
+                migrated_source_paths.add(source_path)
+                migrated += 1
+                continue
+
+            target_root = os.path.join("cache", "sandbox", "memory", target_workspace_key)
+            relative_virtual_path = os.path.relpath(target_path, target_root).replace(os.sep, "/")
+            record.workspace_key = target_workspace_key
+            record.file_name = os.path.basename(target_path)
+            record.physical_path = target_path
+            record.virtual_path = posixpath.join("/memory", target_workspace_key, relative_virtual_path)
+            session.add(record)
+            affected_message_times.add(record.msg_time)
+            migrated_source_paths.add(source_path)
+            migrated += 1
+
+        if migrated:
+            session.flush()
+            _refresh_message_model_states(session, affected_message_times)
+            session.commit()
+    with Session(engine) as session:
+        still_referenced = set(
+            session.exec(
+                select(MessageAttachment.physical_path).where(
+                    col(MessageAttachment.physical_path).in_(migrated_source_paths)
+                )
+            ).all()
+        )
+    for source_path in migrated_source_paths - still_referenced:
+        source_full_path = os.path.join(os.getcwd(), source_path)
+        try:
+            os.remove(source_full_path)
+            _prune_empty_attachment_dirs(source_full_path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            logger.warning("旧附件迁移完成但源文件清理失败 %s: %s", source_path, exc)
+    if migrated:
+        logger.info("已迁移 %s 个旧版未分 scope 的消息附件索引", migrated)
+    return migrated
+
+
+def _legacy_scope_types(engine: Engine, legacy_ids: set[str]) -> dict[str, set[str]]:
+    scope_types: dict[str, set[str]] = {legacy_id: set() for legacy_id in legacy_ids}
+    numeric_ids = [int(legacy_id) for legacy_id in legacy_ids]
+
+    def remember(scope_id: object, scope_type: str) -> None:
+        if scope_id is not None:
+            scope_types.setdefault(str(scope_id), set()).add(scope_type)
+
+    with Session(engine) as session:
+        for group_id in session.exec(
+            select(Message.group_id)
+            .where(col(Message.group_id).in_(numeric_ids))
+            .distinct()
+        ).all():
+            remember(group_id, "group")
+        for user_id in session.exec(
+            select(Message.user_id)
+            .where(Message.group_id.is_(None))
+            .where(col(Message.user_id).in_(numeric_ids))
+            .distinct()
+        ).all():
+            remember(user_id, "private")
+        summary_rows = session.exec(
+            select(ConversationSummary.scope_type, ConversationSummary.scope_id)
+            .where(col(ConversationSummary.scope_id).in_(legacy_ids))
+            .distinct()
+        ).all()
+        for scope_type, scope_id in summary_rows:
+            if scope_type in {"group", "private"}:
+                remember(scope_id, scope_type)
+        for group_id in session.exec(
+            select(MessageAttachment.group_id)
+            .where(col(MessageAttachment.group_id).in_(numeric_ids))
+            .distinct()
+        ).all():
+            remember(group_id, "group")
+        for user_id in session.exec(
+            select(MessageAttachment.user_id)
+            .where(MessageAttachment.group_id.is_(None))
+            .where(col(MessageAttachment.user_id).in_(numeric_ids))
+            .distinct()
+        ).all():
+            remember(user_id, "private")
+    return scope_types
+
+
+def _legacy_conflict_path(target_path: str, source_path: str) -> str:
+    digest = _sha256_file(source_path)[:10]
+    stem, suffix = os.path.splitext(target_path)
+    return f"{stem}.legacy-{digest}{suffix}"
+
+
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _merge_legacy_file(source_path: str, target_path: str) -> None:
+    if os.path.exists(target_path):
+        source_size = os.path.getsize(source_path)
+        target_size = os.path.getsize(target_path)
+        if not source_size or (source_size == target_size and _sha256_file(source_path) == _sha256_file(target_path)):
+            os.remove(source_path)
+            return
+        if not target_size:
+            _atomic_copy2(source_path, target_path)
+        else:
+            conflict_path = _legacy_conflict_path(target_path, source_path)
+            if (
+                not os.path.exists(conflict_path)
+                or os.path.getsize(source_path) != os.path.getsize(conflict_path)
+                or _sha256_file(source_path) != _sha256_file(conflict_path)
+            ):
+                _atomic_copy2(source_path, conflict_path)
+    else:
+        _atomic_copy2(source_path, target_path)
+    os.remove(source_path)
+
+
+def _merge_legacy_directory(
+    source_dir: str,
+    target_dir: str,
+    *,
+    protected_source_paths: set[str] | None = None,
+) -> bool:
+    """Merge one unambiguous legacy tree without overwriting newer files."""
+    if not os.path.isdir(source_dir):
+        return False
+    os.makedirs(target_dir, exist_ok=True)
+    incomplete_migration = False
+    protected_source_paths = protected_source_paths or set()
+    for current_root, dir_names, file_names in os.walk(source_dir, topdown=True):
+        safe_dirs = []
+        for name in dir_names:
+            source_child = os.path.join(current_root, name)
+            if os.path.islink(source_child):
+                incomplete_migration = True
+                logger.warning("跳过旧 workspace 中的符号链接: %s", source_child)
+            else:
+                safe_dirs.append(name)
+        dir_names[:] = safe_dirs
+        relative_root = os.path.relpath(current_root, source_dir)
+        target_root = target_dir if relative_root == "." else os.path.join(target_dir, relative_root)
+        os.makedirs(target_root, exist_ok=True)
+        for name in file_names:
+            source_path = os.path.join(current_root, name)
+            if os.path.abspath(source_path) in protected_source_paths:
+                incomplete_migration = True
+                continue
+            if os.path.islink(source_path):
+                incomplete_migration = True
+                logger.warning("跳过旧 workspace 中的符号链接: %s", source_path)
+                continue
+            target_path = os.path.join(target_root, name)
+            _merge_legacy_file(source_path, target_path)
+
+    if incomplete_migration:
+        return False
+    shutil.rmtree(source_dir)
+    return True
+
+
+def migrate_legacy_scope_directories(
+    engine: Engine,
+    *,
+    working_dir: str | None = None,
+) -> tuple[int, int]:
+    """Move untyped SOUL/workspace trees when SQL proves one unique scope."""
+    working_dir = working_dir or os.path.join(os.getcwd(), "cache", "sandbox")
+    legacy_ids: set[str] = set()
+    for area in ("memory", "workspaces"):
+        root = os.path.join(working_dir, area)
+        try:
+            entries = os.scandir(root)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            logger.warning("无法扫描旧 workspace 目录 %s: %s", root, exc)
+            continue
+        with entries:
+            legacy_ids.update(
+                entry.name
+                for entry in entries
+                if entry.is_dir(follow_symlinks=False)
+                and entry.name.isascii()
+                and entry.name.isdecimal()
+            )
+    if not legacy_ids:
+        return 0, 0
+
+    migrated = 0
+    ambiguous = 0
+    for legacy_id, scope_types in _legacy_scope_types(engine, legacy_ids).items():
+        if len(scope_types) != 1:
+            ambiguous += 1
+            reason = "同时匹配群聊和私聊" if scope_types else "缺少可判定 scope 的 SQL 记录"
+            logger.warning("旧 workspace %s %s，保留原目录等待人工合并", legacy_id, reason)
+            continue
+        scope_type = next(iter(scope_types))
+        target_key = f"group-{legacy_id}" if scope_type == "group" else f"dm-{legacy_id}"
+        legacy_memory_prefix = os.path.join("cache", "sandbox", "memory", legacy_id) + os.sep
+        with Session(engine) as session:
+            protected_memory_paths = {
+                os.path.abspath(os.path.join(os.getcwd(), physical_path))
+                for physical_path in session.exec(
+                    select(MessageAttachment.physical_path).where(
+                        col(MessageAttachment.physical_path).like(f"{legacy_memory_prefix}%")
+                    )
+                ).all()
+            }
+        moved_any = False
+        for area in ("memory", "workspaces"):
+            try:
+                moved = _merge_legacy_directory(
+                    os.path.join(working_dir, area, legacy_id),
+                    os.path.join(working_dir, area, target_key),
+                    protected_source_paths=protected_memory_paths if area == "memory" else None,
+                )
+            except OSError as exc:
+                logger.warning("旧 workspace 自动迁移失败 %s/%s: %s", area, legacy_id, exc)
+                continue
+            moved_any = moved or moved_any
+        migrated += int(moved_any)
+    if migrated:
+        logger.info("已自动迁移 %s 个可唯一判定 scope 的旧 SOUL/workspace", migrated)
+    return migrated, ambiguous
+
+
+class _PendingFileWrite:
+    """Stage one attachment write and make replacement rollback-capable."""
+
+    def __init__(self, target_path: str, data: bytes):
+        self.target_path = target_path
+        suffix = f"{os.getpid()}-{time.time_ns()}"
+        self.temp_path = f"{target_path}.frontier-pending-{suffix}"
+        self.backup_path: str | None = None
+        self.installed = False
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        try:
+            with open(self.temp_path, "xb") as file:
+                file.write(data)
+                file.flush()
+                os.fsync(file.fileno())
+        except Exception:
+            self._remove(self.temp_path)
+            raise
+
+    @staticmethod
+    def _remove(path: str | None) -> None:
+        if path is None:
+            return
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+
+    def install(self) -> None:
+        if os.path.exists(self.target_path):
+            self.backup_path = f"{self.target_path}.frontier-backup-{os.getpid()}-{time.time_ns()}"
+            os.replace(self.target_path, self.backup_path)
+        try:
+            os.replace(self.temp_path, self.target_path)
+            self.installed = True
+        except Exception:
+            if self.backup_path is not None:
+                os.replace(self.backup_path, self.target_path)
+                self.backup_path = None
+            raise
+
+    def rollback(self) -> None:
+        if self.backup_path is not None and os.path.exists(self.backup_path):
+            os.replace(self.backup_path, self.target_path)
+            self.backup_path = None
+        elif self.installed:
+            self._remove(self.target_path)
+        self._remove(self.temp_path)
+
+    def finish(self) -> None:
+        for path in (self.backup_path, self.temp_path):
+            try:
+                self._remove(path)
+            except OSError as exc:
+                logger.warning("附件原子写入临时文件清理失败 %s: %s", path, exc)
 
 
 class _MessageAttachmentManager:
@@ -604,10 +1251,11 @@ class _MessageAttachmentManager:
         def _do():
             workspace_key = _message_workspace_key(user_id, group_id)
             now_ms = int(time.time() * 1000)
-            with Session(self.engine) as session:
+            with Session(self.engine, expire_on_commit=False) as session:
                 attachment = session.exec(
                     select(MessageAttachment).where(MessageAttachment.physical_path == physical_path).limit(1)
                 ).first()
+                affected_message_times = {msg_time}
                 if attachment is None:
                     attachment = MessageAttachment(
                         msg_time=msg_time,
@@ -628,6 +1276,7 @@ class _MessageAttachmentManager:
                         metadata_json=metadata_json,
                     )
                 else:
+                    affected_message_times.add(attachment.msg_time)
                     attachment.msg_time = msg_time
                     attachment.msg_id = msg_id
                     attachment.user_id = user_id
@@ -643,11 +1292,16 @@ class _MessageAttachmentManager:
                     attachment.expires_at = expires_at
                     attachment.metadata_json = metadata_json
                 session.add(attachment)
+                session.flush()
+                _refresh_message_model_states(session, affected_message_times)
                 session.commit()
-                session.refresh(attachment)
                 return attachment
 
-        return await _run_database(self.engine, _do)
+        def _locked_do():
+            with _lock_attachment_paths([physical_path]):
+                return _do()
+
+        return await _run_database(self.engine, _locked_do)
 
     async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
         attachments = await self.insert_media(
@@ -677,65 +1331,90 @@ class _MessageAttachmentManager:
             now_ms = int(time.time() * 1000)
             expires_ms = now_ms + EnvConfig.MEDIA_TTL_DAYS * 86400 * 1000
             workspace_key = _message_workspace_key(user_id, group_id)
-            directories = {"image": "images", "audio": "audio", "video": "videos", "file": "files"}
             inserted: list[MessageAttachment] = []
-            with Session(self.engine) as session:
-                for index, item in enumerate(media):
-                    file_name = f"{msg_time}_{index}{item.extension}"
-                    file_path, virtual_path = _attachment_paths(
-                        user_id,
-                        group_id,
-                        directories[item.kind],
-                        file_name,
-                    )
-                    full_path = os.path.join(os.getcwd(), file_path)
-                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-                    with open(full_path, "wb") as file:
-                        file.write(item.data)
-
-                    attachment = session.exec(
-                        select(MessageAttachment).where(MessageAttachment.physical_path == file_path).limit(1)
-                    ).first()
-                    if attachment is None:
-                        attachment = MessageAttachment(
-                            msg_time=msg_time,
-                            msg_id=msg_id,
-                            user_id=user_id,
-                            group_id=group_id,
-                            workspace_key=workspace_key,
-                            kind=item.kind,
-                            source_type=source_type,
-                            file_name=file_name,
-                            mime_type=item.mime_type,
-                            file_size=len(item.data),
-                            sha256=_sha256_bytes(item.data),
-                            physical_path=file_path,
-                            virtual_path=virtual_path,
-                            created_at=now_ms,
-                            expires_at=expires_ms,
+            pending_writes: list[_PendingFileWrite] = []
+            try:
+                with Session(self.engine, expire_on_commit=False) as session:
+                    affected_message_times = {msg_time}
+                    for index, item in enumerate(media):
+                        file_name = f"{msg_time}_{index}{item.extension}"
+                        file_path, virtual_path = _attachment_paths(
+                            user_id,
+                            group_id,
+                            _ATTACHMENT_KIND_DIRECTORIES[item.kind],
+                            file_name,
                         )
-                    else:
-                        attachment.msg_time = msg_time
-                        attachment.msg_id = msg_id
-                        attachment.user_id = user_id
-                        attachment.group_id = group_id
-                        attachment.workspace_key = workspace_key
-                        attachment.kind = item.kind
-                        attachment.source_type = source_type
-                        attachment.file_name = file_name
-                        attachment.mime_type = item.mime_type
-                        attachment.file_size = len(item.data)
-                        attachment.sha256 = _sha256_bytes(item.data)
-                        attachment.virtual_path = virtual_path
-                        attachment.expires_at = expires_ms
-                    session.add(attachment)
-                    inserted.append(attachment)
-                session.commit()
-                for attachment in inserted:
-                    session.refresh(attachment)
+                        full_path = os.path.join(os.getcwd(), file_path)
+                        pending_writes.append(_PendingFileWrite(full_path, item.data))
+
+                        attachment = session.exec(
+                            select(MessageAttachment).where(MessageAttachment.physical_path == file_path).limit(1)
+                        ).first()
+                        if attachment is None:
+                            attachment = MessageAttachment(
+                                msg_time=msg_time,
+                                msg_id=msg_id,
+                                user_id=user_id,
+                                group_id=group_id,
+                                workspace_key=workspace_key,
+                                kind=item.kind,
+                                source_type=source_type,
+                                file_name=file_name,
+                                mime_type=item.mime_type,
+                                file_size=len(item.data),
+                                sha256=_sha256_bytes(item.data),
+                                physical_path=file_path,
+                                virtual_path=virtual_path,
+                                created_at=now_ms,
+                                expires_at=expires_ms,
+                            )
+                        else:
+                            affected_message_times.add(attachment.msg_time)
+                            attachment.msg_time = msg_time
+                            attachment.msg_id = msg_id
+                            attachment.user_id = user_id
+                            attachment.group_id = group_id
+                            attachment.workspace_key = workspace_key
+                            attachment.kind = item.kind
+                            attachment.source_type = source_type
+                            attachment.file_name = file_name
+                            attachment.mime_type = item.mime_type
+                            attachment.file_size = len(item.data)
+                            attachment.sha256 = _sha256_bytes(item.data)
+                            attachment.virtual_path = virtual_path
+                            attachment.expires_at = expires_ms
+                        session.add(attachment)
+                        inserted.append(attachment)
+                    session.flush()
+                    _refresh_message_model_states(session, affected_message_times)
+                    for pending_write in pending_writes:
+                        pending_write.install()
+                    session.commit()
+            except Exception:
+                for pending_write in reversed(pending_writes):
+                    try:
+                        pending_write.rollback()
+                    except OSError as exc:
+                        logger.warning("回滚未提交媒体文件失败 %s: %s", pending_write.target_path, exc)
+                raise
+            for pending_write in pending_writes:
+                pending_write.finish()
             return inserted
 
-        return await _run_database(self.engine, _do)
+        def _locked_do():
+            target_paths = [
+                _attachment_paths(
+                    user_id,
+                    group_id,
+                    _ATTACHMENT_KIND_DIRECTORIES[item.kind],
+                    f"{msg_time}_{index}{item.extension}",
+                )[0]
+                for index, item in enumerate(media)
+            ]
+            with _lock_attachment_paths(target_paths):
+                return _do()
+
+        return await _run_database(self.engine, _locked_do)
 
     async def select_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
         def _do():
@@ -786,13 +1465,25 @@ class _MessageAttachmentManager:
             cleaned = 0
             with Session(self.engine) as session:
                 expired = session.exec(select(MessageAttachment).where(MessageAttachment.expires_at < cutoff)).all()
+                affected_message_times = {record.msg_time for record in expired}
+                expired_paths = {record.physical_path for record in expired}
                 for record in expired:
-                    full_path = os.path.join(os.getcwd(), record.physical_path)
+                    session.delete(record)
+                    cleaned += 1
+                session.flush()
+                for physical_path in expired_paths:
+                    remaining_references = session.exec(
+                        select(func.count())
+                        .select_from(MessageAttachment)
+                        .where(MessageAttachment.physical_path == physical_path)
+                    ).one()
+                    if remaining_references:
+                        continue
+                    full_path = os.path.join(os.getcwd(), physical_path)
                     if os.path.exists(full_path):
                         os.remove(full_path)
                         _prune_empty_attachment_dirs(full_path)
-                    session.delete(record)
-                    cleaned += 1
+                _refresh_message_model_states(session, affected_message_times)
                 session.commit()
             return cleaned
 
@@ -809,6 +1500,7 @@ class _MessageAttachmentManager:
             verified = 0
             corrected = 0
             with Session(self.engine) as session:
+                affected_message_times: set[int] = set()
                 records = session.exec(
                     select(MessageAttachment)
                     .where(MessageAttachment.kind == "image")
@@ -853,7 +1545,10 @@ class _MessageAttachmentManager:
                     metadata["media_type_verified"] = True
                     record.metadata_json = json.dumps(metadata, ensure_ascii=False)
                     session.add(record)
+                    affected_message_times.add(record.msg_time)
                     verified += 1
+                session.flush()
+                _refresh_message_model_states(session, affected_message_times)
                 session.commit()
             return verified, corrected
 
@@ -873,7 +1568,7 @@ class GroupSettingsManager:
                     select(GroupSettings).where(
                         GroupSettings.group_id == group_id,
                         GroupSettings.key == key,
-                    )
+                    ).order_by(col(GroupSettings.id))
                 ).all()
                 return [row.value for row in rows]
 
@@ -936,7 +1631,10 @@ class MessageDatabase:
         self._attachments = _MessageAttachmentManager(self.engine)
         Message.metadata.create_all(self.engine)
         ensure_message_schema(self.engine)
+        ensure_conversation_summary_schema(self.engine)
         MessageAttachment.metadata.create_all(self.engine)
+        migrate_legacy_attachment_workspaces(self.engine)
+        migrate_legacy_scope_directories(self.engine)
         GroupSettings.metadata.create_all(self.engine)
         ensure_database_performance_indexes(self.engine)
         ensure_message_fts(self.engine)
@@ -960,9 +1658,15 @@ class MessageDatabase:
         user_nickname: str | None = None,
         user_card: str | None = None,
         reply_context_json: str | None = None,
+        sender_user_id: int | None = None,
+        bot_user_id: int | None = None,
+        directly_mentions_bot: bool = False,
     ):
         def _do():
             with Session(self.engine) as session:
+                resolved_sender_user_id = sender_user_id
+                if resolved_sender_user_id is None and (group_id is not None or role != "assistant"):
+                    resolved_sender_user_id = user_id
                 message = Message(
                     time=time,
                     msg_id=msg_id,
@@ -978,13 +1682,20 @@ class MessageDatabase:
                     parent_msg_id=parent_msg_id,
                     parent_msg_time=parent_msg_time,
                     parent_forward_id=parent_forward_id,
-                    estimated_tokens=estimate_stored_message_tokens(content, user_name),
+                    estimated_tokens=0,
                     token_estimate_version=MESSAGE_TOKEN_ESTIMATE_VERSION,
                     user_nickname=user_nickname,
                     user_card=user_card,
                     reply_context_json=reply_context_json,
+                    sender_user_id=resolved_sender_user_id,
+                    bot_user_id=bot_user_id,
+                    directly_mentions_bot=directly_mentions_bot,
+                    context_updated_at=_now_ms(),
                 )
+                message.estimated_tokens = _estimate_message_model_tokens(message)
                 session.add(message)
+                session.flush()
+                _invalidate_conversation_summaries_for_message(session, message)
                 session.commit()
 
         await _run_database(self.engine, _do)
@@ -1021,6 +1732,7 @@ class MessageDatabase:
         after_time: int | None = None,
         before_time: int | None = None,
         cursor_time: int | None = None,
+        stable_before_time: int | None = None,
         limit: int = 200,
         ascending: bool = False,
     ) -> list[Message]:
@@ -1028,15 +1740,34 @@ class MessageDatabase:
 
         def _do():
             with Session(self.engine) as session:
-                statement = select(Message).where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                conditions = [Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL]
                 if group_id is None:
-                    statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
+                    # Private memory intentionally includes this user's own
+                    # utterances across QQ scopes, while excluding other group
+                    # participants. Private assistant rows retain the peer in
+                    # user_id for the same compatibility scope.
+                    conditions.append(Message.user_id == user_id)
                 else:
-                    statement = statement.where(Message.group_id == group_id)
+                    conditions.append(Message.group_id == group_id)
                 if after_time is not None:
-                    statement = statement.where(Message.time > after_time)
+                    conditions.append(Message.time > after_time)
                 if before_time is not None:
-                    statement = statement.where(Message.time < before_time)
+                    conditions.append(Message.time < before_time)
+
+                statement = select(Message).where(*conditions)
+                if stable_before_time is not None:
+                    # A summary cursor is event-time based, so skipping a recent
+                    # row and continuing with later stable rows would advance the
+                    # cursor past data that has not been summarized. Restrict the
+                    # range to the continuous stable prefix instead.
+                    first_unstable_time = session.exec(
+                        select(func.min(Message.time)).where(
+                            *conditions,
+                            Message.context_updated_at >= stable_before_time,
+                        )
+                    ).one()
+                    if first_unstable_time is not None:
+                        statement = statement.where(Message.time < first_unstable_time)
                 if cursor_time is not None:
                     statement = statement.where(Message.time > cursor_time if ascending else Message.time < cursor_time)
                 order = Message.time.asc() if ascending else desc(Message.time)
@@ -1051,6 +1782,7 @@ class MessageDatabase:
         group_id: int | None,
         after_time: int | None = None,
         before_time: int | None = None,
+        stable_before_time: int | None = None,
     ) -> int:
         """Return a cheap provider-neutral token estimate for a conversation range."""
 
@@ -1061,7 +1793,7 @@ class MessageDatabase:
                 "token_estimate_version": MESSAGE_TOKEN_ESTIMATE_VERSION,
             }
             if group_id is None:
-                filters.extend(["user_id = :user_id", "group_id IS NULL"])
+                filters.append("user_id = :user_id")
                 params["user_id"] = user_id
             else:
                 filters.append("group_id = :group_id")
@@ -1072,6 +1804,19 @@ class MessageDatabase:
             if before_time is not None:
                 filters.append("time < :before_time")
                 params["before_time"] = before_time
+            if stable_before_time is not None:
+                params["stable_before_time"] = stable_before_time
+                unstable_where = " AND ".join([*filters, "context_updated_at >= :stable_before_time"])
+                with self.engine.connect() as conn:
+                    first_unstable_time = conn.execute(
+                        text(
+                            f"SELECT MIN(time) FROM message WHERE {unstable_where}"  # noqa: S608
+                        ),
+                        params,
+                    ).scalar_one()
+                if first_unstable_time is not None:
+                    filters.append("time < :first_unstable_time")
+                    params["first_unstable_time"] = int(first_unstable_time)
             where = " AND ".join(filters)
             query = text(
                 f"""
@@ -1079,7 +1824,12 @@ class MessageDatabase:
                     CASE
                         WHEN token_estimate_version = :token_estimate_version AND estimated_tokens > 0
                             THEN estimated_tokens
-                        ELSE MAX(1, CAST((length(content) + COALESCE(length(user_name), 0) + 240) / 1.8 AS INTEGER) + 4)
+                        ELSE MAX(1, CAST((
+                            length(content)
+                            + COALESCE(length(user_name), 0)
+                            + COALESCE(length(reply_context_json), 0)
+                            + 240
+                        ) / 1.8 AS INTEGER) + 4)
                     END
                 ), 0)
                 FROM message
@@ -1097,6 +1847,7 @@ class MessageDatabase:
         scope_type: str,
         scope_id: str,
         prompt_version: int | None = None,
+        include_invalidated: bool = False,
     ) -> ConversationSummary | None:
         def _do():
             with Session(self.engine) as session:
@@ -1105,6 +1856,8 @@ class MessageDatabase:
                     .where(ConversationSummary.scope_type == scope_type)
                     .where(ConversationSummary.scope_id == scope_id)
                 )
+                if not include_invalidated:
+                    statement = statement.where(col(ConversationSummary.invalidated_at).is_(None))
                 if prompt_version is not None:
                     statement = statement.where(ConversationSummary.prompt_version == prompt_version)
                 statement = statement.order_by(desc(ConversationSummary.version)).limit(1)
@@ -1117,11 +1870,29 @@ class MessageDatabase:
         summary: ConversationSummary,
         *,
         expected_version: int,
+        expected_base_summary_id: int | None = None,
+        expected_source_context: dict[int, int] | None = None,
+        expected_source_after_time: int | None = None,
     ) -> bool:
-        """Append a summary only when its source version is still current."""
+        """Append only when both summary and source-message snapshots are current."""
 
         def _do():
             with Session(self.engine, expire_on_commit=False) as session:
+                if self.engine.dialect.name == "sqlite":
+                    # Python's legacy sqlite transaction mode does not start a
+                    # physical transaction for SELECT. Acquire the write lock
+                    # before the source/version CAS so no writer can slip
+                    # between validation and the summary INSERT.
+                    session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+                if not _conversation_summary_dependencies_current(
+                    session,
+                    summary,
+                    expected_base_summary_id=expected_base_summary_id,
+                    expected_source_context=expected_source_context,
+                    expected_source_after_time=expected_source_after_time,
+                ):
+                    return False
+
                 statement = (
                     select(ConversationSummary.version)
                     .where(ConversationSummary.scope_type == summary.scope_type)
@@ -1142,13 +1913,23 @@ class MessageDatabase:
 
         return await _run_database(self.engine, _do)
 
-    async def select_by_msg_id(self, *, msg_id: int, group_id: int | None) -> Message | None:
+    async def select_by_msg_id(
+        self,
+        *,
+        msg_id: int,
+        group_id: int | None,
+        peer_user_id: int | None = None,
+    ) -> Message | None:
+        if group_id is None and peer_user_id is None:
+            raise ValueError("私聊消息查询必须提供 peer_user_id")
+
         def _do():
             with Session(self.engine) as session:
                 statement = select(Message).where(Message.msg_id == msg_id)
                 statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
                 if group_id is None:
                     statement = statement.where(Message.group_id.is_(None))  # type: ignore
+                    statement = statement.where(Message.user_id == peer_user_id)
                 else:
                     statement = statement.where(Message.group_id == group_id)
                 statement = statement.order_by(desc(Message.time)).limit(1)
@@ -1171,11 +1952,33 @@ class MessageDatabase:
                 if message is None:
                     return
                 message.content = content
+                message.model_content = None
                 if raw_segments_json is not None:
                     message.raw_segments_json = raw_segments_json
                 message.normalized_version = normalized_version
                 message.normalized_status = normalized_status
                 session.add(message)
+                session.flush()
+                _refresh_message_model_state(session, time)
+                session.commit()
+
+        await _run_database(self.engine, _do)
+
+    async def finalize_message_context(
+        self,
+        *,
+        time: int,
+        reply_context_json: str | None | object = _REPLY_CONTEXT_UNSET,
+    ) -> None:
+        """Rebuild the model-facing view after lazy attachments resolve."""
+
+        def _do():
+            with Session(self.engine) as session:
+                _refresh_message_model_state(
+                    session,
+                    time,
+                    reply_context_json=reply_context_json,
+                )
                 session.commit()
 
         await _run_database(self.engine, _do)
@@ -1226,6 +2029,7 @@ class MessageDatabase:
                             getattr(item, "content", ""), getattr(item, "sender_name", None)
                         ),
                         token_estimate_version=MESSAGE_TOKEN_ESTIMATE_VERSION,
+                        context_updated_at=_now_ms(),
                     )
                     session.add(message)
                     inserted.append(message)
@@ -1249,16 +2053,25 @@ class MessageDatabase:
         if not messages:
             return []
         messages = list(reversed(messages))
+        workspace_user_id = user_id if user_id is not None else messages[-1].user_id
         if before_time is None:
             messages = messages[:-1]
-        return await self.prepare_message_records(messages)
+        return await self.prepare_message_records(
+            messages,
+            accessible_workspace_key=_message_workspace_key(workspace_user_id, group_id),
+        )
 
-    async def prepare_message_records(self, messages: list[Message]) -> list[dict[str, str]]:  # noqa: C901
+    async def prepare_message_records(
+        self,
+        messages: list[Message],
+        *,
+        accessible_workspace_key: str | None = None,
+    ) -> list[dict[str, object]]:  # noqa: C901
         """Render already-selected records in chronological order for an LLM."""
         if not messages:
             return []
         messages = sorted(messages, key=lambda message: message.time)
-        messages_seq: list[dict[str, str]] = []
+        messages_seq: list[dict[str, object]] = []
 
         all_msg_times = [m.time for m in messages]
 
@@ -1267,51 +2080,50 @@ class MessageDatabase:
 
         for message in messages:
             msg_attachments = attachments_by_time.get(message.time, [])
-            content_text = message.content
             attachment_refs = []
             missing_kinds: list[str] = []
+            message_workspace_key = _message_workspace_key(message.user_id, message.group_id)
+            same_workspace = (
+                accessible_workspace_key is None
+                or message_workspace_key == accessible_workspace_key
+            )
             for attachment in msg_attachments:
+                if (
+                    accessible_workspace_key is not None
+                    and attachment.workspace_key != accessible_workspace_key
+                ):
+                    # Private history intentionally includes this user's own
+                    # group utterances, but not another workspace's files.
+                    continue
                 full_path = os.path.join(os.getcwd(), attachment.physical_path)
                 if not os.path.exists(full_path):
                     missing_kinds.append(attachment.kind)
                     continue
-                attachment_refs.append(
-                    {
-                        "kind": attachment.kind,
-                        "mime_type": attachment.mime_type,
-                        "file_name": attachment.file_name,
-                        "path": attachment.virtual_path,
-                    }
-                )
+                attachment_refs.append(_attachment_agent_payload(attachment))
+            content_text = content_for_persisted_images(
+                message.content,
+                sum(attachment.get("kind") == "image" for attachment in attachment_refs),
+            )
             if missing_kinds:
                 content_text += "\n" + " ".join(f"[{kind}附件已过期]" for kind in missing_kinds)
 
-            reply_to = None
-            if message.reply_context_json:
-                try:
-                    parsed_reply = json.loads(message.reply_context_json)
-                    if isinstance(parsed_reply, dict):
-                        reply_to = parsed_reply
-                except json.JSONDecodeError:
-                    logger.warning("忽略损坏的引用消息上下文: msg_time=%s", message.time)
-
-            payload = build_agent_message_payload(
-                timestamp_ms=message.time,
-                msg_id=message.msg_id,
-                user_id=message.user_id,
-                group_id=message.group_id,
-                user_name=message.user_name,
-                user_nickname=message.user_nickname,
-                user_card=message.user_card,
-                role=message.role,
+            payload = _message_agent_payload(
+                message,
                 content=content_text,
                 attachments=attachment_refs,
-                reply_to=reply_to,
+                # Private context may include the user's own group utterances,
+                # but a quoted group participant is not part of that private
+                # scope. Keep the utterance while dropping the foreign snapshot.
+                include_reply_to=same_workspace,
             )
-            # Keep every original platform message atomic. Protocol adapters may
-            # coalesce adjacent user roles, but each JSON envelope remains an
-            # explicit participant boundary.
-            messages_seq.append({"role": message.role, "content": serialize_agent_payload(payload)})
+            # Keep every original platform message atomic and use the string
+            # content form accepted by all supported provider protocols.
+            messages_seq.append(
+                {
+                    "role": message.role,
+                    "content": serialize_agent_payload(payload),
+                }
+            )
 
         return messages_seq
 

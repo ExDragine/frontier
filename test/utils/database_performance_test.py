@@ -40,6 +40,7 @@ def test_message_database_creates_query_shaped_indexes(tmp_path: Path, monkeypat
     assert "ix_messageattachment_msg_time" in attachment_index_names
     assert "ix_messageattachment_expires_at" in attachment_index_names
     assert "ix_messageattachment_scope" in attachment_index_names
+    assert "ux_messageattachment_path_msg_time" in attachment_index_names
 
 
 @pytest.mark.asyncio

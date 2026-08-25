@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import os
+import re
 import types
 import uuid
 from io import BytesIO
@@ -112,6 +113,25 @@ def test_frontier_load_system_prompt_includes_markdown_rendering_rules(monkeypat
     assert "动态人设文件路径为 `/memory/123/SOUL.md`" in prompt
 
 
+def test_group_system_prompt_uses_durable_group_name(monkeypatch):
+    import utils.database as database_mod
+
+    class DummySettings:
+        def __init__(self, _engine):
+            pass
+
+        def get(self, group_id, key):
+            assert (group_id, key) == (123, "wake_word")
+            return ["群内固定名称"]
+
+    monkeypatch.setattr(prompts_mod.EnvConfig, "SYSTEM_PROMPT", "You are {name}.")
+    monkeypatch.setattr(prompts_mod.EnvConfig, "BOT_NAME", "Frontier")
+    monkeypatch.setattr(database_mod, "GroupSettingsManager", DummySettings)
+    monkeypatch.setattr(database_mod, "get_engine", lambda: object())
+
+    assert prompts_mod.load_base_system_prompt(123) == "You are 群内固定名称."
+
+
 @pytest.mark.asyncio
 async def test_extract_uni_messages():
     response = {
@@ -188,7 +208,7 @@ def test_filter_messages_for_text_only_model_removes_image_parts(monkeypatch):
 
     filtered = inputs_mod.filter_messages_for_model_capabilities(messages, "text-model")
 
-    assert filtered[0]["content"] == [{"type": "text", "text": "hello\n\n[图片已省略：当前模型不支持视觉输入]"}]
+    assert filtered[0]["content"] == "hello\n\n[图片已省略：当前模型不支持视觉输入]"
     assert messages[0]["content"][1]["type"] == "image_url"
 
 
@@ -258,9 +278,7 @@ def test_filter_messages_omits_invalid_inline_image(monkeypatch):
 
     filtered = inputs_mod.filter_messages_for_model_capabilities(messages, "vision-model")
 
-    assert filtered[0]["content"] == [
-        {"type": "text", "text": "hello\n\n[图片已省略：图片无效或无法转换为受支持的格式]"}
-    ]
+    assert filtered[0]["content"] == "hello\n\n[图片已省略：图片无效或无法转换为受支持的格式]"
 
 
 def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
@@ -468,6 +486,7 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     monkeypatch.setattr(cognitive_mod, "create_llm", capturing_create_llm)
     monkeypatch.setattr(cognitive_mod.EnvConfig, "ADVAN_MODEL_PROVIDER", "openrouter")
     monkeypatch.setattr(cognitive_mod, "provider_uses_responses_api", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(cognitive_mod, "provider_is_official_openai", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
         cognitive_mod, "filter_messages_for_model_capabilities", inputs_mod.filter_messages_for_model_capabilities
@@ -500,9 +519,10 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     assert "endpoint" not in captured
     assert "reasoning_effort" not in captured
     assert "verbosity" not in captured
-    assert captured["payload"]["messages"][0]["content"] == [
-        {"type": "text", "text": "hi\n\n[图片已省略：当前模型不支持视觉输入]"}
-    ]
+    assert "model_kwargs" not in captured
+    assert captured["payload"]["messages"][0]["content"] == (
+        "hi\n\n[图片已省略：当前模型不支持视觉输入]"
+    )
     assert captured["payload"]["audio_inputs"] == [b"audio"]
     assert str(captured["config"]["configurable"]["thread_id"]) == str(runtime_mod.agent_thread_id("u1", 123))
 
@@ -555,13 +575,15 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
 
     assert isinstance(backend, workspace_mod.CompositeBackend)
     assert backend.default.virtual_mode is True
-    assert backend.default.root_dir == str(tmp_path / "sandbox" / "workspaces" / "123")
-    assert set(backend.routes) == {"/skills/", "/memory/123/"}
+    assert backend.default.root_dir == str(tmp_path / "sandbox" / "workspaces" / "group-123")
+    assert set(backend.routes) == {"/skills/", "/memory/group-123/"}
     assert backend.routes["/skills/"].root_dir == str(workspace_mod.PROJECT_ROOT / "skills")
-    assert backend.routes["/memory/123/"].root_dir == str(tmp_path / "sandbox" / "memory" / "123")
+    assert backend.routes["/memory/group-123/"].root_dir == str(
+        tmp_path / "sandbox" / "memory" / "group-123"
+    )
     assert captured["skills"] == ["/skills"]
-    assert captured["memory"] == ["/memory/123/SOUL.md"]
-    assert "动态人设文件路径为 `/memory/123/SOUL.md`" in captured["system_prompt"]
+    assert captured["memory"] == ["/memory/group-123/SOUL.md"]
+    assert "动态人设文件路径为 `/memory/group-123/SOUL.md`" in captured["system_prompt"]
     assert captured["subagents"] == [
         frontier.memory_subagent,
         frontier.research_subagent,
@@ -571,15 +593,17 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert captured["context_schema"] is cognitive_mod.FrontierRuntimeContext
     assert captured["permissions"][0].mode == "deny"
     assert captured["permissions"][0].operations == ["write"]
-    assert (tmp_path / "sandbox" / "workspaces" / "123").is_dir()
+    assert (tmp_path / "sandbox" / "workspaces" / "group-123").is_dir()
     assert (tmp_path / "sandbox" / "memory").is_dir()
-    assert captured["config"]["configurable"]["workspace_dir"] == str(tmp_path / "sandbox" / "workspaces" / "123")
+    assert captured["config"]["configurable"]["workspace_dir"] == str(
+        tmp_path / "sandbox" / "workspaces" / "group-123"
+    )
     assert captured["config"]["configurable"]["group_member_role"] == "owner"
     assert captured["context"] == cognitive_mod.FrontierRuntimeContext(
         user_id="u1",
         group_id=123,
         group_member_role="owner",
-        workspace_dir=str(tmp_path / "sandbox" / "workspaces" / "123"),
+        workspace_dir=str(tmp_path / "sandbox" / "workspaces" / "group-123"),
     )
 
 
@@ -720,10 +744,15 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
         group_id=None,
     )
 
-    assert captured["backend"].default.root_dir == str(tmp_path / "sandbox" / "workspaces" / "u1")
-    assert captured["config"]["configurable"]["workspace_dir"] == str(tmp_path / "sandbox" / "workspaces" / "u1")
-    assert (tmp_path / "sandbox" / "workspaces" / "u1").is_dir()
-    assert (tmp_path / "sandbox" / "memory" / "u1" / "SOUL.md").read_bytes() == b""
+    workspace_key = runtime_mod.conversation_workspace_key("u1", None)
+    assert captured["backend"].default.root_dir == str(
+        tmp_path / "sandbox" / "workspaces" / workspace_key
+    )
+    assert captured["config"]["configurable"]["workspace_dir"] == str(
+        tmp_path / "sandbox" / "workspaces" / workspace_key
+    )
+    assert (tmp_path / "sandbox" / "workspaces" / workspace_key).is_dir()
+    assert (tmp_path / "sandbox" / "memory" / workspace_key / "SOUL.md").read_bytes() == b""
 
 
 @pytest.mark.asyncio
@@ -778,6 +807,20 @@ def test_agent_thread_id_isolated_by_group_and_user():
     assert group_user != dm_user
 
 
+def test_conversation_workspace_key_isolated_by_scope():
+    assert runtime_mod.conversation_workspace_key("123", None) == "dm-123"
+    assert runtime_mod.conversation_workspace_key("user", 123) == "group-123"
+    assert runtime_mod.conversation_workspace_key("123", None) != runtime_mod.conversation_workspace_key(
+        "user",
+        123,
+    )
+    unsafe = runtime_mod.conversation_workspace_key("../../other-user", None)
+    assert unsafe.startswith("dm-h-")
+    assert "other-user" not in unsafe
+    assert "/" not in unsafe
+    assert unsafe == runtime_mod.conversation_workspace_key("../../other-user", None)
+
+
 @pytest.mark.asyncio
 async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypatch):
     import types
@@ -805,6 +848,7 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
 
     monkeypatch.setattr(cognitive_mod, "create_llm", capturing_create_llm)
     monkeypatch.setattr(cognitive_mod, "provider_uses_responses_api", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(cognitive_mod, "provider_is_official_openai", lambda *_args, **_kwargs: True)
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
@@ -821,6 +865,210 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
     assert "use_responses_api" not in captured
     assert captured.get("reasoning_effort") == "medium"
     assert captured.get("verbosity") == "low"
+    cache_key = captured["model_kwargs"]["prompt_cache_key"]
+    assert cache_key == cognitive_mod._prompt_cache_key(
+        model=cognitive_mod.EnvConfig.ADVAN_MODEL,
+        workspace_key=runtime_mod.conversation_workspace_key("u1", None),
+        access_profile="frontier",
+    )
+    assert "u1" not in cache_key
+    assert len(cache_key) <= 64
+
+
+def test_prompt_cache_key_is_stable_and_scoped_without_plaintext_identity():
+    first = cognitive_mod._prompt_cache_key(
+        model="gpt-5.4",
+        workspace_key="123456789",
+        access_profile="frontier",
+    )
+
+    assert first == cognitive_mod._prompt_cache_key(
+        model="gpt-5.4",
+        workspace_key="123456789",
+        access_profile="frontier",
+    )
+    assert first != cognitive_mod._prompt_cache_key(
+        model="gpt-5.4",
+        workspace_key="987654321",
+        access_profile="frontier",
+    )
+    assert first != cognitive_mod._prompt_cache_key(
+        model="gpt-5.4",
+        workspace_key="123456789",
+        access_profile="acp",
+    )
+    assert "123456789" not in first
+
+
+@pytest.mark.parametrize(
+    "api_mode",
+    ["responses", "chat_completions", "messages"],
+)
+def test_provider_request_overrides_isolates_official_deepseek_routes(
+    monkeypatch,
+    api_mode,
+):
+    monkeypatch.setattr(
+        cognitive_mod,
+        "provider_official_deepseek_api_mode",
+        lambda *_args: api_mode,
+    )
+    workspace_key = "group-123456789"
+    pseudonym = cognitive_mod._provider_user_id(
+        workspace_key=workspace_key,
+        access_profile="frontier",
+    )
+
+    overrides = cognitive_mod._provider_request_overrides(
+        model="deepseek-v4-pro",
+        provider="deepseek_responses",
+        workspace_key=workspace_key,
+        access_profile="frontier",
+    )
+
+    expected = {
+        "responses": {"model_kwargs": {"user": pseudonym}},
+        "chat_completions": {"extra_body": {"user_id": pseudonym}},
+        "messages": {"model_kwargs": {"metadata": {"user_id": pseudonym}}},
+    }
+    assert overrides == expected[api_mode]
+    assert re.fullmatch(r"[A-Za-z0-9_-]+", pseudonym)
+    assert "123456789" not in pseudonym
+    assert len(pseudonym) <= 64
+
+
+def test_provider_user_id_is_stable_and_separates_scope_and_access_profile():
+    private = cognitive_mod._provider_user_id(
+        workspace_key="dm-123",
+        access_profile="frontier",
+    )
+
+    assert private == cognitive_mod._provider_user_id(
+        workspace_key="dm-123",
+        access_profile="frontier",
+    )
+    assert private != cognitive_mod._provider_user_id(
+        workspace_key="group-123",
+        access_profile="frontier",
+    )
+    assert private != cognitive_mod._provider_user_id(
+        workspace_key="dm-123",
+        access_profile="acp",
+    )
+
+
+def test_provider_request_overrides_keeps_anthropic_cache_control_off_proxies(monkeypatch):
+    monkeypatch.setattr(
+        cognitive_mod,
+        "provider_official_deepseek_api_mode",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(cognitive_mod, "provider_is_official_openai", lambda *_args: False)
+    monkeypatch.setattr(cognitive_mod, "provider_is_official_anthropic", lambda *_args: False)
+
+    assert cognitive_mod._provider_request_overrides(
+        model="claude-sonnet-4",
+        provider="proxy",
+        workspace_key="dm-u1",
+        access_profile="frontier",
+    ) == {}
+
+    monkeypatch.setattr(cognitive_mod, "provider_is_official_anthropic", lambda *_args: True)
+    assert cognitive_mod._provider_request_overrides(
+        model="claude-sonnet-4",
+        provider="anthropic",
+        workspace_key="dm-u1",
+        access_profile="frontier",
+    ) == {"model_kwargs": {"cache_control": {"type": "ephemeral"}}}
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_stabilizes_tool_order_and_keeps_gated_tools_at_tail(monkeypatch, tmp_path):
+    captured: dict[str, Any] = {}
+
+    class DummyAgent:
+        async def astream_events(self, payload, config=None, context=None, version=None):
+            return _FakeStream(
+                {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok")]},
+            )
+
+    class DummyCodeInterpreterMiddleware:
+        def __init__(self, *, ptc):
+            captured["ptc"] = list(ptc)
+
+    def tool(name):
+        return types.SimpleNamespace(name=name)
+
+    async def capture_intent(_text):
+        return {"webpage_screenshot", "webpage_recording"}
+
+    monkeypatch.setattr(
+        cognitive_mod,
+        "agent_tools",
+        types.SimpleNamespace(
+            restricted_tools=[
+                tool("webpage_screenshot"),
+                tool("ens_professional"),
+                tool("webpage_recording"),
+                tool("ens_normal"),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        cognitive_mod,
+        "create_deep_agent",
+        lambda **kwargs: (captured.update(kwargs) or DummyAgent()),
+    )
+    monkeypatch.setattr(cognitive_mod, "CodeInterpreterMiddleware", DummyCodeInterpreterMiddleware)
+    monkeypatch.setattr(cognitive_mod, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(cognitive_mod, "provider_uses_responses_api", lambda *_args: False)
+    monkeypatch.setattr(cognitive_mod, "provider_is_official_openai", lambda *_args: False)
+    monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args: False)
+    monkeypatch.setattr(
+        cognitive_mod,
+        "filter_messages_for_model_capabilities",
+        lambda messages, *_args, **_kwargs: messages,
+    )
+    monkeypatch.setattr(
+        cognitive_mod,
+        "detect_browser_capture_intent",
+        capture_intent,
+    )
+    monkeypatch.setattr(
+        cognitive_mod,
+        "build_acp_subagents",
+        lambda: [
+            {"name": "acp-z", "description": "z", "runnable": object()},
+            {"name": "acp-a", "description": "a", "runnable": object()},
+        ],
+    )
+    monkeypatch.setattr(cognitive_mod.EnvConfig, "ADVAN_MODEL", "custom-model")
+
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
+    frontier.tools = [tool("zeta"), tool("alpha")]
+    frontier.ptc_tools = [tool("query-z"), tool("query-a")]
+    frontier.memory_subagent = cast(Any, {"name": "memory-agent"})
+    frontier.research_subagent = None
+    frontier.document_subagent = cast(Any, {"name": "document-agent", "tools": []})
+    cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
+
+    await frontier.chat_agent(
+        messages=[{"role": "user", "content": "capture this page"}],
+        user_id="u1",
+        user_name="test",
+        user_text="capture this page",
+    )
+
+    assert [item.name for item in captured["tools"]] == [
+        "alpha",
+        "ens_normal",
+        "ens_professional",
+        "zeta",
+        "webpage_recording",
+        "webpage_screenshot",
+    ]
+    assert [item.name for item in captured["ptc"]] == ["query-a", "query-z"]
+    assert [item["name"] for item in captured["subagents"][-2:]] == ["acp-a", "acp-z"]
 
 
 @pytest.mark.asyncio

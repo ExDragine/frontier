@@ -7,16 +7,17 @@ from utils.configs import EnvConfig
 from .workspace import PROJECT_ROOT
 
 
-def load_base_system_prompt(group_id: int | None, wake_word: str | None) -> str:
+def load_base_system_prompt(group_id: int | None) -> str:
     toml_prompt = EnvConfig.SYSTEM_PROMPT.strip()
     if not toml_prompt:
         logger.error("❌ env.toml 中未配置 bot.system_prompt")
         return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: system prompt未配置]"
 
+    # Keep the system-prefix identity stable for a conversation. A transient
+    # triggering alias belongs to the user message; group identity comes from
+    # the durable group setting instead.
     name = EnvConfig.BOT_NAME
-    if wake_word:
-        name = wake_word
-    elif group_id is not None:
+    if group_id is not None:
         try:
             from utils.database import GroupSettingsManager, get_engine
 
@@ -43,11 +44,10 @@ def load_prompt_fragment(filename: str, description: str) -> str:
 
 def load_system_prompt(
     group_id: int | None = None,
-    wake_word: str | None = None,
     workspace_key: str | None = None,
 ) -> str:
-    """组合基础人设、全局操作规范和渲染规范，注入当前触发的名称。"""
-    prompt = load_base_system_prompt(group_id, wake_word)
+    """组合基础人设、全局操作规范和渲染规范，注入稳定的会话名称。"""
+    prompt = load_base_system_prompt(group_id)
     prompt_fragments = (
         ("AGENTS.md", "Agent 操作规范"),
         ("rendering.md", "Markdown 渲染规范"),

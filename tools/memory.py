@@ -6,7 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot, logger
 
-from utils.database import Message, MessageDatabase
+from utils.database import Message, MessageDatabase, resolve_message_sender_user_id
 from utils.milky_tools import format_messages
 
 _SHANGHAI = zoneinfo.ZoneInfo("Asia/Shanghai")
@@ -96,8 +96,10 @@ def _format_search_results(
         message_id = msg.msg_id if msg.msg_id is not None else "无"
         name = msg.user_name or ("助手" if msg.role == "assistant" else str(msg.user_id))
         role_label = "助手" if msg.role == "assistant" else "用户"
+        sender_user_id = resolve_message_sender_user_id(msg)
+        sender_label = str(sender_user_id) if sender_user_id is not None else "未知"
         lines.append(
-            f"- [{timestamp}] {scope} msg_id={message_id} user_id={msg.user_id} "
+            f"- [{timestamp}] {scope} msg_id={message_id} user_id={sender_label} "
             f"{role_label}({name}): {_truncate_content(msg.content, content_max_chars)}"
         )
     if len(messages) == limit and offset + len(messages) < _MAX_MEMORY_MESSAGES:

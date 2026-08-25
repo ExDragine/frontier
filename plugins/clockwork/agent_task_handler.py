@@ -7,8 +7,8 @@ from nonebot.adapters.milky.message import MessageSegment
 from nonebot_plugin_alconna import Target, UniMessage
 
 from utils.agents import FrontierCognitive
+from utils.agents.message_envelope import build_agent_message_payload, serialize_agent_payload
 from utils.configs import EnvConfig
-from utils.database import build_agent_message_payload, serialize_agent_payload
 from utils.message import outgoing_message_content, sanitize_outgoing_text
 
 from .task_models import TaskRunResult
@@ -60,7 +60,6 @@ async def run_agent_task(job_id: str = "", **kwargs) -> TaskRunResult:
                     group_id=group_id,
                     user_name=f"ScheduledTask:{job_id}",
                     role="user",
-                    is_current=True,
                     content=metadata.prompt,
                 )
             ),

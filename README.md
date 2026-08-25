@@ -28,7 +28,7 @@ UniMessage 文本、图片、视频或文件回复
 - **先存储、后门控、再下载媒体**：未触发回复的图片/视频不会被下载。
 - **会话串行**：同一用户/群聊线程通过 `asyncio.Lock` 串行执行，不同线程可并发。
 - **多模型路由**：OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek 统一由 `utils/llm_factory.py` 创建。
-- **文件系统工作区**：每个私聊或群聊拥有独立 `cache/sandbox/workspaces/{id}` 和 `/memory/{id}`。
+- **文件系统工作区**：群聊使用 `group-{group_id}`、私聊使用 `dm-{user_id}`，同一个裸数字不会共享 workspace 或 memory。
 - **分层提示词**：`env.toml` 定义基础人设，`prompts/AGENTS.md` 定义全局操作规范，`prompts/rendering.md` 定义渲染规范，workspace `SOUL.md` 保存动态人设与长期偏好。
 - **媒体工件直发**：工具返回的 `UniMessage` artifact 会被提取并直接发送到 QQ。
 
@@ -236,7 +236,9 @@ OpenAI-compatible Videos API。
 供应商 profile 名称标识具体服务，`type` 选择 LangChain 适配器，`api_mode` 选择接口协议。
 DeepSeek 可分别配置为 `deepseek + chat_completions`、`openai + responses` 和
 `anthropic + messages`；后两种接口的官方地址分别为 `https://api.deepseek.com` 和
-`https://api.deepseek.com/anthropic`。图片和文件输入目前不应交给这些 DeepSeek profile。
+`https://api.deepseek.com/anthropic`。使用官方地址和 DeepSeek 模型时，Frontier 会在三种协议中
+自动发送不含 QQ 明文的稳定 scope ID，用于服务端 KV cache、内容安全和调度隔离；兼容代理不会
+收到这一扩展字段。图片和文件输入目前不应交给这些 DeepSeek profile。
 旧版 `use_responses_api` 和短暂使用过的 `type = "deepseek_responses"` 会自动迁移。
 每日新闻使用独立的 `daily_news_model` / `daily_news_model_provider` 配置，默认通过
 DeepSeek V4 的官方 Responses API 直接调用服务端 `web_search`，不再依赖 Exa MCP。
@@ -245,20 +247,36 @@ DeepSeek V4 的官方 Responses API 直接调用服务端 `web_search`，不再�
 机器人名称只来自 `.env` 的 `NICKNAME`。数组第一项作为默认显示名称，全部非空项都可
 作为全局唤醒词；某个群在数据库中配置了自定义唤醒词后，以该群的数据库配置为准。
 
-每个群聊按 `group_id` 共享 `cache/sandbox/memory/{id}/SOUL.md`，每个私聊按 `user_id`
-维护独立 SOUL。新文件为空，由 Agent 按稳定互动逐步记录局部人设和长期偏好；全局安全、
-权限和工具规范不会写入 SOUL。
+每个群聊按 `group_id` 共享 `cache/sandbox/memory/group-{group_id}/SOUL.md`，每个私聊按
+`user_id` 使用 `cache/sandbox/memory/dm-{user_id}/SOUL.md`。新文件为空，由 Agent 按稳定互动
+逐步记录局部人设和长期偏好；全局安全、权限和工具规范不会写入 SOUL。
+
+从裸 `{id}` workspace 升级时，数据库已索引的附件会按其群聊/私聊记录迁移到带类型的新目录，
+提交新索引后删除旧媒体副本，避免绕过附件 TTL。SQL 历史只能匹配一种 scope 时，旧
+`memory/{id}/SOUL.md` 与 `workspaces/{id}` 也会自动、非覆盖地迁移；若群号和 QQ 号同值且两种
+scope 都存在，原目录会保留并打印警告，管理员核实来源后再人工合并到对应的 `group-{id}` 或
+`dm-{id}` 目录。
 
 会话上下文与 SOUL 分开管理。启用 `[conversation_memory]` 后，主 Agent 按当前模型窗口和
 实际工具集合动态载入“版本化 SQL 摘要 + token 预算内的近期原文 + 当前消息”。超过高水位的
-旧消息由后台任务压缩，原始 `Message` 记录仍作为可检索的权威数据保留；群聊摘要按
-`group_id` 隔离，私聊摘要按 `user_id` 隔离。`storage.query_message_numbers` 继续用于回复网关，
-不再限制主 Agent 的上下文长度。
+旧消息由后台任务分批压缩；压缩使用任务开始执行时冻结的 60 秒安全截止点，只处理连续稳定前缀，
+写入摘要前还会原子复验源消息版本和所依赖的基摘要，因此不会越过仍可能变化的消息，也不会阻塞
+本轮回复。原始
+`Message` 记录仍作为可检索的权威数据保留；若已覆盖的旧消息后来因引用归一化、附件写入或 TTL
+清理而改变，相关摘要会保留作审计但立即标记失效，后续从最后一个有效版本重建。群聊摘要按
+`group_id` 隔离，私聊摘要按 `user_id` 隔离。私聊上下文会包含该用户自己在群聊中的历史发言，
+但不会带入群 workspace 附件或被引用的其他群成员原文。`storage.query_message_numbers` 继续用于
+回复网关，不再限制主 Agent 的上下文长度。
 
 模型上下文中的每条 QQ 消息使用独立的 `frontier.qq_message.v1` JSON 信封，不会把连续群成员
 合并成同一个对话轮次。身份以稳定的 `sender.user_id` 为准，群内显示名优先采用群名片并保留
 昵称；引用消息通过结构化 `reply_to` 关联。信封使用未转义的 UTF-8 JSON，中文不会变成
-`\\uXXXX`。摘要格式升级时，旧格式摘要会保留在 SQL 中供审计，但新版本会从原始消息重建。
+`\\uXXXX`。纯文本统一使用各 provider 都支持的字符串 content；当前消息在附件落库后定稿，
+使其下一轮作为历史载入时保持相同的文本信封与附件引用。工具、子代理和受控工具也按稳定顺序
+发送，以减少 provider 前缀缓存抖动。摘要格式升级时，旧格式摘要会保留在 SQL 中供审计，
+但新版本会从原始消息重建。每轮装配得到的真实 raw-history token 预算会复用到后台压缩调度；
+没有本轮预算时，fallback 会预留固定 system/tool 前缀、安全余量和摘要空间，避免近期原文先
+发生滑窗、下一轮才开始压缩。
 
 从旧版 memory `AGENTS.md` 升级时不做自动迁移。如需按新规则重置旧记忆，可在项目根目录
 执行一次以下命令；它只删除 workspace 目录中的旧 `AGENTS.md`：

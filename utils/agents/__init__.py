@@ -12,6 +12,7 @@ _EXPORTS = {
     "ProgressEvent": (".progress", "ProgressEvent"),
     "ProgressReporter": (".progress", "ProgressReporter"),
     "agent_thread_id": (".runtime", "agent_thread_id"),
+    "conversation_workspace_key": (".runtime", "conversation_workspace_key"),
     "assistant_agent": (".assistant", "assistant_agent"),
     "run_serialized": (".runtime", "run_serialized"),
 }

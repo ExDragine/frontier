@@ -16,26 +16,34 @@ require("nonebot_plugin_apscheduler")
 
 from nonebot_plugin_apscheduler import scheduler
 
-from utils.agents import FrontierCognitive, ProgressEvent, ProgressReporter, agent_thread_id, run_serialized
+from utils.agents import (
+    FrontierCognitive,
+    ProgressEvent,
+    ProgressReporter,
+    agent_thread_id,
+    conversation_workspace_key,
+    run_serialized,
+)
 from utils.agents.acp import acp_service
 from utils.agents.conversation_memory import (
     ConversationHistoryRequest,
     ConversationMemoryService,
     ConversationScope,
 )
-from utils.alconna import UniMessage
-from utils.configs import EnvConfig
-from utils.database import (
-    MessageDatabase,
+from utils.agents.message_envelope import (
+    build_agent_attachment_payload,
     build_agent_message_payload,
     serialize_agent_payload,
 )
+from utils.agents.message_envelope import content_for_persisted_images as _remove_attached_image_placeholders
+from utils.alconna import UniMessage
+from utils.configs import EnvConfig
+from utils.database import MessageDatabase
 from utils.media import resolve_media, standard_media_block
 from utils.message import (
-    _get_wake_words,
+    cleanup_staged_message_files,
     download_media,
     extract_message_files,
-    format_staged_message_files,
     message_check,
     message_extract,
     message_gateway,
@@ -46,7 +54,12 @@ from utils.message import (
     stage_message_files,
 )
 from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments
-from utils.reply_context import build_reply_context, reply_seq_from_segments, sender_names_from_milky_message
+from utils.reply_context import (
+    build_reply_context,
+    reply_seq_from_segments,
+    segments_directly_mention_user,
+    sender_names_from_milky_message,
+)
 
 messages_db = MessageDatabase()
 conversation_memory_service = ConversationMemoryService(messages_db)
@@ -57,10 +70,14 @@ common = on_message(priority=10)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CACHE_CLEANUP_JOB_ID = "frontier_daily_cache_cleanup"
-EMPTY_CURRENT_MESSAGE_PROMPT = "[用户叫了你一声]"
 
 
-async def _schedule_conversation_compaction(user_id: int | str, group_id: int | None) -> None:
+async def _schedule_conversation_compaction(
+    user_id: int | str,
+    group_id: int | None,
+    *,
+    raw_budget: int | None = None,
+) -> None:
     required_methods = (
         "latest_conversation_summary",
         "context_token_total",
@@ -76,6 +93,7 @@ async def _schedule_conversation_compaction(user_id: int | str, group_id: int | 
             scheduler,
             user_id=user_id,
             group_id=group_id,
+            raw_budget=raw_budget,
         )
     except Exception as exc:
         logger.warning("会话压缩调度失败（不影响回复）: %s: %s", type(exc).__name__, exc)
@@ -83,7 +101,6 @@ async def _schedule_conversation_compaction(user_id: int | str, group_id: int | 
 
 @dataclass(slots=True)
 class AgentRequestContext:
-    bot: Any
     event: MessageEvent
     user_id: str
     user_name: str
@@ -94,20 +111,38 @@ class AgentRequestContext:
     quoted_images: list[bytes]
     images: list[bytes]
     videos: list[bytes]
-    quoted_text: str = ""
     audio: list[bytes] = field(default_factory=list)
+    attachments: list[dict[str, object]] = field(default_factory=list)
     user_nickname: str | None = None
     user_card: str | None = None
     reply_to: dict[str, object] | None = None
+    direct_mention: bool = False
 
 
 def _agent_workspace_key(user_id: str, group_id: int | None) -> str:
-    return str(group_id) if group_id is not None else str(user_id)
+    return conversation_workspace_key(user_id, group_id)
 
 
 def _agent_memory_dir(user_id: str, group_id: int | None) -> Path:
     working_dir = Path(getattr(f_cognitive, "working_dir", os.path.join(os.getcwd(), "cache", "sandbox")))
     return working_dir / "memory" / _agent_workspace_key(user_id, group_id)
+
+
+async def _collect_incoming_assets(
+    media_coro,
+    files_coro,
+    quote_coro=None,
+):
+    coroutines = [media_coro, files_coro]
+    if quote_coro is not None:
+        coroutines.append(quote_coro)
+    results = await asyncio.gather(*coroutines, return_exceptions=True)
+    staged_files = results[1] if isinstance(results[1], list) else []
+    if phase_error := next((result for result in results if isinstance(result, BaseException)), None):
+        cleanup_staged_message_files(staged_files)
+        raise phase_error
+    quote_result = results[2] if quote_coro is not None else (None, [])
+    return results[0], staged_files, quote_result
 
 
 def _group_member_role(event: MessageEvent) -> str | None:
@@ -116,23 +151,6 @@ def _group_member_role(event: MessageEvent) -> str | None:
     if role in (None, ""):
         return None
     return str(role)
-
-
-def _remove_attached_image_placeholders(text: str, attached_images: int) -> str:
-    """移除已作为视觉内容附加的当前消息图片占位行。"""
-    if attached_images <= 0 or not text:
-        return text
-
-    remaining = attached_images
-    lines: list[str] = []
-    for line in text.splitlines():
-        marker = line.strip()
-        is_image_marker = marker == "[图片]" or (marker.startswith("[图片:") and marker.endswith("]"))
-        if remaining and is_image_marker:
-            remaining -= 1
-            continue
-        lines.append(line)
-    return "\n".join(lines).strip()
 
 
 def _remove_structured_reply_marker(text: str, reply_seq: int | None) -> str:
@@ -183,7 +201,7 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
     messages = list(history_messages or [])
     history_prefix_count = len(messages)
-    combined_text = context.text.strip() or EMPTY_CURRENT_MESSAGE_PROMPT
+    combined_text = context.text.strip()
     remaining_bytes = EnvConfig.MAX_INLINE_MEDIA_BYTES
     remaining_images = EnvConfig.MAX_INLINE_IMAGES
 
@@ -205,16 +223,6 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
     inline_images, omitted_images = take_inline(context.images, "image")
     inline_audio, omitted_audio = take_inline(context.audio, "audio")
     inline_videos, omitted_videos = take_inline(context.videos, "video")
-    reply_to = context.reply_to
-    if reply_to is None and context.quoted_text:
-        # Compatibility for direct/internal callers that still pass the former
-        # human-readable quote string.
-        reply_to = {
-            "schema": "frontier.qq_message_ref.v1",
-            "message_id": None,
-            "sender": None,
-            "content": context.quoted_text.strip(),
-        }
     current_content: list[dict[str, Any]] = [
         {
             "type": "text",
@@ -228,9 +236,11 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
                     user_nickname=context.user_nickname,
                     user_card=context.user_card,
                     role="user",
-                    is_current=True,
                     content=combined_text,
-                    reply_to=reply_to,
+                    attachments=context.attachments,
+                    reply_to=context.reply_to,
+                    bot_user_id=getattr(context.event, "self_id", None),
+                    directly_mentions_bot=context.direct_mention,
                 )
             ),
         }
@@ -261,19 +271,13 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
                 "text": f"[以下媒体因上下文预算未直接内联：{'、'.join(omitted_labels)}；可使用上方工作区路径读取]",
             }
         )
-    messages.append({"role": "user", "content": current_content})
+    messages.append(
+        {
+            "role": "user",
+            "content": current_content[0]["text"] if len(current_content) == 1 else current_content,
+        }
+    )
     capability = EnvConfig.AGENT_CAPABILITY
-
-    # 提取当前消息触发的唤醒词
-    get_plaintext = getattr(context.event, "get_plaintext", None)
-    plaintext = str(get_plaintext() if callable(get_plaintext) else context.text).strip()
-    triggered_wake = ""
-    if context.group_id:
-        wake_words = _get_wake_words(context.group_id)
-        for w in wake_words:
-            if plaintext.startswith(w):
-                triggered_wake = w
-                break
 
     result = await f_cognitive.chat_agent(
         messages,
@@ -284,7 +288,6 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         image_inputs=context.quoted_images + context.images,
         audio_inputs=context.audio,
         video_inputs=context.videos,
-        wake_word=triggered_wake or None,
         group_member_role=_group_member_role(context.event),
         progress_reporter=_chat_progress_reporter(context.group_id),
         user_text=context.text,
@@ -331,16 +334,102 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
             msg_id=None,
             # 私聊按对端 user_id 建立会话范围；群聊仍保留真实机器人发送者 ID。
             user_id=int(context.user_id) if context.group_id is None else int(context.event.self_id),
+            sender_user_id=int(context.event.self_id),
             group_id=context.group_id,
             user_name="Assistant",
             role="assistant",
             content=outgoing_message_content(response["messages"][-1]),
+            bot_user_id=int(context.event.self_id),
         )
-        await _schedule_conversation_compaction(context.user_id, context.group_id)
         await send_messages(context.group_id, context.event_id, response)
+        await _schedule_conversation_compaction(
+            context.user_id,
+            context.group_id,
+            raw_budget=result.get("history_raw_budget"),
+        )
     else:
         await UniMessage.text(response["messages"]).send()
     return True
+
+
+async def _run_agent_turn(
+    *,
+    bot: Any,
+    context: AgentRequestContext,
+    history_messages: list[dict],
+    previous_reply_payload: dict[str, object] | None,
+    fetched_reply_payload: dict[str, object] | None,
+    original_text: str,
+) -> None:
+    finalize_message_context = getattr(messages_db, "finalize_message_context", None)
+    if callable(finalize_message_context) and context.reply_to != previous_reply_payload:
+        try:
+            await finalize_message_context(
+                time=context.msg_time,
+                reply_context_json=(
+                    serialize_agent_payload(context.reply_to) if context.reply_to else None
+                ),
+            )
+        except Exception as exc:
+            logger.warning("消息上下文定稿失败（不影响回复）: %s: %s", type(exc).__name__, exc)
+
+    quoted_content = str((fetched_reply_payload or {}).get("content", ""))
+    risk_check = (
+        await message_check(
+            f"{context.text}\n{quoted_content}".strip(),
+            context.quoted_images + context.images,
+        )
+        if EnvConfig.CONTENT_CHECK_ENABLED
+        else "Safe"
+    )
+    reaction = {"Safe": "32", "Controversial": "212", "Unsafe": "26"}.get(risk_check)
+    reaction_added = False
+    if context.group_id is not None and reaction is not None:
+        try:
+            await bot.send_group_message_reaction(
+                group_id=context.group_id,
+                message_seq=context.event_id,
+                reaction=reaction,
+                is_add=True,
+            )
+            reaction_added = True
+        except Exception as exc:
+            logger.warning("发送群消息处理反应失败: %s: %s", type(exc).__name__, exc)
+
+    from utils.ens_gate import _ens_caller_allowed, _ens_prefix
+
+    cleaned = original_text.strip().lstrip("/")
+    is_ens_msg = cleaned[:3].lower() == "vep" or cleaned[:2].lower() == "ve"
+    _ens_caller_allowed.set(is_ens_msg)
+    if cleaned[:3].lower() == "vep":
+        _ens_prefix.set("vep")
+    elif cleaned[:2].lower() == "ve":
+        _ens_prefix.set("ve")
+    else:
+        _ens_prefix.set("")
+
+    try:
+        thread_id = agent_thread_id(context.user_id, context.group_id)
+        await run_serialized(
+            str(thread_id),
+            _process_agent_request(context, history_messages),
+        )
+    finally:
+        if context.group_id is not None and reaction_added:
+            try:
+                await bot.send_group_message_reaction(
+                    group_id=context.group_id,
+                    message_seq=context.event_id,
+                    reaction=reaction,
+                    is_add=False,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "移除群消息处理反应失败 用户%s 群%s: %s",
+                    context.user_id,
+                    context.group_id,
+                    exc,
+                )
 
 
 @driver.on_shutdown
@@ -417,6 +506,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     user_name, user_nickname, user_card = sender_names_from_milky_message(event.data)
     event_id = event.data.message_seq
     group_id = event.data.group.group_id if event.data.group else None
+    direct_mention = segments_directly_mention_user(event.data.segments, event.self_id)
 
     # ── Phase 1: 快速提取文本（不下载媒体）──
     text, image_downloaders, audio_downloaders, video_downloaders = await message_extract(event.data.segments)
@@ -457,12 +547,15 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         time=msg_time,
         msg_id=event_id,
         user_id=int(user_id),
+        sender_user_id=int(user_id),
         group_id=group_id,
         user_name=user_name,
         user_nickname=user_nickname,
         user_card=user_card,
         role="user" if user_id != str(event.self_id) else "assistant",
         content=text,
+        bot_user_id=int(event.self_id),
+        directly_mentions_bot=direct_mention,
         reply_context_json=serialize_agent_payload(reply_payload) if reply_payload else None,
         raw_segments_json=normalized_message.raw_segments_json,
         normalized_version=normalized_message.normalized_version,
@@ -497,23 +590,24 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         file_items,
         memory_dir=_agent_memory_dir(user_id, group_id),
         workspace_key=_agent_workspace_key(user_id, group_id),
+        message_time=msg_time,
         user_id=user_id,
         group_id=group_id,
     )
     if reply_seq:
         quote_task = build_reply_context(bot, event, reply_seq, group_id, messages_db)
-        (images, audio, videos), staged_files, (agent_reply_payload, quoted_images) = await asyncio.gather(
+        (images, audio, videos), staged_files, (agent_reply_payload, quoted_images) = await _collect_incoming_assets(
             media_task,
             files_task,
             quote_task,
         )
     else:
-        (images, audio, videos), staged_files = await asyncio.gather(media_task, files_task)
+        (images, audio, videos), staged_files, _quote_result = await _collect_incoming_assets(
+            media_task,
+            files_task,
+        )
         agent_reply_payload, quoted_images = None, []
-
-    agent_text = _remove_attached_image_placeholders(current_text, len(images))
-    if staged_file_text := format_staged_message_files(staged_files):
-        agent_text = f"{agent_text}\n{staged_file_text}".strip()
+    resolved_reply_payload = agent_reply_payload or reply_payload
 
     persisted_media = []
     if EnvConfig.IMAGE_ENABLED:
@@ -543,6 +637,12 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         except Exception as e:
             logger.warning(f"⚠️ 图片保存失败（不影响主流程）: {e}")
 
+    persisted_image_count = sum(
+        1 for attachment in persisted_attachments if getattr(attachment, "kind", None) == "image"
+    )
+    agent_text = _remove_attached_image_placeholders(current_text, persisted_image_count).strip()
+
+    indexed_staged_paths: set[Path] = set()
     if staged_files and hasattr(messages_db, "insert_attachment"):
         expires_at = int(time.time() * 1000) + EnvConfig.MEDIA_TTL_DAYS * 86400 * 1000
         for staged_file in staged_files:
@@ -563,68 +663,65 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                 )
             except Exception as e:
                 logger.warning(f"⚠️ 文件附件索引失败（不影响主流程）: {e}")
+            else:
+                indexed_staged_paths.add(Path(staged_file.local_path))
+    unindexed_staged_files = [
+        staged_file
+        for staged_file in staged_files
+        if Path(staged_file.local_path) not in indexed_staged_paths
+    ]
 
-    if persisted_attachments:
-        paths = "\n".join(
-            f"[{attachment.kind}已保存到工作区 {attachment.virtual_path}]" for attachment in persisted_attachments
+    try:
+        attachment_refs = [
+            dict(
+                build_agent_attachment_payload(
+                    kind=attachment.kind,
+                    mime_type=attachment.mime_type,
+                    file_name=attachment.file_name,
+                    path=attachment.virtual_path,
+                )
+            )
+            for attachment in persisted_attachments
+        ]
+        attachment_refs.extend(
+            dict(
+                build_agent_attachment_payload(
+                    kind="file",
+                    mime_type=staged_file.mime_type,
+                    file_name=staged_file.file_name,
+                    path=staged_file.virtual_path,
+                )
+            )
+            # The path remains readable for this turn even when indexing failed.
+            for staged_file in staged_files
         )
-        agent_text = f"{agent_text}\n{paths}".strip()
-
-    # ── Phase 4: 内容安全 + Agent 处理 ──
-    quoted_content = str((agent_reply_payload or {}).get("content", ""))
-    if EnvConfig.CONTENT_CHECK_ENABLED:
-        risk_check = await message_check(f"{agent_text}\n{quoted_content}".strip(), quoted_images + images)
-    else:
-        risk_check = "Safe"
-    match risk_check:
-        case "Safe":
-            if group_id:
-                await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="32", is_add=True
-                )
-        case "Controversial":
-            if group_id:
-                await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="212", is_add=True
-                )
-        case "Unsafe":
-            if group_id:
-                await bot.send_group_message_reaction(
-                    group_id=group_id, message_seq=event_id, reaction="26", is_add=True
-                )
-
-    context = AgentRequestContext(
-        bot=bot,
-        event=event,
-        user_id=user_id,
-        user_name=user_name,
-        user_nickname=user_nickname,
-        user_card=user_card,
-        event_id=event_id,
-        group_id=group_id,
-        msg_time=msg_time,
-        text=agent_text,
-        quoted_images=quoted_images,
-        images=images,
-        audio=audio,
-        videos=videos,
-        reply_to=agent_reply_payload,
-    )
-    thread_id = agent_thread_id(user_id, group_id)
-    from utils.ens_gate import _ens_caller_allowed, _ens_prefix
-
-    cleaned = text.strip().lstrip("/")
-    is_ens_msg = cleaned[:3].lower() == "vep" or cleaned[:2].lower() == "ve"
-    _ens_caller_allowed.set(is_ens_msg)
-    if cleaned[:3].lower() == "vep":
-        _ens_prefix.set("vep")
-    elif cleaned[:2].lower() == "ve":
-        _ens_prefix.set("ve")
-    else:
-        _ens_prefix.set("")
-    await run_serialized(str(thread_id), _process_agent_request(context, messages))
-    if group_id:
-        try:
-            await bot.send_group_message_reaction(group_id=group_id, message_seq=event_id, reaction="32", is_add=False)
-        except Exception as e:
-            logger.warning(f"❌ 发送群消息反应失败 用户{user_id} 群{group_id}: {e}")
+        context = AgentRequestContext(
+            event=event,
+            user_id=user_id,
+            user_name=user_name,
+            user_nickname=user_nickname,
+            user_card=user_card,
+            event_id=event_id,
+            group_id=group_id,
+            msg_time=msg_time,
+            text=agent_text,
+            quoted_images=quoted_images,
+            images=images,
+            audio=audio,
+            videos=videos,
+            attachments=attachment_refs,
+            # Persist and reuse the post-download snapshot so quoted media
+            # semantics stay identical when this event becomes history.
+            reply_to=resolved_reply_payload,
+            direct_mention=direct_mention,
+        )
+        await _run_agent_turn(
+            bot=bot,
+            context=context,
+            history_messages=messages,
+            previous_reply_payload=reply_payload,
+            fetched_reply_payload=agent_reply_payload,
+            original_text=text,
+        )
+    finally:
+        cleanup_staged_message_files(unindexed_staged_files)

@@ -95,6 +95,21 @@ def filter_content_parts_for_model(content: list, model: str, *, role: str | Non
     return _add_media_notices(filtered, omitted_kinds, invalid_image)
 
 
+def _collapse_plain_text_parts(content: list) -> str | list:
+    """Use the universally supported string form when no native media remains."""
+    texts: list[str] = []
+    for part in content:
+        if isinstance(part, str):
+            texts.append(part)
+            continue
+        if not isinstance(part, dict) or part.get("type") not in {"text", "output_text"}:
+            return content
+        if set(part) - {"type", "text"}:
+            return content
+        texts.append(str(part.get("text", "")))
+    return "\n".join(texts)
+
+
 def _has_inline_payload(part: object) -> bool:
     if not isinstance(part, dict):
         return False
@@ -105,19 +120,6 @@ def _has_inline_payload(part: object) -> bool:
     if isinstance(value, dict):
         value = value.get("url")
     return isinstance(value, str) and value.startswith("data:")
-
-
-def filter_content_parts_for_text_model(content: list) -> list:
-    """Backward-compatible helper retained for callers and older tests."""
-    filtered = [part for part in content if media_block_kind(part) != "image"]
-    if len(filtered) == len(content):
-        return content
-    for index, part in enumerate(filtered):
-        if isinstance(part, dict) and part.get("type") == "text":
-            updated_part = dict(part)
-            updated_part["text"] = append_vision_notice(str(part.get("text", "")))
-            return [*filtered[:index], updated_part, *filtered[index + 1 :]]
-    return [{"type": "text", "text": VISION_OMITTED_NOTICE}, *filtered]
 
 
 def filter_messages_for_model_capabilities(
@@ -133,7 +135,8 @@ def filter_messages_for_model_capabilities(
             continue
         content = message.get("content")
         if isinstance(content, list):
-            filtered_messages.append({**message, "content": filter_content_parts_for_model(content, model, role=role)})
+            filtered_content = filter_content_parts_for_model(content, model, role=role)
+            filtered_messages.append({**message, "content": _collapse_plain_text_parts(filtered_content)})
         else:
             filtered_messages.append(message)
     return filtered_messages

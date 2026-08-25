@@ -1,5 +1,9 @@
 # ruff: noqa: S101
 
+import os
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -55,6 +59,18 @@ def test_catalog_profile_accepts_proxy_prefixed_model_id(monkeypatch):
 def test_gpt_routes_to_openai(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "openai": {
+                "type": "openai",
+                "api_mode": "responses",
+                "base_url": "https://example.com",
+                "api_key": "sk-test",
+            }
+        },
+    )
 
     factory.create_llm(model="gpt-4o", timeout=300, streaming=False)
 
@@ -149,6 +165,10 @@ def test_deepseek_routes_to_deepseek(monkeypatch):
     assert "use_responses_api" not in kw
     assert kw["timeout"] == 30
     assert kw["max_retries"] == 2
+    assert (
+        factory.provider_official_deepseek_api_mode("deepseek-v4-flash", "deepseek")
+        == "chat_completions"
+    )
 
 
 def test_deepseek_responses_routes_through_chat_openai(monkeypatch):
@@ -190,6 +210,102 @@ def test_deepseek_responses_routes_through_chat_openai(monkeypatch):
     assert kw["profile"]["max_input_tokens"] == 1_000_000
     assert factory.provider_uses_responses_api("deepseek-v4-pro", "deepseek_responses") is True
     assert factory.model_supports_native_web_search("deepseek-v4-pro", "deepseek_responses") is True
+    assert factory.provider_is_official_openai("deepseek-v4-pro", "deepseek_responses") is False
+    assert (
+        factory.provider_official_deepseek_api_mode("deepseek-v4-pro", "deepseek_responses")
+        == "responses"
+    )
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    ["", "https://api.openai.com", "https://api.openai.com/v1/", "https://API.OPENAI.COM:443/v1"],
+)
+def test_official_openai_route_detection_accepts_only_first_party_endpoints(monkeypatch, base_url):
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "first_party": {
+                "type": "openai",
+                "api_mode": "responses",
+                "base_url": base_url,
+                "api_key": "sk-test",
+            }
+        },
+    )
+
+    assert factory.provider_is_official_openai("gpt-5.4", "first_party") is True
+
+
+@pytest.mark.parametrize(
+    ("provider_type", "api_mode", "base_url"),
+    [
+        ("openai", "responses", "https://api.deepseek.com"),
+        ("openai", "responses", "https://openrouter.ai/api/v1"),
+        ("openai", "responses", "https://api.openai.com.example.com/v1"),
+        ("openai", "responses", "http://api.openai.com/v1"),
+        ("openai", "responses", "https://api.openai.com/v2"),
+        ("openai", "responses", "https://api.openai.com/v1?proxy=1"),
+        ("deepseek", "chat_completions", ""),
+        ("anthropic", "messages", "https://api.deepseek.com/anthropic"),
+    ],
+)
+def test_official_openai_route_detection_rejects_compatible_and_non_openai_routes(
+    monkeypatch,
+    provider_type,
+    api_mode,
+    base_url,
+):
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "candidate": {
+                "type": provider_type,
+                "api_mode": api_mode,
+                "base_url": base_url,
+                "api_key": "sk-test",
+            }
+        },
+    )
+
+    assert factory.provider_is_official_openai("model", "candidate") is False
+
+
+@pytest.mark.parametrize(
+    ("provider_type", "api_mode", "base_url", "model"),
+    [
+        ("deepseek", "chat_completions", "https://deepseek.example.com/v1", "deepseek-chat"),
+        ("openai", "responses", "https://openrouter.ai/api/v1", "deepseek-v4-pro"),
+        ("openai", "responses", "", "deepseek-v4-pro"),
+        ("anthropic", "messages", "https://anthropic.example.com", "deepseek-v4-pro"),
+        ("anthropic", "messages", "", "deepseek-v4-pro"),
+        ("anthropic", "messages", "https://api.deepseek.com/anthropic", "claude-sonnet-4"),
+        ("openai", "responses", "https://user@api.deepseek.com/v1", "deepseek-v4-pro"),
+    ],
+)
+def test_official_deepseek_route_detection_rejects_proxies_and_wrong_models(
+    monkeypatch,
+    provider_type,
+    api_mode,
+    base_url,
+    model,
+):
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "candidate": {
+                "type": provider_type,
+                "api_mode": api_mode,
+                "base_url": base_url,
+                "api_key": "sk-test",
+            }
+        },
+    )
+
+    assert factory.provider_official_deepseek_api_mode(model, "candidate") is None
 
 
 def test_deepseek_native_web_search_accepts_official_v1_base_url(monkeypatch):
@@ -261,6 +377,58 @@ def test_deepseek_anthropic_routes_through_chat_anthropic(monkeypatch):
     assert "use_responses_api" not in kw
     assert factory.provider_uses_responses_api("deepseek-v4-pro", "deepseek_anthropic") is False
     assert factory.model_supports_native_web_search("deepseek-v4-pro", "deepseek_anthropic") is False
+    assert factory.provider_is_official_openai("deepseek-v4-pro", "deepseek_anthropic") is False
+    assert (
+        factory.provider_official_deepseek_api_mode("deepseek-v4-pro", "deepseek_anthropic")
+        == "messages"
+    )
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    ["", "https://api.anthropic.com", "https://api.anthropic.com/v1/"],
+)
+def test_official_anthropic_route_detection_accepts_first_party_endpoints(monkeypatch, base_url):
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "first_party": {
+                "type": "anthropic",
+                "api_mode": "messages",
+                "base_url": base_url,
+                "api_key": "sk-test",
+            }
+        },
+    )
+
+    assert factory.provider_is_official_anthropic("claude-sonnet-4", "first_party") is True
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://api.deepseek.com/anthropic",
+        "https://anthropic.example.com",
+        "http://api.anthropic.com/v1",
+        "https://api.anthropic.com.example.com/v1",
+    ],
+)
+def test_official_anthropic_route_detection_rejects_other_endpoints(monkeypatch, base_url):
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "candidate": {
+                "type": "anthropic",
+                "api_mode": "messages",
+                "base_url": base_url,
+                "api_key": "sk-test",
+            }
+        },
+    )
+
+    assert factory.provider_is_official_anthropic("claude-sonnet-4", "candidate") is False
 
 
 def test_deepseek_provider_profile_overrides_api_key_and_base_url(monkeypatch):
@@ -312,12 +480,57 @@ def test_openai_kwargs_filtered_for_anthropic(monkeypatch):
         model="claude-3-5-haiku-20241022",
         reasoning_effort="medium",
         max_retries=2,
+        model_kwargs={"cache_control": {"type": "ephemeral"}},
     )
 
     kw = mock_cls.call_args.kwargs
     assert "use_responses_api" not in kw
     assert "reasoning_effort" not in kw
     assert kw.get("max_retries") == 2
+    assert kw["model_kwargs"] == {"cache_control": {"type": "ephemeral"}}
+
+
+def test_anthropic_provider_metadata_reaches_payload_without_tracing_collision():
+    project_root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env.update(
+        {
+            "FRONTIER_CONFIG": str(project_root / "env.toml.example"),
+            "NICKNAME": '["Frontier"]',
+        }
+    )
+    script = """
+from langchain_core.messages import HumanMessage
+from utils.configs import EnvConfig
+from utils.llm_factory import create_llm
+
+pseudonym = "frontier-agent-v1_user_0123456789abcdef0123456789abcdef01234567"
+EnvConfig.LLM_PROVIDERS = {
+    "deepseek_anthropic": {
+        "type": "anthropic",
+        "api_mode": "messages",
+        "base_url": "https://api.deepseek.com/anthropic",
+        "api_key": "sk-test",
+    }
+}
+model = create_llm(
+    model="deepseek-v4-pro",
+    provider="deepseek_anthropic",
+    model_kwargs={"metadata": {"user_id": pseudonym}},
+)
+payload = model._get_request_payload([HumanMessage(content="hi")])
+assert payload["metadata"] == {"user_id": pseudonym}
+assert "user_id" not in (model.metadata or {})
+"""
+
+    subprocess.run(  # noqa: S603
+        [sys.executable, "-c", script],
+        cwd=project_root,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_openai_extra_body_forwarded_as_explicit_kwarg(monkeypatch):
@@ -513,6 +726,18 @@ def test_provider_capabilities_do_not_override_model_capabilities(monkeypatch):
 def test_openai_base_url_included(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "openai": {
+                "type": "openai",
+                "api_mode": "responses",
+                "base_url": "https://example.com",
+                "api_key": "sk-test",
+            }
+        },
+    )
 
     factory.create_llm(model="gpt-4o")
 

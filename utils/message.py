@@ -1,6 +1,7 @@
 import ast
 import asyncio
 import hashlib
+import os
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -434,12 +435,45 @@ def _unique_attachment_path(directory: Path, file_name: str) -> Path:
     return candidate
 
 
+def cleanup_staged_message_files(staged_files: list[StagedMessageFile]) -> None:
+    """Remove files that did not reach a TTL-managed attachment row."""
+    for staged_file in staged_files:
+        path = Path(staged_file.local_path)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("清理未索引消息文件失败 %s: %s", path, exc)
+            continue
+        try:
+            path.parent.rmdir()
+        except OSError:
+            pass
+
+
+def _write_staged_file(target_path: Path, data: bytes) -> None:
+    temp_path = target_path.with_name(
+        f".{target_path.name}.frontier-pending-{os.getpid()}-{time.time_ns()}"
+    )
+    try:
+        with temp_path.open("xb") as file:
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temp_path, target_path)
+    finally:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("清理消息文件临时写入失败 %s: %s", temp_path, exc)
+
+
 async def stage_message_files(
     bot,
     file_items: list[MessageFileItem],
     *,
     memory_dir: str | Path,
     workspace_key: str,
+    message_time: int | None = None,
     user_id: str | int,
     group_id: int | None,
 ) -> list[StagedMessageFile]:
@@ -449,42 +483,40 @@ async def stage_message_files(
 
     memory_path = Path(memory_dir)
     files_dir = memory_path / "files"
+    if message_time is not None:
+        files_dir /= str(int(message_time))
     files_dir.mkdir(parents=True, exist_ok=True)
     staged_files: list[StagedMessageFile] = []
 
-    for file_item in file_items:
-        url = await _message_file_download_url(bot, file_item, user_id=user_id, group_id=group_id)
-        if not url:
-            logger.warning(f"文件缺少可下载链接，无法注入工作区: {file_item.file_name}")
-            continue
-        file_bytes = await _download_file_bytes(url, file_item.file_name)
-        if file_bytes is None:
-            continue
+    try:
+        for file_item in file_items:
+            url = await _message_file_download_url(bot, file_item, user_id=user_id, group_id=group_id)
+            if not url:
+                logger.warning(f"文件缺少可下载链接，无法注入工作区: {file_item.file_name}")
+                continue
+            file_bytes = await _download_file_bytes(url, file_item.file_name)
+            if file_bytes is None:
+                continue
 
-        safe_name = _safe_attachment_file_name(file_item.file_name)
-        target_path = _unique_attachment_path(files_dir, safe_name)
-        target_path.write_bytes(file_bytes)
-        virtual_path = f"/memory/{workspace_key}/{target_path.relative_to(memory_path).as_posix()}"
-        staged_files.append(
-            StagedMessageFile(
-                file_name=target_path.name,
-                file_size=len(file_bytes),
-                virtual_path=virtual_path,
-                local_path=target_path,
-                mime_type=detect_mime_type(file_bytes, kind="file", file_name=target_path.name),
-                sha256=hashlib.sha256(file_bytes).hexdigest(),
+            safe_name = _safe_attachment_file_name(file_item.file_name)
+            target_path = _unique_attachment_path(files_dir, safe_name)
+            await asyncio.to_thread(_write_staged_file, target_path, file_bytes)
+            virtual_path = f"/memory/{workspace_key}/{target_path.relative_to(memory_path).as_posix()}"
+            staged_files.append(
+                StagedMessageFile(
+                    file_name=target_path.name,
+                    file_size=len(file_bytes),
+                    virtual_path=virtual_path,
+                    local_path=target_path,
+                    mime_type=detect_mime_type(file_bytes, kind="file", file_name=target_path.name),
+                    sha256=hashlib.sha256(file_bytes).hexdigest(),
+                )
             )
-        )
+    except BaseException:
+        cleanup_staged_message_files(staged_files)
+        raise
 
     return staged_files
-
-
-def format_staged_message_files(staged_files: list[StagedMessageFile]) -> str:
-    lines = []
-    for staged_file in staged_files:
-        size_label = f" ({staged_file.file_size}字节)" if staged_file.file_size else ""
-        lines.append(f"[文件:{staged_file.file_name}{size_label}，已保存到工作区 {staged_file.virtual_path}]")
-    return "\n".join(lines)
 
 
 async def _resolve_media_item(item: MediaItem) -> bytes | None:

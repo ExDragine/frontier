@@ -275,6 +275,71 @@ async def test_stage_message_files_passes_empty_private_file_hash(monkeypatch, t
 
 
 @pytest.mark.asyncio
+async def test_stage_message_files_uses_per_message_directory(monkeypatch, tmp_path):
+    class DummyBot:
+        async def get_group_file_download_url(self, **_kwargs):
+            return "https://example.com/report.txt"
+
+    async def fake_get(_url):
+        return DummyResponse(b"report")
+
+    monkeypatch.setattr(message_module.httpx_client, "get", fake_get)
+
+    staged = await message_module.stage_message_files(
+        DummyBot(),
+        [message_module.MessageFileItem(file_id="file-1", file_name="report.txt", file_size=6)],
+        memory_dir=tmp_path,
+        workspace_key="group-123",
+        message_time=1_723_456_789_000,
+        user_id="456",
+        group_id=123,
+    )
+
+    assert staged[0].local_path == tmp_path / "files/1723456789000/report.txt"
+    assert staged[0].virtual_path == "/memory/group-123/files/1723456789000/report.txt"
+    assert staged[0].local_path.read_bytes() == b"report"
+
+
+@pytest.mark.asyncio
+async def test_stage_message_files_rolls_back_earlier_files_when_later_write_fails(monkeypatch, tmp_path):
+    class DummyBot:
+        async def get_group_file_download_url(self, *, file_id, **_kwargs):
+            return f"https://example.com/{file_id}"
+
+    async def fake_get(url):
+        return DummyResponse(url.encode())
+
+    original_write = message_module._write_staged_file
+    write_count = 0
+
+    def fail_second_write(path, data):
+        nonlocal write_count
+        write_count += 1
+        if write_count == 2:
+            raise OSError("disk full")
+        original_write(path, data)
+
+    monkeypatch.setattr(message_module.httpx_client, "get", fake_get)
+    monkeypatch.setattr(message_module, "_write_staged_file", fail_second_write)
+
+    with pytest.raises(OSError, match="disk full"):
+        await message_module.stage_message_files(
+            DummyBot(),
+            [
+                message_module.MessageFileItem(file_id="a", file_name="a.txt", file_size=1),
+                message_module.MessageFileItem(file_id="b", file_name="b.txt", file_size=1),
+            ],
+            memory_dir=tmp_path,
+            workspace_key="group-123",
+            user_id="456",
+            group_id=123,
+        )
+
+    assert not (tmp_path / "files/a.txt").exists()
+    assert not (tmp_path / "files/b.txt").exists()
+
+
+@pytest.mark.asyncio
 async def test_send_messages_fallback_to_text(monkeypatch):
     monkeypatch.setattr(message_module, "UniMessage", DummyUniMessage)
 

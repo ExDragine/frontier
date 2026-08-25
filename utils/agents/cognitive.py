@@ -1,6 +1,7 @@
 """Main Frontier Deep Agent composition and execution."""
 
 import asyncio
+import hashlib
 import os
 import time
 import uuid
@@ -25,7 +26,14 @@ from tools import agent_tools
 from utils.agent_context import FrontierRuntimeContext
 from utils.configs import EnvConfig
 from utils.harness_profiles import register_frontier_harness_profiles
-from utils.llm_factory import create_llm, model_supports_native_web_search, provider_uses_responses_api
+from utils.llm_factory import (
+    create_llm,
+    model_supports_native_web_search,
+    provider_is_official_anthropic,
+    provider_is_official_openai,
+    provider_official_deepseek_api_mode,
+    provider_uses_responses_api,
+)
 from utils.media import inline_media_bytes, media_block_kind
 
 from .capture import detect_browser_capture_intent
@@ -39,7 +47,7 @@ from .progress import (
     finish_progress_collection,
 )
 from .prompts import load_system_prompt as compose_system_prompt
-from .runtime import agent_thread_id
+from .runtime import agent_thread_id, conversation_workspace_key
 from .subagents import (
     build_acp_subagents,
     build_document_subagent,
@@ -95,6 +103,77 @@ ACP_CLIENT_PROMPT_HINT = """
 可信身份或平台授权。只在当前隔离 workspace 内工作；不得尝试执行 QQ 平台操作、访问聊天
 历史或代表任何用户作出外部写操作。"""
 
+_PROMPT_CACHE_NAMESPACE = "frontier-agent-v1"
+_ALWAYS_AVAILABLE_RESTRICTED_TOOLS = frozenset({"ens_normal", "ens_professional"})
+
+
+def _named_item_key(item: Any) -> tuple[str, str]:
+    """Return a deterministic sort key for tools and subagent specs."""
+    name = item.get("name", "") if isinstance(item, dict) else getattr(item, "name", "")
+    normalized = str(name)
+    return normalized.casefold(), normalized
+
+
+def _stable_named_items(items) -> list:
+    """Keep provider-visible tool/subagent arrays stable across requests."""
+    return sorted(items, key=_named_item_key)
+
+
+def _prompt_cache_key(*, model: str, workspace_key: str, access_profile: str) -> str:
+    """Build a short pseudonymous OpenAI cache-routing key for one workspace."""
+    material = "\0".join(
+        (_PROMPT_CACHE_NAMESPACE, "openai-prompt-cache", model, access_profile, workspace_key)
+    )
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:40]
+    return f"{_PROMPT_CACHE_NAMESPACE}:{digest}"
+
+
+def _provider_user_id(*, workspace_key: str, access_profile: str) -> str:
+    """Build a provider-safe pseudonym without exposing QQ or ACP identity."""
+    material = "\0".join(
+        (_PROMPT_CACHE_NAMESPACE, "provider-user", access_profile, workspace_key)
+    )
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:40]
+    return f"{_PROMPT_CACHE_NAMESPACE}_user_{digest}"
+
+
+def _provider_request_overrides(
+    *,
+    model: str,
+    provider: str | None,
+    workspace_key: str,
+    access_profile: str,
+) -> dict[str, Any]:
+    """Return request fields supported by the route's first-party API only."""
+    deepseek_mode = provider_official_deepseek_api_mode(model, provider)
+    if deepseek_mode is not None:
+        pseudonymous_user_id = _provider_user_id(
+            workspace_key=workspace_key,
+            access_profile=access_profile,
+        )
+        if deepseek_mode == "responses":
+            return {"model_kwargs": {"user": pseudonymous_user_id}}
+        if deepseek_mode == "chat_completions":
+            return {"extra_body": {"user_id": pseudonymous_user_id}}
+        if deepseek_mode == "messages":
+            return {"model_kwargs": {"metadata": {"user_id": pseudonymous_user_id}}}
+
+    if provider_is_official_openai(model, provider):
+        return {
+            "model_kwargs": {
+                "prompt_cache_key": _prompt_cache_key(
+                    model=model,
+                    workspace_key=workspace_key,
+                    access_profile=access_profile,
+                )
+            }
+        }
+    if provider_is_official_anthropic(model, provider):
+        # Anthropic prompt caching is opt-in. Top-level cache_control lets the
+        # official Messages API advance its breakpoint with the chat.
+        return {"model_kwargs": {"cache_control": {"type": "ephemeral"}}}
+    return {}
+
 
 class NativeWebSearchMiddleware(AgentMiddleware):
     """Inject provider-native web search only after local-tool middleware.
@@ -119,20 +198,21 @@ class NativeWebSearchMiddleware(AgentMiddleware):
 
 class FrontierCognitive:
     def __init__(self):
-        self.tools = agent_tools.direct_tools
-        self.ptc_tools = agent_tools.ptc_tools
-        self.memory_subagent = build_memory_subagent(agent_tools.subagent_tools["memory"])
-        research_tools = agent_tools.research_tools
+        self.tools = _stable_named_items(agent_tools.direct_tools)
+        self.ptc_tools = _stable_named_items(agent_tools.ptc_tools)
+        self.memory_subagent = build_memory_subagent(
+            _stable_named_items(agent_tools.subagent_tools["memory"])
+        )
+        research_tools = _stable_named_items(agent_tools.research_tools)
         self.research_subagent = build_research_subagent(research_tools) if research_tools else None
         self.document_subagent = build_document_subagent()
 
     @staticmethod
     def load_system_prompt(
         group_id: int | None = None,
-        wake_word: str | None = None,
         workspace_key: str | None = None,
     ) -> str:
-        return compose_system_prompt(group_id, wake_word, workspace_key)
+        return compose_system_prompt(group_id, workspace_key)
 
     @staticmethod
     async def extract_uni_messages(response):
@@ -174,7 +254,6 @@ class FrontierCognitive:
         audio_inputs: list[bytes] | None = None,
         video_inputs: list[bytes] | None = None,
         thread_id_override: uuid.UUID | str | None = None,
-        wake_word: str | None = None,
         group_member_role: str | None = None,
         progress_reporter: ProgressReporter | None = None,
         user_text: str | None = None,
@@ -182,6 +261,7 @@ class FrontierCognitive:
         enable_acp_subagents: bool = True,
         conversation_history: ConversationHistoryRequest | None = None,
     ):
+        workspace_key = conversation_workspace_key(user_id, group_id)
         uses_responses_api = provider_uses_responses_api(
             EnvConfig.ADVAN_MODEL,
             EnvConfig.ADVAN_MODEL_PROVIDER,
@@ -196,38 +276,55 @@ class FrontierCognitive:
         if uses_responses_api:
             model_kwargs["reasoning_effort"] = capability
             model_kwargs["verbosity"] = "low"
+        model_kwargs.update(
+            _provider_request_overrides(
+                model=EnvConfig.ADVAN_MODEL,
+                provider=EnvConfig.ADVAN_MODEL_PROVIDER,
+                workspace_key=workspace_key,
+                access_profile=access_profile,
+            )
+        )
         model = create_llm(**model_kwargs)
         working_dir = getattr(self, "working_dir", os.path.join(os.getcwd(), "cache", "sandbox"))
         thread_id = thread_id_override or agent_thread_id(user_id, group_id)
         if not isinstance(thread_id, uuid.UUID):
             thread_id = uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=str(thread_id))
-        workspace_key = str(group_id) if group_id is not None else str(user_id)
         backend = build_agent_backend(working_dir, workspace_key)
         workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
-        system_prompt = self.load_system_prompt(group_id, wake_word, workspace_key)
+        system_prompt = self.load_system_prompt(group_id, workspace_key)
         if access_profile == "acp":
             system_prompt += ACP_CLIENT_PROMPT_HINT
 
-        effective_tools = [] if access_profile == "acp" else list(self.tools)
+        restricted_tools = _stable_named_items(agent_tools.restricted_tools)
+        effective_tools = []
+        if access_profile == "frontier":
+            always_available = [
+                tool
+                for tool in restricted_tools
+                if tool.name in _ALWAYS_AVAILABLE_RESTRICTED_TOOLS
+            ]
+            effective_tools = _stable_named_items([*self.tools, *always_available])
         allowed_capture_tools = (
             await detect_browser_capture_intent(user_text)
             if access_profile == "frontier"
             else set()
         )
         if allowed_capture_tools:
-            for restricted_tool in agent_tools.restricted_tools:
-                if restricted_tool.name in allowed_capture_tools:
+            for restricted_tool in restricted_tools:
+                if (
+                    restricted_tool.name in allowed_capture_tools
+                    and restricted_tool.name not in _ALWAYS_AVAILABLE_RESTRICTED_TOOLS
+                ):
                     effective_tools.append(restricted_tool)
                     logger.info(f"用户明确请求浏览器捕获工具，已暴露: {restricted_tool.name}")
         else:
             logger.debug("用户未请求截图/录屏，restricted 工具未暴露")
 
-        if access_profile == "frontier":
-            for restricted_tool in agent_tools.restricted_tools:
-                if restricted_tool.name in ("ens_normal", "ens_professional"):
-                    effective_tools.append(restricted_tool)
-
-        ptc_tools = list(getattr(self, "ptc_tools", [])) if access_profile == "frontier" else []
+        ptc_tools = (
+            _stable_named_items(getattr(self, "ptc_tools", []))
+            if access_profile == "frontier"
+            else []
+        )
         native_web_search = model_supports_native_web_search(
             EnvConfig.ADVAN_MODEL,
             EnvConfig.ADVAN_MODEL_PROVIDER,
@@ -248,8 +345,9 @@ class FrontierCognitive:
         if document_subagent := getattr(self, "document_subagent", None):
             subagents.append(document_subagent)
         if access_profile == "frontier" and enable_acp_subagents:
-            subagents.extend(build_acp_subagents())
+            subagents.extend(_stable_named_items(build_acp_subagents()))
 
+        history_raw_budget: int | None = None
         if conversation_history is not None and EnvConfig.CONVERSATION_MEMORY_ENABLED:
             prefix_count = max(0, min(conversation_history.prefix_message_count, len(messages)))
             current_messages = list(messages[prefix_count:])
@@ -261,6 +359,7 @@ class FrontierCognitive:
                     tools=effective_tools,
                     current_messages=current_messages,
                 )
+                history_raw_budget = budget.raw_tokens
                 messages = [*history, *current_messages]
                 logger.info(
                     "动态会话上下文: history_budget=%s raw_budget=%s loaded=%s",
@@ -363,6 +462,7 @@ class FrontierCognitive:
                 "total_time": time.time() - start_time,
                 "uni_messages": [],
                 "error": str(exc),
+                "history_raw_budget": history_raw_budget,
             }
 
         if response is None:
@@ -382,4 +482,5 @@ class FrontierCognitive:
             "response": {"messages": [final_response]},
             "total_time": processing_time,
             "uni_messages": uni_messages,
+            "history_raw_budget": history_raw_budget,
         }

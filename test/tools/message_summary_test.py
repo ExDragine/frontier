@@ -83,6 +83,31 @@ async def test_search_messages_without_filters_returns_recent_current_scope(load
 
 
 @pytest.mark.asyncio
+async def test_private_assistant_search_result_uses_true_sender_not_peer_scope(load_tool_module, monkeypatch):
+    mod = load_tool_module("memory")
+    message = Message(
+        time=1714521600000,
+        msg_id=88,
+        user_id=456,
+        sender_user_id=999,
+        group_id=None,
+        user_name="Assistant",
+        role="assistant",
+        content="你好",
+    )
+
+    class DummyMessageDb:
+        async def search_messages(self, **_kwargs):
+            return [message]
+
+    monkeypatch.setattr(mod, "message_db", DummyMessageDb())
+    result = await mod.search_messages(config={"configurable": {"user_id": "456", "group_id": None}})
+
+    assert "user_id=999" in result
+    assert "user_id=456" not in result
+
+
+@pytest.mark.asyncio
 async def test_search_messages_parses_iso_time_and_clamps_page_options(load_tool_module, monkeypatch):
     mod = load_tool_module("memory")
     captured = {}

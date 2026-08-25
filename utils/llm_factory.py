@@ -39,7 +39,14 @@ _OPENAI_VALID = {
     "profile",
 }
 _GOOGLE_VALID = {"streaming", "max_retries", "timeout", "temperature", "profile"}
-_ANTHROPIC_VALID = {"streaming", "max_retries", "timeout", "temperature", "profile"}
+_ANTHROPIC_VALID = {
+    "streaming",
+    "max_retries",
+    "timeout",
+    "temperature",
+    "model_kwargs",
+    "profile",
+}
 _DEEPSEEK_VALID = {
     "streaming",
     "max_retries",
@@ -219,26 +226,111 @@ def provider_uses_responses_api(model: str, provider: str | None = None) -> bool
     return api_mode == ApiMode.RESPONSES.value
 
 
-def model_supports_native_web_search(model: str, provider: str | None = None) -> bool:
-    """Return whether this is an official DeepSeek model using the Responses API."""
+def _targets_https_api(
+    profile: dict,
+    hostname: str,
+    *,
+    paths: frozenset[str],
+    allow_default: bool,
+) -> bool:
+    base_url = _clean_optional(profile.get("base_url"))
+    if not base_url:
+        return allow_default
+
+    parsed_base_url = urlsplit(base_url)
+    try:
+        port = parsed_base_url.port
+    except ValueError:
+        return False
+    return (
+        parsed_base_url.scheme.lower() == "https"
+        and (parsed_base_url.hostname or "").lower() == hostname
+        and parsed_base_url.path.rstrip("/") in paths
+        and not parsed_base_url.query
+        and not parsed_base_url.fragment
+        and parsed_base_url.username is None
+        and parsed_base_url.password is None
+        and port in {None, 443}
+    )
+
+
+def _targets_first_party_api(profile: dict, hostname: str) -> bool:
+    return _targets_https_api(
+        profile,
+        hostname,
+        paths=frozenset({"", "/v1"}),
+        allow_default=True,
+    )
+
+
+def provider_is_official_openai(model: str, provider: str | None = None) -> bool:
+    """Return whether the route targets OpenAI's first-party API.
+
+    An ``openai`` adapter alone is not sufficient: DeepSeek Responses and many
+    compatible proxies use the same LangChain class but do not share OpenAI's
+    request extensions. An empty base URL means the OpenAI SDK default.
+    """
+    _, profile = _provider_profile(model, provider)
+    provider_type, _ = _provider_protocol(model, profile)
+    if provider_type != "openai":
+        return False
+    return _targets_first_party_api(profile, "api.openai.com")
+
+
+def provider_is_official_anthropic(model: str, provider: str | None = None) -> bool:
+    """Return whether the route targets Anthropic's first-party Messages API."""
     _, profile = _provider_profile(model, provider)
     provider_type, api_mode = _provider_protocol(model, profile)
-    if provider_type != "openai" or api_mode != ApiMode.RESPONSES.value:
-        return False
+    return (
+        provider_type == "anthropic"
+        and api_mode == ApiMode.MESSAGES.value
+        and _targets_first_party_api(profile, "api.anthropic.com")
+    )
 
+
+def provider_official_deepseek_api_mode(model: str, provider: str | None = None) -> str | None:
+    """Return the protocol for an official DeepSeek route, if any.
+
+    The OpenAI and Anthropic adapters are also used by arbitrary compatible
+    proxies, so an explicit DeepSeek endpoint is required for those routes.
+    ``ChatDeepSeek`` is the exception: its empty base URL resolves to the
+    library's official ``https://api.deepseek.com/v1`` default.
+    """
+    if _infer_provider(model) != "deepseek":
+        return None
+
+    _, profile = _provider_profile(model, provider)
+    provider_type, api_mode = _provider_protocol(model, profile)
     base_url = _clean_optional(profile.get("base_url"))
-    parsed_base_url = urlsplit(base_url)
-    normalized_path = parsed_base_url.path.rstrip("/")
-    if (
-        parsed_base_url.scheme.lower() != "https"
-        or (parsed_base_url.hostname or "").lower() != "api.deepseek.com"
-        or normalized_path not in {"", "/v1"}
-        or parsed_base_url.query
-        or parsed_base_url.fragment
-    ):
-        return False
+    if provider_type == "deepseek" and api_mode == ApiMode.CHAT_COMPLETIONS.value:
+        official = _targets_https_api(
+            profile,
+            "api.deepseek.com",
+            paths=frozenset({"", "/v1"}),
+            allow_default=True,
+        )
+    elif provider_type == "openai" and api_mode == ApiMode.RESPONSES.value:
+        official = bool(base_url) and _targets_https_api(
+            profile,
+            "api.deepseek.com",
+            paths=frozenset({"", "/v1"}),
+            allow_default=False,
+        )
+    elif provider_type == "anthropic" and api_mode == ApiMode.MESSAGES.value:
+        official = bool(base_url) and _targets_https_api(
+            profile,
+            "api.deepseek.com",
+            paths=frozenset({"/anthropic"}),
+            allow_default=False,
+        )
+    else:
+        official = False
+    return api_mode if official else None
 
-    return _infer_provider(model) == "deepseek"
+
+def model_supports_native_web_search(model: str, provider: str | None = None) -> bool:
+    """Return whether this is an official DeepSeek model using the Responses API."""
+    return provider_official_deepseek_api_mode(model, provider) == ApiMode.RESPONSES.value
 
 
 def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile | None:
@@ -288,6 +380,36 @@ def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile 
     return profile
 
 
+def _defer_anthropic_request_metadata(provider_type: str, filtered: dict) -> dict[str, Any] | None:
+    """Keep API metadata away from BaseChatModel's tracing metadata field."""
+    model_kwargs = filtered.get("model_kwargs")
+    if provider_type != "anthropic" or not isinstance(model_kwargs, dict):
+        return None
+    if "metadata" not in model_kwargs:
+        return None
+
+    deferred = {"metadata": model_kwargs["metadata"]}
+    remaining = {key: value for key, value in model_kwargs.items() if key != "metadata"}
+    if remaining:
+        filtered["model_kwargs"] = remaining
+    else:
+        filtered.pop("model_kwargs")
+    return deferred
+
+
+def _install_deferred_model_kwargs(
+    instance: BaseChatModel,
+    deferred: dict[str, Any] | None,
+) -> None:
+    if not deferred:
+        return
+    existing_model_kwargs = getattr(instance, "model_kwargs", None)
+    if isinstance(existing_model_kwargs, dict):
+        existing_model_kwargs.update(deferred)
+    else:
+        cast(Any, instance).model_kwargs = deferred
+
+
 def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatModel:
     """根据供应商 profile 路由模型，并过滤底层 SDK 不支持的参数。
 
@@ -309,6 +431,10 @@ def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatMod
         if k in config.valid_kwargs:
             actual_key = config.kwarg_map.get(k, k)
             filtered[actual_key] = v
+    # BaseChatModel already defines ``metadata`` for tracing. ChatAnthropic's
+    # constructor moves a same-named provider kwarg onto that field instead of
+    # keeping it in the API payload, so install that one key after validation.
+    deferred_anthropic_kwargs = _defer_anthropic_request_metadata(provider_type, filtered)
     if "profile" not in filtered:
         catalog_profile = get_langchain_model_profile(model, _infer_provider(model))
         if catalog_profile is not None:
@@ -319,4 +445,8 @@ def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatMod
     if base_url and config.base_url_field:
         filtered[config.base_url_field] = base_url
     constructor: Callable[..., BaseChatModel] = cast(Any, cls)
-    return constructor(**{config.api_key_field: api_key, "model": model, **filtered, **config.static_kwargs})
+    instance = constructor(
+        **{config.api_key_field: api_key, "model": model, **filtered, **config.static_kwargs}
+    )
+    _install_deferred_model_kwargs(instance, deferred_anthropic_kwargs)
+    return instance

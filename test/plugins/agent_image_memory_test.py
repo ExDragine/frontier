@@ -17,7 +17,13 @@ async def _noop(*_args, **_kwargs):
     return None
 
 
-def test_attached_image_placeholders_only_removed_for_successful_downloads(monkeypatch):
+def _first_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    return str(content[0]["text"])
+
+
+def test_attached_image_placeholders_are_removed_only_when_all_images_persist(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -25,8 +31,26 @@ def test_attached_image_placeholders_only_removed_for_successful_downloads(monke
 
     text = "查看图片\n[图片]\n[图片:动画表情]"
 
-    assert agent._remove_attached_image_placeholders(text, 1) == "查看图片\n[图片:动画表情]"
+    assert agent._remove_attached_image_placeholders(text, 1) == text
+    assert agent._remove_attached_image_placeholders(text, 2) == "查看图片"
     assert agent._remove_attached_image_placeholders(text, 0) == text
+
+
+def test_direct_bot_mention_requires_explicit_matching_mention_segment():
+    from utils.reply_context import segments_directly_mention_user
+
+    assert segments_directly_mention_user(
+        [{"type": "mention", "data": {"user_id": 1}}, {"type": "text", "data": {"text": "你好"}}],
+        "1",
+    )
+    assert not segments_directly_mention_user(
+        [{"type": "mention", "data": {"user_id": 2}}, {"type": "text", "data": {"text": "你看"}}],
+        "1",
+    )
+    assert not segments_directly_mention_user(
+        [{"type": "text", "data": {"text": "Frontier 你好"}}],
+        "1",
+    )
 
 
 @pytest.mark.asyncio
@@ -101,25 +125,49 @@ async def test_private_progress_reporter_keeps_templates_and_two_preambles(monke
 
 
 @pytest.mark.asyncio
-async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # noqa: C901
+@pytest.mark.parametrize(
+    ("persist_media", "expected_user_text"),
+    [
+        (True, "hi\n[视频]\n[语音]"),
+        (False, "hi\n[图片]\n[视频]\n[语音]"),
+    ],
+)
+async def test_agent_image_placeholders_follow_persistence(  # noqa: C901
+    monkeypatch,
+    persist_media,
+    expected_user_text,
+):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
     from plugins import agent
 
-    calls = {"insert_images": 0, "schedule_summary": 0}
+    calls = {"insert_media": 0, "schedule_summary": 0}
     captured = {}
 
     class DummyMessagesDb:
         async def insert(self, **_kwargs):
             return None
 
-        async def insert_images(self, **_kwargs):
-            calls["insert_images"] += 1
-            return ["cache/images/456/1_0.jpg"]
+        async def insert_media(self, **kwargs):
+            calls["insert_media"] += 1
+            if not persist_media:
+                raise RuntimeError("database unavailable")
+            return [
+                types.SimpleNamespace(
+                    kind=item.kind,
+                    mime_type=item.mime_type,
+                    file_name=f"1_{index}{item.extension}",
+                    virtual_path=f"/memory/group-123/{item.kind}/1_{index}{item.extension}",
+                )
+                for index, item in enumerate(kwargs["media"])
+            ]
 
         async def prepare_message(self, *_args, **_kwargs):
             return []
+
+        async def finalize_message_context(self, **kwargs):
+            captured["finalized_context"] = kwargs
 
     class DummyCognitive:
         async def chat_agent(self, messages, *_args, **kwargs):
@@ -204,14 +252,14 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
         ctx.receive_event(bot, event)
         ctx.should_finished()
 
-    assert calls["insert_images"] == 1
+    assert calls["insert_media"] == 1
     assert calls["schedule_summary"] == 0
     assert captured["image_inputs"] == [b"image-bytes"]
     assert captured["audio_inputs"] == [b"audio-bytes"]
     assert captured["video_inputs"] == [b"video-bytes"]
-    assert captured["user_text"] == "hi\n[视频]\n[语音]"
+    assert captured["user_text"] == expected_user_text
     current_content = captured["messages"][-1]["content"]
-    assert "[图片]" not in current_content[0]["text"]
+    assert ("[图片]" in current_content[0]["text"]) is (not persist_media)
     assert current_content[1] == {"type": "text", "text": "以下图片来自当前消息："}
     assert current_content[2]["type"] == "image"
     assert current_content[3] == {"type": "text", "text": "以下语音来自当前消息："}
@@ -221,7 +269,12 @@ async def test_agent_saves_images_without_scheduling_summary(monkeypatch):  # no
 
 
 @pytest.mark.asyncio
-async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # noqa: C901
+@pytest.mark.parametrize("index_file", [True, False])
+async def test_agent_injects_staged_file_memory_path_even_if_indexing_fails(  # noqa: C901
+    monkeypatch,
+    tmp_path,
+    index_file,
+):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -240,6 +293,8 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
             return []
 
         async def insert_attachment(self, **kwargs):
+            if not index_file:
+                raise RuntimeError("database unavailable")
             captured["attachment"] = kwargs
 
     class DummyCognitive:
@@ -260,12 +315,16 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
         captured["file_items"] = file_items
         captured["memory_dir"] = kwargs["memory_dir"]
         captured["workspace_key"] = kwargs["workspace_key"]
+        captured["message_time"] = kwargs["message_time"]
+        local_path = tmp_path / "sandbox" / "memory" / "group-123" / "files" / "report.txt"
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_text("data", encoding="utf-8")
         return [
             types.SimpleNamespace(
                 file_name="report.txt",
                 file_size=4,
-                virtual_path="/memory/123/files/report.txt",
-                local_path=tmp_path / "sandbox" / "memory" / "123" / "files" / "report.txt",
+                virtual_path="/memory/group-123/files/report.txt",
+                local_path=local_path,
                 mime_type="text/plain",
                 sha256="file-sha256",
             )
@@ -325,14 +384,59 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
         ctx.should_finished()
 
     assert captured["file_items"][0].file_id == "file-1"
-    assert captured["memory_dir"] == tmp_path / "sandbox" / "memory" / "123"
-    assert captured["workspace_key"] == "123"
-    current_text = captured["messages"][-1]["content"][0]["text"]
+    assert captured["memory_dir"] == tmp_path / "sandbox" / "memory" / "group-123"
+    assert captured["workspace_key"] == "group-123"
+    assert isinstance(captured["message_time"], int)
+    assert captured["message_time"] > 0
+    current_text = _first_text(captured["messages"][-1]["content"])
     payload = json.loads(current_text)
-    assert "/memory/123/files/report.txt" in payload["content"]
-    assert captured["attachment"]["kind"] == "file"
-    assert captured["attachment"]["mime_type"] == "text/plain"
-    assert captured["attachment"]["sha256"] == "file-sha256"
+    assert payload["attachments"] == [
+        {
+            "kind": "file",
+            "mime_type": "text/plain",
+            "file_name": "report.txt",
+            "path": "/memory/group-123/files/report.txt",
+        }
+    ]
+    if index_file:
+        assert captured["attachment"]["kind"] == "file"
+        assert captured["attachment"]["mime_type"] == "text/plain"
+        assert captured["attachment"]["sha256"] == "file-sha256"
+    else:
+        assert "attachment" not in captured
+    staged_path = tmp_path / "sandbox" / "memory" / "group-123" / "files" / "report.txt"
+    assert staged_path.exists() is index_file
+
+
+@pytest.mark.asyncio
+async def test_parallel_quote_failure_cleans_successfully_staged_files(monkeypatch, tmp_path):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    staged_path = tmp_path / "memory/group-123/files/report.txt"
+    staged_path.parent.mkdir(parents=True)
+    staged_path.write_text("data", encoding="utf-8")
+    staged_file = types.SimpleNamespace(local_path=staged_path)
+
+    async def media_result():
+        return [], [], []
+
+    async def file_result():
+        return [staged_file]
+
+    async def quote_failure():
+        raise RuntimeError("quote lookup failed")
+
+    with pytest.raises(RuntimeError, match="quote lookup failed"):
+        await agent._collect_incoming_assets(
+            media_result(),
+            file_result(),
+            quote_failure(),
+        )
+
+    assert not staged_path.exists()
 
 
 @pytest.mark.asyncio
@@ -547,7 +651,7 @@ async def test_agent_stores_expanded_forward_message_and_derived_nodes(monkeypat
     assert captured["insert"]["normalized_status"] == "complete"
     assert captured["insert"]["raw_segments_json"]
     assert len(captured["derived"]["derived_messages"]) == 3
-    current_text = captured["messages"][-1]["content"][0]["text"]
+    current_text = _first_text(captured["messages"][-1]["content"])
     assert "Dana: 第二层" in current_text
 
 
@@ -640,7 +744,7 @@ async def test_agent_does_not_duplicate_normalized_video_marker(monkeypatch):  #
         ctx.should_finished()
 
     assert captured["stored_content"] == "[视频:12秒]"
-    current_text = captured["messages"][-1]["content"][0]["text"]
+    current_text = _first_text(captured["messages"][-1]["content"])
     assert current_text.count("[视频") == 1
     assert captured["video_inputs"] == [b"video-bytes"]
 
@@ -745,7 +849,7 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
     stored_reply = json.loads(captured["stored_reply_context"])
     assert stored_reply["sender"]["user_id"] == "111"
     assert stored_reply["content"] == "原始消息内容"
-    current = json.loads(captured["messages"][-1]["content"][0]["text"])
+    current = json.loads(_first_text(captured["messages"][-1]["content"]))
     assert current["content"] == "这是什么意思？"
     assert current["reply_to"]["sender"]["display_name"] == "Alice"
     assert current["reply_to"]["content"] == "原始消息内容"
@@ -861,6 +965,9 @@ async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # 
 
         async def prepare_message(self, *_args, **_kwargs):
             return []
+
+        async def finalize_message_context(self, **kwargs):
+            captured["finalized_context"] = kwargs
 
         async def select_by_msg_id(self, *, msg_id, group_id):
             assert msg_id == 900
@@ -988,7 +1095,11 @@ async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # 
     current_content = captured["messages"][-1]["content"]
     assert current_content[0]["type"] == "text"
     assert "[图片]" not in current_content[0]["text"]
-    assert "[下方已附加引用图片 1 张]" in current_content[0]["text"]
+    reply_to = json.loads(current_content[0]["text"])["reply_to"]
+    assert reply_to["content"] == "[引用消息包含图片 1 张]"
+    assert reply_to["media"] == {"image_count": 1}
+    finalized_reply = json.loads(captured["finalized_context"]["reply_context_json"])
+    assert finalized_reply == reply_to
     assert current_content[1] == {"type": "text", "text": "以下图片来自上面的引用消息："}
     assert current_content[2]["type"] == "image"
 
@@ -1006,6 +1117,7 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     class DummyMessagesDb:
         async def insert(self, **kwargs):
             captured["stored_user_id"] = kwargs["user_id"]
+            captured["stored_sender_user_id"] = kwargs["sender_user_id"]
             return None
 
     class DummyCognitive:
@@ -1022,7 +1134,6 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
     context = agent.AgentRequestContext(
-        bot=None,
         event=cast(Any, types.SimpleNamespace)(
             self_id="1",
             get_plaintext=lambda: "hi",
@@ -1041,23 +1152,33 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
         quoted_images=[],
         images=[],
         videos=[],
+        direct_mention=group_id is not None,
     )
 
     await agent._process_agent_request(context, [{"role": "assistant", "content": "history"}])
 
-    current_text = captured["messages"][-1]["content"][0]["text"]
+    current_text = _first_text(captured["messages"][-1]["content"])
     payload = json.loads(current_text)
     assert payload["schema"] == "frontier.qq_message.v1"
     assert payload["chat"]["type"] == expected_chat_type
-    assert payload["chat"]["group_id"] == (str(group_id) if group_id is not None else None)
+    assert payload["chat"].get("group_id") == (str(group_id) if group_id is not None else None)
     assert payload["sender"]["user_id"] == "456"
+    expected_bot_context = {"user_id": "1"}
+    if group_id is not None:
+        expected_bot_context["directly_mentioned"] = True
+    assert payload["bot_context"] == expected_bot_context
     assert payload["sender"]["display_name"] == ("项目经理" if group_id is not None else "Bob")
     if group_id is not None:
         assert payload["sender"]["nickname"] == "Bob"
-        assert payload["sender"]["card"] == "项目经理"
-    assert payload["is_current"] is True
+        assert "card" not in payload["sender"]
+        assert payload["content"].startswith("[你被主动@了，这条消息是明确对你说的]")
+    else:
+        assert payload["content"] == "hi"
+    assert "is_current" not in payload
+    assert captured["kwargs"]["user_text"] == "hi"
     assert captured["kwargs"]["group_member_role"] == ("admin" if group_id is not None else None)
     assert captured["stored_user_id"] == (1 if group_id is not None else 456)
+    assert captured["stored_sender_user_id"] == 1
 
 
 @pytest.mark.asyncio
@@ -1080,7 +1201,6 @@ async def test_process_agent_request_interprets_empty_text_as_user_calling_bot(m
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
 
     context = agent.AgentRequestContext(
-        bot=None,
         event=cast(Any, types.SimpleNamespace)(self_id="1", get_plaintext=lambda: ""),
         user_id="456",
         user_name="Bob",
@@ -1095,7 +1215,7 @@ async def test_process_agent_request_interprets_empty_text_as_user_calling_bot(m
 
     await agent._process_agent_request(context)
 
-    current_text = captured["messages"][-1]["content"][0]["text"]
+    current_text = _first_text(captured["messages"][-1]["content"])
     payload = json.loads(current_text)
     assert payload["content"] == "[用户叫了你一声]"
 
@@ -1139,7 +1259,6 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
 
     context_a = agent.AgentRequestContext(
-        bot=None,
         event=cast(Any, types.SimpleNamespace)(self_id="1", get_plaintext=lambda: "first"),
         user_id="456",
         user_name="Bob",
@@ -1152,7 +1271,6 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
         videos=[],
     )
     context_b = agent.AgentRequestContext(
-        bot=None,
         event=cast(Any, types.SimpleNamespace)(self_id="1", get_plaintext=lambda: "second"),
         user_id="456",
         user_name="Bob",
@@ -1422,7 +1540,6 @@ async def test_process_agent_request_passes_configured_capability_directly(monke
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
 
     context = agent.AgentRequestContext(
-        bot=None,
         event=cast(Any, types.SimpleNamespace)(self_id="1"),
         user_id="456",
         user_name="Bob",
@@ -1476,7 +1593,6 @@ async def test_process_agent_request_sanitizes_final_response(monkeypatch):
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
 
     context = agent.AgentRequestContext(
-        bot=None,
         event=cast(Any, types.SimpleNamespace)(self_id="1"),
         user_id="456",
         user_name="Bob",
