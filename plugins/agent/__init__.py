@@ -70,17 +70,16 @@ common = on_message(priority=10)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CACHE_CLEANUP_JOB_ID = "frontier_daily_cache_cleanup"
+CONVERSATION_MEMORY_JOB_ID = "frontier_hourly_conversation_memory"
 
 
-async def _schedule_conversation_compaction(
-    user_id: int | str,
-    group_id: int | None,
-    *,
-    raw_budget: int | None = None,
-) -> None:
+async def run_hourly_conversation_memory() -> None:
+    """Summarize active conversations after each natural-hour boundary."""
     required_methods = (
         "latest_conversation_summary",
-        "context_token_total",
+        "hourly_conversation_summaries",
+        "prune_conversation_summaries",
+        "conversation_scopes_with_messages",
         "select_context_page",
         "prepare_message_records",
         "append_conversation_summary",
@@ -89,14 +88,11 @@ async def _schedule_conversation_compaction(
         return
     conversation_memory_service.database = messages_db
     try:
-        await conversation_memory_service.maybe_schedule(
-            scheduler,
-            user_id=user_id,
-            group_id=group_id,
-            raw_budget=raw_budget,
-        )
+        compacted = await conversation_memory_service.compact_active_scopes()
+        if compacted:
+            logger.info("已刷新小时会话摘要: %s 个会话", compacted)
     except Exception as exc:
-        logger.warning("会话压缩调度失败（不影响回复）: %s: %s", type(exc).__name__, exc)
+        logger.warning("小时会话摘要失败（不影响回复）: %s: %s", type(exc).__name__, exc)
 
 
 @dataclass(slots=True)
@@ -301,7 +297,11 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
             if EnvConfig.CONVERSATION_MEMORY_ENABLED
             and all(
                 hasattr(messages_db, name)
-                for name in ("latest_conversation_summary", "select_context_page", "prepare_message_records")
+                for name in (
+                    "hourly_conversation_summaries",
+                    "select_context_page",
+                    "prepare_message_records",
+                )
             )
             else None
         ),
@@ -342,11 +342,6 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
             bot_user_id=int(context.event.self_id),
         )
         await send_messages(context.group_id, context.event_id, response)
-        await _schedule_conversation_compaction(
-            context.user_id,
-            context.group_id,
-            raw_budget=result.get("history_raw_budget"),
-        )
     else:
         await UniMessage.text(response["messages"]).send()
     return True
@@ -471,6 +466,19 @@ async def on_startup():
         max_instances=1,
         misfire_grace_time=3600,
     )
+    if EnvConfig.CONVERSATION_MEMORY_ENABLED:
+        scheduler.add_job(
+            run_hourly_conversation_memory,
+            "cron",
+            id=CONVERSATION_MEMORY_JOB_ID,
+            minute=1,
+            second=0,
+            timezone="Asia/Shanghai",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=1800,
+        )
 
 
 async def run_daily_cache_cleanup() -> None:
@@ -580,7 +588,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     )
 
     if not await message_gateway(event, messages):
-        await _schedule_conversation_compaction(user_id, group_id)
         await common.finish()
 
     # ── Phase 3: 网关通过后才下载当前消息及引用消息中的媒体 ──

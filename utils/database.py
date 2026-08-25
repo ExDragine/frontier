@@ -276,6 +276,13 @@ def ensure_conversation_summary_schema(engine: Engine) -> None:
                 "ON conversation_summary (scope_type, scope_id, invalidated_at, version DESC)"
             )
         )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_conversation_summary_scope_bucket "
+                "ON conversation_summary "
+                "(scope_type, scope_id, prompt_version, source_start_time, invalidated_at)"
+            )
+        )
 
 
 def _table_exists(conn, table_name: str) -> bool:
@@ -647,6 +654,14 @@ class ConversationSummary(SQLModel, table=True):
             "invalidated_at",
             "version",
         ),
+        Index(
+            "ix_conversation_summary_scope_bucket",
+            "scope_type",
+            "scope_id",
+            "prompt_version",
+            "source_start_time",
+            "invalidated_at",
+        ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -671,21 +686,22 @@ def _invalidate_conversation_summaries_for_message(session: Session, message: Me
         return
     scopes = [
         and_(
-            ConversationSummary.scope_type == "private",
-            ConversationSummary.scope_id == str(message.user_id),
+            col(ConversationSummary.scope_type) == "private",
+            col(ConversationSummary.scope_id) == str(message.user_id),
         )
     ]
     if message.group_id is not None:
         scopes.append(
             and_(
-                ConversationSummary.scope_type == "group",
-                ConversationSummary.scope_id == str(message.group_id),
+                col(ConversationSummary.scope_type) == "group",
+                col(ConversationSummary.scope_id) == str(message.group_id),
             )
         )
     session.exec(
         update(ConversationSummary)
         .where(col(ConversationSummary.invalidated_at).is_(None))
-        .where(ConversationSummary.source_end_time >= message.time)
+        .where(col(ConversationSummary.source_start_time) <= message.time)
+        .where(col(ConversationSummary.source_end_time) >= message.time)
         .where(or_(*scopes))
         .values(invalidated_at=_now_ms())
     )
@@ -1841,6 +1857,47 @@ class MessageDatabase:
 
         return await _run_database(self.engine, _do)
 
+    async def conversation_scopes_with_messages(
+        self,
+        *,
+        start_time: int,
+        end_time: int,
+    ) -> list[tuple[int, int | None]]:
+        """Return private peers and groups that contain messages in one time range."""
+
+        def _do():
+            with self.engine.connect() as connection:
+                rows = connection.execute(
+                    text(
+                        """
+                        SELECT user_id, NULL AS group_id
+                        FROM message
+                        WHERE source_type = :source_type
+                          AND group_id IS NULL
+                          AND time >= :start_time
+                          AND time < :end_time
+                        GROUP BY user_id
+                        UNION ALL
+                        SELECT 0 AS user_id, group_id
+                        FROM message
+                        WHERE source_type = :source_type
+                          AND group_id IS NOT NULL
+                          AND time >= :start_time
+                          AND time < :end_time
+                        GROUP BY group_id
+                        ORDER BY group_id, user_id
+                        """
+                    ),
+                    {
+                        "source_type": MESSAGE_SOURCE_TYPE_NORMAL,
+                        "start_time": start_time,
+                        "end_time": end_time,
+                    },
+                ).all()
+            return [(int(row.user_id), int(row.group_id) if row.group_id is not None else None) for row in rows]
+
+        return await _run_database(self.engine, _do)
+
     async def latest_conversation_summary(
         self,
         *,
@@ -1862,6 +1919,66 @@ class MessageDatabase:
                     statement = statement.where(ConversationSummary.prompt_version == prompt_version)
                 statement = statement.order_by(desc(ConversationSummary.version)).limit(1)
                 return session.exec(statement).first()
+
+        return await _run_database(self.engine, _do)
+
+    async def hourly_conversation_summaries(
+        self,
+        *,
+        scope_type: str,
+        scope_id: str,
+        window_start: int,
+        window_end: int,
+        prompt_version: int,
+    ) -> list[ConversationSummary]:
+        """Return active hourly summaries in chronological order."""
+
+        def _do():
+            with Session(self.engine) as session:
+                rows = session.exec(
+                    select(ConversationSummary)
+                    .where(ConversationSummary.scope_type == scope_type)
+                    .where(ConversationSummary.scope_id == scope_id)
+                    .where(ConversationSummary.prompt_version == prompt_version)
+                    .where(col(ConversationSummary.invalidated_at).is_(None))
+                    .where(ConversationSummary.source_start_time >= window_start)
+                    .where(ConversationSummary.source_start_time < window_end)
+                    .order_by(col(ConversationSummary.source_start_time), desc(ConversationSummary.version))
+                ).all()
+                by_bucket: dict[int, ConversationSummary] = {}
+                for row in rows:
+                    by_bucket.setdefault(row.source_start_time, row)
+                return list(by_bucket.values())
+
+        return await _run_database(self.engine, _do)
+
+    async def prune_conversation_summaries(
+        self,
+        *,
+        scope_type: str,
+        scope_id: str,
+        window_start: int,
+        prompt_version: int,
+    ) -> int:
+        """Delete expired buckets and summaries from superseded formats."""
+
+        def _do():
+            with Session(self.engine) as session:
+                rows = session.exec(
+                    select(ConversationSummary)
+                    .where(ConversationSummary.scope_type == scope_type)
+                    .where(ConversationSummary.scope_id == scope_id)
+                    .where(
+                        or_(
+                            col(ConversationSummary.source_start_time) < window_start,
+                            col(ConversationSummary.prompt_version) != prompt_version,
+                        )
+                    )
+                ).all()
+                for row in rows:
+                    session.delete(row)
+                session.commit()
+                return len(rows)
 
         return await _run_database(self.engine, _do)
 

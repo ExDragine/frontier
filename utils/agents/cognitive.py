@@ -347,7 +347,6 @@ class FrontierCognitive:
         if access_profile == "frontier" and enable_acp_subagents:
             subagents.extend(_stable_named_items(build_acp_subagents()))
 
-        history_raw_budget: int | None = None
         if conversation_history is not None and EnvConfig.CONVERSATION_MEMORY_ENABLED:
             prefix_count = max(0, min(conversation_history.prefix_message_count, len(messages)))
             current_messages = list(messages[prefix_count:])
@@ -359,7 +358,6 @@ class FrontierCognitive:
                     tools=effective_tools,
                     current_messages=current_messages,
                 )
-                history_raw_budget = budget.raw_tokens
                 messages = [*history, *current_messages]
                 logger.info(
                     "动态会话上下文: history_budget=%s raw_budget=%s loaded=%s",
@@ -462,7 +460,6 @@ class FrontierCognitive:
                 "total_time": time.time() - start_time,
                 "uni_messages": [],
                 "error": str(exc),
-                "history_raw_budget": history_raw_budget,
             }
 
         if response is None:
@@ -482,5 +479,4 @@ class FrontierCognitive:
             "response": {"messages": [final_response]},
             "total_time": processing_time,
             "uni_messages": uni_messages,
-            "history_raw_budget": history_raw_budget,
         }

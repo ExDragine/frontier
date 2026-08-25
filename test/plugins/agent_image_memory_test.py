@@ -1975,6 +1975,7 @@ async def test_agent_startup_cleans_cached_files_and_schedules_daily_job(monkeyp
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "scheduler", DummyScheduler())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_AUTO_CLEANUP", True)
+    monkeypatch.setattr(agent.EnvConfig, "CONVERSATION_MEMORY_ENABLED", True)
     await agent.on_startup()
 
     assert calls[:2] == ["attachments", "repair"]
@@ -1984,6 +1985,42 @@ async def test_agent_startup_cleans_cached_files_and_schedules_daily_job(monkeyp
     assert kwargs["id"] == agent.CACHE_CLEANUP_JOB_ID
     assert kwargs["hour"] == 4
     assert kwargs["timezone"] == "Asia/Shanghai"
+    func, trigger, kwargs = calls[3]
+    assert func is agent.run_hourly_conversation_memory
+    assert trigger == "cron"
+    assert kwargs["id"] == agent.CONVERSATION_MEMORY_JOB_ID
+    assert kwargs["minute"] == 1
+    assert kwargs["second"] == 0
+    assert kwargs["timezone"] == "Asia/Shanghai"
+
+
+@pytest.mark.asyncio
+async def test_hourly_conversation_memory_uses_current_database(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    class DummyMessagesDb:
+        latest_conversation_summary = hourly_conversation_summaries = object()
+        prune_conversation_summaries = conversation_scopes_with_messages = object()
+        select_context_page = prepare_message_records = append_conversation_summary = object()
+
+    class DummyMemoryService:
+        database = None
+
+        async def compact_active_scopes(self):
+            assert self.database is database
+            return 2
+
+    database = DummyMessagesDb()
+    service = DummyMemoryService()
+    monkeypatch.setattr(agent, "messages_db", database)
+    monkeypatch.setattr(agent, "conversation_memory_service", service)
+
+    await agent.run_hourly_conversation_memory()
+
+    assert service.database is database
 
 
 @pytest.mark.asyncio

@@ -402,6 +402,31 @@ def test_ensure_conversation_summary_schema_adds_invalidation_state(memory_engin
     indexes = {index["name"] for index in inspect(memory_engine).get_indexes("conversation_summary")}
     assert "invalidated_at" in columns
     assert "ix_conversation_summary_scope_valid_version" in indexes
+    assert "ix_conversation_summary_scope_bucket" in indexes
+
+
+@pytest.mark.asyncio
+async def test_conversation_scopes_with_messages_returns_only_active_normal_scopes(memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+    await database.insert(1000, 1, 10, None, "Private", "user", "private")
+    await database.insert(1100, 2, 20, 123, "Group", "user", "group")
+    await database.insert(900, 3, 30, 456, "Old", "user", "outside")
+    await database.insert(
+        1200,
+        4,
+        40,
+        789,
+        "Derived",
+        "user",
+        "derived",
+        source_type=MESSAGE_SOURCE_TYPE_FORWARD_NODE,
+    )
+
+    scopes = await database.conversation_scopes_with_messages(start_time=1000, end_time=1200)
+
+    assert scopes == [(10, None), (0, 123)]
 
 
 @pytest.mark.asyncio
