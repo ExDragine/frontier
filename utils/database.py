@@ -8,8 +8,10 @@ import posixpath
 import time
 import zoneinfo
 from functools import lru_cache
+from math import ceil
 
-from sqlalchemy import Engine, event, inspect, text
+from sqlalchemy import Engine, Index, UniqueConstraint, event, inspect, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Field, Session, SQLModel, col, create_engine, desc, func, select
 
@@ -22,7 +24,14 @@ SQLITE_MMAP_SIZE_BYTES = 256 * 1024 * 1024
 MESSAGE_FTS_MIN_QUERY_LENGTH = 3
 MESSAGE_SOURCE_TYPE_NORMAL = "message"
 MESSAGE_SOURCE_TYPE_FORWARD_NODE = "forward_node"
+MESSAGE_TOKEN_ESTIMATE_VERSION = 1
 logger = logging.getLogger(__name__)
+
+
+def estimate_stored_message_tokens(content: str, user_name: str | None = None) -> int:
+    """Provider-neutral estimate used for SQL watermarks and pagination."""
+    chars = len(content) + len(user_name or "") + 80
+    return max(1, ceil(chars / 1.8) + 4)
 
 
 async def _run_in_thread(func, *args, **kwargs):
@@ -156,6 +165,11 @@ def ensure_message_schema(engine: Engine) -> None:
         ("parent_msg_id", "ALTER TABLE message ADD COLUMN parent_msg_id INTEGER"),
         ("parent_msg_time", "ALTER TABLE message ADD COLUMN parent_msg_time INTEGER"),
         ("parent_forward_id", "ALTER TABLE message ADD COLUMN parent_forward_id TEXT"),
+        ("estimated_tokens", "ALTER TABLE message ADD COLUMN estimated_tokens INTEGER NOT NULL DEFAULT 0"),
+        (
+            "token_estimate_version",
+            "ALTER TABLE message ADD COLUMN token_estimate_version INTEGER NOT NULL DEFAULT 0",
+        ),
     ]
     statements = [statement for column, statement in column_migrations if column not in columns]
     if not statements:
@@ -413,6 +427,31 @@ class Message(SQLModel, table=True):
     parent_msg_id: int | None = None
     parent_msg_time: int | None = None
     parent_forward_id: str | None = None
+    estimated_tokens: int = 0
+    token_estimate_version: int = 0
+
+
+class ConversationSummary(SQLModel, table=True):
+    __tablename__ = "conversation_summary"
+    __table_args__ = (
+        UniqueConstraint("scope_type", "scope_id", "version", name="uq_conversation_summary_version"),
+        Index("ix_conversation_summary_scope_version", "scope_type", "scope_id", "version"),
+        Index("ix_conversation_summary_scope_end", "scope_type", "scope_id", "source_end_time"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    scope_type: str
+    scope_id: str
+    version: int
+    source_start_time: int
+    source_end_time: int
+    source_message_count: int
+    source_token_count: int
+    summary_text: str
+    estimated_tokens: int
+    model: str
+    prompt_version: int = 1
+    created_at: int
 
 
 class TimeStamp(SQLModel, table=True):
@@ -873,6 +912,8 @@ class MessageDatabase:
                     parent_msg_id=parent_msg_id,
                     parent_msg_time=parent_msg_time,
                     parent_forward_id=parent_forward_id,
+                    estimated_tokens=estimate_stored_message_tokens(content, user_name),
+                    token_estimate_version=MESSAGE_TOKEN_ESTIMATE_VERSION,
                 )
                 session.add(message)
                 session.commit()
@@ -900,6 +941,129 @@ class MessageDatabase:
                 statement = statement.order_by(desc(Message.time)).limit(query_numbers)
                 results = session.exec(statement)
                 return results.all()
+
+        return await _run_database(self.engine, _do)
+
+    async def select_context_page(
+        self,
+        *,
+        user_id: int,
+        group_id: int | None,
+        after_time: int | None = None,
+        before_time: int | None = None,
+        cursor_time: int | None = None,
+        limit: int = 200,
+        ascending: bool = False,
+    ) -> list[Message]:
+        """Read one scope-isolated page for token-budgeted context assembly."""
+
+        def _do():
+            with Session(self.engine) as session:
+                statement = select(Message).where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                if group_id is None:
+                    statement = statement.where(Message.user_id == user_id).where(Message.group_id.is_(None))  # type: ignore
+                else:
+                    statement = statement.where(Message.group_id == group_id)
+                if after_time is not None:
+                    statement = statement.where(Message.time > after_time)
+                if before_time is not None:
+                    statement = statement.where(Message.time < before_time)
+                if cursor_time is not None:
+                    statement = statement.where(Message.time > cursor_time if ascending else Message.time < cursor_time)
+                order = Message.time.asc() if ascending else desc(Message.time)
+                return session.exec(statement.order_by(order).limit(max(1, min(limit, 500)))).all()
+
+        return await _run_database(self.engine, _do)
+
+    async def context_token_total(
+        self,
+        *,
+        user_id: int,
+        group_id: int | None,
+        after_time: int | None = None,
+        before_time: int | None = None,
+    ) -> int:
+        """Return a cheap provider-neutral token estimate for a conversation range."""
+
+        def _do():
+            filters = ["source_type = :source_type"]
+            params: dict[str, object] = {"source_type": MESSAGE_SOURCE_TYPE_NORMAL}
+            if group_id is None:
+                filters.extend(["user_id = :user_id", "group_id IS NULL"])
+                params["user_id"] = user_id
+            else:
+                filters.append("group_id = :group_id")
+                params["group_id"] = group_id
+            if after_time is not None:
+                filters.append("time > :after_time")
+                params["after_time"] = after_time
+            if before_time is not None:
+                filters.append("time < :before_time")
+                params["before_time"] = before_time
+            where = " AND ".join(filters)
+            query = text(
+                f"""
+                SELECT COALESCE(SUM(
+                    CASE
+                        WHEN estimated_tokens > 0 THEN estimated_tokens
+                        ELSE MAX(1, CAST((length(content) + COALESCE(length(user_name), 0) + 80) / 1.8 AS INTEGER) + 4)
+                    END
+                ), 0)
+                FROM message
+                WHERE {where}
+                """  # noqa: S608 - only fixed internal filter fragments are interpolated
+            )
+            with self.engine.connect() as conn:
+                return int(conn.execute(query, params).scalar_one())
+
+        return await _run_database(self.engine, _do)
+
+    async def latest_conversation_summary(
+        self,
+        *,
+        scope_type: str,
+        scope_id: str,
+    ) -> ConversationSummary | None:
+        def _do():
+            with Session(self.engine) as session:
+                statement = (
+                    select(ConversationSummary)
+                    .where(ConversationSummary.scope_type == scope_type)
+                    .where(ConversationSummary.scope_id == scope_id)
+                    .order_by(desc(ConversationSummary.version))
+                    .limit(1)
+                )
+                return session.exec(statement).first()
+
+        return await _run_database(self.engine, _do)
+
+    async def append_conversation_summary(
+        self,
+        summary: ConversationSummary,
+        *,
+        expected_version: int,
+    ) -> bool:
+        """Append a summary only when its source version is still current."""
+
+        def _do():
+            with Session(self.engine, expire_on_commit=False) as session:
+                statement = (
+                    select(ConversationSummary.version)
+                    .where(ConversationSummary.scope_type == summary.scope_type)
+                    .where(ConversationSummary.scope_id == summary.scope_id)
+                    .order_by(desc(ConversationSummary.version))
+                    .limit(1)
+                )
+                current_version = session.exec(statement).first() or 0
+                if current_version != expected_version:
+                    return False
+                try:
+                    session.add(summary)
+                    session.commit()
+                except IntegrityError:
+                    session.rollback()
+                    return False
+                return True
 
         return await _run_database(self.engine, _do)
 
@@ -983,6 +1147,10 @@ class MessageDatabase:
                         parent_msg_id=parent_msg_id,
                         parent_msg_time=parent_msg_time,
                         parent_forward_id=getattr(item, "forward_id", None),
+                        estimated_tokens=estimate_stored_message_tokens(
+                            getattr(item, "content", ""), getattr(item, "sender_name", None)
+                        ),
+                        token_estimate_version=MESSAGE_TOKEN_ESTIMATE_VERSION,
                     )
                     session.add(message)
                     inserted.append(message)
@@ -990,7 +1158,7 @@ class MessageDatabase:
 
         await _run_database(self.engine, _do)
 
-    async def prepare_message(  # noqa: C901
+    async def prepare_message(
         self,
         user_id: int | None = None,
         group_id: int | None = None,
@@ -1005,12 +1173,17 @@ class MessageDatabase:
         )
         if not messages:
             return []
-        messages_seq = []
         messages = list(reversed(messages))
         if before_time is None:
             messages = messages[:-1]
+        return await self.prepare_message_records(messages)
+
+    async def prepare_message_records(self, messages: list[Message]) -> list[dict[str, str]]:  # noqa: C901
+        """Render already-selected records in chronological order for an LLM."""
         if not messages:
             return []
+        messages = sorted(messages, key=lambda message: message.time)
+        messages_seq: list[dict[str, str]] = []
 
         all_msg_times = [m.time for m in messages]
 

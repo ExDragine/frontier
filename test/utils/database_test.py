@@ -13,6 +13,7 @@ from utils import database as db_module
 from utils.database import (
     MESSAGE_SOURCE_TYPE_FORWARD_NODE,
     MESSAGE_SOURCE_TYPE_NORMAL,
+    ConversationSummary,
     GroupSettings,
     GroupSettingsManager,
     Message,
@@ -68,12 +69,53 @@ def test_ensure_message_schema_adds_normalization_columns(memory_engine):
         "parent_msg_id",
         "parent_msg_time",
         "parent_forward_id",
+        "estimated_tokens",
+        "token_estimate_version",
     }.issubset(columns)
     with memory_engine.connect() as conn:
         row = conn.execute(
             text("SELECT normalized_version, normalized_status, source_type FROM message WHERE time = 1000")
         ).one()
     assert row == (0, "legacy", MESSAGE_SOURCE_TYPE_NORMAL)
+
+
+@pytest.mark.asyncio
+async def test_conversation_context_queries_are_scope_isolated_and_versioned(memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+
+    await database.insert(1000, 1, 10, None, "Alice", "user", "private history")
+    await database.insert(1100, 2, 10, 123, "Alice", "user", "group history")
+    await database.insert(1200, 3, 20, 123, "Bob", "user", "group reply")
+
+    private_page = await database.select_context_page(user_id=10, group_id=None)
+    group_page = await database.select_context_page(user_id=10, group_id=123)
+    assert [message.content for message in private_page] == ["private history"]
+    assert [message.content for message in group_page] == ["group reply", "group history"]
+    assert await database.context_token_total(user_id=10, group_id=None) > 0
+
+    first = ConversationSummary(
+        scope_type="group",
+        scope_id="123",
+        version=1,
+        source_start_time=1100,
+        source_end_time=1100,
+        source_message_count=1,
+        source_token_count=10,
+        summary_text="Alice 提出了一个问题。",
+        estimated_tokens=10,
+        model="summary-model",
+        created_at=2000,
+    )
+    assert await database.append_conversation_summary(first, expected_version=0) is True
+    assert (
+        await database.append_conversation_summary(first.model_copy(update={"id": None}), expected_version=0) is False
+    )
+    latest = await database.latest_conversation_summary(scope_type="group", scope_id="123")
+    assert latest is not None
+    assert latest.version == 1
+    assert latest.source_end_time == 1100
 
 
 @pytest.mark.asyncio

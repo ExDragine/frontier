@@ -18,6 +18,11 @@ from nonebot_plugin_apscheduler import scheduler
 
 from utils.agents import FrontierCognitive, ProgressEvent, ProgressReporter, agent_thread_id, run_serialized
 from utils.agents.acp import acp_service
+from utils.agents.conversation_memory import (
+    ConversationHistoryRequest,
+    ConversationMemoryService,
+    ConversationScope,
+)
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase, build_message_metadata
@@ -40,6 +45,7 @@ from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments
 from utils.reply_context import build_reply_context, reply_seq_from_segments
 
 messages_db = MessageDatabase()
+conversation_memory_service = ConversationMemoryService(messages_db)
 f_cognitive = FrontierCognitive()
 driver = get_driver()
 
@@ -48,6 +54,27 @@ common = on_message(priority=10)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CACHE_CLEANUP_JOB_ID = "frontier_daily_cache_cleanup"
 EMPTY_CURRENT_MESSAGE_PROMPT = "[用户叫了你一声]"
+
+
+async def _schedule_conversation_compaction(user_id: int | str, group_id: int | None) -> None:
+    required_methods = (
+        "latest_conversation_summary",
+        "context_token_total",
+        "select_context_page",
+        "prepare_message_records",
+        "append_conversation_summary",
+    )
+    if not all(hasattr(messages_db, name) for name in required_methods):
+        return
+    conversation_memory_service.database = messages_db
+    try:
+        await conversation_memory_service.maybe_schedule(
+            scheduler,
+            user_id=user_id,
+            group_id=group_id,
+        )
+    except Exception as exc:
+        logger.warning("会话压缩调度失败（不影响回复）: %s: %s", type(exc).__name__, exc)
 
 
 @dataclass(slots=True)
@@ -137,6 +164,7 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
 
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
     messages = list(history_messages or [])
+    history_prefix_count = len(messages)
     combined_text = f"{context.text}{context.quoted_text}".strip() or EMPTY_CURRENT_MESSAGE_PROMPT
     remaining_bytes = EnvConfig.MAX_INLINE_MEDIA_BYTES
     remaining_images = EnvConfig.MAX_INLINE_IMAGES
@@ -238,6 +266,20 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         group_member_role=_group_member_role(context.event),
         progress_reporter=_chat_progress_reporter(context.group_id),
         user_text=context.text,
+        conversation_history=(
+            ConversationHistoryRequest(
+                database=messages_db,
+                scope=ConversationScope.from_ids(context.user_id, context.group_id),
+                before_time=context.msg_time,
+                prefix_message_count=history_prefix_count,
+            )
+            if EnvConfig.CONVERSATION_MEMORY_ENABLED
+            and all(
+                hasattr(messages_db, name)
+                for name in ("latest_conversation_summary", "select_context_page", "prepare_message_records")
+            )
+            else None
+        ),
     )
 
     if not isinstance(result, dict) or "response" not in result:
@@ -265,12 +307,14 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         await messages_db.insert(
             time=int(time.time() * 1000),
             msg_id=None,
-            user_id=int(context.event.self_id),
+            # 私聊按对端 user_id 建立会话范围；群聊仍保留真实机器人发送者 ID。
+            user_id=int(context.user_id) if context.group_id is None else int(context.event.self_id),
             group_id=context.group_id,
             user_name="Assistant",
             role="assistant",
             content=outgoing_message_content(response["messages"][-1]),
         )
+        await _schedule_conversation_compaction(context.user_id, context.group_id)
         await send_messages(context.group_id, context.event_id, response)
     else:
         await UniMessage.text(response["messages"]).send()
@@ -416,6 +460,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     )
 
     if not await message_gateway(event, messages):
+        await _schedule_conversation_compaction(user_id, group_id)
         await common.finish()
 
     # ── Phase 3: 网关通过后才下载当前消息及引用消息中的媒体 ──

@@ -29,6 +29,7 @@ from utils.llm_factory import create_llm, model_supports_native_web_search, prov
 from utils.media import inline_media_bytes, media_block_kind
 
 from .capture import detect_browser_capture_intent
+from .conversation_memory import ConversationHistoryRequest, assemble_conversation_history
 from .inputs import filter_messages_for_model_capabilities
 from .progress import (
     ProgressEvent,
@@ -179,6 +180,7 @@ class FrontierCognitive:
         user_text: str | None = None,
         access_profile: Literal["frontier", "acp"] = "frontier",
         enable_acp_subagents: bool = True,
+        conversation_history: ConversationHistoryRequest | None = None,
     ):
         uses_responses_api = provider_uses_responses_api(
             EnvConfig.ADVAN_MODEL,
@@ -195,11 +197,6 @@ class FrontierCognitive:
             model_kwargs["reasoning_effort"] = capability
             model_kwargs["verbosity"] = "low"
         model = create_llm(**model_kwargs)
-        messages = filter_messages_for_model_capabilities(
-            messages,
-            EnvConfig.ADVAN_MODEL,
-            role="advanced",
-        )
         working_dir = getattr(self, "working_dir", os.path.join(os.getcwd(), "cache", "sandbox"))
         thread_id = thread_id_override or agent_thread_id(user_id, group_id)
         if not isinstance(thread_id, uuid.UUID):
@@ -252,6 +249,33 @@ class FrontierCognitive:
             subagents.append(document_subagent)
         if access_profile == "frontier" and enable_acp_subagents:
             subagents.extend(build_acp_subagents())
+
+        if conversation_history is not None and EnvConfig.CONVERSATION_MEMORY_ENABLED:
+            prefix_count = max(0, min(conversation_history.prefix_message_count, len(messages)))
+            current_messages = list(messages[prefix_count:])
+            try:
+                history, budget = await assemble_conversation_history(
+                    conversation_history,
+                    model=model,
+                    system_prompt=system_prompt,
+                    tools=effective_tools,
+                    current_messages=current_messages,
+                )
+                messages = [*history, *current_messages]
+                logger.info(
+                    "动态会话上下文: history_budget=%s raw_budget=%s loaded=%s",
+                    budget.history_tokens,
+                    budget.raw_tokens,
+                    len(history),
+                )
+            except Exception as exc:
+                logger.warning("动态会话上下文装配失败，回退固定历史: %s: %s", type(exc).__name__, exc)
+
+        messages = filter_messages_for_model_capabilities(
+            messages,
+            EnvConfig.ADVAN_MODEL,
+            role="advanced",
+        )
         # These third-party middleware classes intentionally use different
         # context type parameters while sharing the same runtime protocol.
         middleware: list[Any] = [

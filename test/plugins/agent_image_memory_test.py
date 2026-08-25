@@ -1000,7 +1000,8 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     captured = {}
 
     class DummyMessagesDb:
-        async def insert(self, **_kwargs):
+        async def insert(self, **kwargs):
+            captured["stored_user_id"] = kwargs["user_id"]
             return None
 
     class DummyCognitive:
@@ -1045,6 +1046,7 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     assert payload["metadata"]["user_id"] == "456"
     assert payload["is_current"] is True
     assert captured["kwargs"]["group_member_role"] == ("admin" if group_id is not None else None)
+    assert captured["stored_user_id"] == (1 if group_id is not None else 456)
 
 
 @pytest.mark.asyncio

@@ -216,6 +216,7 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 - `[providers.*]`: LangChain 适配器类型、API 协议、base URL 和可选 API key。
 - `[key]`: NASA、GitHub 等非模型服务密钥；模型密钥统一放在供应商 profile。
 - `[features]` / `[agent]`: 功能开关和 Agent 推理等级。
+- `[conversation_memory]`: 自动会话压缩开关和动态上下文绝对上限。
 - `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]`: 访问策略。
 - `[limits]` / `[notifications]` / `[storage]`: 限流超时、定时推送群和存储设置。
 - `[dashboard]`: 管理面板密码、JWT secret、过期时间。
@@ -247,6 +248,12 @@ DeepSeek V4 的官方 Responses API 直接调用服务端 `web_search`，不再�
 每个群聊按 `group_id` 共享 `cache/sandbox/memory/{id}/SOUL.md`，每个私聊按 `user_id`
 维护独立 SOUL。新文件为空，由 Agent 按稳定互动逐步记录局部人设和长期偏好；全局安全、
 权限和工具规范不会写入 SOUL。
+
+会话上下文与 SOUL 分开管理。启用 `[conversation_memory]` 后，主 Agent 按当前模型窗口和
+实际工具集合动态载入“版本化 SQL 摘要 + token 预算内的近期原文 + 当前消息”。超过高水位的
+旧消息由后台任务压缩，原始 `Message` 记录仍作为可检索的权威数据保留；群聊摘要按
+`group_id` 隔离，私聊摘要按 `user_id` 隔离。`storage.query_message_numbers` 继续用于回复网关，
+不再限制主 Agent 的上下文长度。
 
 从旧版 memory `AGENTS.md` 升级时不做自动迁移。如需按新规则重置旧记忆，可在项目根目录
 执行一次以下命令；它只删除 workspace 目录中的旧 `AGENTS.md`：
