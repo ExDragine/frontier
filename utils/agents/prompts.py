@@ -6,6 +6,15 @@ from utils.configs import EnvConfig
 
 from .workspace import PROJECT_ROOT
 
+PRIVATE_CHAT_STYLE = (
+    "【当前会话风格】这是私聊。日常对话优先用一个短段落、1–3 句话自然回应；"
+    "除非问题复杂或用户要求详细说明，否则不要加标题、清单、总结或追问。"
+)
+GROUP_CHAT_STYLE = (
+    "【当前会话风格】这是群聊。默认只回 1–2 句话，像群成员自然接话；"
+    "除非确有必要或用户明确要求，否则不要加标题、清单、总结、追问或过程播报。"
+)
+
 
 def load_base_system_prompt(group_id: int | None) -> str:
     toml_prompt = EnvConfig.SYSTEM_PROMPT.strip()
@@ -55,6 +64,7 @@ def load_system_prompt(
     for filename, description in prompt_fragments:
         if fragment := load_prompt_fragment(filename, description):
             prompt += f"\n\n{fragment}"
+    prompt += f"\n\n{GROUP_CHAT_STYLE if group_id is not None else PRIVATE_CHAT_STYLE}"
     if workspace_key is not None:
         prompt += (
             "\n\n【当前 Workspace SOUL】"

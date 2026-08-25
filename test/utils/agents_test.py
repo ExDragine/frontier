@@ -111,6 +111,27 @@ def test_frontier_load_system_prompt_includes_markdown_rendering_rules(monkeypat
     assert prompt.count("`/skills/ens-weather/SKILL.md`") == 1
     assert prompt.count("`/skills/eli5/SKILL.md`") == 1
     assert "动态人设文件路径为 `/memory/123/SOUL.md`" in prompt
+    assert "这是私聊" in prompt
+    assert "日常对话优先用一个短段落、1–3 句话" in prompt
+
+
+def test_group_system_prompt_prefers_short_natural_replies(monkeypatch):
+    monkeypatch.setattr(prompts_mod.EnvConfig, "SYSTEM_PROMPT", "You are {name}.")
+    monkeypatch.setattr(prompts_mod.EnvConfig, "BOT_NAME", "Frontier")
+
+    prompt = prompts_mod.load_system_prompt(group_id=123)
+
+    assert "这是群聊" in prompt
+    assert "默认只回 1–2 句话" in prompt
+    assert "不要加标题、清单、总结、追问或过程播报" in prompt
+
+
+def test_agent_rules_are_compact_and_do_not_request_visible_reasoning():
+    prompt = (prompts_mod.PROJECT_ROOT / "prompts" / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert len(prompt) < 7000
+    assert "在内部完成推理、规划和验证" in prompt
+    assert "Reasoning effort is set" not in prompt
 
 
 def test_group_system_prompt_uses_durable_group_name(monkeypatch):
