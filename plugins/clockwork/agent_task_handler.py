@@ -1,6 +1,5 @@
 """统一自动任务 Agent 执行 handler。"""
 
-import json
 import time
 
 from nonebot import get_bot, logger
@@ -9,7 +8,7 @@ from nonebot_plugin_alconna import Target, UniMessage
 
 from utils.agents import FrontierCognitive
 from utils.configs import EnvConfig
-from utils.database import build_message_metadata
+from utils.database import build_agent_message_payload, serialize_agent_payload
 from utils.message import outgoing_message_content, sanitize_outgoing_text
 
 from .task_models import TaskRunResult
@@ -54,18 +53,16 @@ async def run_agent_task(job_id: str = "", **kwargs) -> TaskRunResult:
     messages = [
         {
             "role": "user",
-            "content": json.dumps(
-                {
-                    "metadata": build_message_metadata(
-                        timestamp_ms=now_ms,
-                        user_id=owner_user_id,
-                        group_id=group_id,
-                        user_name=f"ScheduledTask:{job_id}",
-                    ),
-                    "is_current": True,
-                    "content": metadata.prompt,
-                },
-                ensure_ascii=False,
+            "content": serialize_agent_payload(
+                build_agent_message_payload(
+                    timestamp_ms=now_ms,
+                    user_id=owner_user_id,
+                    group_id=group_id,
+                    user_name=f"ScheduledTask:{job_id}",
+                    role="user",
+                    is_current=True,
+                    content=metadata.prompt,
+                )
             ),
         }
     ]

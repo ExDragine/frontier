@@ -24,14 +24,71 @@ SQLITE_MMAP_SIZE_BYTES = 256 * 1024 * 1024
 MESSAGE_FTS_MIN_QUERY_LENGTH = 3
 MESSAGE_SOURCE_TYPE_NORMAL = "message"
 MESSAGE_SOURCE_TYPE_FORWARD_NODE = "forward_node"
-MESSAGE_TOKEN_ESTIMATE_VERSION = 1
+MESSAGE_TOKEN_ESTIMATE_VERSION = 2
+AGENT_MESSAGE_SCHEMA = "frontier.qq_message.v1"
+CONVERSATION_SUMMARY_SCHEMA = "frontier.conversation_summary.v1"
 logger = logging.getLogger(__name__)
 
 
 def estimate_stored_message_tokens(content: str, user_name: str | None = None) -> int:
     """Provider-neutral estimate used for SQL watermarks and pagination."""
-    chars = len(content) + len(user_name or "") + 80
+    # The model-facing envelope adds stable identity, scope, timestamp and
+    # optional reply/attachment fields around the original message.
+    chars = len(content) + len(user_name or "") + 240
     return max(1, ceil(chars / 1.8) + 4)
+
+
+def serialize_agent_payload(payload: dict[str, object]) -> str:
+    """Serialize a model-facing envelope as compact, readable UTF-8 JSON."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def build_agent_message_payload(
+    *,
+    timestamp_ms: int,
+    user_id: int | str,
+    group_id: int | None,
+    user_name: str | None,
+    role: str,
+    content: str,
+    msg_id: int | None = None,
+    user_nickname: str | None = None,
+    user_card: str | None = None,
+    is_current: bool = False,
+    attachments: list[dict[str, object]] | None = None,
+    reply_to: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Build the provider-neutral boundary for one original platform message."""
+    display_name = (user_card or user_name or user_nickname or str(user_id)).strip()
+    sender: dict[str, object] = {
+        "user_id": str(user_id),
+        "display_name": display_name,
+        "role": "assistant" if role == "assistant" else "user",
+    }
+    if user_nickname and user_nickname != display_name:
+        sender["nickname"] = user_nickname
+    if user_card:
+        sender["card"] = user_card
+
+    payload: dict[str, object] = {
+        "schema": AGENT_MESSAGE_SCHEMA,
+        "message_id": str(msg_id) if msg_id is not None else None,
+        "time": datetime.datetime.fromtimestamp(int(timestamp_ms / 1000))
+        .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
+        .strftime("%Y-%m-%d %H:%M:%S"),
+        "chat": {
+            "type": "group" if group_id is not None else "private",
+            "group_id": str(group_id) if group_id is not None else None,
+        },
+        "sender": sender,
+        "is_current": is_current,
+        "content": content,
+    }
+    if reply_to:
+        payload["reply_to"] = reply_to
+    if attachments:
+        payload["attachments"] = attachments
+    return payload
 
 
 async def _run_in_thread(func, *args, **kwargs):
@@ -170,6 +227,9 @@ def ensure_message_schema(engine: Engine) -> None:
             "token_estimate_version",
             "ALTER TABLE message ADD COLUMN token_estimate_version INTEGER NOT NULL DEFAULT 0",
         ),
+        ("user_nickname", "ALTER TABLE message ADD COLUMN user_nickname TEXT"),
+        ("user_card", "ALTER TABLE message ADD COLUMN user_card TEXT"),
+        ("reply_context_json", "ALTER TABLE message ADD COLUMN reply_context_json TEXT"),
     ]
     statements = [statement for column, statement in column_migrations if column not in columns]
     if not statements:
@@ -429,6 +489,9 @@ class Message(SQLModel, table=True):
     parent_forward_id: str | None = None
     estimated_tokens: int = 0
     token_estimate_version: int = 0
+    user_nickname: str | None = None
+    user_card: str | None = None
+    reply_context_json: str | None = None
 
 
 class ConversationSummary(SQLModel, table=True):
@@ -894,6 +957,9 @@ class MessageDatabase:
         parent_msg_id: int | None = None,
         parent_msg_time: int | None = None,
         parent_forward_id: str | None = None,
+        user_nickname: str | None = None,
+        user_card: str | None = None,
+        reply_context_json: str | None = None,
     ):
         def _do():
             with Session(self.engine) as session:
@@ -914,6 +980,9 @@ class MessageDatabase:
                     parent_forward_id=parent_forward_id,
                     estimated_tokens=estimate_stored_message_tokens(content, user_name),
                     token_estimate_version=MESSAGE_TOKEN_ESTIMATE_VERSION,
+                    user_nickname=user_nickname,
+                    user_card=user_card,
+                    reply_context_json=reply_context_json,
                 )
                 session.add(message)
                 session.commit()
@@ -987,7 +1056,10 @@ class MessageDatabase:
 
         def _do():
             filters = ["source_type = :source_type"]
-            params: dict[str, object] = {"source_type": MESSAGE_SOURCE_TYPE_NORMAL}
+            params: dict[str, object] = {
+                "source_type": MESSAGE_SOURCE_TYPE_NORMAL,
+                "token_estimate_version": MESSAGE_TOKEN_ESTIMATE_VERSION,
+            }
             if group_id is None:
                 filters.extend(["user_id = :user_id", "group_id IS NULL"])
                 params["user_id"] = user_id
@@ -1005,8 +1077,9 @@ class MessageDatabase:
                 f"""
                 SELECT COALESCE(SUM(
                     CASE
-                        WHEN estimated_tokens > 0 THEN estimated_tokens
-                        ELSE MAX(1, CAST((length(content) + COALESCE(length(user_name), 0) + 80) / 1.8 AS INTEGER) + 4)
+                        WHEN token_estimate_version = :token_estimate_version AND estimated_tokens > 0
+                            THEN estimated_tokens
+                        ELSE MAX(1, CAST((length(content) + COALESCE(length(user_name), 0) + 240) / 1.8 AS INTEGER) + 4)
                     END
                 ), 0)
                 FROM message
@@ -1023,6 +1096,7 @@ class MessageDatabase:
         *,
         scope_type: str,
         scope_id: str,
+        prompt_version: int | None = None,
     ) -> ConversationSummary | None:
         def _do():
             with Session(self.engine) as session:
@@ -1030,9 +1104,10 @@ class MessageDatabase:
                     select(ConversationSummary)
                     .where(ConversationSummary.scope_type == scope_type)
                     .where(ConversationSummary.scope_id == scope_id)
-                    .order_by(desc(ConversationSummary.version))
-                    .limit(1)
                 )
+                if prompt_version is not None:
+                    statement = statement.where(ConversationSummary.prompt_version == prompt_version)
+                statement = statement.order_by(desc(ConversationSummary.version)).limit(1)
                 return session.exec(statement).first()
 
         return await _run_database(self.engine, _do)
@@ -1211,28 +1286,32 @@ class MessageDatabase:
             if missing_kinds:
                 content_text += "\n" + " ".join(f"[{kind}附件已过期]" for kind in missing_kinds)
 
-            payload = {
-                "metadata": build_message_metadata(
-                    timestamp_ms=message.time,
-                    user_id=message.user_id,
-                    group_id=message.group_id,
-                    user_name=message.user_name,
-                ),
-                "content": content_text,
-            }
-            if attachment_refs:
-                payload["attachments"] = attachment_refs
-            content = json.dumps(payload)
+            reply_to = None
+            if message.reply_context_json:
+                try:
+                    parsed_reply = json.loads(message.reply_context_json)
+                    if isinstance(parsed_reply, dict):
+                        reply_to = parsed_reply
+                except json.JSONDecodeError:
+                    logger.warning("忽略损坏的引用消息上下文: msg_time=%s", message.time)
 
-            if not messages_seq:
-                messages_seq.append({"role": message.role, "content": content})
-                continue
-
-            last = messages_seq[-1]
-            if message.role == last["role"] and isinstance(content, str) and isinstance(last["content"], str):
-                last["content"] += f"\n{content}"
-            else:
-                messages_seq.append({"role": message.role, "content": content})
+            payload = build_agent_message_payload(
+                timestamp_ms=message.time,
+                msg_id=message.msg_id,
+                user_id=message.user_id,
+                group_id=message.group_id,
+                user_name=message.user_name,
+                user_nickname=message.user_nickname,
+                user_card=message.user_card,
+                role=message.role,
+                content=content_text,
+                attachments=attachment_refs,
+                reply_to=reply_to,
+            )
+            # Keep every original platform message atomic. Protocol adapters may
+            # coalesce adjacent user roles, but each JSON envelope remains an
+            # explicit participant boundary.
+            messages_seq.append({"role": message.role, "content": serialize_agent_payload(payload)})
 
         return messages_seq
 

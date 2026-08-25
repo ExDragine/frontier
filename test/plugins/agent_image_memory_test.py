@@ -1,7 +1,7 @@
 # ruff: noqa: S101
 
-import ast
 import asyncio
+import json
 import types
 from typing import Any, cast
 
@@ -328,7 +328,7 @@ async def test_agent_injects_staged_file_memory_path(monkeypatch, tmp_path):  # 
     assert captured["memory_dir"] == tmp_path / "sandbox" / "memory" / "123"
     assert captured["workspace_key"] == "123"
     current_text = captured["messages"][-1]["content"][0]["text"]
-    payload = ast.literal_eval(current_text)
+    payload = json.loads(current_text)
     assert "/memory/123/files/report.txt" in payload["content"]
     assert captured["attachment"]["kind"] == "file"
     assert captured["attachment"]["mime_type"] == "text/plain"
@@ -658,6 +658,7 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
         async def insert(self, **kwargs):
             if kwargs["role"] == "user":
                 captured["stored_content"] = kwargs["content"]
+                captured["stored_reply_context"] = kwargs["reply_context_json"]
 
         async def insert_images(self, **_kwargs):
             return []
@@ -740,11 +741,14 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
         ctx.receive_event(bot, event)
         ctx.should_finished()
 
-    assert "[引用消息]" in captured["stored_content"]
-    assert "用户(Alice): 原始消息内容" in captured["stored_content"]
-    current = captured["messages"][-1]["content"][0]["text"]
-    assert "[引用消息]" in current
-    assert "用户(Alice): 原始消息内容" in current
+    assert captured["stored_content"] == "这是什么意思？"
+    stored_reply = json.loads(captured["stored_reply_context"])
+    assert stored_reply["sender"]["user_id"] == "111"
+    assert stored_reply["content"] == "原始消息内容"
+    current = json.loads(captured["messages"][-1]["content"][0]["text"])
+    assert current["content"] == "这是什么意思？"
+    assert current["reply_to"]["sender"]["display_name"] == "Alice"
+    assert current["reply_to"]["content"] == "原始消息内容"
 
 
 @pytest.mark.asyncio
@@ -1027,7 +1031,9 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
             ),
         ),
         user_id="456",
-        user_name="Bob",
+        user_name="项目经理" if group_id is not None else "Bob",
+        user_nickname="Bob",
+        user_card="项目经理" if group_id is not None else None,
         event_id=1,
         group_id=group_id,
         msg_time=1000,
@@ -1040,10 +1046,15 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     await agent._process_agent_request(context, [{"role": "assistant", "content": "history"}])
 
     current_text = captured["messages"][-1]["content"][0]["text"]
-    payload = ast.literal_eval(current_text)
-    assert payload["metadata"]["chat_type"] == expected_chat_type
-    assert payload["metadata"]["group_id"] == group_id
-    assert payload["metadata"]["user_id"] == "456"
+    payload = json.loads(current_text)
+    assert payload["schema"] == "frontier.qq_message.v1"
+    assert payload["chat"]["type"] == expected_chat_type
+    assert payload["chat"]["group_id"] == (str(group_id) if group_id is not None else None)
+    assert payload["sender"]["user_id"] == "456"
+    assert payload["sender"]["display_name"] == ("项目经理" if group_id is not None else "Bob")
+    if group_id is not None:
+        assert payload["sender"]["nickname"] == "Bob"
+        assert payload["sender"]["card"] == "项目经理"
     assert payload["is_current"] is True
     assert captured["kwargs"]["group_member_role"] == ("admin" if group_id is not None else None)
     assert captured["stored_user_id"] == (1 if group_id is not None else 456)
@@ -1085,7 +1096,7 @@ async def test_process_agent_request_interprets_empty_text_as_user_calling_bot(m
     await agent._process_agent_request(context)
 
     current_text = captured["messages"][-1]["content"][0]["text"]
-    payload = ast.literal_eval(current_text)
+    payload = json.loads(current_text)
     assert payload["content"] == "[用户叫了你一声]"
 
 
@@ -1169,7 +1180,7 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
     assert calls == ["start-0", "end-0", "start-1", "end-1"]
 
 
-def test_system_prompt_describes_chat_metadata_and_tool_scope(monkeypatch):
+def test_system_prompt_describes_message_envelope_and_tool_scope(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -1177,9 +1188,10 @@ def test_system_prompt_describes_chat_metadata_and_tool_scope(monkeypatch):
 
     prompt = (agent.PROJECT_ROOT / "prompts" / "AGENTS.md").read_text(encoding="utf-8")
 
-    assert "`chat_type`" in prompt
-    assert "`group_id`" in prompt
-    assert "`user_id`" in prompt
+    assert "`frontier.qq_message.v1`" in prompt
+    assert "`chat.group_id`" in prompt
+    assert "`sender.user_id`" in prompt
+    assert "`reply_to`" in prompt
     assert '"private"' in prompt
     assert '"group"' in prompt
     assert "私聊里只用好友/私聊工具" in prompt

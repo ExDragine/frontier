@@ -31,12 +31,16 @@ def reply_seq_from_segments(segments: list[dict]) -> int | None:
     return None
 
 
-def _sender_name_from_milky_message(message) -> str:
-    if getattr(message, "group_member", None) and message.group_member.nickname:
-        return message.group_member.nickname
-    if getattr(message, "friend", None) and message.friend.nickname:
-        return message.friend.nickname
-    return str(message.sender_id)
+def sender_names_from_milky_message(message) -> tuple[str, str | None, str | None]:
+    """Return display name, nickname and group card for a Milky message."""
+    member = getattr(message, "group_member", None)
+    if member is not None:
+        nickname = str(getattr(member, "nickname", "") or "").strip() or None
+        card = str(getattr(member, "card", "") or "").strip() or None
+        return card or nickname or str(message.sender_id), nickname, card
+    friend = getattr(message, "friend", None)
+    nickname = str(getattr(friend, "nickname", "") or "").strip() or None
+    return nickname or str(message.sender_id), nickname, None
 
 
 def _strip_resolved_image_markers(text: str, image_count: int) -> str:
@@ -45,7 +49,18 @@ def _strip_resolved_image_markers(text: str, image_count: int) -> str:
     return "\n".join(line.rstrip() for line in cleaned.splitlines() if line.strip()).strip()
 
 
-def _format_quote(role: str, name: str | None, text: str, image_count: int, missing_images: int) -> str:
+def _format_quote(
+    *,
+    message_id: int,
+    role: str,
+    user_id: int,
+    display_name: str | None,
+    nickname: str | None,
+    card: str | None,
+    text: str,
+    image_count: int,
+    missing_images: int,
+) -> dict[str, object]:
     handled_images = image_count + missing_images
     if handled_images:
         text = _strip_resolved_image_markers(text, handled_images)
@@ -57,8 +72,27 @@ def _format_quote(role: str, name: str | None, text: str, image_count: int, miss
     if missing_images:
         content_parts.append(" ".join("[引用消息包含图片，但图片已失效]" for _ in range(missing_images)))
     content = "\n".join(content_parts) if content_parts else "[空消息]"
-    role_label = "助手" if role == "assistant" else "用户"
-    return f"\n\n[引用消息]\n{role_label}({name or '未知'}): {content}"
+    sender: dict[str, object] = {
+        "user_id": str(user_id),
+        "display_name": display_name or str(user_id),
+        "role": "assistant" if role == "assistant" else "user",
+    }
+    if nickname and nickname != display_name:
+        sender["nickname"] = nickname
+    if card:
+        sender["card"] = card
+    payload: dict[str, object] = {
+        "schema": "frontier.qq_message_ref.v1",
+        "message_id": str(message_id),
+        "sender": sender,
+        "content": content,
+    }
+    if image_count or missing_images:
+        payload["media"] = {
+            "image_count": image_count,
+            "missing_image_count": missing_images,
+        }
+    return payload
 
 
 async def _fetch_reply_message_from_milky(bot, event: MessageEvent, reply_seq: int):
@@ -253,13 +287,26 @@ async def build_reply_context(  # noqa: C901
     messages_db: MessageDatabase,
     *,
     load_images: bool = True,
-) -> tuple[str, list[bytes]]:
+) -> tuple[dict[str, object] | None, list[bytes]]:
     quoted = await messages_db.select_by_msg_id(msg_id=reply_seq, group_id=group_id)
     if quoted:
         if _quoted_needs_normalization_rebuild(quoted):
             quoted = await _rebuild_quoted_normalization(bot, event, quoted, reply_seq, messages_db)
         if not load_images:
-            return _format_quote(quoted.role, quoted.user_name or str(quoted.user_id), quoted.content, 0, 0), []
+            return (
+                _format_quote(
+                    message_id=quoted.msg_id or reply_seq,
+                    role=quoted.role,
+                    user_id=quoted.user_id,
+                    display_name=quoted.user_name,
+                    nickname=getattr(quoted, "user_nickname", None),
+                    card=getattr(quoted, "user_card", None),
+                    text=quoted.content,
+                    image_count=0,
+                    missing_images=0,
+                ),
+                [],
+            )
 
         image_records = await messages_db.select_image_attachments_by_msg_time(quoted.time)
         local_images, missing_images = messages_db.load_attachment_files(image_records)
@@ -293,14 +340,22 @@ async def build_reply_context(  # noqa: C901
             missing_images += fetched_missing
         return (
             _format_quote(
-                quoted.role, quoted.user_name or str(quoted.user_id), quoted.content, len(images), missing_images
+                message_id=quoted.msg_id or reply_seq,
+                role=quoted.role,
+                user_id=quoted.user_id,
+                display_name=quoted.user_name,
+                nickname=getattr(quoted, "user_nickname", None),
+                card=getattr(quoted, "user_card", None),
+                text=quoted.content,
+                image_count=len(images),
+                missing_images=missing_images,
             ),
             images,
         )
 
     milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
     if not milky_message:
-        return "", []
+        return None, []
 
     normalized = await normalize_segments(bot, milky_message.segments)
     quoted_text = normalized.content
@@ -309,7 +364,7 @@ async def build_reply_context(  # noqa: C901
     else:
         images, missing_images = [], 0
     role = "assistant" if str(milky_message.sender_id) == str(event.self_id) else "user"
-    name = _sender_name_from_milky_message(milky_message)
+    display_name, nickname, card = sender_names_from_milky_message(milky_message)
     quoted_time = milky_message.time * 1000 if milky_message.time < 10_000_000_000 else milky_message.time
     try:
         await messages_db.insert(
@@ -317,7 +372,9 @@ async def build_reply_context(  # noqa: C901
             msg_id=milky_message.message_seq,
             user_id=int(milky_message.sender_id),
             group_id=group_id,
-            user_name=name,
+            user_name=display_name,
+            user_nickname=nickname,
+            user_card=card,
             role=role,
             content=quoted_text,
             raw_segments_json=normalized.raw_segments_json,
@@ -346,4 +403,17 @@ async def build_reply_context(  # noqa: C901
             )
         except Exception as e:
             logger.warning(f"⚠️ 写入引用图片缓存失败 message_seq={reply_seq}: {type(e).__name__}: {e}")
-    return _format_quote(role, name, quoted_text, len(images), missing_images), images
+    return (
+        _format_quote(
+            message_id=milky_message.message_seq,
+            role=role,
+            user_id=int(milky_message.sender_id),
+            display_name=display_name,
+            nickname=nickname,
+            card=card,
+            text=quoted_text,
+            image_count=len(images),
+            missing_images=missing_images,
+        ),
+        images,
+    )

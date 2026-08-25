@@ -255,6 +255,11 @@ DeepSeek V4 的官方 Responses API 直接调用服务端 `web_search`，不再�
 `group_id` 隔离，私聊摘要按 `user_id` 隔离。`storage.query_message_numbers` 继续用于回复网关，
 不再限制主 Agent 的上下文长度。
 
+模型上下文中的每条 QQ 消息使用独立的 `frontier.qq_message.v1` JSON 信封，不会把连续群成员
+合并成同一个对话轮次。身份以稳定的 `sender.user_id` 为准，群内显示名优先采用群名片并保留
+昵称；引用消息通过结构化 `reply_to` 关联。信封使用未转义的 UTF-8 JSON，中文不会变成
+`\\uXXXX`。摘要格式升级时，旧格式摘要会保留在 SQL 中供审计，但新版本会从原始消息重建。
+
 从旧版 memory `AGENTS.md` 升级时不做自动迁移。如需按新规则重置旧记忆，可在项目根目录
 执行一次以下命令；它只删除 workspace 目录中的旧 `AGENTS.md`：
 

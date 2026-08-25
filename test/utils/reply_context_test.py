@@ -57,7 +57,7 @@ async def test_build_reply_context_expands_forwarded_messages_into_message_db():
                         },
                     }
                 ],
-                group_member=types.SimpleNamespace(nickname="Alice"),
+                group_member=types.SimpleNamespace(nickname="Alice", card="项目经理"),
                 friend=None,
             )
 
@@ -103,14 +103,19 @@ async def test_build_reply_context_expands_forwarded_messages_into_message_db():
         data=types.SimpleNamespace(message_scene="group", peer_id=123),
     )
 
-    quote_text, images = await _build_reply_context(DummyBot(), event, 900, 123, DummyMessagesDb())
+    quote_payload, images = await _build_reply_context(DummyBot(), event, 900, 123, DummyMessagesDb())
 
     assert images == []
-    assert "Bob: 外层消息" in quote_text
-    assert "Carol: [合并转发:嵌套聊天 - 1条消息]" in quote_text
-    assert "Dana: 内层消息" in quote_text
+    assert quote_payload is not None
+    assert quote_payload["schema"] == "frontier.qq_message_ref.v1"
+    assert quote_payload["sender"]["user_id"] == "111"
+    assert quote_payload["sender"]["display_name"] == "项目经理"
+    assert quote_payload["sender"]["nickname"] == "Alice"
+    assert "Bob: 外层消息" in quote_payload["content"]
+    assert "Carol: [合并转发:嵌套聊天 - 1条消息]" in quote_payload["content"]
+    assert "Dana: 内层消息" in quote_payload["content"]
     assert inserted["content"].count("内层消息") == 1
-    assert inserted["content"] in quote_text
+    assert inserted["content"] in quote_payload["content"]
     assert len(inserted["derived_messages"]) == 3
 
 
@@ -159,12 +164,14 @@ async def test_build_reply_context_loads_quoted_images_from_attachments(monkeypa
         data=types.SimpleNamespace(message_scene="group", peer_id=123),
     )
 
-    quote_text, images = await _build_reply_context(DummyBot(), event, 900, 123, database)
+    quote_payload, images = await _build_reply_context(DummyBot(), event, 900, 123, database)
 
     assert images == [b"quoted-image"]
-    assert "用户(Alice): 看图" in quote_text
-    assert "[图片]" not in quote_text
-    assert "[下方已附加引用图片 1 张]" in quote_text
+    assert quote_payload is not None
+    assert quote_payload["sender"]["display_name"] == "Alice"
+    assert "[图片]" not in quote_payload["content"]
+    assert "[下方已附加引用图片 1 张]" in quote_payload["content"]
+    assert quote_payload["media"] == {"image_count": 1, "missing_image_count": 0}
 
 
 @pytest.mark.asyncio
@@ -202,11 +209,12 @@ async def test_build_reply_context_marks_unavailable_unindexed_image():
         data=types.SimpleNamespace(message_scene="group", peer_id=123),
     )
 
-    quote_text, images = await _build_reply_context(DummyBot(), event, 900, 123, DummyMessagesDb())
+    quote_payload, images = await _build_reply_context(DummyBot(), event, 900, 123, DummyMessagesDb())
 
     assert images == []
-    assert "[图片:照片]" not in quote_text
-    assert "[引用消息包含图片，但图片已失效]" in quote_text
+    assert quote_payload is not None
+    assert "[图片:照片]" not in quote_payload["content"]
+    assert "[引用消息包含图片，但图片已失效]" in quote_payload["content"]
 
 
 @pytest.mark.asyncio
@@ -258,12 +266,13 @@ async def test_build_reply_context_rebuilds_stale_forward_quote_from_raw_segment
         data=types.SimpleNamespace(message_scene="group", peer_id=123),
     )
 
-    quote_text, images = await _build_reply_context(DummyBot(), event, 900, 123, database)
+    quote_payload, images = await _build_reply_context(DummyBot(), event, 900, 123, database)
     stored = await database.select_by_msg_id(msg_id=900, group_id=123)
 
     assert images == []
-    assert "Bob: 完整内容" in quote_text
-    assert "旧摘要" not in quote_text
+    assert quote_payload is not None
+    assert "Bob: 完整内容" in quote_payload["content"]
+    assert "旧摘要" not in quote_payload["content"]
     assert stored is not None
     assert stored.normalized_version == NORMALIZED_VERSION
     assert "Bob: 完整内容" in stored.content

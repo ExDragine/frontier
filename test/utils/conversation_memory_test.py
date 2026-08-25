@@ -111,6 +111,7 @@ async def test_assemble_uses_summary_cursor_and_token_budget(monkeypatch, messag
         summary_text="前三条消息的累计摘要",
         estimated_tokens=10,
         model="basic",
+        prompt_version=memory.SUMMARY_PROMPT_VERSION,
         created_at=8000,
     )
     assert await memory_database.append_conversation_summary(summary, expected_version=0)
@@ -168,3 +169,57 @@ async def test_compaction_appends_versioned_summary(monkeypatch, message_stubs, 
     assert latest.source_start_time == 1000
     assert latest.source_end_time >= 1000
     assert "持续事项" in latest.summary_text
+
+
+@pytest.mark.asyncio
+async def test_compaction_rebuilds_incompatible_summary_from_raw_history(monkeypatch, message_stubs, memory_database):
+    from utils.agents import conversation_memory as memory
+
+    for index in range(1, 5):
+        await memory_database.insert(
+            index * 1000,
+            index,
+            10,
+            123,
+            f"Member-{index}",
+            "user",
+            f"history-{index}-" + "x" * 200,
+        )
+    legacy = ConversationSummary(
+        scope_type="group",
+        scope_id="123",
+        version=1,
+        source_start_time=1000,
+        source_end_time=2000,
+        source_message_count=2,
+        source_token_count=100,
+        summary_text="旧摘要错误地混淆了参与者",
+        estimated_tokens=20,
+        model="old-model",
+        prompt_version=1,
+        created_at=5000,
+    )
+    assert await memory_database.append_conversation_summary(legacy, expected_version=0)
+    captured = {}
+
+    class _Model:
+        async def ainvoke(self, messages):
+            captured["prompt"] = messages[-1].content
+            return types.SimpleNamespace(content="## 参与者与事实\n- user_id=10（Member-1）：保留正确归属。")
+
+    monkeypatch.setattr(memory, "create_llm", lambda **_kwargs: _Model())
+    monkeypatch.setattr(memory, "_nominal_raw_budget", lambda _model: 50)
+    service = memory.ConversationMemoryService(memory_database)
+
+    assert await service.compact_scope(user_id=10, group_id=123) is True
+    latest = await memory_database.latest_conversation_summary(
+        scope_type="group",
+        scope_id="123",
+        prompt_version=memory.SUMMARY_PROMPT_VERSION,
+    )
+    assert latest is not None
+    assert latest.version == 2
+    assert latest.source_start_time == 1000
+    assert latest.prompt_version == memory.SUMMARY_PROMPT_VERSION
+    assert "旧摘要错误" not in captured["prompt"]
+    assert "history-1-" in captured["prompt"]

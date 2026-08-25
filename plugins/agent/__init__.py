@@ -25,7 +25,11 @@ from utils.agents.conversation_memory import (
 )
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
-from utils.database import MessageDatabase, build_message_metadata
+from utils.database import (
+    MessageDatabase,
+    build_agent_message_payload,
+    serialize_agent_payload,
+)
 from utils.media import resolve_media, standard_media_block
 from utils.message import (
     _get_wake_words,
@@ -42,7 +46,7 @@ from utils.message import (
     stage_message_files,
 )
 from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments
-from utils.reply_context import build_reply_context, reply_seq_from_segments
+from utils.reply_context import build_reply_context, reply_seq_from_segments, sender_names_from_milky_message
 
 messages_db = MessageDatabase()
 conversation_memory_service = ConversationMemoryService(messages_db)
@@ -92,6 +96,9 @@ class AgentRequestContext:
     videos: list[bytes]
     quoted_text: str = ""
     audio: list[bytes] = field(default_factory=list)
+    user_nickname: str | None = None
+    user_card: str | None = None
+    reply_to: dict[str, object] | None = None
 
 
 def _agent_workspace_key(user_id: str, group_id: int | None) -> str:
@@ -126,6 +133,17 @@ def _remove_attached_image_placeholders(text: str, attached_images: int) -> str:
             continue
         lines.append(line)
     return "\n".join(lines).strip()
+
+
+def _remove_structured_reply_marker(text: str, reply_seq: int | None) -> str:
+    """Drop the legacy text marker once reply identity is carried structurally."""
+    if reply_seq is None or not text:
+        return text
+    marker = f"[回复消息:{reply_seq}]"
+    lines = text.splitlines()
+    if lines and lines[0].strip() == marker:
+        return "\n".join(lines[1:]).strip()
+    return text
 
 
 def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
@@ -165,7 +183,7 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
 async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
     messages = list(history_messages or [])
     history_prefix_count = len(messages)
-    combined_text = f"{context.text}{context.quoted_text}".strip() or EMPTY_CURRENT_MESSAGE_PROMPT
+    combined_text = context.text.strip() or EMPTY_CURRENT_MESSAGE_PROMPT
     remaining_bytes = EnvConfig.MAX_INLINE_MEDIA_BYTES
     remaining_images = EnvConfig.MAX_INLINE_IMAGES
 
@@ -187,20 +205,33 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
     inline_images, omitted_images = take_inline(context.images, "image")
     inline_audio, omitted_audio = take_inline(context.audio, "audio")
     inline_videos, omitted_videos = take_inline(context.videos, "video")
+    reply_to = context.reply_to
+    if reply_to is None and context.quoted_text:
+        # Compatibility for direct/internal callers that still pass the former
+        # human-readable quote string.
+        reply_to = {
+            "schema": "frontier.qq_message_ref.v1",
+            "message_id": None,
+            "sender": None,
+            "content": context.quoted_text.strip(),
+        }
     current_content: list[dict[str, Any]] = [
         {
             "type": "text",
-            "text": str(
-                {
-                    "metadata": build_message_metadata(
-                        timestamp_ms=context.msg_time,
-                        user_id=context.user_id,
-                        group_id=context.group_id,
-                        user_name=context.user_name,
-                    ),
-                    "is_current": True,
-                    "content": combined_text,
-                }
+            "text": serialize_agent_payload(
+                build_agent_message_payload(
+                    timestamp_ms=context.msg_time,
+                    msg_id=context.event_id,
+                    user_id=context.user_id,
+                    group_id=context.group_id,
+                    user_name=context.user_name,
+                    user_nickname=context.user_nickname,
+                    user_card=context.user_card,
+                    role="user",
+                    is_current=True,
+                    content=combined_text,
+                    reply_to=reply_to,
+                )
             ),
         }
     ]
@@ -230,16 +261,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
                 "text": f"[以下媒体因上下文预算未直接内联：{'、'.join(omitted_labels)}；可使用上方工作区路径读取]",
             }
         )
-    messages += [
-        {
-            "role": "user",
-            "content": "以上是对话历史，仅用于理解上下文。",
-        },
-        {
-            "role": "user",
-            "content": current_content,
-        },
-    ]
+    messages.append({"role": "user", "content": current_content})
     capability = EnvConfig.AGENT_CAPABILITY
 
     # 提取当前消息触发的唤醒词
@@ -392,7 +414,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         if bot is None:
             await common.finish()
     user_id = event.get_user_id()
-    user_name = event.data.sender.nickname
+    user_name, user_nickname, user_card = sender_names_from_milky_message(event.data)
     event_id = event.data.message_seq
     group_id = event.data.group.group_id if event.data.group else None
 
@@ -405,9 +427,9 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     current_text = text
 
     reply_seq = reply_seq_from_segments(event.data.segments)
-    quote_text = ""
+    reply_payload = None
     if reply_seq:
-        quote_text, _ = await build_reply_context(
+        reply_payload, _ = await build_reply_context(
             bot,
             event,
             reply_seq,
@@ -415,18 +437,20 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             messages_db,
             load_images=False,
         )
+        if reply_payload:
+            current_text = _remove_structured_reply_marker(current_text, reply_seq)
     if video_downloaders and "[视频" not in current_text:
         current_text = f"{current_text}\n{' '.join('[视频]' for _ in video_downloaders)}".strip()
     if audio_downloaders and "[语音" not in current_text:
         current_text = f"{current_text}\n{' '.join('[语音]' for _ in audio_downloaders)}".strip()
-    if not current_text and not quote_text:
+    if not current_text and not reply_payload:
         if not event.is_tome():
             await common.finish()
         else:
             current_text = ""
 
     msg_time = int(time.time() * 1000)
-    text = f"{current_text}{quote_text}".strip()
+    text = current_text.strip()
 
     # ── Phase 2: 存储消息文本与结构化元数据 + 快速网关检查 ──
     await messages_db.insert(
@@ -435,8 +459,11 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         user_id=int(user_id),
         group_id=group_id,
         user_name=user_name,
+        user_nickname=user_nickname,
+        user_card=user_card,
         role="user" if user_id != str(event.self_id) else "assistant",
         content=text,
+        reply_context_json=serialize_agent_payload(reply_payload) if reply_payload else None,
         raw_segments_json=normalized_message.raw_segments_json,
         normalized_version=normalized_message.normalized_version,
         normalized_status=normalized_message.status,
@@ -475,14 +502,14 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     )
     if reply_seq:
         quote_task = build_reply_context(bot, event, reply_seq, group_id, messages_db)
-        (images, audio, videos), staged_files, (agent_quote_text, quoted_images) = await asyncio.gather(
+        (images, audio, videos), staged_files, (agent_reply_payload, quoted_images) = await asyncio.gather(
             media_task,
             files_task,
             quote_task,
         )
     else:
         (images, audio, videos), staged_files = await asyncio.gather(media_task, files_task)
-        agent_quote_text, quoted_images = "", []
+        agent_reply_payload, quoted_images = None, []
 
     agent_text = _remove_attached_image_placeholders(current_text, len(images))
     if staged_file_text := format_staged_message_files(staged_files):
@@ -544,8 +571,9 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         agent_text = f"{agent_text}\n{paths}".strip()
 
     # ── Phase 4: 内容安全 + Agent 处理 ──
+    quoted_content = str((agent_reply_payload or {}).get("content", ""))
     if EnvConfig.CONTENT_CHECK_ENABLED:
-        risk_check = await message_check(f"{agent_text}{agent_quote_text}".strip(), quoted_images + images)
+        risk_check = await message_check(f"{agent_text}\n{quoted_content}".strip(), quoted_images + images)
     else:
         risk_check = "Safe"
     match risk_check:
@@ -570,6 +598,8 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         event=event,
         user_id=user_id,
         user_name=user_name,
+        user_nickname=user_nickname,
+        user_card=user_card,
         event_id=event_id,
         group_id=group_id,
         msg_time=msg_time,
@@ -578,7 +608,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         images=images,
         audio=audio,
         videos=videos,
-        quoted_text=agent_quote_text,
+        reply_to=agent_reply_payload,
     )
     thread_id = agent_thread_id(user_id, group_id)
     from utils.ens_gate import _ens_caller_allowed, _ens_prefix

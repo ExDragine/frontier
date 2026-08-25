@@ -20,6 +20,7 @@ from utils.database import (
     MessageAttachment,
     MessageDatabase,
     TimeStamp,
+    serialize_agent_payload,
 )
 from utils.media import resolve_media
 from utils.message_normalizer import NORMALIZED_VERSION, DerivedMessage
@@ -71,6 +72,9 @@ def test_ensure_message_schema_adds_normalization_columns(memory_engine):
         "parent_forward_id",
         "estimated_tokens",
         "token_estimate_version",
+        "user_nickname",
+        "user_card",
+        "reply_context_json",
     }.issubset(columns)
     with memory_engine.connect() as conn:
         row = conn.execute(
@@ -356,15 +360,70 @@ async def test_prepare_message_includes_chat_scope_metadata(monkeypatch, memory_
 
     group_prepared = await database.prepare_message(user_id=10, group_id=123, query_numbers=10, before_time=2000)
     group_payload = json.loads(group_prepared[0]["content"])
-    assert group_payload["metadata"]["chat_type"] == "group"
-    assert group_payload["metadata"]["group_id"] == 123
-    assert group_payload["metadata"]["user_id"] == "10"
+    assert group_payload["schema"] == "frontier.qq_message.v1"
+    assert group_payload["chat"]["type"] == "group"
+    assert group_payload["chat"]["group_id"] == "123"
+    assert group_payload["sender"]["user_id"] == "10"
 
     private_prepared = await database.prepare_message(user_id=20, query_numbers=10, before_time=4000)
     private_payload = json.loads(private_prepared[0]["content"])
-    assert private_payload["metadata"]["chat_type"] == "private"
-    assert private_payload["metadata"]["group_id"] is None
-    assert private_payload["metadata"]["user_id"] == "20"
+    assert private_payload["chat"]["type"] == "private"
+    assert private_payload["chat"]["group_id"] is None
+    assert private_payload["sender"]["user_id"] == "20"
+
+
+@pytest.mark.asyncio
+async def test_prepare_message_preserves_group_participant_boundaries_and_unicode(memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+
+    await database.insert(
+        1000,
+        201,
+        10,
+        123,
+        "项目经理",
+        "user",
+        "我提议周日出发",
+        user_nickname="Alice",
+        user_card="项目经理",
+    )
+    reply_to = {
+        "schema": "frontier.qq_message_ref.v1",
+        "message_id": "201",
+        "sender": {"user_id": "10", "display_name": "项目经理", "role": "user"},
+        "content": "我提议周日出发",
+    }
+    await database.insert(
+        2000,
+        202,
+        20,
+        123,
+        "Bob",
+        "user",
+        "我没有同意负责订车",
+        reply_context_json=serialize_agent_payload(reply_to),
+    )
+
+    prepared = await database.prepare_message_records(
+        await database.select_context_page(user_id=10, group_id=123, ascending=True)
+    )
+
+    assert len(prepared) == 2
+    alice = json.loads(prepared[0]["content"])
+    bob = json.loads(prepared[1]["content"])
+    assert alice["sender"] == {
+        "user_id": "10",
+        "display_name": "项目经理",
+        "role": "user",
+        "nickname": "Alice",
+        "card": "项目经理",
+    }
+    assert bob["sender"]["user_id"] == "20"
+    assert bob["reply_to"] == reply_to
+    assert "我提议周日出发" in prepared[0]["content"]
+    assert "\\u6211" not in prepared[0]["content"]
 
 
 @pytest.mark.asyncio
