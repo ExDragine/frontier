@@ -1,11 +1,20 @@
 import importlib
 import json
 import re
+import time
+from collections import Counter
+from pathlib import Path
+from types import SimpleNamespace
 
 from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
 
-from utils.agents.message_envelope import build_agent_message_ref_payload, content_for_persisted_images
+from utils.agents.message_envelope import (
+    build_agent_attachment_payload,
+    build_agent_message_ref_payload,
+    content_for_persisted_images,
+)
+from utils.agents.runtime import conversation_workspace_key
 from utils.configs import EnvConfig
 from utils.database import MESSAGE_SOURCE_TYPE_NORMAL, MessageDatabase, resolve_message_sender_user_id
 from utils.http_client import get_http_client
@@ -14,6 +23,14 @@ from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments, seg
 _httpx_client = get_http_client("reply_context")
 FORWARD_CONTEXT_MAX_DEPTH = 3
 FORWARD_CONTEXT_MAX_NODES = 80
+RECENT_MEDIA_LOOKBACK_MILLISECONDS = 5 * 60 * 1000
+RECENT_MEDIA_MESSAGE_LIMIT = 20
+_RECENT_MEDIA_FOLLOWUP_RE = re.compile(
+    r"(?:分析|解析|识别|总结|读取|提取|看看|看下|看一下|处理|解释|"
+    r"这张图|那张图|这个文件|那个文件|上面的|刚才的|刚刚的|上一条|"
+    r"analy[sz]e|summari[sz]e|extract|read\s+(?:it|this)|take\s+a\s+look)",
+    re.IGNORECASE,
+)
 
 
 def _message_utils():
@@ -30,6 +47,53 @@ def reply_seq_from_segments(segments: list[dict]) -> int | None:
         except TypeError, ValueError:
             return None
     return None
+
+
+def requests_recent_media(text: str) -> bool:
+    """Whether a media-free message likely refers to recently sent media."""
+    return bool(_RECENT_MEDIA_FOLLOWUP_RE.search(text.strip()))
+
+
+async def hydrate_recent_media_context(
+    bot,
+    event: MessageEvent,
+    *,
+    user_id: int,
+    group_id: int | None,
+    before_time: int,
+    messages_db: MessageDatabase,
+    workspace_key: str,
+    memory_dir: str | Path,
+) -> tuple[list[bytes], bool]:
+    """Lazily restore the newest same-sender image/file message.
+
+    The explicit-reply hydration path remains the single downloader and cache
+    writer. Its model-facing quote payload is intentionally discarded here;
+    after hydration the original historical message is rendered again from the
+    attachment index, preserving its actual platform relationship.
+    """
+    select_recent = getattr(messages_db, "select_recent_media_message", None)
+    if not callable(select_recent):
+        return [], False
+    recent = await select_recent(
+        user_id=user_id,
+        group_id=group_id,
+        before_time=before_time,
+        after_time=before_time - RECENT_MEDIA_LOOKBACK_MILLISECONDS,
+        limit=RECENT_MEDIA_MESSAGE_LIMIT,
+    )
+    if recent is None or recent.msg_id is None:
+        return [], False
+    _payload, images = await build_reply_context(
+        bot,
+        event,
+        int(recent.msg_id),
+        group_id,
+        messages_db,
+        workspace_key=workspace_key,
+        memory_dir=memory_dir,
+    )
+    return images, True
 
 
 def sender_names_from_milky_message(message) -> tuple[str, str | None, str | None]:
@@ -91,6 +155,8 @@ def _format_quote(
     text: str,
     image_count: int,
     missing_images: int,
+    attachments: list[dict[str, object]] | None = None,
+    missing_files: int = 0,
 ) -> dict[str, object]:
     handled_images = image_count + missing_images
     if handled_images:
@@ -102,6 +168,8 @@ def _format_quote(
         content_parts.append(f"[引用消息包含图片 {image_count} 张]")
     if missing_images:
         content_parts.append(" ".join("[引用消息包含图片，但图片已失效]" for _ in range(missing_images)))
+    if missing_files:
+        content_parts.append(f"[引用消息有 {missing_files} 个文件已失效或无法下载]")
     content = "\n".join(content_parts) if content_parts else "[空消息]"
     return build_agent_message_ref_payload(
         message_id=message_id,
@@ -113,7 +181,154 @@ def _format_quote(
         content=content,
         image_count=image_count,
         missing_image_count=missing_images,
+        attachments=attachments,
     )
+
+
+def _raw_segments(quoted) -> list[dict] | None:
+    raw_segments_json = getattr(quoted, "raw_segments_json", None)
+    if not raw_segments_json:
+        return None
+    try:
+        loaded = json.loads(raw_segments_json)
+    except json.JSONDecodeError:
+        return None
+    return loaded if isinstance(loaded, list) else None
+
+
+def _attachment_local_path(record) -> Path:
+    path = Path(str(record.physical_path))
+    return path if path.is_absolute() else Path.cwd() / path
+
+
+def _file_attachment_ref(record) -> dict[str, object]:
+    return dict(
+        build_agent_attachment_payload(
+            kind="file",
+            mime_type=getattr(record, "mime_type", None),
+            file_name=record.file_name,
+            path=record.virtual_path,
+        )
+    )
+
+
+async def _select_quoted_file_records(messages_db: MessageDatabase, msg_time: int) -> list:
+    select_all = getattr(messages_db, "select_attachments_by_msg_time", None)
+    if not callable(select_all):
+        return []
+    return [record for record in await select_all(msg_time) if getattr(record, "kind", None) == "file"]
+
+
+def _refreshable_quoted_file_item(item, group_id: int | None):
+    can_refresh = bool(item.file_id) and (group_id is not None or item.file_hash is not None)
+    if not can_refresh:
+        return item
+    return _message_utils().MessageFileItem(
+        file_id=item.file_id,
+        file_name=item.file_name,
+        file_size=item.file_size,
+        file_hash=item.file_hash,
+        url=None,
+    )
+
+
+async def _quoted_file_context(  # noqa: C901
+    bot,
+    event: MessageEvent,
+    reply_seq: int,
+    messages_db: MessageDatabase,
+    quoted,
+    *,
+    segments: list[dict] | None = None,
+    workspace_key: str | None = None,
+    memory_dir: str | Path | None = None,
+) -> tuple[list[dict[str, object]], int]:
+    """Return readable quoted-file refs, refreshing missing files from Milky."""
+    workspace_key = workspace_key or conversation_workspace_key(quoted.user_id, quoted.group_id)
+    records = await _select_quoted_file_records(messages_db, quoted.time)
+    now_ms = int(time.time() * 1000)
+    available_records = [
+        record
+        for record in records
+        if getattr(record, "workspace_key", workspace_key) == workspace_key
+        and getattr(record, "expires_at", now_ms) >= now_ms
+        and _attachment_local_path(record).is_file()
+    ]
+    refs = [_file_attachment_ref(record) for record in available_records]
+
+    segments = segments or _raw_segments(quoted)
+    marker_count = len(re.findall(r"\[文件:[^\]\n]*\]", str(getattr(quoted, "content", ""))))
+    if segments is None and (len(available_records) < len(records) or marker_count > len(refs)):
+        milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
+        segments = list(getattr(milky_message, "segments", [])) if milky_message else None
+    file_items = _message_utils().extract_message_files(segments or [])
+    expected_count = len(file_items) if file_items else max(marker_count, len(records))
+    available_names = Counter(str(record.file_name) for record in available_records)
+    pending_items = []
+    for item in file_items:
+        safe_name = Path(str(item.file_name).replace("\\", "/")).name.strip() or "file"
+        if available_names[safe_name]:
+            available_names[safe_name] -= 1
+            continue
+        pending_items.append(_refreshable_quoted_file_item(item, quoted.group_id))
+
+    if pending_items:
+        resolved_memory_dir = (
+            Path(memory_dir) if memory_dir is not None else Path.cwd() / "cache" / "sandbox" / "memory" / workspace_key
+        )
+        staged_files = await _message_utils().stage_message_files(
+            bot,
+            pending_items,
+            memory_dir=resolved_memory_dir,
+            workspace_key=workspace_key,
+            message_time=quoted.time,
+            user_id=quoted.user_id,
+            group_id=quoted.group_id,
+        )
+        insert_attachment = getattr(messages_db, "insert_attachment", None)
+        expires_at = now_ms + EnvConfig.MEDIA_TTL_DAYS * 86400 * 1000
+        for staged_file in staged_files:
+            if not callable(insert_attachment):
+                _message_utils().cleanup_staged_message_files([staged_file])
+                continue
+            try:
+                await insert_attachment(
+                    msg_time=quoted.time,
+                    msg_id=quoted.msg_id,
+                    user_id=quoted.user_id,
+                    group_id=quoted.group_id,
+                    kind="file",
+                    physical_path=str(staged_file.local_path),
+                    virtual_path=staged_file.virtual_path,
+                    file_name=staged_file.file_name,
+                    mime_type=staged_file.mime_type,
+                    file_size=staged_file.file_size,
+                    sha256=staged_file.sha256,
+                    expires_at=expires_at,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "⚠️ 写入引用文件缓存失败 message_seq=%s file=%s: %s: %s",
+                    reply_seq,
+                    staged_file.file_name,
+                    type(exc).__name__,
+                    exc,
+                )
+                _message_utils().cleanup_staged_message_files([staged_file])
+            else:
+                refs.append(
+                    dict(
+                        build_agent_attachment_payload(
+                            kind="file",
+                            mime_type=staged_file.mime_type,
+                            file_name=staged_file.file_name,
+                            path=staged_file.virtual_path,
+                        )
+                    )
+                )
+
+    unique_refs = {str(ref["path"]): ref for ref in refs}
+    return list(unique_refs.values()), max(0, expected_count - len(unique_refs))
 
 
 def _private_peer_user_id(event: MessageEvent) -> int | None:
@@ -327,6 +542,8 @@ async def build_reply_context(  # noqa: C901
     messages_db: MessageDatabase,
     *,
     load_images: bool = True,
+    workspace_key: str | None = None,
+    memory_dir: str | Path | None = None,
 ) -> tuple[dict[str, object] | None, list[bytes]]:
     select_kwargs: dict[str, object] = {"msg_id": reply_seq, "group_id": group_id}
     private_peer_user_id = _private_peer_user_id(event) if group_id is None else None
@@ -361,12 +578,33 @@ async def build_reply_context(  # noqa: C901
         durable_missing_images = missing_images
         fetched_images: list[bytes] = []
         fetched_missing = 0
-        # 没有附件记录不代表引用消息没有图片：未触发 Agent 的群消息只会
-        # 存储文本占位符，因此仍需回源 Milky。损坏缓存同样以远端消息为准。
-        if not image_records or missing_images:
-            milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
-            if milky_message:
-                _quoted_text, fetched_images, fetched_missing = await _extract_milky_message_content(bot, milky_message)
+        fetched_segments: list[dict] | None = None
+        loaded_raw_segments = _raw_segments(quoted)
+        raw_segments = loaded_raw_segments or []
+        has_quoted_images = any(segment.get("type") == "image" for segment in raw_segments) or bool(
+            re.search(r"\[图片(?::[^\]\n]*)?\]", quoted.content)
+        )
+        image_presence_unknown = loaded_raw_segments is None and getattr(
+            quoted, "normalized_status", "legacy"
+        ) == "legacy"
+        # 未触发 Agent 的群图片可能只有文本占位符，需回源 Milky。
+        # 纯文本或纯文件引用不应因为“没有图片索引”而额外回源。
+        if (not image_records and (has_quoted_images or image_presence_unknown)) or missing_images:
+            if loaded_raw_segments is not None:
+                fetched_segments = loaded_raw_segments
+                _quoted_text, fetched_images, fetched_missing = await _extract_segments_content(
+                    bot, fetched_segments
+                )
+                media_source_available = True
+            else:
+                milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
+                media_source_available = milky_message is not None
+                if milky_message:
+                    fetched_segments = list(getattr(milky_message, "segments", []))
+                    _quoted_text, fetched_images, fetched_missing = await _extract_milky_message_content(
+                        bot, milky_message
+                    )
+            if media_source_available:
                 if not image_records:
                     durable_missing_images = fetched_missing
                     cached = await _cache_complete_reply_images(
@@ -391,6 +629,16 @@ async def build_reply_context(  # noqa: C901
             images = fetched_images
         else:
             images = local_images
+        file_refs, missing_files = await _quoted_file_context(
+            bot,
+            event,
+            reply_seq,
+            messages_db,
+            quoted,
+            segments=fetched_segments,
+            workspace_key=workspace_key,
+            memory_dir=memory_dir,
+        )
         return (
             _format_quote(
                 message_id=quoted.msg_id or reply_seq,
@@ -402,6 +650,8 @@ async def build_reply_context(  # noqa: C901
                 text=quoted.content,
                 image_count=durable_image_count,
                 missing_images=durable_missing_images,
+                attachments=file_refs,
+                missing_files=missing_files,
             ),
             images,
         )
@@ -465,6 +715,27 @@ async def build_reply_context(  # noqa: C901
         missing_images=missing_images,
         reply_seq=reply_seq,
     )
+    file_refs: list[dict[str, object]] = []
+    missing_files = 0
+    if load_images and quoted_record_persisted:
+        quoted_source = SimpleNamespace(
+            time=quoted_time,
+            msg_id=milky_message.message_seq,
+            user_id=scope_user_id,
+            group_id=group_id,
+            content=quoted_text,
+            raw_segments_json=normalized.raw_segments_json,
+        )
+        file_refs, missing_files = await _quoted_file_context(
+            bot,
+            event,
+            reply_seq,
+            messages_db,
+            quoted_source,
+            segments=list(milky_message.segments),
+            workspace_key=workspace_key,
+            memory_dir=memory_dir,
+        )
     return (
         _format_quote(
             message_id=milky_message.message_seq,
@@ -476,6 +747,8 @@ async def build_reply_context(  # noqa: C901
             text=quoted_text,
             image_count=len(images) if images_cached else 0,
             missing_images=missing_images,
+            attachments=file_refs,
+            missing_files=missing_files,
         ),
         images,
     )

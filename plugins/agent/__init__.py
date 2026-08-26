@@ -56,7 +56,9 @@ from utils.message import (
 from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments
 from utils.reply_context import (
     build_reply_context,
+    hydrate_recent_media_context,
     reply_seq_from_segments,
+    requests_recent_media,
     segments_directly_mention_user,
     sender_names_from_milky_message,
 )
@@ -108,6 +110,7 @@ class AgentRequestContext:
     images: list[bytes]
     videos: list[bytes]
     audio: list[bytes] = field(default_factory=list)
+    recent_images: list[bytes] = field(default_factory=list)
     attachments: list[dict[str, object]] = field(default_factory=list)
     user_nickname: str | None = None
     user_card: str | None = None
@@ -216,6 +219,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         return selected, len(items) - len(selected)
 
     inline_quoted_images, omitted_quoted_images = take_inline(context.quoted_images, "image")
+    inline_recent_images, omitted_recent_images = take_inline(context.recent_images, "image")
     inline_images, omitted_images = take_inline(context.images, "image")
     inline_audio, omitted_audio = take_inline(context.audio, "audio")
     inline_videos, omitted_videos = take_inline(context.videos, "video")
@@ -244,6 +248,9 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
     if inline_quoted_images:
         current_content.append({"type": "text", "text": "以下图片来自上面的引用消息："})
         current_content.extend(standard_media_block(resolve_media(image, "image")) for image in inline_quoted_images)
+    if inline_recent_images:
+        current_content.append({"type": "text", "text": "以下图片来自用户刚才发送的历史消息："})
+        current_content.extend(standard_media_block(resolve_media(image, "image")) for image in inline_recent_images)
     if inline_images:
         current_content.append({"type": "text", "text": "以下图片来自当前消息："})
         current_content.extend(standard_media_block(resolve_media(image, "image")) for image in inline_images)
@@ -255,6 +262,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         current_content.extend(standard_media_block(resolve_media(video, "video")) for video in inline_videos)
     omitted_labels = [
         f"引用图片 {omitted_quoted_images} 张" if omitted_quoted_images else "",
+        f"近期图片 {omitted_recent_images} 张" if omitted_recent_images else "",
         f"当前图片 {omitted_images} 张" if omitted_images else "",
         f"语音 {omitted_audio} 条" if omitted_audio else "",
         f"视频 {omitted_videos} 条" if omitted_videos else "",
@@ -281,7 +289,7 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         context.user_name,
         capability,
         group_id=context.group_id,
-        image_inputs=context.quoted_images + context.images,
+        image_inputs=context.quoted_images + context.recent_images + context.images,
         audio_inputs=context.audio,
         video_inputs=context.videos,
         group_member_role=_group_member_role(context.event),
@@ -372,7 +380,7 @@ async def _run_agent_turn(
     risk_check = (
         await message_check(
             f"{context.text}\n{quoted_content}".strip(),
-            context.quoted_images + context.images,
+            context.quoted_images + context.recent_images + context.images,
         )
         if EnvConfig.CONTENT_CHECK_ENABLED
         else "Safe"
@@ -534,6 +542,8 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             group_id,
             messages_db,
             load_images=False,
+            workspace_key=_agent_workspace_key(user_id, group_id),
+            memory_dir=_agent_memory_dir(user_id, group_id),
         )
         if reply_payload:
             current_text = _remove_structured_reply_marker(current_text, reply_seq)
@@ -602,7 +612,15 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         group_id=group_id,
     )
     if reply_seq:
-        quote_task = build_reply_context(bot, event, reply_seq, group_id, messages_db)
+        quote_task = build_reply_context(
+            bot,
+            event,
+            reply_seq,
+            group_id,
+            messages_db,
+            workspace_key=_agent_workspace_key(user_id, group_id),
+            memory_dir=_agent_memory_dir(user_id, group_id),
+        )
         (images, audio, videos), staged_files, (agent_reply_payload, quoted_images) = await _collect_incoming_assets(
             media_task,
             files_task,
@@ -615,6 +633,40 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         )
         agent_reply_payload, quoted_images = None, []
     resolved_reply_payload = agent_reply_payload or reply_payload
+
+    recent_images: list[bytes] = []
+    should_hydrate_recent = (
+        reply_seq is None
+        and not images
+        and not audio
+        and not videos
+        and not file_items
+        and requests_recent_media(current_text)
+    )
+    if should_hydrate_recent:
+        try:
+            recent_images, recent_media_found = await hydrate_recent_media_context(
+                bot,
+                event,
+                user_id=int(user_id),
+                group_id=group_id,
+                before_time=msg_time,
+                messages_db=messages_db,
+                workspace_key=_agent_workspace_key(user_id, group_id),
+                memory_dir=_agent_memory_dir(user_id, group_id),
+            )
+            if recent_media_found:
+                # The history prepared for the gateway predates lazy hydration.
+                # Re-render only after a candidate was found so fixed-history
+                # mode and dynamic conversation memory observe the same index.
+                messages = await messages_db.prepare_message(
+                    int(user_id),
+                    group_id,
+                    query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
+                    before_time=msg_time,
+                )
+        except Exception as exc:
+            logger.warning("按需恢复近期媒体失败（不影响回复）: %s: %s", type(exc).__name__, exc)
 
     persisted_media = []
     if EnvConfig.IMAGE_ENABLED:
@@ -713,6 +765,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             msg_time=msg_time,
             text=agent_text,
             quoted_images=quoted_images,
+            recent_images=recent_images,
             images=images,
             audio=audio,
             videos=videos,

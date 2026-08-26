@@ -269,6 +269,97 @@ async def test_agent_image_placeholders_follow_persistence(  # noqa: C901
 
 
 @pytest.mark.asyncio
+async def test_agent_lazily_hydrates_recent_media_followup(monkeypatch):  # noqa: C901
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {"prepare_calls": 0}
+
+    class DummyMessagesDb:
+        async def insert(self, **_kwargs):
+            return None
+
+        async def prepare_message(self, *_args, **_kwargs):
+            captured["prepare_calls"] += 1
+            return [{"role": "user", "content": f"history-{captured['prepare_calls']}"}]
+
+    class DummyCognitive:
+        async def chat_agent(self, messages, *_args, **kwargs):
+            captured["messages"] = messages
+            captured["image_inputs"] = kwargs["image_inputs"]
+            return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
+
+    class DummyBot:
+        async def send_group_message_reaction(self, **_kwargs):
+            return None
+
+    async def fake_message_gateway(_event, _messages):
+        return True
+
+    async def fake_hydrate(_bot, _event, **kwargs):
+        captured["hydrate"] = kwargs
+        return [b"recent-image"], True
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
+    monkeypatch.setattr(agent, "hydrate_recent_media_context", fake_hydrate)
+    monkeypatch.setattr(agent, "send_messages", _noop)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=2,
+        sender_id=456,
+        time=0,
+        segments=[{"type": "text", "data": {"text": "帮我分析一下"}}],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    event = MessageEvent(
+        data=incoming,
+        to_me=True,
+        time=0,
+        self_id="1",
+        message=Message(),
+        original_message=Message(),
+    )
+
+    async with App().test_matcher() as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
+
+    assert captured["prepare_calls"] == 2
+    assert captured["hydrate"]["user_id"] == 456
+    assert captured["hydrate"]["group_id"] == 123
+    assert captured["messages"][0]["content"] == "history-2"
+    assert captured["image_inputs"] == [b"recent-image"]
+    current_content = captured["messages"][-1]["content"]
+    assert current_content[1] == {"type": "text", "text": "以下图片来自用户刚才发送的历史消息："}
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("index_file", [True, False])
 async def test_agent_injects_staged_file_memory_path_even_if_indexing_fails(  # noqa: C901
     monkeypatch,
@@ -1179,6 +1270,53 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     assert captured["kwargs"]["group_member_role"] == ("admin" if group_id is not None else None)
     assert captured["stored_user_id"] == (1 if group_id is not None else 456)
     assert captured["stored_sender_user_id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_process_agent_request_inlines_recent_history_image(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {}
+
+    class DummyMessagesDb:
+        async def insert(self, **_kwargs):
+            return None
+
+    class DummyCognitive:
+        async def chat_agent(self, messages, *_args, **kwargs):
+            captured["messages"] = messages
+            captured["image_inputs"] = kwargs["image_inputs"]
+            return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
+
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "send_messages", _noop)
+    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+    context = agent.AgentRequestContext(
+        event=cast(Any, types.SimpleNamespace)(self_id="1", get_plaintext=lambda: "帮我分析一下"),
+        user_id="456",
+        user_name="Bob",
+        event_id=1,
+        group_id=None,
+        msg_time=1000,
+        text="帮我分析一下",
+        quoted_images=[],
+        recent_images=[b"recent-image"],
+        images=[],
+        videos=[],
+    )
+
+    await agent._process_agent_request(context)
+
+    content = captured["messages"][-1]["content"]
+    assert content[1] == {"type": "text", "text": "以下图片来自用户刚才发送的历史消息："}
+    assert content[2]["type"] == "image"
+    assert captured["image_inputs"] == [b"recent-image"]
 
 
 @pytest.mark.asyncio

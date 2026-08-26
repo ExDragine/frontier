@@ -1242,6 +1242,44 @@ async def test_finalized_attachment_message_renders_identically_as_history(memor
 
 
 @pytest.mark.asyncio
+async def test_select_recent_media_message_is_sender_and_workspace_scoped(memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+    image_raw = json.dumps([{"type": "image", "data": {"resource_id": "image-1"}}])
+    file_raw = json.dumps(
+        [{"type": "file", "data": {"file_id": "file-1", "file_hash": "hash-1"}}]
+    )
+    await database.insert(1000, 10, 1, 123, "Alice", "user", "[图片]", raw_segments_json=image_raw)
+    await database.insert(1500, 11, 2, 123, "Bob", "user", "[图片]", raw_segments_json=image_raw)
+    await database.insert(1800, 12, 1, 123, "Alice", "user", "普通文本", raw_segments_json="[]")
+    await database.insert(2000, 13, 1, None, "Alice", "user", "[文件]", raw_segments_json=file_raw)
+
+    group_match = await database.select_recent_media_message(
+        user_id=1,
+        group_id=123,
+        before_time=3000,
+        after_time=0,
+    )
+    private_match = await database.select_recent_media_message(
+        user_id=1,
+        group_id=None,
+        before_time=3000,
+        after_time=0,
+    )
+    expired_match = await database.select_recent_media_message(
+        user_id=1,
+        group_id=123,
+        before_time=3000,
+        after_time=1001,
+    )
+
+    assert group_match is not None and group_match.msg_id == 10
+    assert private_match is not None and private_match.msg_id == 13
+    assert expired_match is None
+
+
+@pytest.mark.asyncio
 async def test_partial_image_persistence_keeps_every_original_marker(memory_engine, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     database = MessageDatabase()
