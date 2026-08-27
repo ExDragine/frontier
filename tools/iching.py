@@ -311,9 +311,8 @@ class IChingReader:
             detail = load_hexagram_detail(hex_info["file"])
             if detail:
                 return detail
-            else:
-                # 如果详细数据加载失败,返回索引中的基本信息
-                return hex_info
+            # 如果详细数据加载失败,返回索引中的基本信息
+            return hex_info
 
         raise ValueError(f"未找到卦象: 上卦{upper}, 下卦{lower}")
 
@@ -540,10 +539,7 @@ class IChingReader:
             is_changing = (i + 1) in changing_lines
 
             # 阳爻 ━━━━━  阴爻 ━━ ━━
-            if is_yang:
-                line_symbol = "━━━━━"
-            else:
-                line_symbol = "━━ ━━"
+            line_symbol = "━━━━━" if is_yang else "━━ ━━"
 
             # 标记动爻
             change_marker = " ◯" if is_changing else "  "

@@ -226,10 +226,7 @@ async def handle_task_list(args: list[str]):
             trigger_info = task.trigger_type
 
         # 下次执行时间
-        if task.next_run_time:
-            next_run = _format_time(task.next_run_time, "%m-%d %H:%M")
-        else:
-            next_run = "无"
+        next_run = _format_time(task.next_run_time, "%m-%d %H:%M") if task.next_run_time else "无"
 
         lines.append(f"{status} {task.name} ({task.job_id})")
         lines.append(f"   类型: {'自动任务' if metadata else '系统任务'}")

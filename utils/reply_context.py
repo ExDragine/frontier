@@ -385,12 +385,9 @@ async def build_reply_context(  # noqa: C901
                     durable_missing_images = max(durable_missing_images, fetched_missing)
             elif not image_records:
                 durable_missing_images = len(re.findall(r"\[图片(?::[^\]\n]*)?\]", quoted.content))
-        if fetched_images:
-            # 回源会返回引用消息中的完整图片集合，不能再与部分本地缓存拼接，
-            # 否则已有图片会重复传给模型。
-            images = fetched_images
-        else:
-            images = local_images
+        # 回源会返回引用消息中的完整图片集合，不能再与部分本地缓存拼接，
+        # 否则已有图片会重复传给模型。
+        images = fetched_images or local_images
         return (
             _format_quote(
                 message_id=quoted.msg_id or reply_seq,

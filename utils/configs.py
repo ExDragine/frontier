@@ -116,11 +116,6 @@ class AgentConfig(_FrozenConfig):
     reasoning_effort: str = "medium"
 
 
-class ConversationMemoryConfig(_FrozenConfig):
-    enabled: bool = True
-    max_context_tokens: int = Field(default=262_144, ge=0)
-
-
 class AccessPolicy(_FrozenConfig):
     whitelist_mode: bool = False
     whitelist_person_list: tuple[int | str, ...] = ()
@@ -188,7 +183,6 @@ class FrontierSettings(_FrozenConfig):
     keys: KeyConfig = Field(default_factory=KeyConfig)
     features: FeatureConfig = Field(default_factory=FeatureConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
-    conversation_memory: ConversationMemoryConfig = Field(default_factory=ConversationMemoryConfig)
     agent_policy: AccessPolicy = Field(default_factory=AccessPolicy)
     auto_reply_policy: AutoReplyPolicy = Field(default_factory=AutoReplyPolicy)
     paint_policy: AccessPolicy = Field(default_factory=AccessPolicy)
@@ -255,8 +249,7 @@ def _validate_v2_model_provider_sections(
     removed_model_fields = sorted(
         key
         for key in models
-        if key.endswith("_model_endpoint")
-        or key.endswith("_model_use_responses_api")
+        if key.endswith(("_model_endpoint", "_model_use_responses_api"))
         or key in {"paint_base_url", "video_base_url"}
     )
     if removed_model_fields:
@@ -630,7 +623,6 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
     legacy_database = _section(config, "database")
     legacy_image_memory = _section(config, "image_memory")
     storage = _section(config, "storage")
-    conversation_memory = _section(config, "conversation_memory")
 
     config_version = config.get("config_version", 1)
     _validate_v2_model_provider_sections(config_version, models, providers, keys)
@@ -681,7 +673,6 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
             ),
         },
         "agent": {"reasoning_effort": _pick(agent, legacy_function, "reasoning_effort", "medium", "agent_capability")},
-        "conversation_memory": conversation_memory,
         "agent_policy": {
             field: _pick(agent_policy, legacy_function, field, default, f"agent_{field}")
             for field, default in (
@@ -831,8 +822,6 @@ class EnvConfig:
     PAINT_MODULE_ENABLED: ClassVar[bool]
     VIDEO_MODULE_ENABLED: ClassVar[bool]
     AGENT_CAPABILITY: ClassVar[str]
-    CONVERSATION_MEMORY_ENABLED: ClassVar[bool]
-    CONVERSATION_MEMORY_MAX_CONTEXT_TOKENS: ClassVar[int]
     # Access policies
     AGENT_WHITELIST_MODE: ClassVar[bool]
     AGENT_WHITELIST_PERSON_LIST: ClassVar[list[int | str]]
@@ -919,8 +908,6 @@ class EnvConfig:
             "PAINT_MODULE_ENABLED": settings.features.paint_enabled,
             "VIDEO_MODULE_ENABLED": settings.features.video_enabled,
             "AGENT_CAPABILITY": settings.agent.reasoning_effort,
-            "CONVERSATION_MEMORY_ENABLED": settings.conversation_memory.enabled,
-            "CONVERSATION_MEMORY_MAX_CONTEXT_TOKENS": settings.conversation_memory.max_context_tokens,
             "AGENT_WHITELIST_MODE": settings.agent_policy.whitelist_mode,
             "AGENT_WHITELIST_PERSON_LIST": list(settings.agent_policy.whitelist_person_list),
             "AGENT_WHITELIST_GROUP_LIST": list(settings.agent_policy.whitelist_group_list),

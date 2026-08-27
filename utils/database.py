@@ -7,12 +7,10 @@ import posixpath
 import shutil
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from functools import lru_cache
-from math import ceil
 
-from sqlalchemy import Engine, Index, UniqueConstraint, and_, event, inspect, or_, text, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import Engine, UniqueConstraint, event, inspect, text
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Field, Session, SQLModel, col, create_engine, desc, func, select
 
@@ -32,7 +30,6 @@ SQLITE_MMAP_SIZE_BYTES = 256 * 1024 * 1024
 MESSAGE_FTS_MIN_QUERY_LENGTH = 3
 MESSAGE_SOURCE_TYPE_NORMAL = "message"
 MESSAGE_SOURCE_TYPE_FORWARD_NODE = "forward_node"
-MESSAGE_TOKEN_ESTIMATE_VERSION = 7
 _ATTACHMENT_KIND_DIRECTORIES = {
     "image": "images",
     "audio": "audio",
@@ -41,10 +38,6 @@ _ATTACHMENT_KIND_DIRECTORIES = {
 }
 logger = logging.getLogger(__name__)
 _ATTACHMENT_WRITE_LOCKS = tuple(threading.Lock() for _ in range(64))
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 @contextmanager
@@ -64,25 +57,6 @@ def _lock_attachment_paths(paths: list[str]):
     finally:
         for lock in reversed(locks):
             lock.release()
-
-
-def estimate_stored_message_tokens(
-    content: str,
-    user_name: str | None = None,
-    *,
-    reply_context_json: str | None = None,
-    serialized_payload: str | None = None,
-) -> int:
-    """Provider-neutral estimate used for SQL watermarks and pagination."""
-    # Prefer the exact rendered envelope. The fallback remains conservative for
-    # legacy rows and includes the denormalized reply snapshot, which may be much
-    # larger than the current message itself.
-    chars = (
-        len(serialized_payload)
-        if serialized_payload is not None
-        else len(content) + len(user_name or "") + len(reply_context_json or "") + 240
-    )
-    return max(1, ceil(chars / 1.8) + 4)
 
 
 async def _run_in_thread(func, *args, **kwargs):
@@ -158,7 +132,6 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_message_group_role_time ON message (group_id, role, time DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_message_group_msg_id_time ON message (group_id, msg_id, time DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_message_source_parent ON message (source_type, parent_msg_time)",
-                "CREATE INDEX IF NOT EXISTS ix_message_context_updated ON message (context_updated_at, time)",
                 (
                     "CREATE INDEX IF NOT EXISTS ix_message_private_user_time "
                     "ON message (user_id, time DESC) WHERE group_id IS NULL"
@@ -222,11 +195,6 @@ def ensure_message_schema(engine: Engine) -> None:
         ("parent_msg_id", "ALTER TABLE message ADD COLUMN parent_msg_id INTEGER"),
         ("parent_msg_time", "ALTER TABLE message ADD COLUMN parent_msg_time INTEGER"),
         ("parent_forward_id", "ALTER TABLE message ADD COLUMN parent_forward_id TEXT"),
-        ("estimated_tokens", "ALTER TABLE message ADD COLUMN estimated_tokens INTEGER NOT NULL DEFAULT 0"),
-        (
-            "token_estimate_version",
-            "ALTER TABLE message ADD COLUMN token_estimate_version INTEGER NOT NULL DEFAULT 0",
-        ),
         ("user_nickname", "ALTER TABLE message ADD COLUMN user_nickname TEXT"),
         ("user_card", "ALTER TABLE message ADD COLUMN user_card TEXT"),
         ("reply_context_json", "ALTER TABLE message ADD COLUMN reply_context_json TEXT"),
@@ -236,10 +204,6 @@ def ensure_message_schema(engine: Engine) -> None:
         (
             "directly_mentions_bot",
             "ALTER TABLE message ADD COLUMN directly_mentions_bot INTEGER NOT NULL DEFAULT 0",
-        ),
-        (
-            "context_updated_at",
-            "ALTER TABLE message ADD COLUMN context_updated_at INTEGER NOT NULL DEFAULT 0",
         ),
     ]
     statements = [statement for column, statement in column_migrations if column not in columns]
@@ -257,32 +221,6 @@ def ensure_message_schema(engine: Engine) -> None:
                     "WHERE group_id IS NOT NULL OR role != 'assistant'"
                 )
             )
-
-
-def ensure_conversation_summary_schema(engine: Engine) -> None:
-    """Add validity metadata to databases created before summary invalidation."""
-    inspector = inspect(engine)
-    if "conversation_summary" not in inspector.get_table_names():
-        return
-    columns = {column["name"] for column in inspector.get_columns("conversation_summary")}
-    with engine.begin() as connection:
-        if "invalidated_at" not in columns:
-            connection.execute(
-                text("ALTER TABLE conversation_summary ADD COLUMN invalidated_at INTEGER")
-            )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_conversation_summary_scope_valid_version "
-                "ON conversation_summary (scope_type, scope_id, invalidated_at, version DESC)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_conversation_summary_scope_bucket "
-                "ON conversation_summary "
-                "(scope_type, scope_id, prompt_version, source_start_time, invalidated_at)"
-            )
-        )
 
 
 def _table_exists(conn, table_name: str) -> bool:
@@ -516,15 +454,12 @@ class Message(SQLModel, table=True):
     parent_msg_id: int | None = None
     parent_msg_time: int | None = None
     parent_forward_id: str | None = None
-    estimated_tokens: int = 0
-    token_estimate_version: int = 0
     user_nickname: str | None = None
     user_card: str | None = None
     reply_context_json: str | None = None
     sender_user_id: int | None = None
     bot_user_id: int | None = None
     directly_mentions_bot: bool = False
-    context_updated_at: int = 0
 
 
 def resolve_message_sender_user_id(message: Message) -> int | None:
@@ -587,20 +522,6 @@ def _attachment_agent_payload(attachment: MessageAttachment) -> dict[str, object
     )
 
 
-def _estimate_message_model_tokens(
-    message: Message,
-    *,
-    attachments: list[dict[str, object]] | None = None,
-) -> int:
-    serialized = serialize_agent_payload(_message_agent_payload(message, attachments=attachments))
-    return estimate_stored_message_tokens(
-        message.content,
-        message.user_name,
-        reply_context_json=message.reply_context_json,
-        serialized_payload=serialized,
-    )
-
-
 _REPLY_CONTEXT_UNSET = object()
 
 
@@ -626,122 +547,12 @@ def _refresh_message_model_state(
         sum(attachment.kind == "image" for attachment in attachments),
     )
     message.model_content = None if model_content == message.content else model_content
-    message.estimated_tokens = _estimate_message_model_tokens(
-        message,
-        attachments=[_attachment_agent_payload(attachment) for attachment in attachments],
-    )
-    message.token_estimate_version = MESSAGE_TOKEN_ESTIMATE_VERSION
-    message.context_updated_at = _now_ms()
     session.add(message)
-    _invalidate_conversation_summaries_for_message(session, message)
 
 
 def _refresh_message_model_states(session: Session, msg_times: set[int]) -> None:
     for msg_time in sorted(msg_times):
         _refresh_message_model_state(session, msg_time)
-
-
-class ConversationSummary(SQLModel, table=True):
-    __tablename__ = "conversation_summary"
-    __table_args__ = (
-        UniqueConstraint("scope_type", "scope_id", "version", name="uq_conversation_summary_version"),
-        Index("ix_conversation_summary_scope_version", "scope_type", "scope_id", "version"),
-        Index("ix_conversation_summary_scope_end", "scope_type", "scope_id", "source_end_time"),
-        Index(
-            "ix_conversation_summary_scope_valid_version",
-            "scope_type",
-            "scope_id",
-            "invalidated_at",
-            "version",
-        ),
-        Index(
-            "ix_conversation_summary_scope_bucket",
-            "scope_type",
-            "scope_id",
-            "prompt_version",
-            "source_start_time",
-            "invalidated_at",
-        ),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    scope_type: str
-    scope_id: str
-    version: int
-    source_start_time: int
-    source_end_time: int
-    source_message_count: int
-    source_token_count: int
-    summary_text: str
-    estimated_tokens: int
-    model: str
-    prompt_version: int = 1
-    created_at: int
-    invalidated_at: int | None = None
-
-
-def _invalidate_conversation_summaries_for_message(session: Session, message: Message) -> None:
-    """Invalidate active summaries whose cursor has already passed this source row."""
-    if message.source_type != MESSAGE_SOURCE_TYPE_NORMAL:
-        return
-    scopes = [
-        and_(
-            col(ConversationSummary.scope_type) == "private",
-            col(ConversationSummary.scope_id) == str(message.user_id),
-        )
-    ]
-    if message.group_id is not None:
-        scopes.append(
-            and_(
-                col(ConversationSummary.scope_type) == "group",
-                col(ConversationSummary.scope_id) == str(message.group_id),
-            )
-        )
-    session.exec(
-        update(ConversationSummary)
-        .where(col(ConversationSummary.invalidated_at).is_(None))
-        .where(col(ConversationSummary.source_start_time) <= message.time)
-        .where(col(ConversationSummary.source_end_time) >= message.time)
-        .where(or_(*scopes))
-        .values(invalidated_at=_now_ms())
-    )
-
-
-def _conversation_summary_dependencies_current(
-    session: Session,
-    summary: ConversationSummary,
-    *,
-    expected_base_summary_id: int | None,
-    expected_source_context: dict[int, int] | None,
-    expected_source_after_time: int | None,
-) -> bool:
-    """Validate every immutable input used to generate a candidate summary."""
-    if expected_base_summary_id is not None:
-        active_base_id = session.exec(
-            select(ConversationSummary.id)
-            .where(ConversationSummary.id == expected_base_summary_id)
-            .where(col(ConversationSummary.invalidated_at).is_(None))
-        ).first()
-        if active_base_id != expected_base_summary_id:
-            return False
-    if expected_source_context is None:
-        return True
-
-    source_conditions = [
-        Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL,
-        Message.time <= summary.source_end_time,
-    ]
-    if summary.scope_type == "group":
-        source_conditions.append(Message.group_id == int(summary.scope_id))
-    else:
-        source_conditions.append(Message.user_id == int(summary.scope_id))
-    if expected_source_after_time is not None:
-        source_conditions.append(Message.time > expected_source_after_time)
-    current_source = {
-        message.time: message.context_updated_at
-        for message in session.exec(select(Message).where(*source_conditions)).all()
-    }
-    return current_source == expected_source_context
 
 
 class TimeStamp(SQLModel, table=True):
@@ -874,10 +685,8 @@ def _atomic_copy2(source_path: str, target_path: str) -> None:
             os.fsync(copied_file.fileno())
         os.replace(temp_path, target_path)
     finally:
-        try:
+        with suppress(FileNotFoundError):
             os.remove(temp_path)
-        except FileNotFoundError:
-            pass
 
 
 def _copy_legacy_attachment(record: MessageAttachment, source_path: str, target_path: str) -> str | None:
@@ -889,9 +698,10 @@ def _copy_legacy_attachment(record: MessageAttachment, source_path: str, target_
         if not os.path.exists(target_full_path):
             _atomic_copy2(source_full_path, target_full_path)
             return target_path
-        if os.path.isfile(target_full_path):
-            if _sha256_file(source_full_path) == _sha256_file(target_full_path):
-                return target_path
+        if os.path.isfile(target_full_path) and (
+            _sha256_file(source_full_path) == _sha256_file(target_full_path)
+        ):
+            return target_path
         stem, suffix = os.path.splitext(target_path)
         source_digest = _sha256_file(source_full_path)
         conflict_stem = f"{stem}-legacy-{record.id}-{source_digest[:10]}"
@@ -1014,14 +824,6 @@ def _legacy_scope_types(engine: Engine, legacy_ids: set[str]) -> dict[str, set[s
             .distinct()
         ).all():
             remember(user_id, "private")
-        summary_rows = session.exec(
-            select(ConversationSummary.scope_type, ConversationSummary.scope_id)
-            .where(col(ConversationSummary.scope_id).in_(legacy_ids))
-            .distinct()
-        ).all()
-        for scope_type, scope_id in summary_rows:
-            if scope_type in {"group", "private"}:
-                remember(scope_id, scope_type)
         for group_id in session.exec(
             select(MessageAttachment.group_id)
             .where(col(MessageAttachment.group_id).in_(numeric_ids))
@@ -1206,10 +1008,8 @@ class _PendingFileWrite:
     def _remove(path: str | None) -> None:
         if path is None:
             return
-        try:
+        with suppress(FileNotFoundError):
             os.remove(path)
-        except FileNotFoundError:
-            pass
 
     def install(self) -> None:
         if os.path.exists(self.target_path):
@@ -1647,7 +1447,6 @@ class MessageDatabase:
         self._attachments = _MessageAttachmentManager(self.engine)
         Message.metadata.create_all(self.engine)
         ensure_message_schema(self.engine)
-        ensure_conversation_summary_schema(self.engine)
         MessageAttachment.metadata.create_all(self.engine)
         migrate_legacy_attachment_workspaces(self.engine)
         migrate_legacy_scope_directories(self.engine)
@@ -1698,20 +1497,14 @@ class MessageDatabase:
                     parent_msg_id=parent_msg_id,
                     parent_msg_time=parent_msg_time,
                     parent_forward_id=parent_forward_id,
-                    estimated_tokens=0,
-                    token_estimate_version=MESSAGE_TOKEN_ESTIMATE_VERSION,
                     user_nickname=user_nickname,
                     user_card=user_card,
                     reply_context_json=reply_context_json,
                     sender_user_id=resolved_sender_user_id,
                     bot_user_id=bot_user_id,
                     directly_mentions_bot=directly_mentions_bot,
-                    context_updated_at=_now_ms(),
                 )
-                message.estimated_tokens = _estimate_message_model_tokens(message)
                 session.add(message)
-                session.flush()
-                _invalidate_conversation_summaries_for_message(session, message)
                 session.commit()
 
         await _run_database(self.engine, _do)
@@ -1728,7 +1521,11 @@ class MessageDatabase:
                 if group_id is not None:
                     statement = select(Message).where(Message.group_id == group_id)
                 elif user_id:
-                    statement = select(Message).where(Message.user_id == user_id)
+                    statement = (
+                        select(Message)
+                        .where(Message.user_id == user_id)
+                        .where(Message.group_id.is_(None))  # type: ignore
+                    )
                 else:
                     return None
                 statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
@@ -1737,296 +1534,6 @@ class MessageDatabase:
                 statement = statement.order_by(desc(Message.time)).limit(query_numbers)
                 results = session.exec(statement)
                 return results.all()
-
-        return await _run_database(self.engine, _do)
-
-    async def select_context_page(
-        self,
-        *,
-        user_id: int,
-        group_id: int | None,
-        after_time: int | None = None,
-        before_time: int | None = None,
-        cursor_time: int | None = None,
-        stable_before_time: int | None = None,
-        limit: int = 200,
-        ascending: bool = False,
-    ) -> list[Message]:
-        """Read one scope-isolated page for token-budgeted context assembly."""
-
-        def _do():
-            with Session(self.engine) as session:
-                conditions = [Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL]
-                if group_id is None:
-                    # Private memory intentionally includes this user's own
-                    # utterances across QQ scopes, while excluding other group
-                    # participants. Private assistant rows retain the peer in
-                    # user_id for the same compatibility scope.
-                    conditions.append(Message.user_id == user_id)
-                else:
-                    conditions.append(Message.group_id == group_id)
-                if after_time is not None:
-                    conditions.append(Message.time > after_time)
-                if before_time is not None:
-                    conditions.append(Message.time < before_time)
-
-                statement = select(Message).where(*conditions)
-                if stable_before_time is not None:
-                    # A summary cursor is event-time based, so skipping a recent
-                    # row and continuing with later stable rows would advance the
-                    # cursor past data that has not been summarized. Restrict the
-                    # range to the continuous stable prefix instead.
-                    first_unstable_time = session.exec(
-                        select(func.min(Message.time)).where(
-                            *conditions,
-                            Message.context_updated_at >= stable_before_time,
-                        )
-                    ).one()
-                    if first_unstable_time is not None:
-                        statement = statement.where(Message.time < first_unstable_time)
-                if cursor_time is not None:
-                    statement = statement.where(Message.time > cursor_time if ascending else Message.time < cursor_time)
-                order = Message.time.asc() if ascending else desc(Message.time)
-                return session.exec(statement.order_by(order).limit(max(1, min(limit, 500)))).all()
-
-        return await _run_database(self.engine, _do)
-
-    async def context_token_total(
-        self,
-        *,
-        user_id: int,
-        group_id: int | None,
-        after_time: int | None = None,
-        before_time: int | None = None,
-        stable_before_time: int | None = None,
-    ) -> int:
-        """Return a cheap provider-neutral token estimate for a conversation range."""
-
-        def _do():
-            filters = ["source_type = :source_type"]
-            params: dict[str, object] = {
-                "source_type": MESSAGE_SOURCE_TYPE_NORMAL,
-                "token_estimate_version": MESSAGE_TOKEN_ESTIMATE_VERSION,
-            }
-            if group_id is None:
-                filters.append("user_id = :user_id")
-                params["user_id"] = user_id
-            else:
-                filters.append("group_id = :group_id")
-                params["group_id"] = group_id
-            if after_time is not None:
-                filters.append("time > :after_time")
-                params["after_time"] = after_time
-            if before_time is not None:
-                filters.append("time < :before_time")
-                params["before_time"] = before_time
-            if stable_before_time is not None:
-                params["stable_before_time"] = stable_before_time
-                unstable_where = " AND ".join([*filters, "context_updated_at >= :stable_before_time"])
-                with self.engine.connect() as conn:
-                    first_unstable_time = conn.execute(
-                        text(
-                            f"SELECT MIN(time) FROM message WHERE {unstable_where}"  # noqa: S608
-                        ),
-                        params,
-                    ).scalar_one()
-                if first_unstable_time is not None:
-                    filters.append("time < :first_unstable_time")
-                    params["first_unstable_time"] = int(first_unstable_time)
-            where = " AND ".join(filters)
-            query = text(
-                f"""
-                SELECT COALESCE(SUM(
-                    CASE
-                        WHEN token_estimate_version = :token_estimate_version AND estimated_tokens > 0
-                            THEN estimated_tokens
-                        ELSE MAX(1, CAST((
-                            length(content)
-                            + COALESCE(length(user_name), 0)
-                            + COALESCE(length(reply_context_json), 0)
-                            + 240
-                        ) / 1.8 AS INTEGER) + 4)
-                    END
-                ), 0)
-                FROM message
-                WHERE {where}
-                """  # noqa: S608 - only fixed internal filter fragments are interpolated
-            )
-            with self.engine.connect() as conn:
-                return int(conn.execute(query, params).scalar_one())
-
-        return await _run_database(self.engine, _do)
-
-    async def conversation_scopes_with_messages(
-        self,
-        *,
-        start_time: int,
-        end_time: int,
-    ) -> list[tuple[int, int | None]]:
-        """Return private peers and groups that contain messages in one time range."""
-
-        def _do():
-            with self.engine.connect() as connection:
-                rows = connection.execute(
-                    text(
-                        """
-                        SELECT user_id, NULL AS group_id
-                        FROM message
-                        WHERE source_type = :source_type
-                          AND group_id IS NULL
-                          AND time >= :start_time
-                          AND time < :end_time
-                        GROUP BY user_id
-                        UNION ALL
-                        SELECT 0 AS user_id, group_id
-                        FROM message
-                        WHERE source_type = :source_type
-                          AND group_id IS NOT NULL
-                          AND time >= :start_time
-                          AND time < :end_time
-                        GROUP BY group_id
-                        ORDER BY group_id, user_id
-                        """
-                    ),
-                    {
-                        "source_type": MESSAGE_SOURCE_TYPE_NORMAL,
-                        "start_time": start_time,
-                        "end_time": end_time,
-                    },
-                ).all()
-            return [(int(row.user_id), int(row.group_id) if row.group_id is not None else None) for row in rows]
-
-        return await _run_database(self.engine, _do)
-
-    async def latest_conversation_summary(
-        self,
-        *,
-        scope_type: str,
-        scope_id: str,
-        prompt_version: int | None = None,
-        include_invalidated: bool = False,
-    ) -> ConversationSummary | None:
-        def _do():
-            with Session(self.engine) as session:
-                statement = (
-                    select(ConversationSummary)
-                    .where(ConversationSummary.scope_type == scope_type)
-                    .where(ConversationSummary.scope_id == scope_id)
-                )
-                if not include_invalidated:
-                    statement = statement.where(col(ConversationSummary.invalidated_at).is_(None))
-                if prompt_version is not None:
-                    statement = statement.where(ConversationSummary.prompt_version == prompt_version)
-                statement = statement.order_by(desc(ConversationSummary.version)).limit(1)
-                return session.exec(statement).first()
-
-        return await _run_database(self.engine, _do)
-
-    async def hourly_conversation_summaries(
-        self,
-        *,
-        scope_type: str,
-        scope_id: str,
-        window_start: int,
-        window_end: int,
-        prompt_version: int,
-    ) -> list[ConversationSummary]:
-        """Return active hourly summaries in chronological order."""
-
-        def _do():
-            with Session(self.engine) as session:
-                rows = session.exec(
-                    select(ConversationSummary)
-                    .where(ConversationSummary.scope_type == scope_type)
-                    .where(ConversationSummary.scope_id == scope_id)
-                    .where(ConversationSummary.prompt_version == prompt_version)
-                    .where(col(ConversationSummary.invalidated_at).is_(None))
-                    .where(ConversationSummary.source_start_time >= window_start)
-                    .where(ConversationSummary.source_start_time < window_end)
-                    .order_by(col(ConversationSummary.source_start_time), desc(ConversationSummary.version))
-                ).all()
-                by_bucket: dict[int, ConversationSummary] = {}
-                for row in rows:
-                    by_bucket.setdefault(row.source_start_time, row)
-                return list(by_bucket.values())
-
-        return await _run_database(self.engine, _do)
-
-    async def prune_conversation_summaries(
-        self,
-        *,
-        scope_type: str,
-        scope_id: str,
-        window_start: int,
-        prompt_version: int,
-    ) -> int:
-        """Delete expired buckets and summaries from superseded formats."""
-
-        def _do():
-            with Session(self.engine) as session:
-                rows = session.exec(
-                    select(ConversationSummary)
-                    .where(ConversationSummary.scope_type == scope_type)
-                    .where(ConversationSummary.scope_id == scope_id)
-                    .where(
-                        or_(
-                            col(ConversationSummary.source_start_time) < window_start,
-                            col(ConversationSummary.prompt_version) != prompt_version,
-                        )
-                    )
-                ).all()
-                for row in rows:
-                    session.delete(row)
-                session.commit()
-                return len(rows)
-
-        return await _run_database(self.engine, _do)
-
-    async def append_conversation_summary(
-        self,
-        summary: ConversationSummary,
-        *,
-        expected_version: int,
-        expected_base_summary_id: int | None = None,
-        expected_source_context: dict[int, int] | None = None,
-        expected_source_after_time: int | None = None,
-    ) -> bool:
-        """Append only when both summary and source-message snapshots are current."""
-
-        def _do():
-            with Session(self.engine, expire_on_commit=False) as session:
-                if self.engine.dialect.name == "sqlite":
-                    # Python's legacy sqlite transaction mode does not start a
-                    # physical transaction for SELECT. Acquire the write lock
-                    # before the source/version CAS so no writer can slip
-                    # between validation and the summary INSERT.
-                    session.connection().exec_driver_sql("BEGIN IMMEDIATE")
-                if not _conversation_summary_dependencies_current(
-                    session,
-                    summary,
-                    expected_base_summary_id=expected_base_summary_id,
-                    expected_source_context=expected_source_context,
-                    expected_source_after_time=expected_source_after_time,
-                ):
-                    return False
-
-                statement = (
-                    select(ConversationSummary.version)
-                    .where(ConversationSummary.scope_type == summary.scope_type)
-                    .where(ConversationSummary.scope_id == summary.scope_id)
-                    .order_by(desc(ConversationSummary.version))
-                    .limit(1)
-                )
-                current_version = session.exec(statement).first() or 0
-                if current_version != expected_version:
-                    return False
-                try:
-                    session.add(summary)
-                    session.commit()
-                except IntegrityError:
-                    session.rollback()
-                    return False
-                return True
 
         return await _run_database(self.engine, _do)
 
@@ -2125,7 +1632,6 @@ class MessageDatabase:
                 for message in existing:
                     session.delete(message)
 
-                inserted: list[Message] = []
                 for ordinal, item in enumerate(derived_messages):
                     message = Message(
                         time=self._derived_message_time(parent_msg_time, ordinal),
@@ -2142,14 +1648,8 @@ class MessageDatabase:
                         parent_msg_id=parent_msg_id,
                         parent_msg_time=parent_msg_time,
                         parent_forward_id=getattr(item, "forward_id", None),
-                        estimated_tokens=estimate_stored_message_tokens(
-                            getattr(item, "content", ""), getattr(item, "sender_name", None)
-                        ),
-                        token_estimate_version=MESSAGE_TOKEN_ESTIMATE_VERSION,
-                        context_updated_at=_now_ms(),
                     )
                     session.add(message)
-                    inserted.append(message)
                 session.commit()
 
         await _run_database(self.engine, _do)
@@ -2530,5 +2030,6 @@ class EventDatabase:
                 target = session.get(TimeStamp, name)
                 if target:
                     return target.id
+                return None
 
         return await _run_database(self.engine, _do)

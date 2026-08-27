@@ -483,9 +483,10 @@ class TaskManager:
             filtered_tasks = []
             for task in tasks:
                 metadata = metadata_by_job_id.get(task.job_id)
-                if owner_user_id is not None:
-                    if not metadata or metadata.owner_user_id != str(owner_user_id):
-                        continue
+                if owner_user_id is not None and (
+                    not metadata or metadata.owner_user_id != str(owner_user_id)
+                ):
+                    continue
                 if not include_archived and metadata and metadata.archived:
                     continue
                 filtered_tasks.append(task)

@@ -25,11 +25,6 @@ from utils.agents import (
     run_serialized,
 )
 from utils.agents.acp import acp_service
-from utils.agents.conversation_memory import (
-    ConversationHistoryRequest,
-    ConversationMemoryService,
-    ConversationScope,
-)
 from utils.agents.message_envelope import (
     build_agent_attachment_payload,
     build_agent_message_payload,
@@ -62,7 +57,6 @@ from utils.reply_context import (
 )
 
 messages_db = MessageDatabase()
-conversation_memory_service = ConversationMemoryService(messages_db)
 f_cognitive = FrontierCognitive()
 driver = get_driver()
 
@@ -70,29 +64,6 @@ common = on_message(priority=10)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CACHE_CLEANUP_JOB_ID = "frontier_daily_cache_cleanup"
-CONVERSATION_MEMORY_JOB_ID = "frontier_hourly_conversation_memory"
-
-
-async def run_hourly_conversation_memory() -> None:
-    """Summarize active conversations after each natural-hour boundary."""
-    required_methods = (
-        "latest_conversation_summary",
-        "hourly_conversation_summaries",
-        "prune_conversation_summaries",
-        "conversation_scopes_with_messages",
-        "select_context_page",
-        "prepare_message_records",
-        "append_conversation_summary",
-    )
-    if not all(hasattr(messages_db, name) for name in required_methods):
-        return
-    conversation_memory_service.database = messages_db
-    try:
-        compacted = await conversation_memory_service.compact_active_scopes()
-        if compacted:
-            logger.info("已刷新小时会话摘要: %s 个会话", compacted)
-    except Exception as exc:
-        logger.warning("小时会话摘要失败（不影响回复）: %s: %s", type(exc).__name__, exc)
 
 
 @dataclass(slots=True)
@@ -194,9 +165,8 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
     return reporter
 
 
-async def _process_agent_request(context: AgentRequestContext, history_messages: list[dict] | None = None) -> bool:  # noqa: C901
-    messages = list(history_messages or [])
-    history_prefix_count = len(messages)
+async def _process_agent_request(context: AgentRequestContext) -> bool:  # noqa: C901
+    messages: list[dict[str, Any]] = []
     combined_text = context.text.strip()
     remaining_bytes = EnvConfig.MAX_INLINE_MEDIA_BYTES
     remaining_images = EnvConfig.MAX_INLINE_IMAGES
@@ -287,24 +257,6 @@ async def _process_agent_request(context: AgentRequestContext, history_messages:
         group_member_role=_group_member_role(context.event),
         progress_reporter=_chat_progress_reporter(context.group_id),
         user_text=context.text,
-        conversation_history=(
-            ConversationHistoryRequest(
-                database=messages_db,
-                scope=ConversationScope.from_ids(context.user_id, context.group_id),
-                before_time=context.msg_time,
-                prefix_message_count=history_prefix_count,
-            )
-            if EnvConfig.CONVERSATION_MEMORY_ENABLED
-            and all(
-                hasattr(messages_db, name)
-                for name in (
-                    "hourly_conversation_summaries",
-                    "select_context_page",
-                    "prepare_message_records",
-                )
-            )
-            else None
-        ),
     )
 
     if not isinstance(result, dict) or "response" not in result:
@@ -351,7 +303,6 @@ async def _run_agent_turn(
     *,
     bot: Any,
     context: AgentRequestContext,
-    history_messages: list[dict],
     previous_reply_payload: dict[str, object] | None,
     fetched_reply_payload: dict[str, object] | None,
     original_text: str,
@@ -407,7 +358,7 @@ async def _run_agent_turn(
         thread_id = agent_thread_id(context.user_id, context.group_id)
         await run_serialized(
             str(thread_id),
-            _process_agent_request(context, history_messages),
+            _process_agent_request(context),
         )
     finally:
         if context.group_id is not None and reaction_added:
@@ -466,19 +417,6 @@ async def on_startup():
         max_instances=1,
         misfire_grace_time=3600,
     )
-    if EnvConfig.CONVERSATION_MEMORY_ENABLED:
-        scheduler.add_job(
-            run_hourly_conversation_memory,
-            "cron",
-            id=CONVERSATION_MEMORY_JOB_ID,
-            minute=1,
-            second=0,
-            timezone="Asia/Shanghai",
-            replace_existing=True,
-            coalesce=True,
-            max_instances=1,
-            misfire_grace_time=1800,
-        )
 
 
 async def run_daily_cache_cleanup() -> None:
@@ -580,14 +518,14 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             normalized_version=NORMALIZED_VERSION,
         )
 
-    messages = await messages_db.prepare_message(
+    gateway_messages = await messages_db.prepare_message(
         int(user_id),
         group_id,
         query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
         before_time=msg_time,
     )
 
-    if not await message_gateway(event, messages):
+    if not await message_gateway(event, gateway_messages):
         await common.finish()
 
     # ── Phase 3: 网关通过后才下载当前消息及引用消息中的媒体 ──
@@ -725,7 +663,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         await _run_agent_turn(
             bot=bot,
             context=context,
-            history_messages=messages,
             previous_reply_payload=reply_payload,
             fetched_reply_payload=agent_reply_payload,
             original_text=text,

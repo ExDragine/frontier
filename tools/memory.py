@@ -35,7 +35,7 @@ def _parse_datetime_to_ms(value: str, *, end_of_day: bool = False) -> int:
         pass
 
     try:
-        parsed = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        parsed = datetime.datetime.fromisoformat(raw)
     except ValueError as exc:
         raise ValueError(
             f"无法解析时间「{raw}」，请使用 YYYY-MM-DD、YYYY-MM-DD HH:MM 或 ISO 8601 格式"
@@ -43,10 +43,11 @@ def _parse_datetime_to_ms(value: str, *, end_of_day: bool = False) -> int:
 
     if date_only and end_of_day:
         parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=999000)
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=_SHANGHAI)
-    else:
-        parsed = parsed.astimezone(_SHANGHAI)
+    parsed = (
+        parsed.replace(tzinfo=_SHANGHAI)
+        if parsed.tzinfo is None
+        else parsed.astimezone(_SHANGHAI)
+    )
     return int(parsed.timestamp() * 1000)
 
 
@@ -107,6 +108,67 @@ def _format_search_results(
     if offset + len(messages) >= _MAX_MEMORY_MESSAGES:
         lines.append(f"⚠️ 已达到单次记忆任务最多 {_MAX_MEMORY_MESSAGES} 条记录的读取上限。")
     return "\n".join(lines)
+
+
+def _format_recent_conversation(messages: list[Message], *, content_max_chars: int) -> str:
+    lines = [f"当前会话最近 {len(messages)} 条消息（按时间从早到晚）："]
+    for msg in reversed(messages):
+        timestamp = datetime.datetime.fromtimestamp(msg.time / 1000, tz=_SHANGHAI).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        message_id = msg.msg_id if msg.msg_id is not None else "无"
+        name = msg.user_name or ("助手" if msg.role == "assistant" else str(msg.user_id))
+        role_label = "助手" if msg.role == "assistant" else "用户"
+        sender_user_id = resolve_message_sender_user_id(msg)
+        sender_label = str(sender_user_id) if sender_user_id is not None else "未知"
+        lines.append(
+            f"- [{timestamp}] msg_id={message_id} user_id={sender_label} "
+            f"{role_label}({name}): {_truncate_content(msg.content, content_max_chars)}"
+        )
+    return "\n".join(lines)
+
+
+@tool(response_format="content")
+async def get_recent_conversation(
+    config: RunnableConfig,
+    limit: int = 20,
+    content_max_chars: int = 800,
+) -> str:
+    """读取当前群聊或私聊的最近对话，按时间从早到晚返回。
+
+    当用户的当前请求依赖前文、上一轮、刚才的话题或近期会话时，先调用此工具。
+    不能指定其他会话；需要关键词、日期、用户或角色筛选时使用 search_messages。
+
+    Args:
+        limit: 返回的最近消息数，范围 1–100。
+        content_max_chars: 每条消息最多返回字符数，范围 100–4000。
+    """
+    user_id, group_id, context_error = _current_scope(config)
+    if context_error:
+        return context_error
+    query_limit = max(1, min(limit, 100))
+    max_chars = max(_MIN_CONTENT_CHARS, min(content_max_chars, _MAX_CONTENT_CHARS))
+    try:
+        messages = await message_db.search_messages(
+            group_id=group_id,
+            user_id=user_id,
+            content_query=None,
+            target_user_id=None,
+            target_user_name=None,
+            msg_id=None,
+            start_time=None,
+            end_time=None,
+            role=None,
+            limit=query_limit,
+            offset=0,
+            sort="time",
+        )
+    except Exception as exc:
+        logger.error(f"最近对话读取失败: {type(exc).__name__}: {exc}")
+        return "最近对话读取失败，请稍后重试。"
+    if not messages:
+        return "当前会话还没有可用的历史消息。"
+    return _format_recent_conversation(messages, content_max_chars=max_chars)
 
 
 @tool(response_format="content")

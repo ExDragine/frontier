@@ -104,7 +104,8 @@ def test_frontier_load_system_prompt_includes_markdown_rendering_rules(monkeypat
     assert "不要添加 `<frontier-render>`" in prompt
     assert prompt.index("You are Frontier.") < prompt.index("# Frontier Deep Agent 全局操作规范")
     assert prompt.index("# Frontier Deep Agent 全局操作规范") < prompt.index("【Markdown 渲染规范】")
-    assert prompt.count("memory-agent") == 1
+    assert "memory-agent" not in prompt
+    assert prompt.count("get_recent_conversation") == 1
     assert prompt.count("research-agent") == 1
     assert prompt.count("document-agent") == 1
     assert "earth-data-agent" not in prompt
@@ -322,14 +323,12 @@ def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
     assert filtered == messages
 
 
-def test_frontier_cognitive_separates_direct_ptc_and_memory_tools(monkeypatch):
+def test_frontier_cognitive_separates_direct_and_ptc_tools(monkeypatch):
     monkeypatch.setattr(cognitive_mod.agent_tools, "direct_tools", ["direct-tool"], raising=False)
     monkeypatch.setattr(cognitive_mod.agent_tools, "ptc_tools", ["ptc-tool"], raising=False)
     monkeypatch.setattr(cognitive_mod.agent_tools, "research_tools", ["research-tool"], raising=False)
-    memory_subagent = {"name": "memory-agent", "description": "memory", "runnable": object()}
     research_subagent = {"name": "research-agent", "description": "research", "runnable": object()}
     document_subagent = {"name": "document-agent", "description": "document", "tools": []}
-    monkeypatch.setattr(cognitive_mod, "build_memory_subagent", lambda _tools: memory_subagent)
     monkeypatch.setattr(cognitive_mod, "build_research_subagent", lambda _tools: research_subagent)
     monkeypatch.setattr(cognitive_mod, "build_document_subagent", lambda: document_subagent)
 
@@ -337,14 +336,10 @@ def test_frontier_cognitive_separates_direct_ptc_and_memory_tools(monkeypatch):
 
     assert frontier.tools == ["direct-tool"]
     assert frontier.ptc_tools == ["ptc-tool"]
-    assert frontier.memory_subagent is memory_subagent
+    assert not hasattr(frontier, "memory_subagent")
     assert frontier.research_subagent is research_subagent
     assert frontier.document_subagent is document_subagent
     assert not hasattr(frontier, "subagents")
-
-
-def test_memory_subagent_uses_dedicated_progress_message():
-    assert progress_mod.subagent_message("memory-agent") == "正在检索聊天记忆…"
 
 
 def test_bounded_subagents_use_dedicated_progress_messages():
@@ -508,6 +503,8 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     monkeypatch.setattr(cognitive_mod.EnvConfig, "ADVAN_MODEL_PROVIDER", "openrouter")
     monkeypatch.setattr(cognitive_mod, "provider_uses_responses_api", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(cognitive_mod, "provider_is_official_openai", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(cognitive_mod, "provider_is_official_anthropic", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(cognitive_mod, "provider_official_deepseek_api_mode", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
         cognitive_mod, "filter_messages_for_model_capabilities", inputs_mod.filter_messages_for_model_capabilities
@@ -516,7 +513,6 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
     cast(Any, frontier).backend = None
 
     await frontier.chat_agent(
@@ -575,7 +571,6 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
     frontier.research_subagent = cast(
         Any, {"name": "research-agent", "description": "research", "runnable": object()}
     )
@@ -606,7 +601,6 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert captured["memory"] == ["/memory/group-123/SOUL.md"]
     assert "动态人设文件路径为 `/memory/group-123/SOUL.md`" in captured["system_prompt"]
     assert captured["subagents"] == [
-        frontier.memory_subagent,
         frontier.research_subagent,
         frontier.document_subagent,
     ]
@@ -629,7 +623,7 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_chat_agent_acp_profile_removes_platform_tools_memory_and_delegation(
+async def test_chat_agent_acp_profile_removes_platform_tools_and_delegation(
     monkeypatch, tmp_path
 ):
     captured = {}
@@ -667,7 +661,6 @@ async def test_chat_agent_acp_profile_removes_platform_tools_memory_and_delegati
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = [types.SimpleNamespace(name="send_group_message")]
     frontier.ptc_tools = [types.SimpleNamespace(name="get_group_info")]
-    frontier.memory_subagent = cast(Any, {"name": "memory-agent"})
     frontier.research_subagent = cast(Any, {"name": "research-agent"})
     frontier.document_subagent = cast(Any, {"name": "document-agent", "tools": []})
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
@@ -755,7 +748,6 @@ async def test_chat_agent_uses_user_id_scoped_workspace_for_dm(monkeypatch, tmp_
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -805,7 +797,6 @@ async def test_chat_agent_passes_base_system_prompt_from_load_method(monkeypatch
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -870,10 +861,10 @@ async def test_chat_agent_includes_reasoning_params_when_responses_api(monkeypat
     monkeypatch.setattr(cognitive_mod, "create_llm", capturing_create_llm)
     monkeypatch.setattr(cognitive_mod, "provider_uses_responses_api", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(cognitive_mod, "provider_is_official_openai", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(cognitive_mod, "provider_official_deepseek_api_mode", lambda *_args, **_kwargs: None)
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
     cast(Any, frontier).backend = None
 
     await frontier.chat_agent(
@@ -1068,7 +1059,6 @@ async def test_chat_agent_stabilizes_tool_order_and_keeps_gated_tools_at_tail(mo
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = [tool("zeta"), tool("alpha")]
     frontier.ptc_tools = [tool("query-z"), tool("query-a")]
-    frontier.memory_subagent = cast(Any, {"name": "memory-agent"})
     frontier.research_subagent = None
     frontier.document_subagent = cast(Any, {"name": "document-agent", "tools": []})
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
@@ -1120,7 +1110,6 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
     cast(Any, frontier).working_dir = os.getcwd()
 
     await frontier.chat_agent(
@@ -1167,7 +1156,6 @@ async def _run_chat_agent_with_web_search(
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -1390,7 +1378,7 @@ class TestCollectProgress:
 
         from utils.agents.progress import collect_progress
 
-        subagent = types.SimpleNamespace(name="memory-agent", status="completed")
+        subagent = types.SimpleNamespace(name="research-agent", status="completed")
         reporter = AsyncMock()
 
         await collect_progress(self._mock_stream(subagents=[subagent]), reporter)

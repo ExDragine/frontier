@@ -3,6 +3,18 @@
 import pytest
 
 
+@pytest.fixture
+def vep_prefix():
+    """模拟由 ``vep`` 前缀触发专业 ENS 工具。"""
+    from utils.ens_gate import _ens_prefix
+
+    token = _ens_prefix.set("vep")
+    try:
+        yield
+    finally:
+        _ens_prefix.reset(token)
+
+
 # ── 普通模式 ens_normal ──
 
 
@@ -37,7 +49,7 @@ async def test_ens_normal_video_path(load_tool_module, monkeypatch):
 
     text, artifact = await mod.ens_normal(scenario="风速", location="北京")
 
-    assert "北京现在的风速：数据已返回 [本工具只返回风速数据，其他场景请让用户发新的ve查询]" == text
+    assert text == "北京现在的风速：数据已返回 [本工具只返回风速数据，其他场景请让用户发新的ve查询]"
     assert "wind" in captured_url["url"]
     assert "level" in captured_url["url"]
     assert "orthographic" in captured_url["url"]
@@ -73,7 +85,7 @@ async def test_ens_normal_space_mode_plays_video(load_tool_module, monkeypatch):
         lat=64.86,
     )
 
-    assert "费尔班克斯现在的极光：数据已返回 [本工具只返回极光数据，其他场景请让用户发新的ve查询]" == text
+    assert text == "费尔班克斯现在的极光：数据已返回 [本工具只返回极光数据，其他场景请让用户发新的ve查询]"
     assert "anim=off" not in captured_url["url"]  # 不再有 anim=off
     assert artifact is not None
 
@@ -124,7 +136,7 @@ async def test_ens_normal_record_video_failure(load_tool_module, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ens_professional_video_path(load_tool_module, monkeypatch):
+async def test_ens_professional_video_path(load_tool_module, monkeypatch, vep_prefix):
     """数字参数 → 录屏。"""
     mod = load_tool_module("ens_professional")
     captured_url = {}
@@ -157,7 +169,7 @@ async def test_ens_professional_video_path(load_tool_module, monkeypatch):
         p10="0",
     )
 
-    assert "(116.4, 39.9)现在的大气：数据已返回 [本工具只返回大气数据，其他场景请让用户发新的vep查询]" == text
+    assert text == "(116.4, 39.9)现在的大气：数据已返回 [本工具只返回大气数据，其他场景请让用户发新的vep查询]"
     assert "wind" in captured_url["url"]
     assert "isobaric/500hPa" in captured_url["url"]
     assert "overlay=temp" in captured_url["url"]
@@ -168,7 +180,7 @@ async def test_ens_professional_video_path(load_tool_module, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ens_professional_pause_screenshot(load_tool_module, monkeypatch):
+async def test_ens_professional_pause_screenshot(load_tool_module, monkeypatch, vep_prefix):
     """p10=animoff → 截图。"""
     mod = load_tool_module("ens_professional")
     captured_url = {}
@@ -200,14 +212,14 @@ async def test_ens_professional_pause_screenshot(load_tool_module, monkeypatch):
         p10="animoff",
     )
 
-    assert "(0.0, 60.0)现在的空间天气：数据已返回 [本工具只返回空间天气数据，其他场景请让用户发新的vep查询]" == text
+    assert text == "(0.0, 60.0)现在的空间天气：数据已返回 [本工具只返回空间天气数据，其他场景请让用户发新的vep查询]"
     assert "space" in captured_url["url"]
     assert "anim=off" in captured_url["url"]
     assert artifact is not None
 
 
 @pytest.mark.asyncio
-async def test_ens_professional_bio_fires(load_tool_module, monkeypatch):
+async def test_ens_professional_bio_fires(load_tool_module, monkeypatch, vep_prefix):
     """生物模式 + 火点注释 → URL 包含 annot=fires。"""
     mod = load_tool_module("ens_professional")
     captured_url = {}
@@ -245,7 +257,7 @@ async def test_ens_professional_bio_fires(load_tool_module, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ens_professional_time_parse(load_tool_module, monkeypatch):
+async def test_ens_professional_time_parse(load_tool_module, monkeypatch, vep_prefix):
     """时间格式转换 YYYYMMDD.HHMM → #YYYY/MM/DD/HHMMZ。"""
     mod = load_tool_module("ens_professional")
     captured_url = {}
@@ -282,7 +294,7 @@ async def test_ens_professional_time_parse(load_tool_module, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ens_professional_failure(load_tool_module, monkeypatch):
+async def test_ens_professional_failure(load_tool_module, monkeypatch, vep_prefix):
     """record_video 失败 → 返回错误信息。"""
     mod = load_tool_module("ens_professional")
 

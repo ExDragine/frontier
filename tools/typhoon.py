@@ -216,10 +216,11 @@ def _process_forecasts(points: list[dict]) -> list[dict[str, Any]]:
             agency = fc.get("sets", "")
             if not agency or agency in seen_agencies:
                 continue
-            fc_points = []
-            for fcp in fc.get("points", []):
-                if fcp.get("lng") is not None and fcp.get("lat") is not None:
-                    fc_points.append([fcp["lng"], fcp["lat"]])
+            fc_points = [
+                [fcp["lng"], fcp["lat"]]
+                for fcp in fc.get("points", [])
+                if fcp.get("lng") is not None and fcp.get("lat") is not None
+            ]
             if len(fc_points) >= 2:
                 seen_agencies.add(agency)
                 paths.append({
@@ -365,8 +366,7 @@ async def _screenshot_card(html: str) -> bytes:
         if elem is None:
             raise RuntimeError("未找到 typhoon-card 元素")
 
-        image = await elem.screenshot(type="png")
-        return image
+        return await elem.screenshot(type="png")
     finally:
         close_fn = getattr(page, "close", None)
         if close_fn:

@@ -2,13 +2,12 @@
 
 import asyncio
 import json
-import threading
 from io import BytesIO
 from pathlib import Path
 
 import pytest
 from PIL import Image
-from sqlalchemy import event, inspect, text
+from sqlalchemy import inspect, text
 from sqlmodel import Session, create_engine, select
 
 from utils import database as db_module
@@ -20,7 +19,6 @@ from utils.agents.message_envelope import (
 from utils.database import (
     MESSAGE_SOURCE_TYPE_FORWARD_NODE,
     MESSAGE_SOURCE_TYPE_NORMAL,
-    ConversationSummary,
     GroupSettings,
     GroupSettingsManager,
     Message,
@@ -53,6 +51,22 @@ def _wire_text(message: dict[str, object]) -> str:
 
 def _wire_payload(message: dict[str, object]) -> dict:
     return json.loads(_wire_text(message))
+
+
+async def _select_scope_messages(
+    database: MessageDatabase,
+    *,
+    user_id: int,
+    group_id: int | None,
+    ascending: bool = False,
+) -> list[Message]:
+    messages = await database.select(
+        user_id=user_id,
+        group_id=group_id,
+        query_numbers=500,
+    )
+    assert messages is not None
+    return list(reversed(messages)) if ascending else messages
 
 
 def test_legacy_attachments_migrate_to_distinct_group_and_private_workspaces(
@@ -123,7 +137,6 @@ def test_legacy_attachments_migrate_to_distinct_group_and_private_workspaces(
 
     with Session(memory_engine) as session:
         attachments = session.exec(select(MessageAttachment).order_by(MessageAttachment.msg_time)).all()
-        messages = session.exec(select(Message).order_by(Message.time)).all()
     assert [attachment.workspace_key for attachment in attachments] == ["group-123", "dm-123"]
     assert [attachment.virtual_path for attachment in attachments] == [
         "/memory/group-123/images/group.png",
@@ -133,7 +146,6 @@ def test_legacy_attachments_migrate_to_distinct_group_and_private_workspaces(
     assert (tmp_path / "cache/sandbox/memory/dm-123/images/private.png").read_bytes() == b"private"
     assert not (tmp_path / legacy_root / "group.png").exists()
     assert not (tmp_path / legacy_root / "private.png").exists()
-    assert all(message.token_estimate_version == db_module.MESSAGE_TOKEN_ESTIMATE_VERSION for message in messages)
 
 
 def test_unambiguous_legacy_soul_and_workspace_are_migrated(memory_engine, tmp_path, monkeypatch):
@@ -351,8 +363,6 @@ def test_ensure_message_schema_adds_normalization_columns(memory_engine):
         "parent_msg_id",
         "parent_msg_time",
         "parent_forward_id",
-        "estimated_tokens",
-        "token_estimate_version",
         "user_nickname",
         "user_card",
         "reply_context_json",
@@ -360,7 +370,6 @@ def test_ensure_message_schema_adds_normalization_columns(memory_engine):
         "sender_user_id",
         "bot_user_id",
         "directly_mentions_bot",
-        "context_updated_at",
     }.issubset(columns)
     with memory_engine.connect() as conn:
         row = conn.execute(
@@ -372,65 +381,22 @@ def test_ensure_message_schema_adds_normalization_columns(memory_engine):
     assert row == (0, "legacy", MESSAGE_SOURCE_TYPE_NORMAL, 1)
 
 
-def test_ensure_conversation_summary_schema_adds_invalidation_state(memory_engine):
-    with memory_engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                CREATE TABLE conversation_summary (
-                    id INTEGER PRIMARY KEY,
-                    scope_type TEXT NOT NULL,
-                    scope_id TEXT NOT NULL,
-                    version INTEGER NOT NULL,
-                    source_start_time INTEGER NOT NULL,
-                    source_end_time INTEGER NOT NULL,
-                    source_message_count INTEGER NOT NULL,
-                    source_token_count INTEGER NOT NULL,
-                    summary_text TEXT NOT NULL,
-                    estimated_tokens INTEGER NOT NULL,
-                    model TEXT NOT NULL,
-                    prompt_version INTEGER NOT NULL,
-                    created_at INTEGER NOT NULL
-                )
-                """
-            )
-        )
-
-    db_module.ensure_conversation_summary_schema(memory_engine)
-
-    columns = {column["name"] for column in inspect(memory_engine).get_columns("conversation_summary")}
-    indexes = {index["name"] for index in inspect(memory_engine).get_indexes("conversation_summary")}
-    assert "invalidated_at" in columns
-    assert "ix_conversation_summary_scope_valid_version" in indexes
-    assert "ix_conversation_summary_scope_bucket" in indexes
-
-
-@pytest.mark.asyncio
-async def test_conversation_scopes_with_messages_returns_only_active_normal_scopes(memory_engine):
-    database = MessageDatabase()
-    database.engine = memory_engine
+def test_new_database_schema_has_no_conversation_compression_state(memory_engine):
     Message.metadata.create_all(memory_engine)
-    await database.insert(1000, 1, 10, None, "Private", "user", "private")
-    await database.insert(1100, 2, 20, 123, "Group", "user", "group")
-    await database.insert(900, 3, 30, 456, "Old", "user", "outside")
-    await database.insert(
-        1200,
-        4,
-        40,
-        789,
-        "Derived",
-        "user",
-        "derived",
-        source_type=MESSAGE_SOURCE_TYPE_FORWARD_NODE,
-    )
 
-    scopes = await database.conversation_scopes_with_messages(start_time=1000, end_time=1200)
+    table_names = set(inspect(memory_engine).get_table_names())
+    message_columns = {column["name"] for column in inspect(memory_engine).get_columns("message")}
 
-    assert scopes == [(10, None), (0, 123)]
+    assert "conversation_summary" not in table_names
+    assert {
+        "estimated_tokens",
+        "token_estimate_version",
+        "context_updated_at",
+    }.isdisjoint(message_columns)
 
 
 @pytest.mark.asyncio
-async def test_conversation_context_queries_are_scope_isolated_and_versioned(memory_engine):
+async def test_conversation_context_queries_are_scope_isolated(memory_engine):
     database = MessageDatabase()
     database.engine = memory_engine
     Message.metadata.create_all(memory_engine)
@@ -439,158 +405,13 @@ async def test_conversation_context_queries_are_scope_isolated_and_versioned(mem
     await database.insert(1100, 2, 10, 123, "Alice", "user", "group history")
     await database.insert(1200, 3, 20, 123, "Bob", "user", "group reply")
 
-    private_page = await database.select_context_page(user_id=10, group_id=None)
-    group_page = await database.select_context_page(user_id=10, group_id=123)
-    assert [message.content for message in private_page] == ["group history", "private history"]
+    private_page = await _select_scope_messages(database, user_id=10, group_id=None)
+    group_page = await _select_scope_messages(database, user_id=10, group_id=123)
+    assert [message.content for message in private_page] == ["private history"]
     assert [message.content for message in group_page] == ["group reply", "group history"]
-    assert await database.context_token_total(user_id=10, group_id=None) == sum(
-        message.estimated_tokens for message in private_page
-    )
-
-    first = ConversationSummary(
-        scope_type="group",
-        scope_id="123",
-        version=1,
-        source_start_time=1100,
-        source_end_time=1100,
-        source_message_count=1,
-        source_token_count=10,
-        summary_text="Alice 提出了一个问题。",
-        estimated_tokens=10,
-        model="summary-model",
-        created_at=2000,
-    )
-    assert await database.append_conversation_summary(first, expected_version=0) is True
-    assert (
-        await database.append_conversation_summary(first.model_copy(update={"id": None}), expected_version=0) is False
-    )
-    latest = await database.latest_conversation_summary(scope_type="group", scope_id="123")
-    assert latest is not None
-    assert latest.version == 1
-    assert latest.source_end_time == 1100
-
 
 @pytest.mark.asyncio
-async def test_summary_source_cas_holds_sqlite_write_lock_until_insert(tmp_path):
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'summary-cas.db'}",
-        connect_args={"check_same_thread": False},
-    )
-    database = MessageDatabase()
-    database.engine = engine
-    Message.metadata.create_all(engine)
-    ConversationSummary.metadata.create_all(engine)
-    await database.insert(1000, 1, 10, 123, "Alice", "user", "original")
-    source = await database.select_context_page(user_id=10, group_id=123)
-    source_context = {message.time: message.context_updated_at for message in source}
-    summary = ConversationSummary(
-        scope_type="group",
-        scope_id="123",
-        version=1,
-        source_start_time=1000,
-        source_end_time=1000,
-        source_message_count=1,
-        source_token_count=10,
-        summary_text="Alice 发送了 original。",
-        estimated_tokens=10,
-        model="summary-model",
-        created_at=2000,
-    )
-
-    summary_insert_started = threading.Event()
-    update_started = threading.Event()
-    release_summary_insert = threading.Event()
-
-    def pause_summary_insert(_conn, _cursor, statement, _parameters, _context, _executemany):
-        normalized = statement.lstrip().casefold()
-        if normalized.startswith("insert into conversation_summary"):
-            summary_insert_started.set()
-            release_summary_insert.wait(timeout=2)
-        elif normalized.startswith("update message set"):
-            update_started.set()
-
-    event.listen(engine, "before_cursor_execute", pause_summary_insert)
-    append_task = asyncio.create_task(
-        database.append_conversation_summary(
-            summary,
-            expected_version=0,
-            expected_source_context=source_context,
-        )
-    )
-    update_task = None
-    try:
-        assert await asyncio.to_thread(summary_insert_started.wait, 2)
-
-        async def update_source():
-            await database.update_message_normalization(
-                time=1000,
-                content="changed",
-                raw_segments_json=None,
-                normalized_version=1,
-                normalized_status="complete",
-            )
-
-        update_task = asyncio.create_task(update_source())
-        assert await asyncio.to_thread(update_started.wait, 2)
-        await asyncio.sleep(0.05)
-        assert not update_task.done()
-    finally:
-        release_summary_insert.set()
-
-    assert await append_task is True
-    assert update_task is not None
-    await update_task
-    assert await database.latest_conversation_summary(scope_type="group", scope_id="123") is None
-    invalidated = await database.latest_conversation_summary(
-        scope_type="group",
-        scope_id="123",
-        include_invalidated=True,
-    )
-    assert invalidated is not None
-    assert invalidated.invalidated_at is not None
-
-
-@pytest.mark.asyncio
-async def test_group_source_change_invalidates_group_and_sender_private_summaries(memory_engine):
-    database = MessageDatabase()
-    database.engine = memory_engine
-    Message.metadata.create_all(memory_engine)
-    await database.insert(1000, 1, 10, 123, "Alice", "user", "original")
-
-    for scope_type, scope_id in (("group", "123"), ("private", "10")):
-        summary = ConversationSummary(
-            scope_type=scope_type,
-            scope_id=scope_id,
-            version=1,
-            source_start_time=1000,
-            source_end_time=1000,
-            source_message_count=1,
-            source_token_count=10,
-            summary_text="Alice 发送了 original。",
-            estimated_tokens=10,
-            model="summary-model",
-            created_at=2000,
-        )
-        assert await database.append_conversation_summary(summary, expected_version=0)
-
-    await database.finalize_message_context(time=1000)
-
-    for scope_type, scope_id in (("group", "123"), ("private", "10")):
-        assert (
-            await database.latest_conversation_summary(scope_type=scope_type, scope_id=scope_id)
-            is None
-        )
-        invalidated = await database.latest_conversation_summary(
-            scope_type=scope_type,
-            scope_id=scope_id,
-            include_invalidated=True,
-        )
-        assert invalidated is not None
-        assert invalidated.invalidated_at is not None
-
-
-@pytest.mark.asyncio
-async def test_private_cross_scope_history_does_not_expose_group_attachment_paths(
+async def test_private_history_does_not_include_group_messages_or_attachments(
     memory_engine,
     tmp_path,
     monkeypatch,
@@ -633,7 +454,7 @@ async def test_private_cross_scope_history_does_not_expose_group_attachment_path
         media=[resolve_media(b"group-image", "image")],
     )
 
-    records = await database.select_context_page(user_id=10, group_id=None, ascending=True)
+    records = await _select_scope_messages(database, user_id=10, group_id=None, ascending=True)
     rendered = await database.prepare_message_records(
         records,
         accessible_workspace_key="dm-10",
@@ -642,10 +463,7 @@ async def test_private_cross_scope_history_does_not_expose_group_attachment_path
 
     assert payloads["1"]["content"] == "[消息内容见附件]"
     assert payloads["1"]["attachments"][0]["path"].startswith("/memory/dm-10/")
-    assert payloads["2"]["content"] == "[图片:群聊图]"
-    assert "attachments" not in payloads["2"]
-    assert "reply_to" not in payloads["2"]
-    assert "Bob 在群里的原话" not in _wire_text(rendered[1])
+    assert set(payloads) == {"1"}
 
 
 @pytest.mark.asyncio
@@ -659,7 +477,7 @@ async def test_message_database_select_and_prepare(monkeypatch, memory_engine):
     await database.insert(3, 103, 1, 5, "u1", "user", "group")
 
     user_messages = await database.select(user_id=1)
-    assert len(user_messages) == 3
+    assert len(user_messages) == 2
 
     group_messages = await database.select(group_id=5)
     assert len(group_messages) == 1
@@ -738,7 +556,6 @@ async def test_insert_images_records_memory_file_attachment(monkeypatch, memory_
     Message.metadata.create_all(memory_engine)
     MessageAttachment.metadata.create_all(memory_engine)
     await database.insert(1000, 101, 7, 123, "Alice", "user", "[图片]")
-    initial = (await database.select_context_page(user_id=7, group_id=123))[0]
 
     paths = await database.insert_images(1000, 7, 123, [b"image-bytes"])
 
@@ -753,9 +570,8 @@ async def test_insert_images_records_memory_file_attachment(monkeypatch, memory_
     assert attachment.physical_path == str(expected_path)
     assert attachment.virtual_path == "/memory/group-123/images/1000_0.jpg"
     assert attachment.file_size == len(b"image-bytes")
-    refreshed = (await database.select_context_page(user_id=7, group_id=123))[0]
+    refreshed = (await _select_scope_messages(database, user_id=7, group_id=123))[0]
     assert refreshed.model_content == ""
-    assert refreshed.estimated_tokens > initial.estimated_tokens
 
 
 @pytest.mark.asyncio
@@ -1041,7 +857,7 @@ async def test_prepare_message_preserves_group_participant_boundaries_and_unicod
     )
 
     prepared = await database.prepare_message_records(
-        await database.select_context_page(user_id=10, group_id=123, ascending=True)
+        await _select_scope_messages(database, user_id=10, group_id=123, ascending=True)
     )
 
     assert len(prepared) == 2
@@ -1078,7 +894,7 @@ async def test_private_assistant_envelope_uses_real_sender_without_changing_scop
     )
     await database.insert(3000, None, 30, None, "Assistant", "assistant", "legacy reply")
 
-    records = await database.select_context_page(user_id=20, group_id=None, ascending=True)
+    records = await _select_scope_messages(database, user_id=20, group_id=None, ascending=True)
     prepared = await database.prepare_message_records(records)
 
     assert [record.user_id for record in records] == [20, 20]
@@ -1089,7 +905,7 @@ async def test_private_assistant_envelope_uses_real_sender_without_changing_scop
         "role": "assistant",
     }
 
-    legacy = await database.select_context_page(user_id=30, group_id=None, ascending=True)
+    legacy = await _select_scope_messages(database, user_id=30, group_id=None, ascending=True)
     legacy_payload = _wire_payload((await database.prepare_message_records(legacy))[0])
     assert legacy_payload["sender"]["role"] == "assistant"
     assert "user_id" not in legacy_payload["sender"]
@@ -1114,7 +930,7 @@ async def test_persisted_bot_context_renders_identically_as_history(memory_engin
         directly_mentions_bot=True,
     )
 
-    records = await database.select_context_page(user_id=20, group_id=123, ascending=True)
+    records = await _select_scope_messages(database, user_id=20, group_id=123, ascending=True)
     rendered = (await database.prepare_message_records(records))[0]
     payload = _wire_payload(rendered)
     current_wire_payload = serialize_agent_payload(
@@ -1144,7 +960,7 @@ async def test_empty_current_message_renders_identically_as_history(memory_engin
     Message.metadata.create_all(memory_engine)
     await database.insert(1000, 9, 20, None, "Alice", "user", "", sender_user_id=20, bot_user_id=999)
 
-    record = (await database.select_context_page(user_id=20, group_id=None, ascending=True))[0]
+    record = (await _select_scope_messages(database, user_id=20, group_id=None, ascending=True))[0]
     rendered = (await database.prepare_message_records([record]))[0]
     current = serialize_agent_payload(
         build_agent_message_payload(
@@ -1199,7 +1015,7 @@ async def test_finalized_attachment_message_renders_identically_as_history(memor
     )
     await database.finalize_message_context(time=1000)
 
-    record = (await database.select_context_page(user_id=20, group_id=123, ascending=True))[0]
+    record = (await _select_scope_messages(database, user_id=20, group_id=123, ascending=True))[0]
     rendered = (await database.prepare_message_records([record]))[0]
     attachment = dict(
         build_agent_attachment_payload(
@@ -1233,12 +1049,6 @@ async def test_finalized_attachment_message_renders_identically_as_history(memor
         limit=10,
     )
     assert [message.content for message in search_results] == ["[图片]"]
-    assert record.token_estimate_version == db_module.MESSAGE_TOKEN_ESTIMATE_VERSION
-    assert record.estimated_tokens == db_module.estimate_stored_message_tokens(
-        "",
-        "Alice",
-        serialized_payload=current,
-    )
 
 
 @pytest.mark.asyncio
@@ -1275,7 +1085,7 @@ async def test_partial_image_persistence_keeps_every_original_marker(memory_engi
         expires_at=9_999_999_999_999,
     )
 
-    record = (await database.select_context_page(user_id=20, group_id=123, ascending=True))[0]
+    record = (await _select_scope_messages(database, user_id=20, group_id=123, ascending=True))[0]
     rendered = (await database.prepare_message_records([record]))[0]
 
     assert record.model_content is None
@@ -1300,19 +1110,14 @@ async def test_finalize_message_context_can_clear_preliminary_reply_snapshot(mem
 
     await database.finalize_message_context(time=1000, reply_context_json=None)
 
-    record = (await database.select_context_page(user_id=20, group_id=123, ascending=True))[0]
+    record = (await _select_scope_messages(database, user_id=20, group_id=123, ascending=True))[0]
     rendered = (await database.prepare_message_records([record]))[0]
     assert record.reply_context_json is None
     assert "reply_to" not in _wire_payload(rendered)
-    assert record.estimated_tokens == db_module.estimate_stored_message_tokens(
-        record.content,
-        record.user_name,
-        serialized_payload=_wire_text(rendered),
-    )
 
 
 @pytest.mark.asyncio
-async def test_attachment_cleanup_restores_raw_image_marker_and_recomputes_estimate(
+async def test_attachment_cleanup_restores_raw_image_marker(
     memory_engine,
     tmp_path,
     monkeypatch,
@@ -1342,25 +1147,17 @@ async def test_attachment_cleanup_restores_raw_image_marker_and_recomputes_estim
     )
     await database.finalize_message_context(time=1000)
 
-    before = (await database.select_context_page(user_id=20, group_id=123, ascending=True))[0]
+    before = (await _select_scope_messages(database, user_id=20, group_id=123, ascending=True))[0]
     assert before.model_content == ""
-    before_estimate = before.estimated_tokens
 
     assert await database.cleanup_expired_attachments(now_ms=2) == 1
 
-    after = (await database.select_context_page(user_id=20, group_id=123, ascending=True))[0]
+    after = (await _select_scope_messages(database, user_id=20, group_id=123, ascending=True))[0]
     rendered = (await database.prepare_message_records([after]))[0]
     assert after.content == "[图片]"
     assert after.model_content is None
     assert _wire_payload(rendered)["content"] == "[图片]"
     assert "attachments" not in _wire_payload(rendered)
-    assert after.token_estimate_version == db_module.MESSAGE_TOKEN_ESTIMATE_VERSION
-    assert after.estimated_tokens == db_module.estimate_stored_message_tokens(
-        after.content,
-        after.user_name,
-        serialized_payload=_wire_text(rendered),
-    )
-    assert after.estimated_tokens < before_estimate
 
 
 @pytest.mark.asyncio
@@ -1390,7 +1187,7 @@ async def test_prepare_message_ignores_stale_model_content_when_attachment_file_
     )
     await database.finalize_message_context(time=1000)
 
-    record = (await database.select_context_page(user_id=20, group_id=123, ascending=True))[0]
+    record = (await _select_scope_messages(database, user_id=20, group_id=123, ascending=True))[0]
     assert record.model_content == ""
     payload = _wire_payload((await database.prepare_message_records([record]))[0])
     assert payload["content"] == "[图片]\n[image附件已过期]"
@@ -1414,42 +1211,6 @@ async def test_private_reply_lookup_is_isolated_by_peer(memory_engine):
 
     with pytest.raises(ValueError, match="peer_user_id"):
         await database.select_by_msg_id(msg_id=7, group_id=None)
-
-
-@pytest.mark.asyncio
-async def test_message_token_estimate_covers_reply_snapshot_and_normalization_updates(memory_engine):
-    database = MessageDatabase()
-    database.engine = memory_engine
-    Message.metadata.create_all(memory_engine)
-    reply_to = {
-        "schema": "frontier.qq_message_ref.v1",
-        "sender": {"user_id": "10", "display_name": "Alice", "role": "user"},
-        "content": "引用正文" * 1000,
-    }
-
-    await database.insert(
-        1000,
-        8,
-        20,
-        123,
-        "Bob",
-        "user",
-        "收到",
-        reply_context_json=serialize_agent_payload(reply_to),
-    )
-    before = (await database.select_context_page(user_id=20, group_id=123))[0]
-    assert before.estimated_tokens > 1000
-
-    await database.update_message_normalization(
-        time=1000,
-        content="更新后的长正文" * 1000,
-        raw_segments_json=None,
-        normalized_version=NORMALIZED_VERSION,
-        normalized_status="complete",
-    )
-    after = (await database.select_context_page(user_id=20, group_id=123))[0]
-    assert after.estimated_tokens > before.estimated_tokens
-    assert after.token_estimate_version == db_module.MESSAGE_TOKEN_ESTIMATE_VERSION
 
 
 @pytest.mark.asyncio
@@ -1489,16 +1250,11 @@ async def test_normalization_refresh_preserves_existing_attachment_derived_state
         normalized_status="complete",
     )
 
-    record = (await database.select_context_page(user_id=20, group_id=123))[0]
+    record = (await _select_scope_messages(database, user_id=20, group_id=123))[0]
     rendered = (await database.prepare_message_records([record]))[0]
     assert record.model_content == "新正文"
     assert _wire_payload(rendered)["content"] == "新正文"
     assert len(_wire_payload(rendered)["attachments"]) == 1
-    assert record.estimated_tokens == db_module.estimate_stored_message_tokens(
-        record.content,
-        record.user_name,
-        serialized_payload=_wire_text(rendered),
-    )
 
 
 @pytest.mark.asyncio

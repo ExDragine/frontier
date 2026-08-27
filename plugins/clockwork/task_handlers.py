@@ -274,7 +274,7 @@ async def apod_everyday(**kwargs):
     intro = f"NASA每日一图\n{content['title']}\n{content['explanation']}"
     slm_reply = await assistant_agent("翻译用户给出的天文相关的内容为中文，只返回翻译结果，保留专有词汇为英文", intro)
     messages: list[UniMessage] = [
-        UniMessage(Text(slm_reply if slm_reply else intro)),
+        UniMessage(Text(slm_reply or intro)),
         UniMessage(Image(raw=image)),
     ]
     for message in messages:
@@ -326,7 +326,7 @@ async def eq_usgs(**kwargs):
 
     if not content or not content.get("features"):
         logger.debug("USGS API 返回空数据或缺少 features，跳过")
-        return None
+        return
 
     # 获取最新的地震数据
     data = content["features"][0]
@@ -419,13 +419,16 @@ async def daily_news(**kwargs):  # noqa: C901
     payload = artifacts.payload
     if isinstance(payload, BaseModel):
         payload = payload.model_dump()
-    all_titles: list[str] = []
-    for story in payload.get("top_stories", []):
-        if title := story.get("title", "").strip():
-            all_titles.append(title)
-    for story in payload.get("worth_reading", []):
-        if title := story.get("title", "").strip():
-            all_titles.append(title)
+    all_titles = [
+        title
+        for story in payload.get("top_stories", [])
+        if (title := story.get("title", "").strip())
+    ]
+    all_titles.extend(
+        title
+        for story in payload.get("worth_reading", [])
+        if (title := story.get("title", "").strip())
+    )
     if all_titles:
         await _save_recent_titles(all_titles)
 
@@ -471,7 +474,7 @@ async def nrc_merchant_alert(**kwargs):
 
     if period_end_hour is None:
         logger.debug(f"NRC 商人提醒：当前时间 {now.strftime('%H:%M')} 不在任何推送时段内")
-        return
+        return None
 
     if period_end_hour == 24:
         period_end = now.replace(hour=0, minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)

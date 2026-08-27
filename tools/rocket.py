@@ -61,7 +61,7 @@ async def get_launches(days: int = 7):
 
             # 3. 时间与倒计时计算
             if net_str:
-                t_utc = datetime.fromisoformat(net_str.replace("Z", "+00:00"))
+                t_utc = datetime.fromisoformat(net_str)
                 t_cn = t_utc.astimezone(tz_cn)
 
                 diff = t_utc - now

@@ -49,9 +49,8 @@ async def get_static_china_radar(area: str) -> tuple[Any, UniMessage | None]:
         if result:
             logger.info(f"✅ 工具执行成功: get_static_china_radar (耗时: {end_time - start_time:.2f}s)")
             return f"成功获取{area}地区的雷达图", UniMessage.image(url=result)
-        else:
-            logger.info(f"❌ 工具执行失败: get_static_china_radar - 地区不存在 (耗时: {end_time - start_time:.2f}s)")
-            return f"抱歉，找不到{area}地区的雷达图数据", None
+        logger.info(f"❌ 工具执行失败: get_static_china_radar - 地区不存在 (耗时: {end_time - start_time:.2f}s)")
+        return f"抱歉，找不到{area}地区的雷达图数据", None
     except Exception as e:
         end_time = time.time()
         logger.error(f"💥 工具执行异常: get_static_china_radar - {str(e)} (耗时: {end_time - start_time:.2f}s)")

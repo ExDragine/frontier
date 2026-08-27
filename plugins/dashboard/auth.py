@@ -31,8 +31,7 @@ def create_token(subject: str = "admin") -> str:
 def verify_token(token: str) -> dict:
     """验证并解码 JWT token，失败时抛出异常"""
     try:
-        payload = jwt.decode(token, EnvConfig.DASHBOARD_JWT_SECRET, algorithms=["HS256"])
-        return payload
+        return jwt.decode(token, EnvConfig.DASHBOARD_JWT_SECRET, algorithms=["HS256"])
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(status_code=401, detail="Token 已过期") from exc
     except jwt.InvalidTokenError as exc:

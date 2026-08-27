@@ -50,7 +50,8 @@ UniMessage 文本、图片、视频或文件回复
 | 类别 | 示例 |
 |------|------|
 | 平台操作 | 发送消息/图片/视频/文件，好友、群组、群文件、公告、精华、反应、戳一戳 |
-| 子代理 | `memory-agent` 检索历史，`research-agent` 核验网络资料，`document-agent` 只读分析本地文档 |
+| 历史记忆 | 主 Agent 按需调用最近对话、本地聊天搜索和平台历史工具 |
+| 子代理 | `research-agent` 核验网络资料，`document-agent` 只读分析本地文档 |
 | 媒体生成 | AI 绘图、图片编辑、AI 视频 |
 | 自动任务 | 创建、列出、暂停、恢复、取消用户自动任务 |
 | 网络与资料 | MCP 外部工具 |
@@ -60,10 +61,10 @@ UniMessage 文本、图片、视频或文件回复
 | 占卜 | 易经、塔罗 |
 
 部分工具是受限工具：网页截图/录屏只有在用户明确要求查看网页外观或录制页面时才暴露；ENS 专业气象工具有独立前缀和门控规则。
-工具执行分为三层：媒体工件、平台写操作和未分类 MCP 工具由主 Agent 直接调用；一次性只读查询仅通过 PTC 暴露；需要多轮检索与压缩上下文的任务交给有严格工具与模型调用预算的专用子代理。
+工具执行分为三层：媒体工件、平台写操作、聊天记忆和未分类 MCP 工具由主 Agent 直接调用；一次性只读查询仅通过 PTC 暴露；需要多轮网络研究或文档分析的任务交给有严格工具与模型调用预算的专用子代理。
 
 仓库内置工作流位于 `skills/`，运行时以只读方式挂载到 `/skills`，按描述渐进加载；Agent 不再拥有宿主 Shell，也不会在启动时从远端下载 Skill。
-`memory-agent`、`research-agent` 和 `document-agent` 定义位于 `utils/agents/subagents/`，
+`research-agent` 和 `document-agent` 定义位于 `utils/agents/subagents/`，
 主 Agent 只向它们注入各自所需的最小能力集。文档代理继承当前会话 backend，但全局禁止写入。
 
 ## 技术栈
@@ -216,7 +217,6 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 - `[providers.*]`: LangChain 适配器类型、API 协议、base URL 和可选 API key。
 - `[key]`: NASA、GitHub 等非模型服务密钥；模型密钥统一放在供应商 profile。
 - `[features]` / `[agent]`: 功能开关和 Agent 推理等级。
-- `[conversation_memory]`: 自动会话压缩开关和动态上下文绝对上限。
 - `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]`: 访问策略。
 - `[limits]` / `[notifications]` / `[storage]`: 限流超时、定时推送群和存储设置。
 - `[dashboard]`: 管理面板密码、JWT secret、过期时间。
@@ -257,26 +257,18 @@ DeepSeek V4 的官方 Responses API 直接调用服务端 `web_search`，不再�
 scope 都存在，原目录会保留并打印警告，管理员核实来源后再人工合并到对应的 `group-{id}` 或
 `dm-{id}` 目录。
 
-会话上下文与 SOUL 分开管理。启用 `[conversation_memory]` 后，主 Agent 按当前模型窗口和
-实际工具集合动态载入“版本化 SQL 摘要 + token 预算内的近期原文 + 当前消息”。超过高水位的
-旧消息由后台任务分批压缩；压缩使用任务开始执行时冻结的 60 秒安全截止点，只处理连续稳定前缀，
-写入摘要前还会原子复验源消息版本和所依赖的基摘要，因此不会越过仍可能变化的消息，也不会阻塞
-本轮回复。原始
-`Message` 记录仍作为可检索的权威数据保留；若已覆盖的旧消息后来因引用归一化、附件写入或 TTL
-清理而改变，相关摘要会保留作审计但立即标记失效，后续从最后一个有效版本重建。群聊摘要按
-`group_id` 隔离，私聊摘要按 `user_id` 隔离。私聊上下文会包含该用户自己在群聊中的历史发言，
-但不会带入群 workspace 附件或被引用的其他群成员原文。`storage.query_message_numbers` 继续用于
-回复网关，不再限制主 Agent 的上下文长度。
+会话上下文与 SOUL 分开管理。主 Agent 默认只接收当前用户消息，不自动载入历史，也不生成聊天
+摘要。当前请求依赖前文时，Agent 可调用 `get_recent_conversation` 获取当前会话的近期记录；需要
+关键词、日期、用户或角色筛选时调用 `search_messages`，需要平台侧分页历史时调用
+`get_history_messages`。原始 `Message` 记录仍作为可检索的权威数据保留，并严格按群聊或私聊 scope
+隔离。`storage.query_message_numbers` 仅供回复网关判断是否需要回应，不会注入主 Agent 上下文。
 
 模型上下文中的每条 QQ 消息使用独立的 `frontier.qq_message.v1` JSON 信封，不会把连续群成员
 合并成同一个对话轮次。身份以稳定的 `sender.user_id` 为准，群内显示名优先采用群名片并保留
 昵称；引用消息通过结构化 `reply_to` 关联。信封使用未转义的 UTF-8 JSON，中文不会变成
 `\\uXXXX`。纯文本统一使用各 provider 都支持的字符串 content；当前消息在附件落库后定稿，
-使其下一轮作为历史载入时保持相同的文本信封与附件引用。工具、子代理和受控工具也按稳定顺序
-发送，以减少 provider 前缀缓存抖动。摘要格式升级时，旧格式摘要会保留在 SQL 中供审计，
-但新版本会从原始消息重建。每轮装配得到的真实 raw-history token 预算会复用到后台压缩调度；
-没有本轮预算时，fallback 会预留固定 system/tool 前缀、安全余量和摘要空间，避免近期原文先
-发生滑窗、下一轮才开始压缩。
+并作为按需历史检索时的稳定文本信封与附件引用。工具、子代理和受控工具也按稳定顺序发送，
+以减少 provider 前缀缓存抖动。
 
 从旧版 memory `AGENTS.md` 升级时不做自动迁移。如需按新规则重置旧记忆，可在项目根目录
 执行一次以下命令；它只删除 workspace 目录中的旧 `AGENTS.md`：

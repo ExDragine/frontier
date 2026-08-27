@@ -5,6 +5,7 @@ import os
 import re
 import time
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -306,9 +307,7 @@ async def _active_trigger_should_reply(plaintext: str, wake_words: list[str]) ->
         return True
     if any(keyword in compact_text for keyword in ACTIVE_TRIGGER_STOP_KEYWORDS):
         return False
-    if compact_text in ACTIVE_TRIGGER_LOW_INFO_PHRASES:
-        return False
-    return True
+    return compact_text not in ACTIVE_TRIGGER_LOW_INFO_PHRASES
 
 
 MediaItem = bytes | bytearray | Callable[[], Awaitable[bytes | None]]
@@ -444,10 +443,8 @@ def cleanup_staged_message_files(staged_files: list[StagedMessageFile]) -> None:
         except OSError as exc:
             logger.warning("清理未索引消息文件失败 %s: %s", path, exc)
             continue
-        try:
+        with suppress(OSError):
             path.parent.rmdir()
-        except OSError:
-            pass
 
 
 def _write_staged_file(target_path: Path, data: bytes) -> None:
@@ -548,8 +545,7 @@ async def download_media(
     tasks: list[tuple[int, Awaitable[bytes | None]]] = []
 
     for bucket_index, bucket in enumerate(buckets):
-        for item in bucket:
-            tasks.append((bucket_index, _resolve_media_item(item)))
+        tasks.extend((bucket_index, _resolve_media_item(item)) for item in bucket)
 
     if not tasks:
         return results
@@ -820,7 +816,7 @@ def _get_wake_words(group_id: int) -> list[str]:
     if group_id == 0:
         return list(EnvConfig.BOT_NICKNAMES)
     words = GroupSettingsManager(get_engine()).get(group_id, "wake_word")
-    return words if words else list(EnvConfig.BOT_NICKNAMES)
+    return words or list(EnvConfig.BOT_NICKNAMES)
 
 
 async def _get_text_detector() -> TextCheck | None:

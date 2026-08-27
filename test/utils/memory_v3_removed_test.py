@@ -51,7 +51,6 @@ async def test_chat_agent_does_not_import_or_append_memory_v3_context(monkeypatc
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.memory_subagent = cast(Any, {"name": "memory-agent", "description": "memory", "runnable": object()})
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(

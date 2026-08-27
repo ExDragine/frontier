@@ -96,16 +96,17 @@ def _adapt_backup_data(data: dict) -> dict:
     total_rounds = len(rounds_dict) if isinstance(rounds_dict, dict) and rounds_dict else 1
 
     # 适配 items：rarity 统一为 common，用 _rarity_label 储存 category 展示文字
-    items = []
-    for item in data.get("items", []):
-        items.append({
+    items = [
+        {
             "name": item.get("name", ""),
             "price": _safe_int(item.get("price", 0)),
             "purchase_limit": _safe_int(item.get("limit", 0)),
             "image": item.get("image", ""),
             "rarity": "common",
             "_rarity_label": item.get("category", ""),
-        })
+        }
+        for item in data.get("items", [])
+    ]
 
     # fetchedAt ISO 8601 UTC → 北京时间可读字符串
     fetched_at = data.get("fetchedAt", "")
@@ -113,7 +114,7 @@ def _adapt_backup_data(data: dict) -> dict:
     if fetched_at:
         try:
             # "2026-07-06T10:31:33.660Z" → "2026-07-06 18:31:33"
-            dt_obj = dt.datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+            dt_obj = dt.datetime.fromisoformat(fetched_at)
             dt_bj = dt_obj.astimezone(_TZ_SHANGHAI)
             updated_at = dt_bj.strftime("%H:%M")
         except (ValueError, OSError) as e:

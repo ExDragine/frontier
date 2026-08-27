@@ -123,10 +123,11 @@ def _build_professional_url(
     paused: bool = False,
 ) -> str:
     """拼接 hash-fragment URL。"""
-    if animation == "primary/waves":
-        segments = [time, mode, animation]
-    else:
-        segments = [time, mode, height, animation]
+    segments = (
+        [time, mode, animation]
+        if animation == "primary/waves"
+        else [time, mode, height, animation]
+    )
 
     if annot:
         segments.append(f"annot={annot}")
@@ -314,25 +315,24 @@ async def run_ens_professional(
             artifact = UniMessage.image(raw=image_bytes)
             _ens_cache[url] = (text, artifact, _time.time())
             return text, artifact
-        else:
-            video_bytes = await record_video(
-                url=url,
-                duration=3,
-                width=1920,
-                height=1080,
-                wait_until="networkidle",
-                timeout=60000,
-                wait_selector="canvas",
-                wait_function=_EARTH_LOADING_WAIT,
-                post_wait_ms=5000,
-                hard_wait=True,
-                ready_timeout=30000,
-                page_data_out=page_data,
-            )
-            text = _build_return_text(location_text, time_text, mode_name, page_data)
-            artifact = UniMessage.video(raw=video_bytes)
-            _ens_cache[url] = (text, artifact, _time.time())
-            return text, artifact
+        video_bytes = await record_video(
+            url=url,
+            duration=3,
+            width=1920,
+            height=1080,
+            wait_until="networkidle",
+            timeout=60000,
+            wait_selector="canvas",
+            wait_function=_EARTH_LOADING_WAIT,
+            post_wait_ms=5000,
+            hard_wait=True,
+            ready_timeout=30000,
+            page_data_out=page_data,
+        )
+        text = _build_return_text(location_text, time_text, mode_name, page_data)
+        artifact = UniMessage.video(raw=video_bytes)
+        _ens_cache[url] = (text, artifact, _time.time())
+        return text, artifact
     except Exception as e:
         logger.error(f"ens_professional 失败: {e}")
         return f"获取失败: {e}", None

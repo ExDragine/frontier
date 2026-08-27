@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -165,7 +166,5 @@ async def finish_progress_collection(progress_task: asyncio.Task) -> None:
     finally:
         if not progress_task.done():
             progress_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await progress_task
-            except asyncio.CancelledError:
-                pass

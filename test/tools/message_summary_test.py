@@ -21,6 +21,48 @@ def _message(*, content: str = "这里提到了 Python 搜索功能", role: str 
 
 
 @pytest.mark.asyncio
+async def test_get_recent_conversation_is_current_scope_only_and_chronological(
+    load_tool_module,
+    monkeypatch,
+):
+    mod = load_tool_module("memory")
+    captured = {}
+    older = _message(content="先前消息")
+    newer = _message(content="当前消息", role="assistant").model_copy(
+        update={"time": older.time + 1000, "msg_id": 89, "sender_user_id": 999}
+    )
+
+    class DummyMessageDb:
+        async def search_messages(self, **kwargs):
+            captured.update(kwargs)
+            return [newer, older]
+
+    monkeypatch.setattr(mod, "message_db", DummyMessageDb())
+    result = await mod.get_recent_conversation(
+        config={"configurable": {"user_id": "456", "group_id": 123}},
+        limit=999,
+        content_max_chars=5,
+    )
+
+    assert captured == {
+        "group_id": 123,
+        "user_id": 456,
+        "content_query": None,
+        "target_user_id": None,
+        "target_user_name": None,
+        "msg_id": None,
+        "start_time": None,
+        "end_time": None,
+        "role": None,
+        "limit": 100,
+        "offset": 0,
+        "sort": "time",
+    }
+    assert result.index("先前消息") < result.index("当前消息")
+    assert "user_id=999" in result
+
+
+@pytest.mark.asyncio
 async def test_search_messages_forwards_filters_and_uses_relevance_for_query(load_tool_module, monkeypatch):
     mod = load_tool_module("memory")
     captured = {}
@@ -188,3 +230,6 @@ def test_history_tool_accepts_only_pagination_and_injected_config(load_tool_modu
 
     assert history_fields == {"config", "start_message_seq", "limit"}
     assert {"message_scene", "peer_id"}.isdisjoint(history_fields)
+
+    recent_fields = set(inspect.signature(mod.get_recent_conversation).parameters)
+    assert recent_fields == {"config", "limit", "content_max_chars"}

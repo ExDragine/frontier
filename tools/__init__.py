@@ -111,9 +111,9 @@ class ModuleTools:
             self.tool_metadata,
         ) = _discover_tools()
 
-        # memory 由专用 subagent 独占；其他领域工具由主 Agent
+        # 记忆与其他领域工具都由主 Agent 按需调用，
         # 再按 direct / PTC 执行通道分流。
-        for group in ("astro", "earth", "divination"):
+        for group in ("astro", "earth", "memory", "divination"):
             self.subagent_tools["main"].extend(self.subagent_tools[group])
 
     @property

@@ -14,7 +14,6 @@ from typing import NotRequired, TypedDict
 
 AGENT_MESSAGE_SCHEMA = "frontier.qq_message.v1"
 AGENT_MESSAGE_REF_SCHEMA = "frontier.qq_message_ref.v1"
-CONVERSATION_SUMMARY_SCHEMA = "frontier.conversation_summary.v1"
 DIRECT_MENTION_CONTEXT_MARKER = "[你被主动@了，这条消息是明确对你说的]"
 EMPTY_MESSAGE_CONTEXT_MARKER = "[用户叫了你一声]"
 ATTACHMENT_ONLY_CONTEXT_MARKER = "[消息内容见附件]"
@@ -261,7 +260,6 @@ __all__ = [
     "AGENT_MESSAGE_REF_SCHEMA",
     "AGENT_MESSAGE_SCHEMA",
     "ATTACHMENT_ONLY_CONTEXT_MARKER",
-    "CONVERSATION_SUMMARY_SCHEMA",
     "DIRECT_MENTION_CONTEXT_MARKER",
     "EMPTY_MESSAGE_CONTEXT_MARKER",
     "REPLY_ONLY_CONTEXT_MARKER",

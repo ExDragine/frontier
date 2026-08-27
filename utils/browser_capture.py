@@ -13,6 +13,7 @@ import tempfile
 import time
 from asyncio import Lock
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Any
 
 import imageio_ffmpeg
@@ -60,10 +61,8 @@ async def _get_browser():
                 connected = False
         if not connected:
             if _playwright is not None:
-                try:
+                with suppress(Exception):
                     await _playwright.stop()
-                except Exception:
-                    pass
                 _playwright = None
             _browser = None
             _playwright = await async_playwright().start()
@@ -84,16 +83,12 @@ async def _restart_browser():
     global _browser, _playwright
     async with _browser_lock:
         if _browser is not None:
-            try:
+            with suppress(Exception):
                 await _browser.close()
-            except Exception:
-                pass
             _browser = None
         if _playwright is not None:
-            try:
+            with suppress(Exception):
                 await _playwright.stop()
-            except Exception:
-                pass
             _playwright = None
         _playwright = await async_playwright().start()
         _browser = await _playwright.chromium.launch(
@@ -214,7 +209,15 @@ def _webm_to_mp4_bytes(
     if trim_duration is not None:
         cmd += ["-t", str(trim_duration)]
     cmd += ["-c:v", "libx264", "-preset", "fast", "-crf", "18", "-c:a", "aac", "-y", mp4_path]
-    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    # ffmpeg_path comes from imageio-ffmpeg and every argument is passed as a
+    # separate argv item; no shell or user-controlled executable is involved.
+    result = subprocess.run(  # noqa: S603
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if result.returncode != 0:
         raise RuntimeError(f"视频转码失败: {result.stderr}")
     with open(mp4_path, "rb") as f:
@@ -279,10 +282,8 @@ async def screenshot(
                 wait_function=wait_function,
             )
             if page_data_out is not None:
-                try:
+                with suppress(Exception):
                     page_data_out.update(await _extract_page_data(page))
-                except Exception:
-                    pass
             if selector:
                 element = await page.wait_for_selector(selector, timeout=timeout)
                 if element is None:
@@ -371,10 +372,8 @@ async def record_video(
                         screenshot_bytes,
                     )
                 if page_data_out is not None:
-                    try:
+                    with suppress(Exception):
                         page_data_out.update(await _extract_page_data(page))
-                    except Exception:
-                        pass
                 _ready_elapsed = time.time() - _recording_start
                 await page.wait_for_timeout(duration * 1000)
             finally:
@@ -440,15 +439,11 @@ async def close_browser():
     global _browser, _playwright
     async with _browser_lock:
         if _browser is not None:
-            try:
+            with suppress(Exception):
                 await _browser.close()
-            except Exception:
-                pass
             _browser = None
             logger.info("Playwright 浏览器已关闭")
         if _playwright is not None:
-            try:
+            with suppress(Exception):
                 await _playwright.stop()
-            except Exception:
-                pass
             _playwright = None

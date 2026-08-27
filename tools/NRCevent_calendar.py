@@ -11,7 +11,6 @@ from utils.alconna import UniMessage
 from utils.http_client import get_http_client
 from utils.markdown_render import _get_browser
 
-
 TARGET_URL = "https://rocom.qq.com/"
 CALENDAR_DATA_INDEX = "4"
 NAV_SELECTOR = f'a.nav-item[data-index="{CALENDAR_DATA_INDEX}"]'

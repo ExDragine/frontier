@@ -23,10 +23,7 @@ def _configurable(config: RunnableConfig | None) -> dict:
 def _role_from_value(value: Any) -> str | None:
     if value in (None, ""):
         return None
-    if isinstance(value, dict):
-        value = value.get("role")
-    else:
-        value = getattr(value, "role", value)
+    value = value.get("role") if isinstance(value, dict) else getattr(value, "role", value)
     if value in (None, ""):
         return None
     return str(value)

@@ -40,8 +40,7 @@ async def solar_flare():
             noticed.append(message)
     if noticed:
         return "\n".join(noticed)
-    else:
-        return "最近没有X级别以上的FLR发生"
+    return "最近没有X级别以上的FLR发生"
 
 
 @tool(response_format="content")
@@ -70,7 +69,7 @@ async def realtime_solarwind():
     quality = plasma[-1][4]
     source = plasma[-1][5]
     active = plasma[-1][6]
-    message = (
+    return (
         "> 太阳风信息\n"
         f"时间：{time_tag} (UTC)\n"
         f"速度：{speed} km/s\n"
@@ -82,7 +81,6 @@ async def realtime_solarwind():
         f"数据质量: {'原始数据' if str(quality) == '0' else '校准数据'}\n"
         f"来源: {'ACE' if str(source) == '1' else 'DSCOVR'}\n"
     )
-    return message
 
 
 @tool(response_format="content")
@@ -115,7 +113,7 @@ async def soho_realtime_solarwind():
     mag_min = int(parts[6])
     mag_max = int(parts[7])
 
-    message = (
+    return (
         "> 太阳风信息\n"
         f"日期时间：{date_utc_plus_8}\n"
         f"速度：{speed} km/s\n"
@@ -126,7 +124,6 @@ async def soho_realtime_solarwind():
         f"磁场强度最大值：{mag_max} nT\n"
         "数据来源:https://space.umd.edu/pm/"
     )
-    return message
 
 
 @tool(response_format="content_and_artifact")

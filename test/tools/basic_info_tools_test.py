@@ -194,6 +194,7 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "paint": types.SimpleNamespace(get_paint=FakeBaseTool("get_paint")),
         "video": types.SimpleNamespace(get_video=FakeBaseTool("get_video")),
         "memory": types.SimpleNamespace(
+            get_recent_conversation=FakeBaseTool("get_recent_conversation", "content"),
             search_messages=FakeBaseTool("search_messages"),
             get_history_messages=FakeBaseTool("get_history_messages"),
         ),
@@ -247,6 +248,9 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_deepseek_api_balance",
         "get_paint",
         "get_video",
+        "get_recent_conversation",
+        "search_messages",
+        "get_history_messages",
         "mcp_tool",
         "tavily_extract",
         "tavily_search",
@@ -296,13 +300,20 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "aurora_live",
         "get_fy4b_satellite_image",
         "get_static_china_radar",
+        "get_recent_conversation",
+        "search_messages",
+        "get_history_messages",
     }
     assert research_names == {"tavily_extract", "tavily_search", "web_search_exa", "web_fetch_exa"}
     assert ptc_names.isdisjoint(direct_names)
     assert ptc_names.isdisjoint(research_names)
     assert direct_names.isdisjoint(research_names)
     assert ptc_names | direct_names | research_names == {tool.name for tool in module.agent_tools.main_tools}
-    assert {tool.name for tool in groups["memory"]} == {"search_messages", "get_history_messages"}
+    assert {tool.name for tool in groups["memory"]} == {
+        "get_recent_conversation",
+        "search_messages",
+        "get_history_messages",
+    }
     assert {tool.name for tool in groups["divination"]} == {"iching_divination"}
     assert {tool.name for tool in groups["external"]} == {
         "mcp_tool",

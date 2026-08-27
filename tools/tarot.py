@@ -94,16 +94,15 @@ class TarotReader:
         """
         if spread_type in self.spreads:
             return self.spreads[spread_type]
-        else:
-            # 自定义牌阵
-            count = card_count or 1
-            positions = [f"位置{i + 1}" for i in range(count)]
-            return {
-                "name": f"自定义{count}张牌阵",
-                "description": f"自由抽取{count}张牌进行解读",
-                "positions": positions,
-                "interpretation_hint": "观察所有牌面的整体能量和相互关系，从中寻找答案",
-            }
+        # 自定义牌阵
+        count = card_count or 1
+        positions = [f"位置{i + 1}" for i in range(count)]
+        return {
+            "name": f"自定义{count}张牌阵",
+            "description": f"自由抽取{count}张牌进行解读",
+            "positions": positions,
+            "interpretation_hint": "观察所有牌面的整体能量和相互关系，从中寻找答案",
+        }
 
     def format_reading(
         self, drawn_cards: list[dict], spread_type: str, question: str, card_count: int | None = None

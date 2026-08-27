@@ -91,7 +91,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `main` | `adapter`, `milky_*`, `paint`, `video`, `reminder`, `scheduled_task`, `deepseek_balance`, `NRC*`, `typhoon` | QQ 平台操作、媒体生成、提醒/自动任务、游戏/业务工具 |
 | `astro` | `aurora`, `comet`, `heavens_above`, `rocket`, `satellite`, `space_weather` | 天文、卫星、空间天气 |
 | `earth` | `earthquake`, `radar`, `weather` | 地震、雷达、天气 |
-| `memory` | `memory` | 当前会话聊天记录搜索和平台历史读取，仅供 `memory-agent` 使用 |
+| `memory` | `memory` | 当前会话最近对话、聊天记录搜索和平台历史读取，由主 Agent 按需调用 |
 | `divination` | `iching`, `tarot` | 易经、塔罗 |
 | `restricted` | `ens_normal`, `ens_professional`, `webpage_screenshot`, `webpage_recording` | 受控工具：ENS 在 Agent 中显式追加；网页截图/录屏需 Signal LLM 判断用户明确要求 |
 | `external` | MCP tools | `mcp.json` 定义的外部工具，首次访问 `agent_tools.mcp_tools` 时懒加载 |
@@ -109,7 +109,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，Signal 判断使用 `EnvConfig.SIGNAL_MODEL`。
 - 当模型引用的供应商 `api_mode` 为 `responses` 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；其他协议路径会跳过这些参数。
 - 根据模型自身的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
-- 主 Agent 不直接持有记忆工具；`memory-agent` 检索会话历史，`research-agent` 使用有次数上限的 Exa / Tavily 工具搜索和核验网络资料，`document-agent` 继承当前 backend 并仅读分析 workspace / memory 文件。一次性只读查询工具通过 PTC 交给主 Agent，媒体工件与平台写操作保留为主 Agent 直接工具。
+- 主 Agent 默认只接收当前消息，并直接持有当前会话的最近对话、聊天搜索和平台历史工具；需要前文时按需调用。`research-agent` 使用有次数上限的 Exa / Tavily 工具搜索和核验网络资料，`document-agent` 继承当前 backend 并仅读分析 workspace / memory 文件。一次性只读查询工具通过 PTC 交给主 Agent，媒体工件与平台写操作保留为主 Agent 直接工具。
 - 专用子代理定义位于 `utils/agents/subagents/`，使用 `create_agent()` 构建独立图并包装为 `CompiledSubAgent`；builder 只接收所需工具列表，避免反向依赖工具注册器。
 - Frontier 为四类模型 provider 注册统一 Harness Profile，关闭 Deep Agents 自动添加且工具面重复的 `general-purpose` subagent。
 - 模型目录会转换为 LangChain `ModelProfile` 注入模型实例，为 Deep Agents 提供上下文窗口、输出上限和能力元数据；目录外模型继续按未知模型降级。

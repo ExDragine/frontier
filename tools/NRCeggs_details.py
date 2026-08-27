@@ -143,12 +143,11 @@ def _prob_color(prob_raw) -> str:
         return "#ef4444"
     if value >= 50:
         return "#10b981"
-    elif value >= 30:
+    if value >= 30:
         return "#f59e0b"
-    elif value >= 10:
+    if value >= 10:
         return "#f97316"
-    else:
-        return "#ef4444"
+    return "#ef4444"
 
 
 _RANK_BADGE_COLORS = {
@@ -209,8 +208,10 @@ def _summary_text(zj: str, zl: str, items: list[dict]) -> str:
     lines = [f"洛克王国孵蛋查询 · 直径:{zj} 重量:{zl}"]
     if not items:
         lines.append("未找到匹配的精灵蛋数据")
-    for item in items:
-        lines.append(f"  {item['rank']}. [{item['danzu_display']}] {item['name']} - 概率: {item['prob_display']}%")
+    lines.extend(
+        f"  {item['rank']}. [{item['danzu_display']}] {item['name']} - 概率: {item['prob_display']}%"
+        for item in items
+    )
     return "\n".join(lines)
 
 

@@ -55,7 +55,7 @@ def _parse_report_time(value: str) -> datetime.datetime | None:
     candidates = [cleaned, cleaned.replace("/", "-")]
     for candidate in candidates:
         try:
-            parsed = datetime.datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+            parsed = datetime.datetime.fromisoformat(candidate)
         except ValueError:
             continue
         if parsed.tzinfo is None:
@@ -69,10 +69,11 @@ def _is_fresh_snapshot(payload: CencEewPayload, now_cn: datetime.datetime | None
     if report_time is None:
         return False
     current = now_cn or datetime.datetime.now(CENC_TIMEZONE)
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=CENC_TIMEZONE)
-    else:
-        current = current.astimezone(CENC_TIMEZONE)
+    current = (
+        current.replace(tzinfo=CENC_TIMEZONE)
+        if current.tzinfo is None
+        else current.astimezone(CENC_TIMEZONE)
+    )
     age = current - report_time
     return -CENC_SNAPSHOT_MAX_FUTURE <= age <= CENC_SNAPSHOT_MAX_AGE
 

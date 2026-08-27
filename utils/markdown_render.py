@@ -46,8 +46,7 @@ def _on_page_error(exc):
 
 async def markdown_to_text(markdown_text):
     md_html = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"]).render(markdown_text)
-    plain_text = BeautifulSoup(md_html, "html.parser").get_text()
-    return plain_text
+    return BeautifulSoup(md_html, "html.parser").get_text()
 
 
 def _markdown_asset_paths() -> tuple[Path, Path]:
@@ -233,10 +232,7 @@ async def playwright_render(name: str, packed_args: dict):
             if isinstance(depth, str):
                 pattern = re.compile(r"[\d.]+")
                 result = pattern.search(depth)
-                if result:
-                    depth = float(result.group(0))
-                else:
-                    depth = 10.0
+                depth = float(result.group(0)) if result else 10.0
             elif depth is not None:
                 depth = float(depth)
             else:
@@ -271,5 +267,4 @@ async def playwright_render(name: str, packed_args: dict):
         if close_page is not None:
             await close_page()
     os.remove(cache_file)
-    if bytes_picture:
-        return bytes_picture
+    return bytes_picture

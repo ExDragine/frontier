@@ -1007,20 +1007,19 @@ async def _execute_single_query(
         if from_global_sea:
             text += f"（此为{location.strip()}监测点数据）"
         return text, image_bytes, False
-    else:
-        video_bytes = await record_video(
-            url=url, duration=3, width=vw, height=vh,
-            wait_until="networkidle", timeout=60000,
-            wait_selector="canvas",
-            wait_function=_EARTH_LOADING_WAIT,
-            post_wait_ms=5000, hard_wait=True, ready_timeout=30000,
-            page_data_out=page_data,
-        )
-        time_text = _format_time_text(time)
-        text = _build_return_text(location, time_text, scenario, page_data)
-        if from_global_sea:
-            text += f"（此为{location.strip()}监测点数据）"
-        return text, video_bytes, True
+    video_bytes = await record_video(
+        url=url, duration=3, width=vw, height=vh,
+        wait_until="networkidle", timeout=60000,
+        wait_selector="canvas",
+        wait_function=_EARTH_LOADING_WAIT,
+        post_wait_ms=5000, hard_wait=True, ready_timeout=30000,
+        page_data_out=page_data,
+    )
+    time_text = _format_time_text(time)
+    text = _build_return_text(location, time_text, scenario, page_data)
+    if from_global_sea:
+        text += f"（此为{location.strip()}监测点数据）"
+    return text, video_bytes, True
 
 
 async def run_ens_normal(

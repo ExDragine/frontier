@@ -211,11 +211,18 @@ def format_files_info(group_id: int, info: Any) -> str:
     files = data.get("files") or []
     folders = data.get("folders") or []
     lines = [f"群 {group_id} 文件（文件 {len(files)} 个，文件夹 {len(folders)} 个）："]
-    for folder in folders:
-        lines.append("- folder " + format_key_values(folder, ("folder_id", "folder_name", "file_count")))
-    for file in files:
-        lines.append(
+    lines.extend(
+        "- folder " + format_key_values(folder, ("folder_id", "folder_name", "file_count"))
+        for folder in folders
+    )
+    lines.extend(
+        (
             "- file "
-            + format_key_values(file, ("file_id", "file_name", "file_size", "parent_folder_id", "uploader_id"))
+            + format_key_values(
+                file_info,
+                ("file_id", "file_name", "file_size", "parent_folder_id", "uploader_id"),
+            )
         )
+        for file_info in files
+    )
     return "\n".join(lines)

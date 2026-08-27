@@ -103,8 +103,8 @@ class FrontierAgentRuntime:
         progress_reporter: ProgressReporter | None = None,
     ) -> AgentRuntimeResult:
         content: list[dict] = [{"type": "text", "text": request.prompt}]
-        for item in (*request.images, *request.audio):
-            content.append(
+        content.extend(
+            (
                 standard_media_block(
                     resolve_media(
                         item.data,
@@ -113,6 +113,8 @@ class FrontierAgentRuntime:
                     )
                 )
             )
+            for item in (*request.images, *request.audio)
+        )
         result = await self._get_cognitive().chat_agent(
             [{"role": "user", "content": content}],
             user_id=f"acp-{request.session_id}",

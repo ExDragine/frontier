@@ -37,7 +37,6 @@ from utils.llm_factory import (
 from utils.media import inline_media_bytes, media_block_kind
 
 from .capture import detect_browser_capture_intent
-from .conversation_memory import ConversationHistoryRequest, assemble_conversation_history
 from .inputs import filter_messages_for_model_capabilities
 from .progress import (
     ProgressEvent,
@@ -51,7 +50,6 @@ from .runtime import agent_thread_id, conversation_workspace_key
 from .subagents import (
     build_acp_subagents,
     build_document_subagent,
-    build_memory_subagent,
     build_research_subagent,
 )
 from .workspace import SKILLS_BACKEND_PATH, build_agent_backend
@@ -200,9 +198,6 @@ class FrontierCognitive:
     def __init__(self):
         self.tools = _stable_named_items(agent_tools.direct_tools)
         self.ptc_tools = _stable_named_items(agent_tools.ptc_tools)
-        self.memory_subagent = build_memory_subagent(
-            _stable_named_items(agent_tools.subagent_tools["memory"])
-        )
         research_tools = _stable_named_items(agent_tools.research_tools)
         self.research_subagent = build_research_subagent(research_tools) if research_tools else None
         self.document_subagent = build_document_subagent()
@@ -236,9 +231,11 @@ class FrontierCognitive:
             if blocks is None:
                 blocks = getattr(final_ai, "content", None)
             if isinstance(blocks, list):
-                for block in blocks:
-                    if media_message := _native_media_message(block):
-                        uni_messages.append(media_message)
+                uni_messages.extend(
+                    media_message
+                    for block in blocks
+                    if (media_message := _native_media_message(block))
+                )
 
         logger.info(f"📨 总共提取到 {len(uni_messages)} 个 UniMessage")
         return uni_messages
@@ -259,7 +256,6 @@ class FrontierCognitive:
         user_text: str | None = None,
         access_profile: Literal["frontier", "acp"] = "frontier",
         enable_acp_subagents: bool = True,
-        conversation_history: ConversationHistoryRequest | None = None,
     ):
         workspace_key = conversation_workspace_key(user_id, group_id)
         uses_responses_api = provider_uses_responses_api(
@@ -335,38 +331,14 @@ class FrontierCognitive:
         else:
             logger.debug("当前模型路由不支持服务端原生 web_search，跳过挂载")
         subagents = []
-        if access_profile == "frontier":
-            memory_subagent = getattr(self, "memory_subagent", None) or build_memory_subagent(
-                agent_tools.subagent_tools["memory"]
-            )
-            subagents.append(memory_subagent)
-            if research_subagent := getattr(self, "research_subagent", None):
-                subagents.append(research_subagent)
+        if access_profile == "frontier" and (
+            research_subagent := getattr(self, "research_subagent", None)
+        ):
+            subagents.append(research_subagent)
         if document_subagent := getattr(self, "document_subagent", None):
             subagents.append(document_subagent)
         if access_profile == "frontier" and enable_acp_subagents:
             subagents.extend(_stable_named_items(build_acp_subagents()))
-
-        if conversation_history is not None and EnvConfig.CONVERSATION_MEMORY_ENABLED:
-            prefix_count = max(0, min(conversation_history.prefix_message_count, len(messages)))
-            current_messages = list(messages[prefix_count:])
-            try:
-                history, budget = await assemble_conversation_history(
-                    conversation_history,
-                    model=model,
-                    system_prompt=system_prompt,
-                    tools=effective_tools,
-                    current_messages=current_messages,
-                )
-                messages = [*history, *current_messages]
-                logger.info(
-                    "动态会话上下文: history_budget=%s raw_budget=%s loaded=%s",
-                    budget.history_tokens,
-                    budget.raw_tokens,
-                    len(history),
-                )
-            except Exception as exc:
-                logger.warning("动态会话上下文装配失败，回退固定历史: %s: %s", type(exc).__name__, exc)
 
         messages = filter_messages_for_model_capabilities(
             messages,
