@@ -1537,6 +1537,55 @@ class MessageDatabase:
 
         return await _run_database(self.engine, _do)
 
+    async def select_recent_media_message(
+        self,
+        *,
+        user_id: int,
+        group_id: int | None,
+        before_time: int,
+        after_time: int,
+        limit: int = 20,
+    ) -> Message | None:
+        """Return the newest same-sender message carrying raw image/file segments.
+
+        This deliberately uses the strict current QQ scope rather than the
+        broader private-memory compatibility scope. Media paths and Milky file
+        identifiers must never cross a group/private workspace boundary.
+        """
+
+        def _do():
+            with Session(self.engine) as session:
+                conditions = [
+                    Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL,
+                    Message.role == "user",
+                    Message.time < before_time,
+                    Message.time >= after_time,
+                    Message.raw_segments_json.is_not(None),
+                ]
+                if group_id is None:
+                    conditions.extend((Message.group_id.is_(None), Message.user_id == user_id))
+                else:
+                    conditions.extend((Message.group_id == group_id, Message.user_id == user_id))
+                statement = (
+                    select(Message)
+                    .where(*conditions)
+                    .order_by(desc(Message.time))
+                    .limit(max(1, min(limit, 100)))
+                )
+                for message in session.exec(statement).all():
+                    try:
+                        segments = json.loads(message.raw_segments_json or "[]")
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(segments, list) and any(
+                        isinstance(segment, dict) and segment.get("type") in {"image", "file"}
+                        for segment in segments
+                    ):
+                        return message
+                return None
+
+        return await _run_database(self.engine, _do)
+
     async def select_by_msg_id(
         self,
         *,
@@ -1757,9 +1806,12 @@ class MessageDatabase:
         return await self._attachments.insert_attachment(**kwargs)
 
     async def select_image_attachments_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
-        self._attachments.engine = self.engine
-        attachments = await self._attachments.select_by_msg_time(msg_time)
+        attachments = await self.select_attachments_by_msg_time(msg_time)
         return [attachment for attachment in attachments if attachment.kind == "image"]
+
+    async def select_attachments_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
+        self._attachments.engine = self.engine
+        return await self._attachments.select_by_msg_time(msg_time)
 
     def load_attachment_files(self, records: list[MessageAttachment]) -> tuple[list[bytes], int]:
         return self._attachments.load_files(records)

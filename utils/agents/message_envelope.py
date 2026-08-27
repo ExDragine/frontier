@@ -231,6 +231,7 @@ def build_agent_message_ref_payload(
     content: str,
     image_count: int = 0,
     missing_image_count: int = 0,
+    attachments: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     """Build the nested immutable snapshot used by a message reply."""
     payload: dict[str, object] = {
@@ -253,6 +254,15 @@ def build_agent_message_ref_payload(
         if missing_image_count:
             media["missing_image_count"] = missing_image_count
         payload["media"] = media
+    if attachments:
+        payload["attachments"] = sorted(
+            attachments,
+            key=lambda attachment: (
+                str(attachment.get("file_name", "")),
+                str(attachment.get("kind", "")),
+                str(attachment.get("path", "")),
+            ),
+        )
     return payload
 
 
