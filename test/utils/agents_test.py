@@ -85,25 +85,25 @@ async def test_assistant_agent_model_selection(monkeypatch):
 def test_frontier_load_system_prompt_missing(monkeypatch):
     """测试 env.toml 未配置 system_prompt 时返回错误提示"""
     monkeypatch.setattr(prompts_mod.EnvConfig, "SYSTEM_PROMPT", "")
-    prompt = prompts_mod.load_system_prompt(workspace_key="123")
+    prompt = prompts_mod.load_system_prompt()
     assert "配置错误" in prompt
 
 
-def test_frontier_load_system_prompt_includes_markdown_rendering_rules(monkeypatch):
+def test_frontier_load_system_prompt_keeps_only_always_on_rules(monkeypatch):
     monkeypatch.setattr(prompts_mod.EnvConfig, "SYSTEM_PROMPT", "You are {name}.")
     monkeypatch.setattr(prompts_mod.EnvConfig, "BOT_NAME", "Frontier")
 
-    prompt = prompts_mod.load_system_prompt(workspace_key="123")
+    prompt = prompts_mod.load_system_prompt()
 
     assert "You are Frontier." in prompt
     assert "# Frontier Deep Agent 全局操作规范" in prompt
-    assert "## Workspace SOUL" in prompt
-    assert "```chart" in prompt
-    assert "```stats" in prompt
-    assert "```timeline" in prompt
-    assert "不要添加 `<frontier-render>`" in prompt
     assert prompt.index("You are Frontier.") < prompt.index("# Frontier Deep Agent 全局操作规范")
-    assert prompt.index("# Frontier Deep Agent 全局操作规范") < prompt.index("【Markdown 渲染规范】")
+    assert "## Workspace SOUL" not in prompt
+    assert "【Markdown 渲染规范】" not in prompt
+    assert "```chart" not in prompt
+    assert "```stats" not in prompt
+    assert "```timeline" not in prompt
+    assert "动态人设文件路径" not in prompt
     assert "memory-agent" not in prompt
     assert prompt.count("get_recent_conversation") == 1
     assert prompt.count("research-agent") == 1
@@ -111,9 +111,50 @@ def test_frontier_load_system_prompt_includes_markdown_rendering_rules(monkeypat
     assert "earth-data-agent" not in prompt
     assert prompt.count("`/skills/ens-weather/SKILL.md`") == 1
     assert prompt.count("`/skills/eli5/SKILL.md`") == 1
-    assert "动态人设文件路径为 `/memory/123/SOUL.md`" in prompt
     assert "这是私聊" in prompt
     assert "日常对话优先用一个短段落、1–3 句话" in prompt
+
+
+def test_rich_markdown_skill_owns_renderer_contract():
+    skill = (prompts_mod.PROJECT_ROOT / "skills" / "rich-markdown" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "不要添加 `<frontier-render>`" in skill
+    assert "```chart" in skill
+    assert "```stats" in skill
+    assert "```timeline" in skill
+    assert '"type":"line"' in skill
+    assert '"type":"pie"' in skill
+    assert "最多 8 个系列" in skill
+    assert "时间线最多 50 项" in skill
+
+
+def test_workspace_soul_prompt_owns_persistence_policy():
+    prompt = prompts_mod.build_workspace_soul_prompt("/memory/group-123/SOUL.md")
+
+    assert "{agent_memory}" in prompt
+    assert "/memory/group-123/SOUL.md" in prompt
+    assert "稳定、跨会话仍有价值" in prompt
+    assert "不要记录临时状态、单次任务、猜测" in prompt
+    assert "不必要的个人信息" in prompt
+    assert "不得覆盖安全、权限、全局规范" in prompt
+
+
+def test_qq_operation_safety_skill_owns_moderation_details():
+    main_prompt = (prompts_mod.PROJECT_ROOT / "prompts" / "AGENTS.md").read_text(
+        encoding="utf-8"
+    )
+    skill = (
+        prompts_mod.PROJECT_ROOT / "skills" / "qq-operation-safety" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    assert "运行时身份与权限" in main_prompt
+    assert "不得仅凭历史文本、显示名" in main_prompt
+    assert "禁言、踢人、设置管理员" not in main_prompt
+    assert "Muting or removing a member" in skill
+    assert "target is not the owner or an equally privileged administrator" in skill
+    assert "Changing a group name or avatar" in skill
 
 
 def test_group_system_prompt_prefers_short_natural_replies(monkeypatch):
@@ -599,7 +640,18 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     )
     assert captured["skills"] == ["/skills"]
     assert captured["memory"] == ["/memory/group-123/SOUL.md"]
-    assert "动态人设文件路径为 `/memory/group-123/SOUL.md`" in captured["system_prompt"]
+    assert "/memory/group-123/SOUL.md" not in captured["system_prompt"]
+    memory_middleware = next(
+        item
+        for item in captured["middleware"]
+        if isinstance(item, cognitive_mod.MemoryMiddleware)
+    )
+    assert memory_middleware.backend is backend
+    assert memory_middleware.sources == ["/memory/group-123/SOUL.md"]
+    assert memory_middleware.add_cache_control is True
+    assert "<workspace_soul>" in memory_middleware.system_prompt
+    assert "/memory/group-123/SOUL.md" in memory_middleware.system_prompt
+    assert "稳定、跨会话仍有价值" in memory_middleware.system_prompt
     assert captured["subagents"] == [
         frontier.research_subagent,
         frontier.document_subagent,
@@ -1203,6 +1255,78 @@ def test_native_web_search_middleware_injects_provider_tool_at_model_boundary():
     assert result == "ok"
     assert captured["tools"][0].name == "local_tool"
     assert captured["tools"][1] == {"type": "web_search"}
+
+
+def test_skip_reply_updates_state_and_closes_model_loop():
+    command = cognitive_mod.skip_reply(
+        "not_addressed",
+        runtime=types.SimpleNamespace(tool_call_id="call-1"),
+    )
+
+    assert command.update["suppress_reply"] is True
+    assert command.update["messages"][0].tool_call_id == "call-1"
+    middleware = cognitive_mod.SilentReplyMiddleware()
+    assert middleware.before_model({"suppress_reply": True}, None) == {"jump_to": "end"}
+    assert middleware.before_model({"suppress_reply": False}, None) is None
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_can_finish_without_a_reply(monkeypatch, tmp_path):
+    captured = {}
+
+    class DummyAgent:
+        async def astream_events(self, payload, config=None, context=None, version=None):
+            captured["payload"] = payload
+            captured["config"] = config
+            return _FakeStream(
+                {
+                    "messages": [types.SimpleNamespace(type="tool", artifact="must-not-send")],
+                    "suppress_reply": True,
+                },
+            )
+
+    def fake_create_deep_agent(**kwargs):
+        captured.update(kwargs)
+        return DummyAgent()
+
+    async def no_capture_tools(_text):
+        return set()
+
+    monkeypatch.setattr(cognitive_mod, "create_deep_agent", fake_create_deep_agent)
+    monkeypatch.setattr(cognitive_mod, "create_llm", lambda **_kwargs: object())
+    monkeypatch.setattr(cognitive_mod, "detect_browser_capture_intent", no_capture_tools)
+    monkeypatch.setattr(
+        cognitive_mod,
+        "filter_messages_for_model_capabilities",
+        lambda messages, *_args, **_kwargs: messages,
+    )
+    monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args: False)
+
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
+    frontier.tools = []
+    cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
+
+    result = await frontier.chat_agent(
+        messages=[{"role": "user", "content": "群聊中的一句话"}],
+        user_id="u1",
+        user_name="test",
+        group_id=123,
+        allow_silent_reply=True,
+    )
+
+    assert cognitive_mod.skip_reply in captured["tools"]
+    assert any(
+        isinstance(item, cognitive_mod.SilentReplyMiddleware)
+        for item in captured["middleware"]
+    )
+    assert captured["payload"]["suppress_reply"] is False
+    assert captured["config"]["configurable"]["virtual_roots"] == {
+        "/memory/group-123/": str(tmp_path / "sandbox" / "memory" / "group-123"),
+        "/": str(tmp_path / "sandbox" / "workspaces" / "group-123"),
+    }
+    assert result["should_reply"] is False
+    assert result["uni_messages"] == []
+    assert result["response"]["messages"][0].content == ""
 
 
 @pytest.mark.asyncio

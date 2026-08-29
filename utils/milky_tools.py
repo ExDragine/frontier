@@ -35,6 +35,44 @@ def resolve_local_path(source: str, root_dir: str | None = None) -> Path | None:
     return None
 
 
+def resolve_virtual_path(source: str, virtual_roots: dict[str, str]) -> Path | None:
+    """Resolve an agent virtual path against its explicitly mounted roots.
+
+    Routes use the same virtual prefixes as ``CompositeBackend``. The longest
+    matching route wins, and reserved mounts cannot fall through to the default
+    workspace route.
+    """
+    raw = source.strip()
+    if not raw:
+        return None
+    virtual_path = raw if raw.startswith("/") else f"/{raw}"
+
+    normalized_routes: list[tuple[str, Path]] = []
+    for prefix, root_dir in virtual_roots.items():
+        normalized_prefix = f"/{prefix.strip('/')}" if prefix != "/" else "/"
+        if normalized_prefix != "/":
+            normalized_prefix += "/"
+        normalized_routes.append((normalized_prefix, Path(root_dir).resolve()))
+
+    for prefix, root in sorted(normalized_routes, key=lambda item: len(item[0]), reverse=True):
+        if prefix == "/":
+            if virtual_path.startswith(("/memory/", "/skills/")):
+                continue
+            relative = virtual_path.lstrip("/")
+        elif virtual_path.startswith(prefix):
+            relative = virtual_path[len(prefix) :]
+        else:
+            continue
+
+        candidate = (root / relative).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return None
+        return candidate if candidate.is_file() else None
+    return None
+
+
 def validate_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:

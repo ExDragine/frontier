@@ -123,6 +123,14 @@ def _group_member_role(event: MessageEvent) -> str | None:
     return str(role)
 
 
+def _allows_silent_reply(context: AgentRequestContext) -> bool:
+    """Only opportunistic, non-addressed group turns may end silently."""
+    if context.group_id is None or context.direct_mention:
+        return False
+    is_tome = getattr(context.event, "is_tome", None)
+    return not bool(is_tome()) if callable(is_tome) else True
+
+
 def _remove_structured_reply_marker(text: str, reply_seq: int | None) -> str:
     """Drop the legacy text marker once reply identity is carried structurally."""
     if reply_seq is None or not text:
@@ -265,11 +273,16 @@ async def _process_agent_request(context: AgentRequestContext) -> bool:  # noqa:
         group_member_role=_group_member_role(context.event),
         progress_reporter=_chat_progress_reporter(context.group_id),
         user_text=context.text,
+        allow_silent_reply=_allows_silent_reply(context),
     )
 
     if not isinstance(result, dict) or "response" not in result:
         await UniMessage.text(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用").send()
         return True
+
+    if result.get("should_reply") is False:
+        logger.info("Agent 选择本轮不回复: group_id=%s user_id=%s", context.group_id, context.user_id)
+        return False
 
     response = result["response"]
     if not response:

@@ -1278,8 +1278,64 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     assert "is_current" not in payload
     assert captured["kwargs"]["user_text"] == "hi"
     assert captured["kwargs"]["group_member_role"] == ("admin" if group_id is not None else None)
+    assert captured["kwargs"]["allow_silent_reply"] is False
     assert captured["stored_user_id"] == (1 if group_id is not None else 456)
     assert captured["stored_sender_user_id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_process_agent_request_honors_silent_group_result(monkeypatch):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+
+    captured = {}
+
+    class DummyCognitive:
+        async def chat_agent(self, *_args, **kwargs):
+            captured["allow_silent_reply"] = kwargs["allow_silent_reply"]
+            return {
+                "response": {"messages": [types.SimpleNamespace(text="不应发送")]},
+                "uni_messages": ["不应发送的工件"],
+                "should_reply": False,
+            }
+
+    class RejectingMessagesDb:
+        async def insert(self, **_kwargs):
+            raise AssertionError("silent turns must not be persisted as assistant messages")
+
+    async def reject_send(*_args, **_kwargs):
+        raise AssertionError("silent turns must not send messages or artifacts")
+
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "messages_db", RejectingMessagesDb())
+    monkeypatch.setattr(agent, "send_messages", reject_send)
+    monkeypatch.setattr(agent, "send_artifacts", reject_send)
+    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
+
+    context = agent.AgentRequestContext(
+        event=cast(Any, types.SimpleNamespace)(
+            self_id="1",
+            is_tome=lambda: False,
+            data=types.SimpleNamespace(group_member=types.SimpleNamespace(role="member")),
+        ),
+        user_id="456",
+        user_name="Bob",
+        event_id=1,
+        group_id=123,
+        msg_time=1000,
+        text="群聊中的一句话",
+        quoted_images=[],
+        images=[],
+        videos=[],
+        direct_mention=False,
+    )
+
+    result = await agent._process_agent_request(context)
+
+    assert result is False
+    assert captured["allow_silent_reply"] is True
 
 
 @pytest.mark.asyncio

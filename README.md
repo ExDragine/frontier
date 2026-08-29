@@ -29,7 +29,7 @@ UniMessage 文本、图片、视频或文件回复
 - **会话串行**：同一用户/群聊线程通过 `asyncio.Lock` 串行执行，不同线程可并发。
 - **多模型路由**：OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek 统一由 `utils/llm_factory.py` 创建。
 - **文件系统工作区**：群聊使用 `group-{group_id}`、私聊使用 `dm-{user_id}`，同一个裸数字不会共享 workspace 或 memory。
-- **分层提示词**：`env.toml` 定义基础人设，`prompts/AGENTS.md` 定义全局操作规范，`prompts/rendering.md` 定义渲染规范，workspace `SOUL.md` 保存动态人设与长期偏好。
+- **分层提示词**：`env.toml` 定义基础人设，`prompts/AGENTS.md` 定义常驻全局规范，workspace `SOUL.md` 由 Memory middleware 注入动态人设；详细渲染与平台操作流程保存在 Skills 中按需加载。
 - **媒体工件直发**：工具返回的 `UniMessage` artifact 会被提取并直接发送到 QQ。
 
 ## 功能模块

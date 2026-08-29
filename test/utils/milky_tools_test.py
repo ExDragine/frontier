@@ -77,6 +77,42 @@ def test_resolve_local_path_root_dir_takes_priority_over_absolute_path(tmp_path)
     assert result.read_text() == "shadow"
 
 
+# ── resolve_virtual_path ─────────────────────────────────────────────────────
+
+
+def test_resolve_virtual_path_uses_longest_matching_mount(tmp_path):
+    from utils.milky_tools import resolve_virtual_path
+
+    workspace = tmp_path / "workspace"
+    memory = tmp_path / "memory"
+    workspace.mkdir()
+    memory.mkdir()
+    expected = memory / "attachment.txt"
+    expected.write_text("memory")
+
+    result = resolve_virtual_path(
+        "/memory/group-1/attachment.txt",
+        {"/": str(workspace), "/memory/group-1/": str(memory)},
+    )
+
+    assert result == expected.resolve()
+
+
+def test_resolve_virtual_path_blocks_other_reserved_mounts_and_traversal(tmp_path):
+    from utils.milky_tools import resolve_virtual_path
+
+    workspace = tmp_path / "workspace"
+    memory = tmp_path / "memory"
+    workspace.mkdir()
+    memory.mkdir()
+    (tmp_path / "secret.txt").write_text("secret")
+
+    roots = {"/": str(workspace), "/memory/group-1/": str(memory)}
+    assert resolve_virtual_path("/memory/group-2/secret.txt", roots) is None
+    assert resolve_virtual_path("/skills/secret.txt", roots) is None
+    assert resolve_virtual_path("/../secret.txt", roots) is None
+
+
 # ── binary_kwargs_from_uri ───────────────────────────────────────────────────
 
 

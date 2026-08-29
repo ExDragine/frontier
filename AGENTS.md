@@ -123,8 +123,9 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - `interrupt_on` 对 read/write/edit/execute 均关闭，Agent 工具执行不走人工确认。
 
 Prompt 加载链：
-- `FrontierCognitive.load_system_prompt()` 依次组合 `env.toml` 的 `[bot].system_prompt`、`prompts/AGENTS.md` 全局操作规范和 `prompts/rendering.md` 渲染规范；基础人设中的 `{name}` 会按当前唤醒词注入。
-- Deep Agents 随后将当前 workspace 的 `/memory/{workspace_key}/SOUL.md` 作为动态人设与长期偏好注入；SOUL 不得覆盖安全、权限和全局操作规范。
+- `FrontierCognitive.load_system_prompt()` 组合 `env.toml` 的 `[bot].system_prompt` 与 `prompts/AGENTS.md` 始终适用的全局操作规范；基础人设中的 `{name}` 会按当前唤醒词注入。
+- 自定义 `MemoryMiddleware` 从当前 workspace 的 `/memory/{workspace_key}/SOUL.md` 注入动态人设，并同时提供 SOUL 的写入边界与优先级约束。
+- 完整的图表、指标卡和时间线渲染契约位于只读内置 Skill `/skills/rich-markdown/SKILL.md`，仅在需要增强 Markdown 时按需加载。
 - `prompts/reply_check.md` 用于群聊是否应主动回复的 Signal LLM 判断。
 - `prompts/daily_news.md` 用于每日新闻任务。
 - ENS 详细工作流位于只读内置 Skill `/skills/ens-weather/SKILL.md`；主提示词只保留加载入口。
@@ -217,7 +218,7 @@ Milky 群管理工具会读取 `RunnableConfig.configurable.group_member_role` �
 
 4. Browser capture 工具不是普通兜底工具。`webpage_screenshot` / `webpage_recording` 只有在 Signal LLM 判断用户明确要求网页外观/录屏时才暴露。
 
-5. 提示词分四层：`env.toml` 基本人设、`prompts/AGENTS.md` 全局操作规范、`prompts/rendering.md` 渲染规范、workspace `SOUL.md` 动态人设。修改前先确认目标层级。
+5. 提示词分为常驻层和按需层：`env.toml` 基本人设与 `prompts/AGENTS.md` 全局规范常驻，workspace `SOUL.md` 由 Memory middleware 注入，详细工作流与渲染契约保存在 Skills 中按需加载。修改前先确认目标层级。
 
 6. 测试依赖 monkeypatch 和第三方 stub。插件测试通常先 patch `nonebot.require`，再延迟 import `plugins.agent`。
 

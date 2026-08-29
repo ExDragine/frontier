@@ -64,6 +64,11 @@ def install_all_third_party_stubs():
             (),
             {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
         ),
+        MemoryMiddleware=type(
+            "MemoryMiddleware",
+            (),
+            {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
+        ),
         register_harness_profile=lambda *_args, **_kwargs: None,
         create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}),
     )
@@ -91,6 +96,7 @@ def install_all_third_party_stubs():
     install_stub(
         "langchain.agents.middleware",
         AgentMiddleware=type("AgentMiddleware", (), {}),
+        hook_config=lambda **_kwargs: (lambda func: func),
         FilesystemFileSearchMiddleware=type(
             "FilesystemFileSearchMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}
         ),
@@ -110,6 +116,11 @@ def install_all_third_party_stubs():
     install_stub(
         "langchain.messages",
         AIMessage=type("AIMessage", (), {"__init__": lambda self, content=None: setattr(self, "content", content)}),
+        ToolMessage=type(
+            "ToolMessage",
+            (),
+            {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
+        ),
     )
     install_stub(
         "langchain_core.runnables",
@@ -129,6 +140,15 @@ def install_all_third_party_stubs():
         ChatGoogleGenerativeAI=type("ChatGoogleGenerativeAI", (), {"__init__": lambda self, **_kw: None}),
     )
     install_stub("langgraph.checkpoint.memory", InMemorySaver=object)
+    install_stub("langgraph.prebuilt", InjectedState=type("InjectedState", (), {}))
+    install_stub(
+        "langgraph.types",
+        Command=type(
+            "Command",
+            (),
+            {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
+        ),
+    )
     install_stub("langchain_community.document_loaders", BiliBiliLoader=object)
     install_stub("langchain_core.documents", Document=object)
 

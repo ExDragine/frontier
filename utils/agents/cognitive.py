@@ -5,9 +5,9 @@ import hashlib
 import os
 import time
 import uuid
-from typing import Any, Literal
+from typing import Any, Literal, NotRequired, cast
 
-from deepagents import FilesystemPermission, create_deep_agent
+from deepagents import FilesystemPermission, MemoryMiddleware, create_deep_agent
 from deepagents.graph import DeepAgentState
 from langchain.agents.middleware import (
     AgentMiddleware,
@@ -16,10 +16,14 @@ from langchain.agents.middleware import (
     PIIMiddleware,
     ProviderToolSearchMiddleware,
     ToolRetryMiddleware,
+    hook_config,
 )
-from langchain.messages import AIMessage
+from langchain.messages import AIMessage, ToolMessage
+from langchain.tools import ToolRuntime
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 from langchain_quickjs import CodeInterpreterMiddleware
+from langgraph.types import Command
 from nonebot import logger
 
 from tools import agent_tools
@@ -45,6 +49,7 @@ from .progress import (
     emit_progress,
     finish_progress_collection,
 )
+from .prompts import build_workspace_soul_prompt
 from .prompts import load_system_prompt as compose_system_prompt
 from .runtime import agent_thread_id, conversation_workspace_key
 from .subagents import (
@@ -88,6 +93,39 @@ class FrontierAgentState(DeepAgentState):
     image_inputs: list[bytes]
     audio_inputs: list[bytes]
     video_inputs: list[bytes]
+    suppress_reply: NotRequired[bool]
+
+
+_DEFAULT_TOOL_RUNTIME = cast(ToolRuntime[FrontierRuntimeContext, FrontierAgentState], None)
+
+
+@tool
+def skip_reply(
+    reason: Literal[
+        "not_addressed",
+        "conversation_complete",
+        "duplicate_or_stale",
+        "would_interrupt",
+    ],
+    runtime: ToolRuntime[FrontierRuntimeContext, FrontierAgentState] = _DEFAULT_TOOL_RUNTIME,
+) -> Command:
+    """在无需打扰群聊时结束本轮且不发送任何回复。
+
+    仅当消息没有明确询问或点名你、话题已经自然结束、内容重复/过时，或回复会打断
+    他人对话时使用。应在调用任何发送或写入工具之前选择；不要用它拒绝正常请求。
+    私聊和明确点名场景不会提供此工具。
+    """
+    return Command(
+        update={
+            "suppress_reply": True,
+            "messages": [
+                ToolMessage(
+                    content=f"本轮不回复：{reason}",
+                    tool_call_id=getattr(runtime, "tool_call_id", None) or "skip_reply",
+                )
+            ],
+        }
+    )
 
 
 WEB_SEARCH_PROMPT_HINT = (
@@ -194,6 +232,17 @@ class NativeWebSearchMiddleware(AgentMiddleware):
         return await handler(self._request_with_web_search(request))
 
 
+class SilentReplyMiddleware(AgentMiddleware):
+    """End the graph immediately after ``skip_reply`` updates agent state."""
+
+    @hook_config(can_jump_to=["end"])
+    def before_model(self, state: FrontierAgentState, runtime) -> dict[str, Any] | None:
+        del runtime
+        if state.get("suppress_reply"):
+            return {"jump_to": "end"}
+        return None
+
+
 class FrontierCognitive:
     def __init__(self):
         self.tools = _stable_named_items(agent_tools.direct_tools)
@@ -205,9 +254,8 @@ class FrontierCognitive:
     @staticmethod
     def load_system_prompt(
         group_id: int | None = None,
-        workspace_key: str | None = None,
     ) -> str:
-        return compose_system_prompt(group_id, workspace_key)
+        return compose_system_prompt(group_id)
 
     @staticmethod
     async def extract_uni_messages(response):
@@ -256,6 +304,7 @@ class FrontierCognitive:
         user_text: str | None = None,
         access_profile: Literal["frontier", "acp"] = "frontier",
         enable_acp_subagents: bool = True,
+        allow_silent_reply: bool = False,
     ):
         workspace_key = conversation_workspace_key(user_id, group_id)
         uses_responses_api = provider_uses_responses_api(
@@ -287,7 +336,9 @@ class FrontierCognitive:
             thread_id = uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=str(thread_id))
         backend = build_agent_backend(working_dir, workspace_key)
         workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
-        system_prompt = self.load_system_prompt(group_id, workspace_key)
+        memory_dir = os.path.join(working_dir, "memory", workspace_key)
+        soul_path = f"/memory/{workspace_key}/SOUL.md"
+        system_prompt = self.load_system_prompt(group_id)
         if access_profile == "acp":
             system_prompt += ACP_CLIENT_PROMPT_HINT
 
@@ -300,6 +351,8 @@ class FrontierCognitive:
                 if tool.name in _ALWAYS_AVAILABLE_RESTRICTED_TOOLS
             ]
             effective_tools = _stable_named_items([*self.tools, *always_available])
+            if allow_silent_reply:
+                effective_tools = _stable_named_items([*effective_tools, skip_reply])
         allowed_capture_tools = (
             await detect_browser_capture_intent(user_text)
             if access_profile == "frontier"
@@ -357,9 +410,21 @@ class FrontierCognitive:
             ModelRetryMiddleware(),
             FilesystemFileSearchMiddleware(root_path=workspace_dir),
             CodeInterpreterMiddleware(ptc=ptc_tools),
+            MemoryMiddleware(
+                backend=backend,
+                sources=[soul_path],
+                add_cache_control=True,
+                system_prompt=build_workspace_soul_prompt(soul_path),
+            ),
         ]
+        if allow_silent_reply and access_profile == "frontier":
+            middleware.append(SilentReplyMiddleware())
         if any(name in EnvConfig.ADVAN_MODEL.lower() for name in ("gpt", "claude")):
-            middleware.append(ProviderToolSearchMiddleware(searchable_tools=effective_tools))
+            middleware.append(
+                ProviderToolSearchMiddleware(
+                    searchable_tools=[tool for tool in effective_tools if tool is not skip_reply]
+                )
+            )
         if native_web_search:
             middleware.append(NativeWebSearchMiddleware())
         agent = create_deep_agent(
@@ -370,7 +435,7 @@ class FrontierCognitive:
             subagents=subagents,
             middleware=middleware,
             skills=[SKILLS_BACKEND_PATH],
-            memory=[f"/memory/{workspace_key}/SOUL.md"],
+            memory=[soul_path],
             permissions=[
                 FilesystemPermission(
                     operations=["write"],
@@ -392,6 +457,10 @@ class FrontierCognitive:
                 "group_id": group_id,
                 "group_member_role": group_member_role,
                 "workspace_dir": workspace_dir,
+                "virtual_roots": {
+                    f"/memory/{workspace_key}/": memory_dir,
+                    "/": workspace_dir,
+                },
             }
         }
         runtime_context = FrontierRuntimeContext(
@@ -408,6 +477,7 @@ class FrontierCognitive:
                 "image_inputs": image_inputs or [],
                 "audio_inputs": audio_inputs or [],
                 "video_inputs": video_inputs or [],
+                "suppress_reply": False,
             }
             stream = await agent.astream_events(
                 input_data,
@@ -432,13 +502,24 @@ class FrontierCognitive:
                 "total_time": time.time() - start_time,
                 "uni_messages": [],
                 "error": str(exc),
+                "should_reply": True,
             }
 
         if response is None:
             response = {}
-        uni_messages = await FrontierCognitive.extract_uni_messages(response)
+        should_reply = not bool(response.get("suppress_reply", False))
+        uni_messages = (
+            await FrontierCognitive.extract_uni_messages(response) if should_reply else []
+        )
         ai_messages = [message for message in response.get("messages", []) if getattr(message, "type", None) == "ai"]
-        final_response = ai_messages[-1] if ai_messages else AIMessage("智能代理处理完成，但没有生成响应。")
+        if should_reply:
+            final_response = (
+                ai_messages[-1]
+                if ai_messages
+                else AIMessage("智能代理处理完成，但没有生成响应。")
+            )
+        else:
+            final_response = AIMessage("")
 
         processing_time = time.time() - start_time
         logger.info(f"Agent烤熟了~🥓 (耗时: {processing_time:.2f}s)")
@@ -451,4 +532,5 @@ class FrontierCognitive:
             "response": {"messages": [final_response]},
             "total_time": processing_time,
             "uni_messages": uni_messages,
+            "should_reply": should_reply,
         }

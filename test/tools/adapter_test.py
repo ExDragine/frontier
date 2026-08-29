@@ -125,27 +125,57 @@ async def test_send_emoji(load_tool_module):
 @pytest.mark.asyncio
 async def test_send_file_url(load_tool_module):
     adapter = load_tool_module("adapter")
-    text, artifact = await adapter.send_file("https://example.com/report.pdf", "report.pdf")
-    assert text == "构建了一个文件消息：report.pdf"
-    assert artifact.content["type"] == "file"
-    assert artifact.content["url"] == "https://example.com/report.pdf"
-    assert artifact.content["name"] == "report.pdf"
+    calls = []
+
+    class DummyBot:
+        async def upload_private_file(self, **kwargs):
+            calls.append(kwargs)
+            return "private-file-id"
+
+    adapter.get_bot = lambda: DummyBot()
+
+    result = await adapter.send_file(
+        "https://example.com/report.pdf",
+        config={"configurable": {"user_id": "456"}},
+    )
+
+    assert result == "已发送私聊文件 report.pdf，file_id=private-file-id"
+    assert calls == [
+        {
+            "user_id": 456,
+            "url": "https://example.com/report.pdf",
+            "file_name": "report.pdf",
+        }
+    ]
 
 
 @pytest.mark.asyncio
-async def test_send_file_local(load_tool_module):
+async def test_send_file_local(load_tool_module, tmp_path):
     adapter = load_tool_module("adapter")
-    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
-        f.write(b"hello")
-        tmp = f.name
-    try:
-        text, artifact = await adapter.send_file(tmp, "hello.txt")
-        assert text == "构建了一个文件消息：hello.txt"
-        assert artifact.content["type"] == "file"
-        assert artifact.content["path"] == tmp
-        assert artifact.content["name"] == "hello.txt"
-    finally:
-        Path(tmp).unlink(missing_ok=True)
+    local_file = tmp_path / "hello.txt"
+    local_file.write_text("hello")
+    calls = []
+
+    class DummyBot:
+        async def upload_private_file(self, **kwargs):
+            calls.append(kwargs)
+            return "private-file-id"
+
+    adapter.get_bot = lambda: DummyBot()
+
+    result = await adapter.send_file(
+        "/hello.txt",
+        config={
+            "configurable": {
+                "user_id": 456,
+                "workspace_dir": str(tmp_path),
+            }
+        },
+    )
+
+    assert result == "已发送私聊文件 hello.txt，file_id=private-file-id"
+    assert calls[0]["path"] == str(local_file)
+    assert calls[0]["file_name"] == "hello.txt"
 
 
 # ── URL 格式校验 ──────────────────────────────────────────────────────────────
@@ -254,13 +284,92 @@ async def test_send_file_resolves_workspace_path(load_tool_module, tmp_path):
     adapter = load_tool_module("adapter")
     f = tmp_path / "report.pdf"
     f.write_bytes(b"%PDF")
+    calls = []
 
-    text, artifact = await adapter.send_file("/report.pdf", "report.pdf", config=_ws_config(str(tmp_path)))
+    class DummyBot:
+        async def upload_group_file(self, **kwargs):
+            calls.append(kwargs)
+            return "group-file-id"
 
-    assert text == "构建了一个文件消息：report.pdf"
-    assert artifact.content["type"] == "file"
-    assert artifact.content["path"] == str(f)
-    assert artifact.content["name"] == "report.pdf"
+    adapter.get_bot = lambda: DummyBot()
+
+    result = await adapter.send_file(
+        "/report.pdf",
+        "report.pdf",
+        config={
+            "configurable": {
+                "group_id": 123,
+                "workspace_dir": str(tmp_path),
+            }
+        },
+    )
+
+    assert result == "已发送群文件 report.pdf，file_id=group-file-id"
+    assert calls == [
+        {
+            "group_id": 123,
+            "path": str(f),
+            "file_name": "report.pdf",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_send_file_resolves_memory_virtual_path(load_tool_module, tmp_path):
+    adapter = load_tool_module("adapter")
+    workspace_dir = tmp_path / "workspaces" / "group-123"
+    memory_dir = tmp_path / "memory" / "group-123"
+    workspace_dir.mkdir(parents=True)
+    memory_dir.mkdir(parents=True)
+    attachment = memory_dir / "incoming.pdf"
+    attachment.write_bytes(b"%PDF")
+    calls = []
+
+    class DummyBot:
+        async def upload_group_file(self, **kwargs):
+            calls.append(kwargs)
+            return "memory-file-id"
+
+    adapter.get_bot = lambda: DummyBot()
+    result = await adapter.send_file(
+        "/memory/group-123/incoming.pdf",
+        config={
+            "configurable": {
+                "group_id": 123,
+                "virtual_roots": {
+                    "/": str(workspace_dir),
+                    "/memory/group-123/": str(memory_dir),
+                },
+            }
+        },
+    )
+
+    assert result == "已发送群文件 incoming.pdf，file_id=memory-file-id"
+    assert calls[0]["path"] == str(attachment)
+
+
+@pytest.mark.asyncio
+async def test_send_file_reports_platform_upload_failure(load_tool_module, tmp_path):
+    adapter = load_tool_module("adapter")
+    attachment = tmp_path / "report.pdf"
+    attachment.write_bytes(b"%PDF")
+
+    class DummyBot:
+        async def upload_private_file(self, **_kwargs):
+            raise RuntimeError("upload rejected")
+
+    adapter.get_bot = lambda: DummyBot()
+    result = await adapter.send_file(
+        "/report.pdf",
+        config={
+            "configurable": {
+                "user_id": 456,
+                "workspace_dir": str(tmp_path),
+            }
+        },
+    )
+
+    assert result.startswith("文件发送失败：平台上传未成功")
 
 
 @pytest.mark.asyncio
