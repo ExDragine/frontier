@@ -333,13 +333,22 @@ def model_supports_native_web_search(model: str, provider: str | None = None) ->
 
     Both DeepSeek's official Responses endpoint and OpenAI's first-party
     Responses API accept the stable ``{"type": "web_search"}`` tool. Keep
-    compatible proxies and Chat Completions routes opt-out because sharing the
-    OpenAI adapter does not imply support for OpenAI-hosted tools.
+    compatible proxies opt out by default because sharing the OpenAI adapter
+    does not imply support for OpenAI-hosted tools. A proxy may explicitly opt
+    in with ``native_web_search = true``, but only on the Responses protocol.
     """
     if provider_official_deepseek_api_mode(model, provider) == ApiMode.RESPONSES.value:
         return True
-    return provider_is_official_openai(model, provider) and provider_uses_responses_api(
+    if provider_is_official_openai(model, provider) and provider_uses_responses_api(
         model, provider
+    ):
+        return True
+    _, profile = _provider_profile(model, provider)
+    provider_type, api_mode = _provider_protocol(model, profile)
+    return (
+        profile.get("native_web_search") is True
+        and provider_type == "openai"
+        and api_mode == ApiMode.RESPONSES.value
     )
 
 

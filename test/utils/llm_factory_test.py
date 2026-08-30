@@ -247,6 +247,7 @@ def test_openai_native_web_search_requires_responses_api(monkeypatch):
             "openai_chat_completions": {
                 "type": "openai",
                 "api_mode": "chat_completions",
+                "native_web_search": True,
                 "base_url": "https://api.openai.com/v1",
                 "api_key": "sk-test",
             }
@@ -255,6 +256,25 @@ def test_openai_native_web_search_requires_responses_api(monkeypatch):
 
     assert factory.provider_is_official_openai("gpt-5.4", "openai_chat_completions") is True
     assert factory.model_supports_native_web_search("gpt-5.4", "openai_chat_completions") is False
+
+
+def test_responses_proxy_can_explicitly_enable_native_web_search(monkeypatch):
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "responses_proxy": {
+                "type": "openai",
+                "api_mode": "responses",
+                "native_web_search": True,
+                "base_url": "https://gateway.example.com/v1",
+                "api_key": "sk-test",
+            }
+        },
+    )
+
+    assert factory.provider_is_official_openai("gpt-5.4", "responses_proxy") is False
+    assert factory.model_supports_native_web_search("gpt-5.4", "responses_proxy") is True
 
 
 @pytest.mark.parametrize(

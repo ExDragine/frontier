@@ -99,6 +99,7 @@ class ProviderProfile(BaseModel):
     api_mode: str = ""
     base_url: str = ""
     api_key: str = ""
+    native_web_search: bool = False
 
 
 class KeyConfig(_FrozenConfig):

@@ -678,6 +678,7 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
                 "openai": {
                     "type": "openai",
                     "api_mode": "responses",
+                    "native_web_search": True,
                     "base_url": "https://api.example.com/v1",
                     "api_key": "sk-v2",
                 },
@@ -712,6 +713,7 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
     assert EnvConfig.DAILY_NEWS_MODEL_PROVIDER == "deepseek_responses"
     assert EnvConfig.LLM_PROVIDERS["openai_chat"]["api_mode"] == "chat_completions"
     assert EnvConfig.LLM_PROVIDERS["openai"]["api_mode"] == "responses"
+    assert EnvConfig.LLM_PROVIDERS["openai"]["native_web_search"] is True
     assert EnvConfig.LLM_PROVIDERS["openai"]["api_key"] == "sk-v2"
     assert EnvConfig.PAINT_MODEL_PROVIDER == "openai"
     assert EnvConfig.PAINT_SIZE == "1536x1024"

@@ -156,6 +156,7 @@ Prompt 加载链：
 - 显式 `*_model_provider` 优先。
 - 所有 `*_model_provider`（包括 paint/video）均指向 `[providers.<name>]`；供应商 profile 用 `type` 管理 LangChain 适配器、用 `api_mode` 管理协议，并统一保存 base URL 和 API key。
 - Paint/Video 服务使用 OpenAI-compatible Images/Videos API，因此对应 provider 的 `type` 必须为 `openai`。
+- 官方 OpenAI / DeepSeek Responses 路由会自动启用服务端 `web_search`；兼容代理只有在确认支持该托管工具后，才可在 provider profile 中显式设置 `native_web_search = true`。
 - 没有显式 provider 时，`llm_factory.py` 会根据模型名前缀推断：`deepseek*`、`gemini-*`、`claude-*`，其余走 OpenAI-compatible。
 
 Dashboard 配置：
