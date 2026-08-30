@@ -236,6 +236,25 @@ def test_official_openai_route_detection_accepts_only_first_party_endpoints(monk
     )
 
     assert factory.provider_is_official_openai("gpt-5.4", "first_party") is True
+    assert factory.model_supports_native_web_search("gpt-5.4", "first_party") is True
+
+
+def test_openai_native_web_search_requires_responses_api(monkeypatch):
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "openai_chat_completions": {
+                "type": "openai",
+                "api_mode": "chat_completions",
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test",
+            }
+        },
+    )
+
+    assert factory.provider_is_official_openai("gpt-5.4", "openai_chat_completions") is True
+    assert factory.model_supports_native_web_search("gpt-5.4", "openai_chat_completions") is False
 
 
 @pytest.mark.parametrize(
@@ -329,6 +348,7 @@ def test_deepseek_native_web_search_accepts_official_v1_base_url(monkeypatch):
     ("model", "base_url"),
     [
         ("deepseek-v4-pro", "https://openrouter.ai/api/v1"),
+        ("gpt-5.4", "https://openrouter.ai/api/v1"),
         ("deepseek-v4-pro", "https://api.deepseek.com.example.com"),
         ("deepseek-v4-pro", "https://api.deepseek.com/anthropic"),
         ("gpt-5.4", "https://api.deepseek.com"),

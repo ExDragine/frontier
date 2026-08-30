@@ -329,8 +329,18 @@ def provider_official_deepseek_api_mode(model: str, provider: str | None = None)
 
 
 def model_supports_native_web_search(model: str, provider: str | None = None) -> bool:
-    """Return whether this is an official DeepSeek model using the Responses API."""
-    return provider_official_deepseek_api_mode(model, provider) == ApiMode.RESPONSES.value
+    """Return whether the route supports provider-hosted web search.
+
+    Both DeepSeek's official Responses endpoint and OpenAI's first-party
+    Responses API accept the stable ``{"type": "web_search"}`` tool. Keep
+    compatible proxies and Chat Completions routes opt-out because sharing the
+    OpenAI adapter does not imply support for OpenAI-hosted tools.
+    """
+    if provider_official_deepseek_api_mode(model, provider) == ApiMode.RESPONSES.value:
+        return True
+    return provider_is_official_openai(model, provider) and provider_uses_responses_api(
+        model, provider
+    )
 
 
 def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile | None:

@@ -96,7 +96,7 @@ def _daily_news_tools() -> list[dict[str, str]]:
             "日报模型必须使用支持原生 web_search 的 Responses API；"
             "请检查 [models] daily_news_model/provider 与对应 [providers.*] 配置"
         )
-    # DeepSeek Responses 原生 web_search 由服务端执行，不能包装为本地 function tool。
+    # Responses 原生 web_search 由服务端执行，不能包装为本地 function tool。
     return [DAILY_NEWS_NATIVE_WEB_SEARCH_TOOL.copy()]
 
 
