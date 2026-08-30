@@ -281,8 +281,9 @@ async def test_agent_lazily_hydrates_recent_media_followup(monkeypatch):  # noqa
         async def insert(self, **_kwargs):
             return None
 
-        async def prepare_message(self, *_args, **_kwargs):
+        async def prepare_message(self, *_args, **kwargs):
             captured["prepare_calls"] += 1
+            captured["prepare_kwargs"] = kwargs
             return [{"role": "user", "content": f"history-{captured['prepare_calls']}"}]
 
     class DummyCognitive:
@@ -318,6 +319,7 @@ async def test_agent_lazily_hydrates_recent_media_followup(monkeypatch):  # noqa
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+    monkeypatch.setattr(agent.EnvConfig, "QUERY_MESSAGE_NUMBERS", 7)
     incoming = IncomingMessage(
         message_scene="group",
         peer_id=123,
@@ -357,11 +359,13 @@ async def test_agent_lazily_hydrates_recent_media_followup(monkeypatch):  # noqa
         ctx.should_finished()
 
     assert captured["prepare_calls"] == 1
+    assert captured["prepare_kwargs"]["query_numbers"] == 7
+    assert captured["messages"][0] == {"role": "user", "content": "history-1"}
     assert captured["hydrate"]["user_id"] == 456
     assert captured["hydrate"]["group_id"] == 123
     assert captured["image_inputs"] == [b"recent-image"]
-    assert len(captured["messages"]) == 1
-    current_content = captured["messages"][0]["content"]
+    assert len(captured["messages"]) == 2
+    current_content = captured["messages"][-1]["content"]
     payload = json.loads(current_content[0]["text"])
     assert payload["attachments"][0]["path"] == "/memory/group-123/files/recent.txt"
     assert payload["content"].endswith("[以上附件来自用户刚才发送的历史消息]")
@@ -1255,9 +1259,14 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
         direct_mention=group_id is not None,
     )
 
-    await agent._process_agent_request(context)
+    history = [
+        {"role": "user", "content": "上一条用户消息"},
+        {"role": "assistant", "content": "上一条助手回复"},
+    ]
+    await agent._process_agent_request(context, history)
 
-    assert len(captured["messages"]) == 1
+    assert captured["messages"][:-1] == history
+    assert len(captured["messages"]) == 3
     current_text = _first_text(captured["messages"][-1]["content"])
     payload = json.loads(current_text)
     assert payload["schema"] == "frontier.qq_message.v1"

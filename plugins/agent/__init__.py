@@ -176,8 +176,11 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
     return reporter
 
 
-async def _process_agent_request(context: AgentRequestContext) -> bool:  # noqa: C901
-    messages: list[dict[str, Any]] = []
+async def _process_agent_request(  # noqa: C901
+    context: AgentRequestContext,
+    history_messages: list[dict[str, Any]] | None = None,
+) -> bool:
+    messages = list(history_messages or [])
     combined_text = context.text.strip()
     remaining_bytes = EnvConfig.MAX_INLINE_MEDIA_BYTES
     remaining_images = EnvConfig.MAX_INLINE_IMAGES
@@ -324,6 +327,7 @@ async def _run_agent_turn(
     *,
     bot: Any,
     context: AgentRequestContext,
+    history_messages: list[dict[str, Any]],
     previous_reply_payload: dict[str, object] | None,
     fetched_reply_payload: dict[str, object] | None,
     original_text: str,
@@ -379,7 +383,7 @@ async def _run_agent_turn(
         thread_id = agent_thread_id(context.user_id, context.group_id)
         await run_serialized(
             str(thread_id),
-            _process_agent_request(context),
+            _process_agent_request(context, history_messages),
         )
     finally:
         if context.group_id is not None and reaction_added:
@@ -728,6 +732,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         await _run_agent_turn(
             bot=bot,
             context=context,
+            history_messages=gateway_messages,
             previous_reply_payload=reply_payload,
             fetched_reply_payload=agent_reply_payload,
             original_text=text,
