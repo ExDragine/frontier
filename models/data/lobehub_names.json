@@ -2,16 +2,16 @@
   "schema_version": "1.0",
   "source": {
     "package": "model-bank",
-    "version": "1.0.20260815005801",
+    "version": "1.0.20260907091321",
     "registry": "https://registry.npmjs.org/model-bank",
-    "tarball": "https://registry.npmjs.org/model-bank/-/model-bank-1.0.20260815005801.tgz",
-    "integrity": "sha512-nYIvkaqZZCE3RUCE/sXNq9qu8uJjg/e1bBdCfcyDTAgNJ1ZJAj0Rh73TIOolltd3Coh1cloKMYOfF9yeDkMylw==",
-    "git_commit": "cd6700008035473eb8bc372aa05b6ae0ebec4830",
+    "tarball": "https://registry.npmjs.org/model-bank/-/model-bank-1.0.20260907091321.tgz",
+    "integrity": "sha512-dMb31pE7uNQM9L7y+IErydee2VAdKpUKomeoTBpDQ1lxk0/DI2us/6K/tC/e/TBkUdNTseFR6v/KE7VAKEnqVw==",
+    "git_commit": "fc48479dd4cb0d6de875851689795163b9803bda",
     "license": "LobeHub Community License",
     "license_url": "https://github.com/lobehub/lobehub/blob/canary/LICENSE"
   },
-  "provider_count": 80,
-  "model_count": 1872,
+  "provider_count": 82,
+  "model_count": 1849,
   "providers": {
     "ai21": {
       "jamba-large": "Jamba Large",
@@ -62,7 +62,6 @@
       "azure-deepseek-r1-0528": "DeepSeek R1 0528 (Azure)",
       "chatgpt-4o-latest": "ChatGPT-4o",
       "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
-      "claude-opus-4-1-20250805": "Claude Opus 4.1",
       "claude-opus-4-5-20251101": "Claude Opus 4.5",
       "claude-opus-4-6": "Claude Opus 4.6",
       "claude-opus-4-7": "Claude Opus 4.7",
@@ -131,17 +130,15 @@
       "qwen3-235b-a22b-instruct-2507-fp8": "Qwen3 235B A22B Instruct 2507"
     },
     "antgroup": {
-      "ling-2.5-1t": "Ling-2.5-1T",
       "ling-2.6-1t": "Ling-2.6-1T",
       "ling-2.6-flash": "Ling-2.6-flash",
       "ling-3.0-flash": "Ling-3.0-flash",
-      "ring-2.5-1t": "Ring-2.5-1T",
       "ring-2.6-1t": "Ring-2.6-1T"
     },
     "anthropic": {
       "claude-fable-5": "Claude Fable 5",
+      "claude-fable-5-1": "Claude Fable 5.1",
       "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
-      "claude-opus-4-1-20250805": "Claude Opus 4.1",
       "claude-opus-4-5-20251101": "Claude Opus 4.5",
       "claude-opus-4-6": "Claude Opus 4.6",
       "claude-opus-4-7": "Claude Opus 4.7",
@@ -251,8 +248,7 @@
     },
     "cerebras": {
       "gemma-4-31b": "Gemma 4 31B",
-      "gpt-oss-120b": "GPT OSS 120B",
-      "zai-glm-4.7": "GLM-4.7"
+      "gpt-oss-120b": "GPT OSS 120B"
     },
     "cloudflare": {
       "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": "deepseek r1 (distill qwen 32b)",
@@ -317,6 +313,7 @@
     },
     "deepseek": {
       "deepseek-v4-flash": "DeepSeek V4 Flash",
+      "deepseek-v4-flash-vision-exp": "DeepSeek V4 Flash Vision Exp",
       "deepseek-v4-pro": "DeepSeek V4 Pro"
     },
     "fal": {
@@ -470,10 +467,6 @@
       "glm-5.1": "GLM-5.1"
     },
     "google": {
-      "gemini-2.0-flash": "Gemini 2.0 Flash",
-      "gemini-2.0-flash-001": "Gemini 2.0 Flash 001",
-      "gemini-2.0-flash-lite": "Gemini 2.0 Flash-Lite",
-      "gemini-2.0-flash-lite-001": "Gemini 2.0 Flash-Lite 001",
       "gemini-2.5-flash": "Gemini 2.5 Flash",
       "gemini-2.5-flash-image": "Nano Banana",
       "gemini-2.5-flash-image:image": "Nano Banana",
@@ -495,28 +488,25 @@
       "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite",
       "gemini-3.6-flash": "Gemini 3.6 Flash",
       "gemini-3.7-flash": "Gemini 3.7 Flash",
+      "gemini-3.8-flash": "Gemini 3.8 Flash",
       "gemini-flash-latest": "Gemini Flash Latest",
       "gemini-flash-lite-latest": "Gemini Flash-Lite Latest",
       "gemini-pro-latest": "Gemini Pro Latest",
       "gemma-4-26b-a4b-it": "Gemma 4 26B A4B IT",
       "gemma-4-31b-it": "Gemma 4 31B IT",
-      "imagen-4.0-fast-generate-001": "Imagen 4 Fast",
-      "imagen-4.0-generate-001": "Imagen 4",
-      "imagen-4.0-ultra-generate-001": "Imagen 4 Ultra",
       "veo-3.1-fast-generate-preview": "Veo 3.1 Fast Generate Preview",
       "veo-3.1-generate-preview": "Veo 3.1 Generate Preview"
     },
     "groq": {
       "groq/compound": "Compound",
       "groq/compound-mini": "Compound Mini",
-      "llama-3.1-8b-instant": "Llama 3.1 8B Instant",
-      "llama-3.3-70b-versatile": "Llama 3.3 70B Versatile",
       "meta-llama/llama-prompt-guard-2-22m": "Llama Prompt Guard 2 22M",
       "meta-llama/llama-prompt-guard-2-86m": "Llama Prompt Guard 2 86M",
       "minimaxai/minimax-m2.7": "MiniMax M2.7",
       "openai/gpt-oss-120b": "GPT OSS 120B",
       "openai/gpt-oss-20b": "GPT OSS 20B",
-      "qwen/qwen3.6-27b": "Qwen3.6 27B"
+      "qwen/qwen3.6-27b": "Qwen3.6 27B",
+      "qwen/qwen3.8-27b": "Qwen3.8 27B"
     },
     "higress": {
       "360gpt-pro": "360GPT Pro",
@@ -823,6 +813,9 @@
     "longcat": {
       "longcat-2.0": "LongCat-2.0"
     },
+    "meta": {
+      "muse-spark-1.3": "Muse Spark 1.3"
+    },
     "minimax": {
       "i2v-01": "I2V 01",
       "i2v-01-director": "I2V 01 Director",
@@ -859,45 +852,24 @@
     },
     "mistral": {
       "codestral-latest": "Codestral 2508",
-      "devstral-2512": "Devstral 2",
       "labs-devstral-small-2512": "Devstral Small 2",
-      "labs-leanstral-2603": "Leanstral",
-      "magistral-medium-2509": "Magistral Medium 1.2",
-      "magistral-small-2509": "Magistral Small 1.2",
       "ministral-3b-latest": "Ministral 3B",
       "ministral-8b-latest": "Ministral 8B",
-      "mistral-large-2411": "Mistral Large 2.1",
       "mistral-large-2512": "Mistral Large 3",
-      "mistral-medium-2508": "Mistral Medium 3.1",
       "mistral-medium-3.5": "Mistral Medium 3.5",
-      "mistral-small-2506": "Mistral Small 3.2",
       "mistral-small-2603": "Mistral Small 4",
-      "open-codestral-mamba": "Codestral Mamba",
-      "open-mistral-nemo": "Mistral Nemo",
-      "pixtral-12b-2409": "Pixtral 12B",
-      "pixtral-large-latest": "Pixtral Large"
+      "zai-glm-5-2": "Z.ai GLM 5.2"
     },
     "modelscope": {
-      "deepseek-ai/deepseek-v3.1": "DeepSeek V3.1",
-      "deepseek-ai/deepseek-v3.2": "DeepSeek V3.2",
-      "deepseek-ai/deepseek-v3.2-exp": "DeepSeek V3.2 Exp",
       "qwen/qwen3-235b-a22b": "Qwen3 235B A22B",
-      "qwen/qwen3-32b": "Qwen3 32B",
       "qwen/qwen3-next-80b-a3b-instruct": "Qwen3 Next 80B A3B Instruct",
       "qwen/qwen3-next-80b-a3b-thinking": "Qwen3 Next 80B A3B Thinking"
     },
     "moonshot": {
-      "kimi-k2.5": "Kimi K2.5",
       "kimi-k2.6": "Kimi K2.6",
       "kimi-k2.7-code": "Kimi K2.7 Code",
       "kimi-k2.7-code-highspeed": "Kimi K2.7 Code HighSpeed",
-      "kimi-k3": "Kimi K3",
-      "moonshot-v1-128k": "Moonshot V1 128K",
-      "moonshot-v1-128k-vision-preview": "Moonshot V1 128K Vision Preview",
-      "moonshot-v1-32k": "Moonshot V1 32K",
-      "moonshot-v1-32k-vision-preview": "Moonshot V1 32K Vision Preview",
-      "moonshot-v1-8k": "Moonshot V1 8K",
-      "moonshot-v1-8k-vision-preview": "Moonshot V1 8K Vision Preview"
+      "kimi-k3": "Kimi K3"
     },
     "nebius": {
       "google/gemma-3-27b-it": "Gemma-3-27b-it",
@@ -1036,10 +1008,8 @@
       "glm-5.2": "GLM-5.2",
       "gpt-oss:120b": "GPT-OSS 120B",
       "gpt-oss:20b": "GPT-OSS 20B",
-      "kimi-k2.5": "Kimi K2.5",
       "kimi-k2.6": "Kimi K2.6",
       "kimi-k2.7-code": "Kimi K2.7 Code",
-      "minimax-m2.5": "MiniMax M2.5",
       "minimax-m2.7": "MiniMax M2.7",
       "minimax-m3": "MiniMax M3",
       "mistral-large-3:675b": "Mistral Large 3",
@@ -1088,6 +1058,7 @@
       "gpt-5.6-luna": "GPT-5.6 Luna",
       "gpt-5.6-sol": "GPT-5.6 Sol",
       "gpt-5.6-terra": "GPT-5.6 Terra",
+      "gpt-6-astra": "GPT-6 Astra",
       "gpt-audio": "GPT Audio",
       "gpt-image-1": "GPT Image 1",
       "gpt-image-1-mini": "GPT Image 1 Mini",
@@ -1120,6 +1091,8 @@
       "minimax-m2.5": "MiniMax M2.5",
       "minimax-m2.7": "MiniMax M2.7",
       "minimax-m3": "MiniMax M3",
+      "muse-spark-1.2-contributor": "Muse Spark 1.2 Contributor",
+      "muse-spark-1.3-contributor": "Muse Spark 1.3 Contributor",
       "qwen3.6-plus": "Qwen3.6 Plus",
       "qwen3.7-max": "Qwen3.7 Max"
     },
@@ -1250,7 +1223,9 @@
       "deepseek-v3.2": "DeepSeek V3.2",
       "deepseek-v3.2-exp": "DeepSeek V3.2 Exp",
       "deepseek-v4-flash": "DeepSeek V4 Flash",
+      "deepseek-v4-flash-0731": "DeepSeek V4 Flash 0731",
       "deepseek-v4-pro": "DeepSeek V4 Pro",
+      "deepseek-v4-pro-0813": "DeepSeek V4 Pro 0813",
       "glm-4.5": "GLM-4.5",
       "glm-4.5-air": "GLM-4.5-Air",
       "glm-4.6": "GLM-4.6",
@@ -1370,6 +1345,9 @@
       "qwen3.7-flash": "Qwen3.7 Flash",
       "qwen3.7-max": "Qwen3.7 Max",
       "qwen3.7-plus": "Qwen3.7 Plus",
+      "qwen3.8-flash": "Qwen3.8 Flash",
+      "qwen3.8-max": "Qwen3.8 Max",
+      "qwen3.8-max-0902": "Qwen3.8 Max 0902",
       "qwq-32b": "QwQ 32B",
       "qwq-32b-preview": "QwQ 32B Preview",
       "qwq-plus": "QwQ Plus",
@@ -1428,20 +1406,13 @@
       "black-forest-labs/flux-schnell": "FLUX Schnell"
     },
     "sambanova": {
-      "deepseek-r1": "DeepSeek R1",
-      "deepseek-r1-distill-llama-70b": "DeepSeek R1 Distill Llama 70B",
-      "llama-3.1-tulu-3-405b": "Llama 3.1 Tulu 3 405B",
-      "llama-3.2-11b-vision-instruct": "Meta Llama 3.2 11B Vision Instruct",
-      "llama-3.2-90b-vision-instruct": "Meta Llama 3.2 90B Vision Instruct",
-      "meta-llama-3.1-405b-instruct": "Meta Llama 3.1 405B Instruct",
-      "meta-llama-3.1-70b-instruct": "Meta Llama 3.1 70B Instruct",
-      "meta-llama-3.1-8b-instruct": "Meta Llama 3.1 8B Instruct",
-      "meta-llama-3.2-1b-instruct": "Meta Llama 3.2 1B Instruct",
-      "meta-llama-3.2-3b-instruct": "Meta Llama 3.2 3B Instruct",
+      "deepseek-v3.1": "DeepSeek V3.1",
+      "deepseek-v3.2": "DeepSeek V3.2",
+      "gemma-4-31b-it": "Gemma 4 31B IT",
+      "gpt-oss-120b": "GPT OSS 120B",
       "meta-llama-3.3-70b-instruct": "Meta Llama 3.3 70B Instruct",
-      "qwen2.5-72b-instruct": "Qwen2.5 72B Instruct",
-      "qwen2.5-coder-32b-instruct": "Qwen2.5 Coder 32B Instruct",
-      "qwq-32b-preview": "QwQ 32B Preview"
+      "minimax-m2.7": "MiniMax M2.7",
+      "minimax-m3": "MiniMax M3"
     },
     "search1api": {
       "deepseek-r1-70b-fast-online": "DeepSeek R1 70B Fast",
@@ -1569,7 +1540,8 @@
       "qwen3.5-plus": "Qwen3.5 Plus"
     },
     "supergrok": {
-      "grok-4.5": "Grok 4.5"
+      "grok-4.5": "Grok 4.5",
+      "grok-4.6": "Grok 4.6"
     },
     "taichu": {
       "deepseek_r1": "DeepSeek R1",
@@ -1637,6 +1609,10 @@
       "qwen/qwq-32b-preview": "QwQ 32B Preview",
       "togethercomputer/stripedhyena-nous-7b": "StripedHyena Nous (7B)",
       "upstage/solar-10.7b-instruct-v1.0": "Upstage SOLAR Instruct v1 (11B)"
+    },
+    "unsloth": {
+      "unsloth/gemma-3-4b-it-gguf": "Gemma 3 4B",
+      "unsloth/qwen3-1.7b-gguf": "Qwen3 1.7B"
     },
     "upstage": {
       "solar-mini": "Solar Mini",
@@ -1766,6 +1742,7 @@
       "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite",
       "gemini-3.6-flash": "Gemini 3.6 Flash",
       "gemini-3.7-flash": "Gemini 3.7 Flash",
+      "gemini-3.8-flash": "Gemini 3.8 Flash",
       "imagen-4.0-fast-generate-001": "Imagen 4 Fast",
       "imagen-4.0-generate-001": "Imagen 4",
       "imagen-4.0-ultra-generate-001": "Imagen 4 Ultra"
@@ -1784,7 +1761,9 @@
     "volcengine": {
       "deepseek-v3.2": "DeepSeek V3.2",
       "deepseek-v4-flash": "DeepSeek V4 Flash",
+      "deepseek-v4-flash-ga": "DeepSeek V4 Flash 0731",
       "deepseek-v4-pro": "DeepSeek V4 Pro",
+      "deepseek-v4-pro-ga": "DeepSeek V4 Pro 0813",
       "doubao-1.5-lite-32k": "Doubao 1.5 Lite 32k",
       "doubao-1.5-pro-256k": "Doubao 1.5 Pro 256k",
       "doubao-1.5-pro-32k": "Doubao 1.5 Pro 32k",
@@ -1884,6 +1863,7 @@
       "grok-4.20-multi-agent-0309": "Grok 4.20 Multi-Agent",
       "grok-4.3": "Grok 4.3",
       "grok-4.5": "Grok 4.5",
+      "grok-4.6": "Grok 4.6",
       "grok-imagine-image": "Grok Imagine Image",
       "grok-imagine-image-quality": "Grok Imagine Image Quality",
       "grok-imagine-video": "Grok Imagine Video"
@@ -2031,6 +2011,7 @@
       "glm-5.1": "GLM-5.1",
       "glm-5.2": "GLM-5.2",
       "glm-5.3": "GLM-5.3",
+      "glm-5.3-flash": "GLM-5.3-Flash",
       "glm-5v-turbo": "GLM-5V-Turbo",
       "glm-image": "GLM-Image",
       "glm-z1-air": "GLM-Z1-Air",
