@@ -1063,8 +1063,9 @@ async def test_chat_agent_stabilizes_tool_order_and_keeps_gated_tools_at_tail(mo
             )
 
     class DummyCodeInterpreterMiddleware:
-        def __init__(self, *, ptc):
+        def __init__(self, *, ptc, max_ptc_calls):
             captured["ptc"] = list(ptc)
+            captured["max_ptc_calls"] = max_ptc_calls
 
     def tool(name):
         return types.SimpleNamespace(name=name)
@@ -1754,6 +1755,7 @@ class TestChatAgentStreaming:
 
         # Mock create_deep_agent 返回的 agent
         mock_stream = MagicMock()
+        mock_stream.abort = AsyncMock()
         mock_stream.output = AsyncMock(
             return_value={
                 "messages": [
@@ -1803,6 +1805,7 @@ class TestChatAgentStreaming:
         }
 
         mock_stream = MagicMock()
+        mock_stream.abort = AsyncMock()
 
         # output 现在是 async method；用 async def 函数直接赋值
         async def _delayed_output():
@@ -1863,6 +1866,7 @@ class TestChatAgentStreaming:
         from utils.agents import cognitive as agents_mod
 
         mock_stream = MagicMock()
+        mock_stream.abort = AsyncMock()
         mock_stream.output = AsyncMock(side_effect=exception_type("private provider details"))
 
         mock_agent = MagicMock()

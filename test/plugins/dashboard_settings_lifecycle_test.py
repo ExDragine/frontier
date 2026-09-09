@@ -9,6 +9,7 @@ import pytest
 from fastapi import HTTPException
 
 from plugins.dashboard.api import settings_routes
+from utils.configs import SessionConfig
 
 
 @pytest.fixture
@@ -193,4 +194,4 @@ async def test_settings_reader_waits_until_failed_reload_has_rolled_back(setting
     release.set()
     with pytest.raises(HTTPException):
         await update
-    assert (await read)["config"] == original
+    assert (await read)["config"] == {**original, "sessions": SessionConfig().model_dump()}

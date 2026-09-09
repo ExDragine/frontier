@@ -1,9 +1,10 @@
+import json
 from typing import Any
 
 from pydantic import BaseModel
 
 from utils.configs import EnvConfig
-from utils.llm_factory import create_llm
+from utils.llm_factory import create_llm, structured_output_options
 
 _JSON_MODE_INSTRUCTION = (
     "Return ONLY valid JSON matching the requested schema. Do not wrap the JSON in markdown or include explanations."
@@ -39,6 +40,7 @@ class SignalLLM:
             "max_retries": self.max_retries,
             "timeout": self.timeout,
             "provider": self.provider,
+            "tags": ["frontier:signal"],
         }
         if temperature is not None:
             kwargs["temperature"] = temperature
@@ -49,11 +51,12 @@ class SignalLLM:
         return kwargs
 
     @staticmethod
-    def _system_prompt(system_prompt: str) -> str:
+    def _system_prompt(system_prompt: str, schema: type[BaseModel], *, method: str) -> str:
         system_prompt = system_prompt.strip()
-        if not system_prompt:
-            return _JSON_MODE_INSTRUCTION
-        return f"{system_prompt}\n\n{_JSON_MODE_INSTRUCTION}"
+        if method != "json_mode":
+            return system_prompt or "按指定结构返回判断结果。"
+        instruction = _JSON_MODE_INSTRUCTION + "\nJSON Schema:\n" + json.dumps(schema.model_json_schema(), ensure_ascii=False)
+        return f"{system_prompt}\n\n{instruction}".strip()
 
     async def structured(
         self,
@@ -61,19 +64,21 @@ class SignalLLM:
         user_prompt: str,
         schema: type[BaseModel],
         *,
-        method: str = "json_mode",
+        method: str | None = None,
         temperature: float | None = None,
         model_kwargs: dict | None = None,
         extra_body: dict | None = None,
     ) -> Any:
         llm = create_llm(**self._llm_kwargs(temperature=temperature, model_kwargs=model_kwargs, extra_body=extra_body))
-        structured_llm = llm.with_structured_output(schema, method=method)
-        return await structured_llm.ainvoke(
+        options = structured_output_options(self.model, self.provider, llm, method=method)
+        structured_llm = llm.with_structured_output(schema, **options)
+        result = await structured_llm.ainvoke(
             [
-                ("system", self._system_prompt(system_prompt)),
+                ("system", self._system_prompt(system_prompt, schema, method=options["method"])),
                 ("human", user_prompt),
             ]
         )
+        return schema.model_validate(result)
 
 
 async def signal_structured(
@@ -84,7 +89,7 @@ async def signal_structured(
     temperature: float | None = None,
     model_kwargs: dict | None = None,
     extra_body: dict | None = None,
-    method: str = "json_mode",
+    method: str | None = None,
 ) -> Any:
     return await SignalLLM().structured(
         system_prompt,

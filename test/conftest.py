@@ -5,6 +5,7 @@ import importlib.machinery
 import importlib.util
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,7 @@ from .stubs.install import install_all_third_party_stubs
 install_all_third_party_stubs()
 os.environ.setdefault("NICKNAME", '["FrontierBot"]')
 _tools_dir = Path(__file__).resolve().parents[1] / "tools"
+_collection_env = pytest.StashKey[tuple[pytest.MonkeyPatch, tempfile.TemporaryDirectory]]()
 
 
 def pytest_configure(config):
@@ -50,11 +52,25 @@ def pytest_configure(config):
 
 
 def pytest_sessionstart(session):
+    # Collection imports application modules before per-test fixtures run.
+    # Keep their config/database/cache initialization outside the real workspace.
+    temporary_dir = tempfile.TemporaryDirectory(prefix="frontier-test-collection-")
+    monkeypatch = pytest.MonkeyPatch()
+    session.config.stash[_collection_env] = monkeypatch, temporary_dir
+    monkeypatch.delenv("FRONTIER_CONFIG", raising=False)
+    _ensure_env_file(monkeypatch, Path(temporary_dir.name))
+
     import nonebot
     import nonebot.plugin.load as plugin_load
 
     plugin_load.__dict__["require"] = lambda *_args, **_kwargs: None
     nonebot.__dict__["require"] = plugin_load.require
+
+
+def pytest_sessionfinish(session):
+    monkeypatch, temporary_dir = session.config.stash[_collection_env]
+    monkeypatch.undo()
+    temporary_dir.cleanup()
 
 
 # Ensure repo root is importable during collection
@@ -68,65 +84,42 @@ def _ensure_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     env_path = tmp_path / "env.toml"
     env_path.write_text(
         """
-[information]
-name = "FrontierBot"
+config_version = 2
 
-[endpoint]
-openai_base_url = "https://example.com"
+[models]
 basic_model = "gpt-4o-mini"
-advan_model = "gpt-4"
+advanced_model = "gpt-4"
 paint_model = "gpt-4-vision"
-basic_model_use_responses_api = true
-advan_model_use_responses_api = true
+
+[providers.openai]
+type = "openai"
+api_mode = "responses"
+base_url = "https://example.com"
+api_key = "sk-test"
+
+[providers.google]
+type = "google"
+api_key = "ggl-test"
+
+[providers.anthropic]
+type = "anthropic"
+api_key = "ant-test"
 
 [key]
-openai_api_key = "sk-test"
 nasa_api_key = "nasa-test"
 github_pat = "ghp-test"
-google_api_key = "ggl-test"
-anthropic_api_key = "ant-test"
-anthropic_base_url = ""
 
-[function]
-agent_module_enabled = true
-paint_module_enabled = true
-agent_capability = "none"
-agent_whitelist_mode = false
-agent_whitelist_person_list = []
-agent_whitelist_group_list = []
-agent_blacklist_person_list = []
-agent_blacklist_group_list = []
-paint_whitelist_mode = false
-paint_whitelist_person_list = []
-paint_whitelist_group_list = []
-paint_blacklist_person_list = []
-paint_blacklist_group_list = []
+[agent]
+reasoning_effort = "none"
 
-[message]
-test_group_id = []
-
-[database]
+[storage]
 query_message_numbers = 5
-
-[debug]
-agent_debug_mode = false
-
-[memory]
-enabled = true
-schema_version = "v2"
-auto_rebuild_on_startup = true
-embedding_model = "mock-embed"
-default_task_ttl_days = 7
-max_injected_memories = 4
-retrieval_user_k = 6
-retrieval_group_k = 6
-privacy_mode = "balanced"
-inject_timeout_ms = 500
 
 [dashboard]
 password = "admin"
-jwt_secret = "secret"
+jwt_secret = "frontier-test-jwt-secret-at-least-32-bytes"
 jwt_expire_hours = 1
+
 """,
         encoding="utf-8",
     )

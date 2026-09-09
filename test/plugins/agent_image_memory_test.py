@@ -2190,10 +2190,6 @@ async def test_agent_startup_cleans_cached_files_and_schedules_daily_job(monkeyp
             calls.append("attachments")
             return 0
 
-        async def repair_legacy_media_attachments(self):
-            calls.append("repair")
-            return 1, 0
-
     class DummyScheduler:
         def add_job(self, func, trigger, **kwargs):
             calls.append((func, trigger, kwargs))
@@ -2203,14 +2199,14 @@ async def test_agent_startup_cleans_cached_files_and_schedules_daily_job(monkeyp
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_AUTO_CLEANUP", True)
     await agent.on_startup()
 
-    assert calls[:2] == ["attachments", "repair"]
-    func, trigger, kwargs = calls[2]
+    assert calls[0] == "attachments"
+    func, trigger, kwargs = calls[1]
     assert func is agent.run_daily_cache_cleanup
     assert trigger == "cron"
     assert kwargs["id"] == agent.CACHE_CLEANUP_JOB_ID
     assert kwargs["hour"] == 4
     assert kwargs["timezone"] == "Asia/Shanghai"
-    assert len(calls) == 3
+    assert len(calls) == 2
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,5 @@
 # ruff: noqa: S101, S105
 
-import importlib
 import tomllib
 from pathlib import Path
 
@@ -8,642 +7,151 @@ import pytest
 from pydantic import ValidationError
 
 
-def test_env_config_defaults(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ZENMUX_API_KEY", raising=False)
-    env_path = tmp_path / "env.toml"
-    env_path.write_text(
-        """
-[information]
-name = "Bot"
+def test_env_config_defaults(monkeypatch):
+    from utils.configs import EnvConfig
 
-[endpoint]
-openai_base_url = "https://example.com"
-basic_model = "basic"
-advan_model = "advan"
-paint_model = "paint"
-
-[key]
-openai_api_key = "sk"
-nasa_api_key = "nasa"
-github_pat = "gh"
-
-[function]
-agent_module_enabled = true
-paint_module_enabled = true
-agent_capability = "none"
-agent_whitelist_mode = false
-agent_whitelist_person_list = []
-agent_whitelist_group_list = []
-agent_blacklist_person_list = []
-agent_blacklist_group_list = []
-paint_whitelist_mode = false
-paint_whitelist_person_list = []
-paint_whitelist_group_list = []
-paint_blacklist_person_list = []
-paint_blacklist_group_list = []
-
-[message]
-test_group_id = []
-
-[database]
-query_message_numbers = 3
-
-[debug]
-agent_debug_mode = false
-
-[dashboard]
-password = "admin"
-jwt_secret = "secret"
-""",
-        encoding="utf-8",
-    )
-
-    configs = importlib.import_module("utils.configs")
-    importlib.reload(configs)
-
-    assert configs.EnvConfig.DASHBOARD_PASSWORD == "admin"
-    assert not hasattr(configs.EnvConfig, "RAW_MESSAGE_GROUP_ID")
-    assert configs.EnvConfig.LLM_PROVIDERS["openai"]["api_key"] == "sk"
-    assert configs.EnvConfig.ANNOUNCE_GROUP_ID == configs.EnvConfig.TEST_GROUP_ID
-    assert configs.EnvConfig.CONTENT_CHECK_ENABLED is False
-    assert configs.EnvConfig.LLM_PROVIDERS["google"]["api_key"] == ""
-    assert configs.EnvConfig.LLM_PROVIDERS["anthropic"]["api_key"] == ""
-    assert configs.EnvConfig.LLM_PROVIDERS["anthropic"]["base_url"] == ""
-    assert configs.EnvConfig.BASIC_MODEL_PROVIDER == ""
-    assert configs.EnvConfig.BASIC_MODEL_CAPABILITIES == []
-    assert configs.EnvConfig.ADVAN_MODEL_PROVIDER == ""
-    assert configs.EnvConfig.ADVAN_MODEL_CAPABILITIES == []
-    assert configs.EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
-    assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
-    assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
-    assert configs.EnvConfig.DAILY_NEWS_MODEL == "deepseek-v4-flash"
-    assert configs.EnvConfig.DAILY_NEWS_MODEL_PROVIDER == "deepseek_responses"
-    assert configs.EnvConfig.DAILY_NEWS_MODEL_CAPABILITIES == ["text"]
-    assert configs.EnvConfig.LLM_PROVIDERS["openai"]["api_mode"] == "responses"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_mode"] == "chat_completions"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_key"] == ""
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["base_url"] == ""
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_responses"]["type"] == "openai"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_responses"]["base_url"] == "https://api.deepseek.com"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_responses"]["api_mode"] == "responses"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_anthropic"]["type"] == "anthropic"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_anthropic"]["api_mode"] == "messages"
-    assert configs.EnvConfig.VIDEO_MODULE_ENABLED is True
-    assert configs.EnvConfig.VIDEO_MODEL == "sora-2"
-    assert configs.EnvConfig.VIDEO_MODEL_PROVIDER == "video"
-    assert configs.EnvConfig.LLM_PROVIDERS["video"]["type"] == "openai"
-    assert configs.EnvConfig.LLM_PROVIDERS["video"]["base_url"] == ""
-    assert configs.EnvConfig.LLM_PROVIDERS["video"]["api_key"] == ""
-    assert configs.EnvConfig.PAINT_SIZE == "1024x1024"
-    assert configs.EnvConfig.PAINT_QUALITY == "auto"
-    assert configs.EnvConfig.VIDEO_SIZE == "1280x720"
-    assert configs.EnvConfig.VIDEO_SECONDS == "8"
-    assert configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 1
-    assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 900
-    assert configs.EnvConfig.MEDIA_TTL_DAYS == configs.EnvConfig.IMAGE_TTL_DAYS == 30
-    assert configs.EnvConfig.MAX_INLINE_IMAGES == 4
-    assert configs.EnvConfig.MAX_INLINE_MEDIA_BYTES == 20 * 1024 * 1024
-    assert configs.EnvConfig.VIDEO_POLL_INTERVAL_SECONDS == 15
-    assert configs.EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS == 900
-    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False
-    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == []
-    assert configs.EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == []
+    monkeypatch.setenv("ZENMUX_API_KEY", "unused-old-key")
+    EnvConfig.reload({"config_version": 2})
+    assert EnvConfig.settings.config_version == 2
+    assert EnvConfig.BASIC_MODEL_PROVIDER == ""
+    assert EnvConfig.BASIC_MODEL_CAPABILITIES == []
+    assert EnvConfig.ADVAN_MODEL_PROVIDER == ""
+    assert EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
+    assert EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
+    assert EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
+    assert EnvConfig.DAILY_NEWS_MODEL_PROVIDER == "deepseek_responses"
+    assert EnvConfig.LLM_PROVIDERS["openai"]["api_mode"] == "responses"
+    assert EnvConfig.LLM_PROVIDERS["deepseek"]["type"] == "deepseek"
+    assert EnvConfig.LLM_PROVIDERS["deepseek_responses"]["type"] == "openai"
+    assert EnvConfig.LLM_PROVIDERS["deepseek_responses"]["base_url"] == "https://api.deepseek.com"
+    assert EnvConfig.LLM_PROVIDERS["deepseek_anthropic"]["api_mode"] == "messages"
+    assert EnvConfig.PAINT_MODEL_PROVIDER == EnvConfig.VIDEO_MODEL_PROVIDER == "openai"
+    assert EnvConfig.LLM_PROVIDERS["openai"]["api_key"] == ""
+    assert "paint" not in EnvConfig.LLM_PROVIDERS
+    assert "video" not in EnvConfig.LLM_PROVIDERS
+    assert EnvConfig.VIDEO_MODEL == "sora-2"
+    assert EnvConfig.PAINT_SIZE == "1024x1024"
+    assert EnvConfig.PAINT_QUALITY == "auto"
+    assert EnvConfig.VIDEO_SIZE == "1280x720"
+    assert EnvConfig.VIDEO_SECONDS == "8"
+    assert EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 1
+    assert EnvConfig.MEDIA_TTL_DAYS == EnvConfig.IMAGE_TTL_DAYS == 30
+    assert EnvConfig.MAX_INLINE_IMAGES == 4
+    assert EnvConfig.MAX_INLINE_MEDIA_BYTES == 20 * 1024 * 1024
+    assert EnvConfig.CONTENT_CHECK_ENABLED is False
+    assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False
 
 
-def test_env_config_anthropic_base_url(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    env_path = tmp_path / "env.toml"
-    env_path.write_text(
-        """
-[information]
-name = "Bot"
+def test_env_config_reload_updates_runtime_sections():
+    from utils.configs import EnvConfig
 
-[endpoint]
-openai_base_url = "https://example.com"
-basic_model = "basic"
-advan_model = "advan"
-paint_model = "paint"
+    before = EnvConfig.REVISION
+    EnvConfig.reload({
+        "config_version": 2,
+        "auto_reply_policy": {
+            "whitelist_mode": True,
+            "whitelist_group_list": [1001],
+            "blacklist_group_list": [1002],
+        },
+        "storage": {"image_enabled": False, "image_ttl_days": 9, "image_auto_cleanup": False},
+        "content_check": {"enabled": True},
+        "models": {"signal_model_provider": "deepseek_responses"},
+    })
+    assert EnvConfig.REVISION == before + 1
+    assert EnvConfig.IMAGE_ENABLED is False
+    assert EnvConfig.MEDIA_TTL_DAYS == EnvConfig.IMAGE_TTL_DAYS == 9
+    assert EnvConfig.IMAGE_AUTO_CLEANUP is False
+    assert EnvConfig.CONTENT_CHECK_ENABLED is True
+    assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is True
+    assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == [1001]
+    assert EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == [1002]
+    assert EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek_responses"
 
-[key]
-openai_api_key = "sk"
-nasa_api_key = "nasa"
-github_pat = "gh"
-anthropic_api_key = "ant"
-anthropic_base_url = "https://anthropic.example.com"
-
-[function]
-agent_module_enabled = true
-paint_module_enabled = true
-agent_capability = "none"
-agent_whitelist_mode = false
-agent_whitelist_person_list = []
-agent_whitelist_group_list = []
-agent_blacklist_person_list = []
-agent_blacklist_group_list = []
-paint_whitelist_mode = false
-paint_whitelist_person_list = []
-paint_whitelist_group_list = []
-paint_blacklist_person_list = []
-paint_blacklist_group_list = []
-
-[message]
-test_group_id = []
-
-[database]
-query_message_numbers = 3
-
-[debug]
-agent_debug_mode = false
-
-[dashboard]
-password = "admin"
-jwt_secret = "secret"
-""",
-        encoding="utf-8",
-    )
-
-    configs = importlib.import_module("utils.configs")
-    importlib.reload(configs)
-
-    assert configs.EnvConfig.LLM_PROVIDERS["anthropic"]["base_url"] == "https://anthropic.example.com"
-    assert configs.EnvConfig.LLM_PROVIDERS["anthropic"]["api_key"] == "ant"
+    EnvConfig.reload({"config_version": 2})
+    assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False
+    assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == []
+    assert EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == []
+    assert EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
 
 
-def test_env_config_reload_updates_runtime_sections(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    env_path = tmp_path / "env.toml"
-    env_path.write_text(
-        """
-[information]
-name = "Bot"
+def test_media_models_use_explicit_profiles():
+    from utils.configs import EnvConfig
 
-[endpoint]
-openai_base_url = "https://example.com"
-basic_model = "basic"
-advan_model = "advan"
-paint_model = "paint"
-
-[key]
-openai_api_key = "sk"
-nasa_api_key = "nasa"
-github_pat = "gh"
-
-[function]
-agent_module_enabled = true
-paint_module_enabled = true
-agent_capability = "none"
-agent_whitelist_mode = false
-agent_whitelist_person_list = []
-agent_whitelist_group_list = []
-agent_blacklist_person_list = []
-agent_blacklist_group_list = []
-paint_whitelist_mode = false
-paint_whitelist_person_list = []
-paint_whitelist_group_list = []
-paint_blacklist_person_list = []
-paint_blacklist_group_list = []
-
-[message]
-test_group_id = []
-
-[database]
-query_message_numbers = 3
-
-[debug]
-agent_debug_mode = false
-
-[dashboard]
-password = "admin"
-jwt_secret = "secret"
-""",
-        encoding="utf-8",
-    )
-
-    configs = importlib.import_module("utils.configs")
-    importlib.reload(configs)
-
-    configs.EnvConfig.reload(
-        {
-            "function": {
-                "agent_auto_reply_whitelist_mode": True,
-                "agent_auto_reply_whitelist_group_list": [1001],
-                "agent_auto_reply_blacklist_group_list": [1002],
-            },
-            "image_memory": {"enabled": False, "ttl_days": 9, "auto_cleanup": False},
-            "content_check": {"enabled": True},
-            "endpoint": {"signal_model_use_responses_api": True},
-        }
-    )
-
-    assert configs.EnvConfig.IMAGE_ENABLED is False
-    assert configs.EnvConfig.IMAGE_TTL_DAYS == 9
-    assert configs.EnvConfig.IMAGE_AUTO_CLEANUP is False
-    assert configs.EnvConfig.CONTENT_CHECK_ENABLED is True
-    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is True
-    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == [1001]
-    assert configs.EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == [1002]
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["type"] == "openai"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_mode"] == "responses"
-
-    configs.EnvConfig.reload({"function": {}, "endpoint": {}})
-
-    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False
-    assert configs.EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == []
-    assert configs.EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == []
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["type"] == "deepseek"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_mode"] == "chat_completions"
+    EnvConfig.reload({
+        "config_version": 2,
+        "models": {
+            "paint_model": "paint",
+            "paint_model_provider": "images",
+            "paint_size": "2048x1152",
+            "video_model": "custom-video",
+            "video_model_provider": "videos",
+        },
+        "providers": {
+            "images": {"type": "openai", "base_url": "https://paint.example.com", "api_key": "sk-paint"},
+            "videos": {"type": "openai", "base_url": "https://video.example.com", "api_key": "sk-video"},
+        },
+        "features": {"video_enabled": False},
+        "limits": {"video_rate_limit_max_requests": 2, "agent_llm_timeout_seconds": 1234},
+    })
+    assert EnvConfig.PAINT_SIZE == "2048x1152"
+    assert EnvConfig.PAINT_MODEL_PROVIDER == "images"
+    assert EnvConfig.LLM_PROVIDERS["images"]["api_key"] == "sk-paint"
+    assert EnvConfig.LLM_PROVIDERS["images"]["api_mode"] == "chat_completions"
+    assert EnvConfig.VIDEO_MODEL == "custom-video"
+    assert EnvConfig.VIDEO_MODEL_PROVIDER == "videos"
+    assert EnvConfig.LLM_PROVIDERS["videos"]["base_url"] == "https://video.example.com"
+    assert EnvConfig.VIDEO_MODULE_ENABLED is False
+    assert EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 2
+    assert EnvConfig.AGENT_LLM_TIMEOUT_SECONDS == 1234
 
 
-def test_env_config_migrates_legacy_endpoint_profiles(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    env_path = tmp_path / "env.toml"
-    env_path.write_text(
-        """
-[information]
-name = "Bot"
-
-[endpoint]
-openai_base_url = "https://example.com"
-basic_model = "basic"
-basic_model_provider = "anthropic"
-basic_model_endpoint = "anthropic_proxy"
-basic_model_capabilities = ["text"]
-signal_model = "deepseek-v4-flash"
-signal_model_provider = "deepseek"
-signal_model_endpoint = "deepseek_signal"
-signal_model_capabilities = ["text"]
-signal_model_use_responses_api = true
-advan_model = "advan"
-advan_model_provider = "openai"
-advan_model_endpoint = "openrouter"
-advan_model_capabilities = ["text", "vision"]
-paint_model = "paint"
-
-[llm_endpoints.openrouter]
-provider = "openai"
-base_url = "https://openrouter.example.com/api/v1"
-api_key = "sk-openrouter"
-capabilities = ["text", "vision"]
-
-[llm_endpoints.anthropic_proxy]
-provider = "anthropic"
-base_url = "https://anthropic-proxy.example.com"
-api_key = "ant-proxy"
-capabilities = ["text"]
-
-[llm_endpoints.deepseek_signal]
-provider = "deepseek"
-base_url = "https://deepseek.example.com/v1"
-api_key = "sk-deepseek-profile"
-capabilities = ["text"]
-
-[key]
-openai_api_key = "sk"
-deepseek_api_key = "sk-deepseek"
-deepseek_api_base = "https://api.deepseek.example/v1"
-nasa_api_key = "nasa"
-github_pat = "gh"
-
-[function]
-agent_module_enabled = true
-paint_module_enabled = true
-agent_capability = "none"
-agent_whitelist_mode = false
-agent_whitelist_person_list = []
-agent_whitelist_group_list = []
-agent_blacklist_person_list = []
-agent_blacklist_group_list = []
-paint_whitelist_mode = false
-paint_whitelist_person_list = []
-paint_whitelist_group_list = []
-paint_blacklist_person_list = []
-paint_blacklist_group_list = []
-
-[message]
-test_group_id = []
-
-[database]
-query_message_numbers = 3
-
-[debug]
-agent_debug_mode = false
-
-[dashboard]
-password = "admin"
-jwt_secret = "secret"
-""",
-        encoding="utf-8",
-    )
-
-    configs = importlib.import_module("utils.configs")
-    importlib.reload(configs)
-
-    assert configs.EnvConfig.BASIC_MODEL_PROVIDER == "anthropic_proxy"
-    assert configs.EnvConfig.BASIC_MODEL_CAPABILITIES == ["text"]
-    assert configs.EnvConfig.ADVAN_MODEL_PROVIDER == "openrouter"
-    assert configs.EnvConfig.ADVAN_MODEL_CAPABILITIES == ["text", "vision"]
-    assert configs.EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
-    assert configs.EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek_signal"
-    assert configs.EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
-    assert configs.EnvConfig.LLM_PROVIDERS["openrouter"]["api_key"] == "sk-openrouter"
-    assert "capabilities" not in configs.EnvConfig.LLM_PROVIDERS["openrouter"]
-    assert configs.EnvConfig.LLM_PROVIDERS["openrouter"]["api_mode"] == "responses"
-    assert configs.EnvConfig.LLM_PROVIDERS["anthropic_proxy"]["base_url"] == "https://anthropic-proxy.example.com"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_signal"]["type"] == "openai"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek_signal"]["api_mode"] == "responses"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["api_key"] == "sk-deepseek"
-    assert configs.EnvConfig.LLM_PROVIDERS["deepseek"]["base_url"] == "https://api.deepseek.example/v1"
-
-
-def test_legacy_canonical_profile_keeps_global_provider_key():
+@pytest.mark.parametrize("version", [None, 1, 3, True, "2"])
+def test_config_requires_current_version(version):
     from utils.configs import parse_config
 
-    settings = parse_config(
-        {
-            "llm_endpoints": {
-                "openai": {
-                    "provider": "openai",
-                    "base_url": "https://openai.example.com/v1",
-                    "api_key": "",
-                }
-            },
-            "key": {"openai_api_key": "sk-legacy"},
-        }
-    )
-
-    assert settings.providers["openai"].api_key == "sk-legacy"
+    config = {} if version is None else {"config_version": version}
+    with pytest.raises(ValueError, match="仅支持 config_version = 2"):
+        parse_config(config)
 
 
-def test_legacy_paint_dimensions_migrate_to_openai_size():
+@pytest.mark.parametrize("section", [
+    "information", "endpoint", "llm_endpoints", "function", "message", "database", "image_memory", "memory",
+])
+def test_retired_config_sections_are_rejected_without_runtime_changes(section):
+    from utils.configs import EnvConfig
+
+    before = EnvConfig.settings, EnvConfig.REVISION
+    config = {"config_version": 2, section: {}, "features": {"agent_enabled": False}}
+    with pytest.raises(ValueError, match="不支持的配置段"):
+        EnvConfig.reload(config)
+    assert (EnvConfig.settings, EnvConfig.REVISION) == before
+    assert config[section] == {}
+
+
+@pytest.mark.parametrize("profile", [
+    {"type": "deepseek_responses"},
+    {"provider": "openai"},
+    {"type": "openai", "use_responses_api": True},
+    {"type": "openai", "api_mode": "responses", "use_responses_api": True},
+    {"type": "deepseek", "use_responses_api": True},
+])
+def test_retired_provider_fields_are_rejected(profile):
     from utils.configs import parse_config
 
-    settings = parse_config(
-        {
-            "models": {
-                "paint_model": "gpt-image-test",
-                "paint_aspect_ratio": "16:9",
-                "paint_image_size": "2K",
-            }
-        }
-    )
-
-    assert settings.models.paint.size == "2048x1152"
-    assert settings.models.paint.quality == "auto"
+    with pytest.raises(ValueError):
+        parse_config({"config_version": 2, "providers": {"retired": profile}})
 
 
-def test_env_config_paint_fields_fall_back_to_openai_values(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    env_path = tmp_path / "env.toml"
-    env_path.write_text(
-        """
-[information]
-name = "Bot"
+@pytest.mark.parametrize("fields", [
+    {"paint_image_size": "2K"},
+    {"paint_aspect_ratio": "16:9"},
+    {"basic_model_use_responses_api": True},
+])
+def test_retired_model_fields_are_rejected(fields):
+    from utils.configs import parse_config
 
-[endpoint]
-openai_base_url = "https://example.com"
-basic_model = "basic"
-advan_model = "advan"
-paint_model = "paint"
-paint_base_url = ""
-
-[key]
-openai_api_key = "sk-openai"
-paint_api_key = ""
-nasa_api_key = "nasa"
-github_pat = "gh"
-
-[function]
-agent_module_enabled = true
-paint_module_enabled = true
-agent_capability = "none"
-agent_whitelist_mode = false
-agent_whitelist_person_list = []
-agent_whitelist_group_list = []
-agent_blacklist_person_list = []
-agent_blacklist_group_list = []
-paint_whitelist_mode = false
-paint_whitelist_person_list = []
-paint_whitelist_group_list = []
-paint_blacklist_person_list = []
-paint_blacklist_group_list = []
-
-[message]
-test_group_id = []
-
-[database]
-query_message_numbers = 3
-
-[debug]
-agent_debug_mode = false
-
-[dashboard]
-password = "admin"
-jwt_secret = "secret"
-""",
-        encoding="utf-8",
-    )
-
-    configs = importlib.import_module("utils.configs")
-    importlib.reload(configs)
-
-    profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.PAINT_MODEL_PROVIDER]
-    assert profile["base_url"] == "https://example.com"
-    assert profile["api_key"] == "sk-openai"
-
-
-def test_env_config_paint_fields_fall_back_when_keys_are_omitted(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    env_path = tmp_path / "env.toml"
-    env_path.write_text(
-        """
-[information]
-name = "Bot"
-
-[endpoint]
-openai_base_url = "https://example.com"
-basic_model = "basic"
-advan_model = "advan"
-paint_model = "paint"
-
-[key]
-openai_api_key = "sk-openai"
-nasa_api_key = "nasa"
-github_pat = "gh"
-
-[function]
-agent_module_enabled = true
-paint_module_enabled = true
-agent_capability = "none"
-agent_whitelist_mode = false
-agent_whitelist_person_list = []
-agent_whitelist_group_list = []
-agent_blacklist_person_list = []
-agent_blacklist_group_list = []
-paint_whitelist_mode = false
-paint_whitelist_person_list = []
-paint_whitelist_group_list = []
-paint_blacklist_person_list = []
-paint_blacklist_group_list = []
-
-[message]
-test_group_id = []
-
-[database]
-query_message_numbers = 3
-
-[debug]
-agent_debug_mode = false
-
-[dashboard]
-password = "admin"
-jwt_secret = "secret"
-""",
-        encoding="utf-8",
-    )
-
-    configs = importlib.import_module("utils.configs")
-    importlib.reload(configs)
-
-    profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.PAINT_MODEL_PROVIDER]
-    assert profile["base_url"] == "https://example.com"
-    assert profile["api_key"] == "sk-openai"
-
-
-def test_env_config_paint_fields_allow_explicit_overrides(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    env_path = tmp_path / "env.toml"
-    env_path.write_text(
-        """
-[information]
-name = "Bot"
-
-[endpoint]
-openai_base_url = "https://example.com"
-basic_model = "basic"
-advan_model = "advan"
-paint_model = "paint"
-paint_base_url = "https://paint.example.com"
-
-[key]
-openai_api_key = "sk-openai"
-paint_api_key = "sk-paint"
-nasa_api_key = "nasa"
-github_pat = "gh"
-
-[function]
-agent_module_enabled = true
-paint_module_enabled = true
-agent_capability = "none"
-agent_whitelist_mode = false
-agent_whitelist_person_list = []
-agent_whitelist_group_list = []
-agent_blacklist_person_list = []
-agent_blacklist_group_list = []
-paint_whitelist_mode = false
-paint_whitelist_person_list = []
-paint_whitelist_group_list = []
-paint_blacklist_person_list = []
-paint_blacklist_group_list = []
-
-[message]
-test_group_id = []
-
-[database]
-query_message_numbers = 3
-
-[debug]
-agent_debug_mode = false
-
-[dashboard]
-password = "admin"
-jwt_secret = "secret"
-""",
-        encoding="utf-8",
-    )
-
-    configs = importlib.import_module("utils.configs")
-    importlib.reload(configs)
-
-    profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.PAINT_MODEL_PROVIDER]
-    assert profile["base_url"] == "https://paint.example.com"
-    assert profile["api_key"] == "sk-paint"
-
-
-def test_env_config_video_fields_allow_explicit_overrides(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    env_path = tmp_path / "env.toml"
-    env_path.write_text(
-        """
-[information]
-name = "Bot"
-
-[endpoint]
-openai_base_url = "https://example.com"
-basic_model = "basic"
-advan_model = "advan"
-paint_model = "paint"
-video_model = "custom-video"
-video_base_url = "https://video.example.com"
-
-[key]
-openai_api_key = "sk-openai"
-video_api_key = "sk-video"
-nasa_api_key = "nasa"
-github_pat = "gh"
-
-[function]
-agent_module_enabled = true
-paint_module_enabled = true
-video_module_enabled = false
-agent_capability = "none"
-agent_whitelist_mode = false
-agent_whitelist_person_list = []
-agent_whitelist_group_list = []
-agent_blacklist_person_list = []
-agent_blacklist_group_list = []
-paint_whitelist_mode = false
-paint_whitelist_person_list = []
-paint_whitelist_group_list = []
-paint_blacklist_person_list = []
-paint_blacklist_group_list = []
-video_rate_limit_max_requests = 2
-video_rate_limit_window_seconds = 1200
-video_poll_interval_seconds = 5
-video_poll_timeout_seconds = 600
-agent_llm_timeout_seconds = 1234
-agent_job_timeout_seconds = 4321
-
-[message]
-test_group_id = []
-
-[database]
-query_message_numbers = 3
-
-[debug]
-agent_debug_mode = false
-
-[dashboard]
-password = "admin"
-jwt_secret = "secret"
-""",
-        encoding="utf-8",
-    )
-
-    configs = importlib.import_module("utils.configs")
-    importlib.reload(configs)
-
-    assert configs.EnvConfig.VIDEO_MODULE_ENABLED is False
-    assert configs.EnvConfig.VIDEO_MODEL == "custom-video"
-    profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.VIDEO_MODEL_PROVIDER]
-    assert profile["base_url"] == "https://video.example.com"
-    assert profile["api_key"] == "sk-video"
-    assert configs.EnvConfig.VIDEO_RATE_LIMIT_MAX_REQUESTS == 2
-    assert configs.EnvConfig.VIDEO_RATE_LIMIT_WINDOW_SECONDS == 1200
-    assert configs.EnvConfig.VIDEO_POLL_INTERVAL_SECONDS == 5
-    assert configs.EnvConfig.VIDEO_POLL_TIMEOUT_SECONDS == 600
-    assert configs.EnvConfig.AGENT_LLM_TIMEOUT_SECONDS == 1234
-    assert configs.EnvConfig.AGENT_JOB_TIMEOUT_SECONDS == 4321
+    with pytest.raises(ValueError):
+        parse_config({"config_version": 2, "models": fields})
 
 
 def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
@@ -653,7 +161,7 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
     EnvConfig.reload(
         {
             "config_version": 2,
-            "bot": {"name": "IgnoredTomlName", "system_prompt": "你是 {name}"},
+            "bot": {"system_prompt": "你是 {name}"},
             "models": {
                 "basic_model": "gpt-5-mini",
                 "basic_model_provider": "openai_chat",
@@ -738,7 +246,7 @@ def test_reload_validation_is_atomic():
         EnvConfig.reload(
             {
                 "config_version": 2,
-                "bot": {"name": "ShouldNotApply"},
+                "bot": {"system_prompt": "ShouldNotApply"},
                 "limits": {"agent_llm_timeout_seconds": 0},
             }
         )
@@ -769,27 +277,6 @@ def test_env_toml_example_is_valid_v2_config():
     assert settings.models.paint.size == "1024x1024"
     assert settings.models.video.provider == "openai"
     assert settings.models.video.model == "sora-2"
-
-
-def test_legacy_deepseek_responses_type_migrates_to_adapter_and_api_mode():
-    from utils.configs import parse_config
-
-    settings = parse_config(
-        {
-            "config_version": 2,
-            "providers": {
-                "deepseek_agent": {
-                    "type": "deepseek_responses",
-                    "api_key": "sk-deepseek",
-                }
-            },
-        }
-    )
-
-    profile = settings.providers["deepseek_agent"]
-    assert profile.type == "openai"
-    assert profile.base_url == "https://api.deepseek.com"
-    assert profile.api_mode == "responses"
 
 
 @pytest.mark.parametrize(
@@ -841,7 +328,7 @@ def test_legacy_deepseek_responses_type_migrates_to_adapter_and_api_mode():
                     }
                 },
             },
-            "api_mode 与旧字段 use_responses_api 冲突",
+            "不再接受 use_responses_api",
         ),
         (
             {

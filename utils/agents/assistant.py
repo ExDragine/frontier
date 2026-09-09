@@ -97,6 +97,7 @@ async def assistant_agent(
         "streaming": False,
         "max_retries": 2,
         "timeout": 300,
+        "tags": ["frontier:assistant"],
         **route,
     }
     if reasoning_effort is not None and provider_uses_responses_api(use_model, route.get("provider")):

@@ -8,6 +8,8 @@ from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitM
 from utils.configs import EnvConfig
 from utils.llm_factory import create_llm
 
+from ..tool_errors import tool_error_middleware
+
 DOCUMENT_SUBAGENT_NAME = "document-agent"
 
 
@@ -19,8 +21,10 @@ def build_document_subagent() -> SubAgent:
         streaming=False,
         max_retries=2,
         timeout=300,
+        tags=["frontier:document"],
     )
     middleware: list[Any] = [
+        tool_error_middleware(all_read_only=True),
         ToolCallLimitMiddleware(run_limit=8, exit_behavior="end"),
         ModelCallLimitMiddleware(run_limit=6, exit_behavior="end"),
     ]

@@ -2,12 +2,10 @@
 
 import asyncio
 import json
-from io import BytesIO
 from pathlib import Path
 
 import pytest
-from PIL import Image
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect
 from sqlmodel import Session, create_engine, select
 
 from utils import database as db_module
@@ -25,8 +23,6 @@ from utils.database import (
     MessageAttachment,
     MessageDatabase,
     TimeStamp,
-    migrate_legacy_attachment_workspaces,
-    migrate_legacy_scope_directories,
 )
 from utils.media import resolve_media
 from utils.message_normalizer import NORMALIZED_VERSION, DerivedMessage
@@ -69,318 +65,6 @@ async def _select_scope_messages(
     return list(reversed(messages)) if ascending else messages
 
 
-def test_legacy_attachments_migrate_to_distinct_group_and_private_workspaces(
-    memory_engine,
-    tmp_path,
-    monkeypatch,
-):
-    monkeypatch.chdir(tmp_path)
-    Message.metadata.create_all(memory_engine)
-    MessageAttachment.metadata.create_all(memory_engine)
-    legacy_root = Path("cache/sandbox/memory/123/images")
-    (tmp_path / legacy_root).mkdir(parents=True)
-    (tmp_path / legacy_root / "group.png").write_bytes(b"group")
-    (tmp_path / legacy_root / "private.png").write_bytes(b"private")
-
-    with Session(memory_engine) as session:
-        session.add_all(
-            [
-                Message(
-                    time=1000,
-                    msg_id=1,
-                    user_id=9,
-                    group_id=123,
-                    user_name="Group member",
-                    role="user",
-                    content="[图片]",
-                ),
-                Message(
-                    time=2000,
-                    msg_id=2,
-                    user_id=123,
-                    group_id=None,
-                    user_name="Private peer",
-                    role="user",
-                    content="[图片]",
-                ),
-                MessageAttachment(
-                    msg_time=1000,
-                    msg_id=1,
-                    user_id=9,
-                    group_id=123,
-                    workspace_key="123",
-                    kind="image",
-                    file_name="group.png",
-                    physical_path=str(legacy_root / "group.png"),
-                    virtual_path="/memory/123/images/group.png",
-                    created_at=1000,
-                    expires_at=9_999_999_999_999,
-                ),
-                MessageAttachment(
-                    msg_time=2000,
-                    msg_id=2,
-                    user_id=123,
-                    group_id=None,
-                    workspace_key="123",
-                    kind="image",
-                    file_name="private.png",
-                    physical_path=str(legacy_root / "private.png"),
-                    virtual_path="/memory/123/images/private.png",
-                    created_at=2000,
-                    expires_at=9_999_999_999_999,
-                ),
-            ]
-        )
-        session.commit()
-
-    assert migrate_legacy_attachment_workspaces(memory_engine) == 2
-
-    with Session(memory_engine) as session:
-        attachments = session.exec(select(MessageAttachment).order_by(MessageAttachment.msg_time)).all()
-    assert [attachment.workspace_key for attachment in attachments] == ["group-123", "dm-123"]
-    assert [attachment.virtual_path for attachment in attachments] == [
-        "/memory/group-123/images/group.png",
-        "/memory/dm-123/images/private.png",
-    ]
-    assert (tmp_path / "cache/sandbox/memory/group-123/images/group.png").read_bytes() == b"group"
-    assert (tmp_path / "cache/sandbox/memory/dm-123/images/private.png").read_bytes() == b"private"
-    assert not (tmp_path / legacy_root / "group.png").exists()
-    assert not (tmp_path / legacy_root / "private.png").exists()
-
-
-def test_unambiguous_legacy_soul_and_workspace_are_migrated(memory_engine, tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    Message.metadata.create_all(memory_engine)
-    with Session(memory_engine) as session:
-        session.add(
-            Message(
-                time=1000,
-                msg_id=1,
-                user_id=9,
-                group_id=123,
-                user_name="Member",
-                role="user",
-                content="hello",
-            )
-        )
-        session.commit()
-
-    legacy_memory = tmp_path / "cache/sandbox/memory/123"
-    legacy_workspace = tmp_path / "cache/sandbox/workspaces/123"
-    (legacy_memory / "notes").mkdir(parents=True)
-    legacy_workspace.mkdir(parents=True)
-    (legacy_memory / "SOUL.md").write_text("旧群聊人设", encoding="utf-8")
-    (legacy_memory / "notes/context.md").write_text("上下文", encoding="utf-8")
-    (legacy_workspace / "result.txt").write_text("工作结果", encoding="utf-8")
-
-    assert migrate_legacy_scope_directories(memory_engine) == (1, 0)
-
-    assert not legacy_memory.exists()
-    assert not legacy_workspace.exists()
-    assert (tmp_path / "cache/sandbox/memory/group-123/SOUL.md").read_text(encoding="utf-8") == "旧群聊人设"
-    assert (tmp_path / "cache/sandbox/memory/group-123/notes/context.md").read_text(encoding="utf-8") == "上下文"
-    assert (tmp_path / "cache/sandbox/workspaces/group-123/result.txt").read_text(encoding="utf-8") == "工作结果"
-
-
-def test_legacy_attachment_source_is_kept_while_any_row_still_references_it(
-    memory_engine,
-    tmp_path,
-    monkeypatch,
-):
-    monkeypatch.chdir(tmp_path)
-    Message.metadata.create_all(memory_engine)
-    MessageAttachment.metadata.create_all(memory_engine)
-    source_path = Path("cache/sandbox/memory/123/files/shared.txt")
-    (tmp_path / source_path).parent.mkdir(parents=True)
-    (tmp_path / source_path).write_text("shared", encoding="utf-8")
-    with Session(memory_engine) as session:
-        session.add_all(
-            [
-                MessageAttachment(
-                    msg_time=1000,
-                    user_id=9,
-                    group_id=123,
-                    workspace_key="123",
-                    kind="file",
-                    file_name="shared.txt",
-                    physical_path=str(source_path),
-                    virtual_path="/memory/123/files/shared.txt",
-                    created_at=1000,
-                    expires_at=9_999_999_999_999,
-                ),
-                MessageAttachment(
-                    msg_time=2000,
-                    user_id=9,
-                    group_id=123,
-                    workspace_key="external",
-                    kind="file",
-                    file_name="shared.txt",
-                    physical_path=str(source_path),
-                    virtual_path="/external/shared.txt",
-                    created_at=1000,
-                    expires_at=9_999_999_999_999,
-                ),
-            ]
-        )
-        session.commit()
-
-    assert migrate_legacy_attachment_workspaces(memory_engine) == 1
-
-    assert (tmp_path / source_path).read_text(encoding="utf-8") == "shared"
-    with Session(memory_engine) as session:
-        paths = session.exec(select(MessageAttachment.physical_path)).all()
-    assert str(source_path) in paths
-    assert "cache/sandbox/memory/group-123/files/shared.txt" in paths
-    assert migrate_legacy_scope_directories(memory_engine) == (0, 0)
-    assert (tmp_path / source_path).read_text(encoding="utf-8") == "shared"
-
-
-def test_legacy_attachment_migration_merges_existing_typed_target(
-    memory_engine,
-    tmp_path,
-    monkeypatch,
-):
-    monkeypatch.chdir(tmp_path)
-    Message.metadata.create_all(memory_engine)
-    MessageAttachment.metadata.create_all(memory_engine)
-    legacy_path = Path("cache/sandbox/memory/123/files/a.txt")
-    typed_path = Path("cache/sandbox/memory/group-123/files/a.txt")
-    for path in (legacy_path, typed_path):
-        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / path).write_text("same", encoding="utf-8")
-    with Session(memory_engine) as session:
-        session.add_all(
-            [
-                MessageAttachment(
-                    msg_time=1000,
-                    user_id=9,
-                    group_id=123,
-                    workspace_key="123",
-                    kind="file",
-                    file_name="a.txt",
-                    physical_path=str(legacy_path),
-                    virtual_path="/memory/123/files/a.txt",
-                    created_at=100,
-                    expires_at=500,
-                ),
-                MessageAttachment(
-                    msg_time=1000,
-                    user_id=9,
-                    group_id=123,
-                    workspace_key="group-123",
-                    kind="file",
-                    file_name="a.txt",
-                    physical_path=str(typed_path),
-                    virtual_path="/memory/group-123/files/a.txt",
-                    created_at=200,
-                    expires_at=400,
-                ),
-            ]
-        )
-        session.commit()
-
-    assert migrate_legacy_attachment_workspaces(memory_engine) == 1
-
-    with Session(memory_engine) as session:
-        rows = session.exec(select(MessageAttachment)).all()
-    assert len(rows) == 1
-    assert rows[0].physical_path == str(typed_path)
-    assert rows[0].created_at == 100
-    assert rows[0].expires_at == 500
-    assert not (tmp_path / legacy_path).exists()
-    assert (tmp_path / typed_path).read_text(encoding="utf-8") == "same"
-
-
-def test_ambiguous_legacy_scope_is_left_for_manual_merge(memory_engine, tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    Message.metadata.create_all(memory_engine)
-    with Session(memory_engine) as session:
-        session.add_all(
-            [
-                Message(
-                    time=1000,
-                    msg_id=1,
-                    user_id=9,
-                    group_id=123,
-                    user_name="Member",
-                    role="user",
-                    content="group",
-                ),
-                Message(
-                    time=2000,
-                    msg_id=2,
-                    user_id=123,
-                    group_id=None,
-                    user_name="Peer",
-                    role="user",
-                    content="private",
-                ),
-            ]
-        )
-        session.commit()
-    legacy_memory = tmp_path / "cache/sandbox/memory/123"
-    legacy_memory.mkdir(parents=True)
-    (legacy_memory / "SOUL.md").write_text("归属不明", encoding="utf-8")
-
-    assert migrate_legacy_scope_directories(memory_engine) == (0, 1)
-    assert (legacy_memory / "SOUL.md").read_text(encoding="utf-8") == "归属不明"
-
-
-def test_ensure_message_schema_adds_normalization_columns(memory_engine):
-    with memory_engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                CREATE TABLE message (
-                    time INTEGER NOT NULL PRIMARY KEY,
-                    msg_id INTEGER,
-                    user_id INTEGER NOT NULL,
-                    group_id INTEGER,
-                    user_name VARCHAR,
-                    role VARCHAR NOT NULL,
-                    content VARCHAR NOT NULL
-                )
-                """
-            )
-        )
-        conn.execute(
-            text(
-                """
-                INSERT INTO message (time, msg_id, user_id, group_id, user_name, role, content)
-                VALUES (1000, 10, 1, 123, 'Alice', 'user', 'legacy')
-                """
-            )
-        )
-
-    db_module.ensure_message_schema(memory_engine)
-
-    columns = {column["name"] for column in inspect(memory_engine).get_columns("message")}
-    assert {
-        "raw_segments_json",
-        "normalized_version",
-        "normalized_status",
-        "source_type",
-        "parent_msg_id",
-        "parent_msg_time",
-        "parent_forward_id",
-        "user_nickname",
-        "user_card",
-        "reply_context_json",
-        "model_content",
-        "sender_user_id",
-        "bot_user_id",
-        "directly_mentions_bot",
-    }.issubset(columns)
-    with memory_engine.connect() as conn:
-        row = conn.execute(
-            text(
-                "SELECT normalized_version, normalized_status, source_type, sender_user_id "
-                "FROM message WHERE time = 1000"
-            )
-        ).one()
-    assert row == (0, "legacy", MESSAGE_SOURCE_TYPE_NORMAL, 1)
-
-
 def test_new_database_schema_has_no_conversation_compression_state(memory_engine):
     Message.metadata.create_all(memory_engine)
 
@@ -393,6 +77,33 @@ def test_new_database_schema_has_no_conversation_compression_state(memory_engine
         "token_estimate_version",
         "context_updated_at",
     }.isdisjoint(message_columns)
+
+
+@pytest.mark.asyncio
+async def test_session_history_uses_bot_scope_time_and_arrival_id_bounds(memory_engine):
+    database = MessageDatabase()
+    database.engine = memory_engine
+    Message.metadata.create_all(memory_engine)
+    first = await database.insert(1000, 1, 10, 20, "Alice", "user", "visible", bot_user_id=99)
+    await database.insert(1001, 2, 10, 20, "Alice", "user", "other bot", bot_user_id=98)
+    await database.insert(1002, 3, 10, 20, "Alice", "user", "unknown owner")
+    await database.insert(1003, 4, 10, 21, "Alice", "user", "other group", bot_user_id=99)
+    await database.insert(1004, 5, 10, None, "Alice", "user", "private", bot_user_id=99)
+    background = await database.insert(1500, 6, 11, 20, "Bob", "user", "background", bot_user_id=99)
+    await database.insert(2000, 7, 11, 20, "Bob", "user", "same millisecond", bot_user_id=99)
+    current = await database.insert(2000, 8, 10, 20, "Alice", "user", "current", bot_user_id=99)
+    await database.insert(1200, 9, 11, 20, "Bob", "user", "late backdated insert", bot_user_id=99)
+    history = await database.prepare_session_history(
+        bot_user_id=99, user_id=10, group_id=20, before_time=2000,
+        before_message_id=current.message_id, query_numbers=100,
+    )
+    assert [message["id"] for message in history] == [f"qq:99:message:{first.message_id}", f"qq:99:message:{background.message_id}"]
+    assert [_wire_payload(message)["content"] for message in history] == ["visible", "background"]
+    incremental = await database.prepare_session_history(
+        bot_user_id=99, user_id=10, group_id=20, before_time=2000,
+        before_message_id=current.message_id, after_message_id=first.message_id, query_numbers=100,
+    )
+    assert incremental == history[1:]
 
 
 @pytest.mark.asyncio
@@ -594,45 +305,6 @@ async def test_concurrent_image_cache_writes_share_one_attachment_row(monkeypatc
         rows = session.exec(select(MessageAttachment)).all()
     assert len(rows) == 1
     assert rows[0].physical_path == "cache/sandbox/memory/group-123/images/1000-m1_0.jpg"
-
-
-@pytest.mark.asyncio
-async def test_repair_legacy_media_attachments_corrects_suffix_and_mime(monkeypatch, memory_engine, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    database = MessageDatabase()
-    database.engine = memory_engine
-    Message.metadata.create_all(memory_engine)
-    MessageAttachment.metadata.create_all(memory_engine)
-
-    image_buffer = BytesIO()
-    Image.new("RGB", (2, 2), "blue").save(image_buffer, format="PNG")
-    legacy_path = Path("cache/sandbox/memory/1/images/1000_0.jpg")
-    (tmp_path / legacy_path).parent.mkdir(parents=True)
-    (tmp_path / legacy_path).write_bytes(image_buffer.getvalue())
-    await database.insert_attachment(
-        msg_time=1000,
-        msg_id=101,
-        user_id=1,
-        group_id=None,
-        kind="image",
-        physical_path=str(legacy_path),
-        virtual_path="/memory/1/images/1000_0.jpg",
-        file_name=legacy_path.name,
-        file_size=len(image_buffer.getvalue()),
-        expires_at=9_999_999_999_999,
-        mime_type="image/jpeg",
-    )
-
-    verified, corrected = await database.repair_legacy_media_attachments()
-    attachments = await database.select_image_attachments_by_msg_time(1000)
-
-    assert (verified, corrected) == (1, 2)
-    assert not (tmp_path / legacy_path).exists()
-    assert (tmp_path / "cache/sandbox/memory/1/images/1000_0.png").is_file()
-    assert attachments[0].file_name == "1000_0.png"
-    assert attachments[0].mime_type == "image/png"
-    assert json.loads(attachments[0].metadata_json)["media_type_verified"] is True
-    assert await database.repair_legacy_media_attachments() == (0, 0)
 
 
 @pytest.mark.asyncio

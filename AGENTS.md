@@ -60,7 +60,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | 模块 | 职责 |
 |------|------|
 | `plugins/agent` | 核心对话入口：消息提取、引用上下文、文件暂存、DB 写入、回复门控、内容安全、Agent 调度、回复发送 |
-| `plugins/clockwork` | APScheduler 定时任务系统：内置任务、用户自动任务、提醒迁移、任务命令、执行历史 |
+| `plugins/clockwork` | APScheduler 定时任务系统：内置任务、用户自动任务、任务命令、执行历史 |
 | `plugins/dashboard` | FastAPI Dashboard：`/api/dashboard/*` API、`/dashboard` 静态前端、JWT 鉴权、状态/消息/设置/任务管理 |
 | `plugins/playground` | `/paint`、`/video` 命令和戳一戳响应；直接调用共享图片/视频服务 |
 | `plugins/toolbox` | 管理命令：`/update`、`/restart`、`/model`、`/set wake`、`/vehelp`，以及技能沙箱初始化 |
@@ -71,9 +71,9 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 |------|------|
 | `agents/` | Agent 包：主 Deep Agent 编排、轻量 Agent、输入适配、进度流、Prompt、workspace、运行时与 Subagent |
 | `database.py` | SQLite/SQLModel、消息/附件/群设置模型、WAL/FTS/索引、历史上下文构造、检索和维护 |
-| `storage_migrations.py` | 消息身份的版本化事务迁移、关联回填和回滚 |
 | `agents/execution.py` / `agents/runtime_gateway.py` | 内置 Agent 的统一请求/结果、运行 ID、超时和取消边界 |
 | `agents/chat_context.py` / `delivery.py` | 当前消息与历史预算、不可变投递结果 |
+| `agents/sessions.py` / `agents/checkpoints.py` / `agents/session_context.py` | QQ 进程级有界会话、投递租约、官方 saver 适配与跨轮历史预算，默认关闭 |
 | `message.py` | 消息段提取、文件暂存、媒体下载、回复网关、内容安全、Markdown/图片回复渲染 |
 | `configs.py` | `EnvConfig`：从 `env.toml` 读取模型、端点、密钥、功能开关、Dashboard、内容安全配置 |
 | `llm_factory.py` | OpenAI-compatible / Google / Anthropic / DeepSeek 模型路由，供应商 profile，能力判断 |
@@ -127,8 +127,12 @@ Milky MessageEvent → NoneBot on_message(priority=10)
   - `/skills/`: 仓库内置 `skills/`，Agent 只读
   - `/memory/{workspace_key}/`: `cache/sandbox/memory/{workspace_key}`
 - 对每个 workspace，如果缺少 memory `SOUL.md`，会创建零字节空文件；群聊按 `group_id` 共享，私聊按 `user_id` 隔离。
-- 核心 middleware 顺序是 `PII → ToolRetry → ModelRetry → FilesystemFileSearch → CodeInterpreter → Memory`，随后按需追加静默回复、工具搜索和原生网页搜索。
-- 主模型 SDK 重试关闭，由 ModelRetry 控制模型重试；ToolRetry 只作用于 PTC 只读工具，平台写操作不能自动重试。
+- 核心 middleware 顺序是 `PII → ToolRetry → ToolError → ModelCallLimit → ToolCallLimit → ModelRetry → FilesystemFileSearch → CodeInterpreter → Memory`，随后按需追加静默回复、工具搜索和原生网页搜索。
+- 主模型 SDK 重试关闭，由 ModelRetry 控制模型重试。图工具错误由 ToolError 统一处理；PTC 直接调用工具，使用独立的异常脱敏包装。平台写操作或未分类工具异常会结束当前轮次，不自动重复。
+- 主图模型/工具预算与单次 PTC 脚本预算由 `[limits].agent_model_call_limit / agent_tool_call_limit / agent_ptc_call_limit` 控制；子代理保留独立预算。
+- QQ 的 `[sessions]` 开关开启后，同一机器人同一群共享 checkpoint，图仍按请求构建；配置修订不兼容、快照冲突、过期或容量轮换后从 DB 重建。ACP 和定时任务不接入该缓存。运行与投递租约不能被清理器回收，最终内容按实际送达文本校准；媒体轮次结算后释放整代。详见 `docs/agent-sessions.md`。
+- QuickJS 使用 `agents/code_interpreter.py` 的 turn 生命周期适配；v3 stream 退出先 abort，再清理进度与解释器，取消时不能遗留后台写入。
+- `managed_agent_turn` 收集 LangChain 用量，成功/失败返回 `usage`，取消也保留进程内统计；Dashboard `/api/dashboard/status/usage` 返回最近 100 轮无正文记录。详见 `docs/agent-execution-controls.md`。
 - 内置 skills 路径通过 FilesystemPermission 禁止写入。
 
 Prompt 加载链：
@@ -148,7 +152,7 @@ Prompt 加载链：
 - 将同步 DB 操作包进 `asyncio.to_thread()`，避免阻塞事件循环；内存库例外。
 - 存储普通消息、合并转发 derived messages、图片/附件索引、群级 key-value 设置。
 - `Message.id` 是独立主键，`time` 仅表示时间；附件、转发和 FTS 使用 ID 关联。`insert()` 返回 `MessageInsertResult(message_id, time, inserted)`。
-- `utils/storage_migrations.py` 在启动时事务迁移旧时间主键；升级前的备份和回滚步骤见 `docs/database-identity-migration.md`。
+- 启动时检查已有消息表的必要列和主键，只初始化新库并维护索引/FTS，不再迁移旧库；结构要求见 `docs/database-identity-migration.md`。
 - 通过 `prepare_message()` 将历史消息格式化为 JSON metadata + content，并把可用历史图片重新注入为 `image_url`。
 
 附件和 Agent 文件路径：
@@ -161,11 +165,11 @@ Prompt 加载链：
 
 ## Config Notes
 
-`env.toml.example` 是配置项参考。代码中不要硬编码模型名、provider、base URL 或 API key，使用 `EnvConfig`。
+`env.toml.example` 是配置项参考；仅接受显式 `config_version = 2`，旧配置分区、provider 别名、`use_responses_api` 和绘图尺寸迁移已移除。代码中不要硬编码模型名、provider、base URL 或 API key，使用 `EnvConfig`。
 
 模型路由规则：
 - 显式 `*_model_provider` 优先。
-- 所有 `*_model_provider`（包括 paint/video）均指向 `[providers.<name>]`；供应商 profile 用 `type` 管理 LangChain 适配器、用 `api_mode` 管理协议，并统一保存 base URL 和 API key。
+- 所有 `*_model_provider`（包括 paint/video）均指向 `[providers.<name>]`；供应商 profile 用 `type` 管理 LangChain 适配器、用 `api_mode` 管理协议，并统一保存 base URL 和 API key。Signal 的结构化策略由可选 `structured_output_method` 指定，默认 `auto`。
 - Paint/Video 服务使用 OpenAI-compatible Images/Videos API，因此对应 provider 的 `type` 必须为 `openai`。
 - 官方 OpenAI / DeepSeek Responses 路由会自动启用服务端 `web_search`；兼容代理只有在确认支持该托管工具后，才可在 provider profile 中显式设置 `native_web_search = true`。
 - 没有显式 provider 时，`llm_factory.py` 会根据模型名前缀推断：`deepseek*`、`gemini-*`、`claude-*`，其余走 OpenAI-compatible。
@@ -226,7 +230,7 @@ Milky 群管理工具会读取 `RunnableConfig.configurable.group_member_role` �
 
 ## Gotchas
 
-1. `utils/database.py` 仍包含索引、FTS、附件文件、derived messages 和线程调度；身份迁移位于 `utils/storage_migrations.py`。修改前先读相关测试，避免破坏历史注入和搜索性能。
+1. `utils/database.py` 仍包含索引、FTS、附件文件、derived messages 和线程调度；历史迁移已移除，启动时检查当前表结构。修改前先读相关测试，避免破坏历史注入和搜索性能。
 
 2. `EnvConfig` 在 import 时读取 `env.toml`。运行时 Dashboard 能调用 `EnvConfig.reload()` 更新部分配置，但普通代码不要假设配置文件变更会自动生效。
 
@@ -261,12 +265,12 @@ uv run --locked ruff check .
 - SQLite schema、索引、FTS、附件清理、历史检索
 - Milky 平台工具、媒体工具、ENS/天气/天文/占卜工具
 - clockwork 定时任务和 Dashboard API
-- 独立进程中的真实 LangChain/Deep Agents/MCP 契约、取消/超时、旧库迁移和投递失败
+- 独立进程中的真实 LangChain/Deep Agents/MCP 契约、取消/超时、旧结构拒绝启动、消息身份和投递失败
 
 写测试时的惯例：
 - 使用 `nonebug` 的 `App.test_matcher()` 模拟 NoneBot 事件。
 - 使用 `monkeypatch` 替换模块级对象，如 `f_cognitive`、`messages_db`、`run_serialized`。
-- 测试 fixture 会生成临时 `env.toml`，不要依赖仓库根目录的真实配置。
+- 测试收集阶段和每项测试均使用临时目录与 v2 `env.toml`，不要依赖仓库根目录的真实配置。
 
 ---
 

@@ -836,7 +836,7 @@ requires-dist = [
     { name = "langchain-quickjs" },
     { name = "markdown-it-py" },
     { name = "nb-cli" },
-    { name = "nonebot-adapter-milky" },
+    { name = "nonebot-adapter-milky", specifier = ">=1.3.0" },
     { name = "nonebot-plugin-alconna" },
     { name = "nonebot-plugin-apscheduler" },
     { name = "nonebot2", extras = ["fastapi"] },

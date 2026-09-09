@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends
 from nonebot import get_bots
 from sqlmodel import Session, func, select
 
+from utils.agents.sessions import session_manager
+from utils.agents.usage import usage_registry
 from utils.configs import EnvConfig
 from utils.database import Message, User, get_engine
 
@@ -75,6 +77,8 @@ async def get_status_overview(user: dict = AUTH_DEPENDENCY):
 
     return {
         "bot_name": EnvConfig.BOT_NAME,
+        "agent_usage": usage_registry.snapshot(include_recent=False),
+        "agent_sessions": session_manager.snapshot(),
         "uptime_seconds": uptime_seconds,
         "start_time": int(_start_time),
         "driver": "fastapi+websockets",
@@ -97,6 +101,12 @@ async def get_status_overview(user: dict = AUTH_DEPENDENCY):
             "task_count": task_count,
         },
     }
+
+
+@router.get("/usage")
+async def get_agent_usage(user: dict = AUTH_DEPENDENCY):
+    """当前进程累计用量及最近 100 轮明细；不包含聊天内容。"""
+    return usage_registry.snapshot()
 
 
 @router.get("/system")

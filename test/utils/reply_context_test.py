@@ -521,7 +521,8 @@ async def test_build_reply_context_downloads_and_indexes_quoted_group_file(monke
 
 
 @pytest.mark.asyncio
-async def test_build_reply_context_refreshes_private_quoted_file_with_peer_hash(monkeypatch, tmp_path):
+@pytest.mark.parametrize("self_sent", [False, True])
+async def test_build_reply_context_refreshes_private_quoted_file_with_peer_hash(monkeypatch, tmp_path, self_sent):
     monkeypatch.chdir(tmp_path)
     engine = create_engine("sqlite://")
     monkeypatch.setattr(db_module, "DATABASE_FILE", "sqlite://")
@@ -535,6 +536,7 @@ async def test_build_reply_context_refreshes_private_quoted_file_with_peer_hash(
         group_id=None,
         user_name="Alice",
         role="user",
+        sender_user_id=999 if self_sent else 111,
         content="[文件:private.txt (12字节)]",
         raw_segments_json=segments_to_raw_json(
             [
@@ -558,8 +560,8 @@ async def test_build_reply_context_refreshes_private_quoted_file_with_peer_hash(
         async def get_message(self, **_kwargs):
             raise AssertionError("stored raw segments should be sufficient")
 
-        async def get_private_file_download_url(self, *, user_id, file_id, file_hash):
-            calls.append((user_id, file_id, file_hash))
+        async def get_private_file_download_url(self, *, user_id, file_id, file_hash, is_self_send):
+            calls.append((user_id, file_id, file_hash, is_self_send))
             return "https://fresh.example/private.txt"
 
     async def fake_get(url):
@@ -584,7 +586,7 @@ async def test_build_reply_context_refreshes_private_quoted_file_with_peer_hash(
     )
 
     assert images == []
-    assert calls == [(111, "private-1", "hash-1")]
+    assert calls == [(111, "private-1", "hash-1", self_sent)]
     assert quote_payload is not None
     assert quote_payload["attachments"][0]["path"] == f"/memory/dm-111/files/500-m{inserted.message_id}/private.txt"
     assert (memory_dir / f"files/500-m{inserted.message_id}/private.txt").read_bytes() == b"private-file"

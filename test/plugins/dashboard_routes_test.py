@@ -12,6 +12,23 @@ from plugins.dashboard.api import auth_routes, messages_routes, settings_routes,
 
 
 @pytest.mark.asyncio
+async def test_session_defaults_can_be_saved_as_a_new_config_section(tmp_path, monkeypatch):
+    path = tmp_path / "settings.toml"
+    path.write_text("config_version = 2\n", encoding="utf-8")
+    monkeypatch.setattr(settings_routes, "TOML_PATH", path)
+    monkeypatch.setattr(settings_routes, "BACKUP_DIR", tmp_path / "backups")
+    monkeypatch.setattr(settings_routes, "_reload_env_config", lambda _config: None)
+    settings = (await settings_routes.get_settings(user={}))['config']
+    assert settings['sessions']['enabled'] is False
+    assert settings['sessions']['history_window_fraction'] == 0.25
+    await settings_routes._update_section('sessions', {'enabled': True, 'group_idle_seconds': 900})
+    saved = (await settings_routes.get_section('sessions', user={}))['config']
+    assert saved['enabled'] is True
+    assert saved['group_idle_seconds'] == 900
+    assert saved['history_max_tokens'] == 32000
+
+
+@pytest.mark.asyncio
 async def test_login_rate_limit(monkeypatch):
     monkeypatch.setattr(auth_routes, "check_rate_limit", lambda _ip: False)
     request = types.SimpleNamespace(client=types.SimpleNamespace(host="127.0.0.1"))
@@ -62,6 +79,7 @@ async def test_status_overview_handles_missing_task_plugin(monkeypatch):
     monkeypatch.setattr(status_routes, "func", types.SimpleNamespace(count=lambda: None))
 
     result = await status_routes.get_status_overview(user={})
+    assert "usage_missing_calls" in result["agent_usage"]
     assert result["database"]["task_count"] == 0
 
 
@@ -262,73 +280,71 @@ def test_reload_env_config_recomputes_paint_specific_values(tmp_path, monkeypatc
     env_path = tmp_path / "env.toml"
     env_path.write_text(
         """
-[information]
-name = "Bot"
+config_version = 2
 
-[endpoint]
-openai_base_url = "https://global.example.com/v1"
+[models]
 basic_model = "basic"
-basic_model_provider = "anthropic"
-basic_model_endpoint = "anthropic_proxy"
+basic_model_provider = "anthropic_proxy"
 basic_model_capabilities = ["text"]
 signal_model = "deepseek-v4-flash"
-signal_model_provider = "deepseek"
-signal_model_endpoint = "deepseek_signal"
+signal_model_provider = "deepseek_signal"
 signal_model_capabilities = ["text"]
-advan_model = "advan"
-advan_model_provider = "openai"
-advan_model_endpoint = "openrouter"
-advan_model_capabilities = ["text", "vision"]
+advanced_model = "advan"
+advanced_model_provider = "openrouter"
+advanced_model_capabilities = ["text", "vision"]
 paint_model = "paint"
-paint_base_url = ""
+paint_model_provider = "openai"
 video_model = "alibaba/happyhorse-1.0"
-video_base_url = "https://zenmux.ai/api/vertex-ai"
+video_model_provider = "video"
 
-[llm_endpoints.openrouter]
-provider = "openai"
+[providers.openai]
+type = "openai"
+base_url = "https://global.example.com/v1"
+api_key = "sk-global"
+
+[providers.openrouter]
+type = "openai"
+api_mode = "responses"
 base_url = "https://openrouter.example.com/api/v1"
 api_key = "sk-openrouter"
-capabilities = ["text", "vision"]
 
-[llm_endpoints.anthropic_proxy]
-provider = "anthropic"
+[providers.anthropic_proxy]
+type = "anthropic"
 base_url = "https://anthropic.example.com"
 api_key = "ant-proxy"
-capabilities = ["text"]
 
-[llm_endpoints.deepseek_signal]
-provider = "deepseek"
+[providers.deepseek_signal]
+type = "deepseek"
 base_url = "https://deepseek.example.com/v1"
 api_key = "sk-deepseek-profile"
-capabilities = ["text"]
+
+[providers.google]
+type = "google"
+api_key = "ggl-global"
+
+[providers.anthropic]
+type = "anthropic"
+api_key = "ant-global"
+base_url = "https://anthropic.example.com"
+
+[providers.deepseek]
+type = "deepseek"
+api_key = "sk-deepseek"
+base_url = "https://api.deepseek.example/v1"
+
+[providers.video]
+type = "openai"
+base_url = "https://zenmux.ai/api/vertex-ai"
+api_key = "sk-video"
 
 [key]
-openai_api_key = "sk-global"
-paint_api_key = ""
-video_api_key = "sk-video"
-google_api_key = "ggl-global"
-anthropic_api_key = "ant-global"
-anthropic_base_url = "https://anthropic.example.com"
-deepseek_api_key = "sk-deepseek"
-deepseek_api_base = "https://api.deepseek.example/v1"
 nasa_api_key = "nasa"
 github_pat = "gh"
 
-[function]
-agent_module_enabled = true
-paint_module_enabled = true
-video_module_enabled = true
-agent_capability = "none"
-agent_whitelist_mode = false
-agent_whitelist_person_list = []
-agent_whitelist_group_list = []
-agent_blacklist_person_list = []
-agent_blacklist_group_list = []
-paint_whitelist_mode = false
-paint_whitelist_person_list = []
-paint_whitelist_group_list = []
-paint_blacklist_person_list = []
-paint_blacklist_group_list = []
+[agent]
+reasoning_effort = "none"
+
+[limits]
 video_rate_limit_max_requests = 2
 video_rate_limit_window_seconds = 1200
 video_poll_interval_seconds = 3
@@ -336,18 +352,13 @@ video_poll_timeout_seconds = 600
 agent_llm_timeout_seconds = 1500
 agent_job_timeout_seconds = 5400
 
-[message]
-test_group_id = []
-
-[database]
+[storage]
 query_message_numbers = 3
-
-[debug]
-agent_debug_mode = false
 
 [dashboard]
 password = "admin"
 jwt_secret = "secret"
+
 """,
         encoding="utf-8",
     )

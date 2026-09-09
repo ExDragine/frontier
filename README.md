@@ -61,6 +61,10 @@ UniMessage 文本、图片、视频或文件回复
 | 占卜 | 易经、塔罗 |
 
 部分工具是受限工具：网页截图/录屏只有在用户明确要求查看网页外观或录制页面时才暴露；ENS 专业气象工具有独立前缀和门控规则。
+调用预算、每轮 token 统计和错误处理约定见 [Agent 执行控制](docs/agent-execution-controls.md)。Dashboard 总览显示本次启动以来的用量；供应商的结构化输出策略可按 profile 配置。
+
+QQ 已支持有界会话缓存、空闲过期与历史重建，默认关闭；可在 Dashboard 的“会话缓存”设置中启用。配置与运行边界见 [QQ 会话缓存](docs/agent-sessions.md)，设计记录见 [Checkpointer 实施计划](docs/checkpointer-plan.md)。
+
 工具执行分为三层：媒体工件、平台写操作、聊天记忆和未分类 MCP 工具由主 Agent 直接调用；一次性只读查询仅通过 PTC 暴露；需要多轮网络研究或文档分析的任务交给有严格工具与模型调用预算的专用子代理。
 
 仓库内置工作流位于 `skills/`，运行时以只读方式挂载到 `/skills`，按描述渐进加载；Agent 不再拥有宿主 Shell，也不会在启动时从远端下载 Skill。
@@ -222,9 +226,9 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 - `[dashboard]`: 管理面板密码、JWT secret、过期时间。
 - `[content_check]`: 文本/图片内容安全开关。
 
-`config_version = 2` 使用上述结构。旧版 `information/endpoint/function/message/database`
-配置仍可读取，便于渐进迁移。`utils/configs.py` 会先校验完整配置，再原子切换运行时快照；
-Dashboard 保存前也会执行相同校验。
+配置必须显式声明 `config_version = 2` 并使用上述结构。旧版配置分区、模型 endpoint、
+供应商协议开关及绘图尺寸转换已移除；旧字段会在启动或 Dashboard 保存时明确报错。
+`utils/configs.py` 校验成功后才原子切换运行时快照，失败不会覆盖当前配置。
 
 Dashboard 配置保存会串行处理并发更新，使用独立临时文件原子替换；备份仅保留最近 10 份，
 配置和备份权限为当前用户可读写。重载失败时会原子恢复旧文件并重新加载旧配置。
@@ -248,7 +252,9 @@ DeepSeek 可分别配置为 `deepseek + chat_completions`、`openai + responses`
 `https://api.deepseek.com/anthropic`。使用官方地址和 DeepSeek 模型时，Frontier 会在三种协议中
 自动发送不含 QQ 明文的稳定 scope ID，用于服务端 KV cache、内容安全和调度隔离；兼容代理不会
 收到这一扩展字段。图片和文件输入目前不应交给这些 DeepSeek profile。
-旧版 `use_responses_api` 和短暂使用过的 `type = "deepseek_responses"` 会自动迁移。
+协议统一使用 `api_mode`；不再接受 `use_responses_api`、供应商 `provider` 别名或
+`type = "deepseek_responses"`。名为 `deepseek_responses` 的 profile 仍然可用，其类型为 `openai`。
+绘图尺寸直接填写 `paint_size`，不再转换 `paint_image_size` 和 `paint_aspect_ratio`。
 每日新闻使用独立的 `daily_news_model` / `daily_news_model_provider` 配置，默认通过
 DeepSeek V4 的官方 Responses API 直接调用服务端 `web_search`，不再依赖 Exa MCP。
 如果替换日报模型，该模型目录和 provider 协议也必须声明支持 Responses 原生联网搜索。
@@ -260,11 +266,8 @@ DeepSeek V4 的官方 Responses API 直接调用服务端 `web_search`，不再�
 `user_id` 使用 `cache/sandbox/memory/dm-{user_id}/SOUL.md`。新文件为空，由 Agent 按稳定互动
 逐步记录局部人设和长期偏好；全局安全、权限和工具规范不会写入 SOUL。
 
-从裸 `{id}` workspace 升级时，数据库已索引的附件会按其群聊/私聊记录迁移到带类型的新目录，
-提交新索引后删除旧媒体副本，避免绕过附件 TTL。SQL 历史只能匹配一种 scope 时，旧
-`memory/{id}/SOUL.md` 与 `workspaces/{id}` 也会自动、非覆盖地迁移；若群号和 QQ 号同值且两种
-scope 都存在，原目录会保留并打印警告，管理员核实来源后再人工合并到对应的 `group-{id}` 或
-`dm-{id}` 目录。
+当前版本使用带 `group-` / `dm-` 前缀的会话目录，历史裸 `{id}` 目录和附件的自动迁移已移除。
+启动不会搬动旧目录；旧部署需先用包含迁移工具的历史版本完成升级。
 
 会话上下文与 SOUL 分开管理。主 Agent 默认只接收当前用户消息，不自动载入历史，也不生成聊天
 摘要。当前请求依赖前文时，Agent 可调用 `get_recent_conversation` 获取当前会话的近期记录；需要

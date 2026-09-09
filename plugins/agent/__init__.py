@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from langchain.messages import AIMessage
-from nonebot import get_bot, get_driver, logger, on_message, require
-from nonebot.adapters.milky.event import MessageEvent
+from nonebot import get_bot, get_driver, logger, on_message, on_notice, require
+from nonebot.adapters.milky.event import GroupDisbandEvent, MessageEvent
 
 require("nonebot_plugin_alconna")
 require("nonebot_plugin_apscheduler")
@@ -32,6 +32,7 @@ from utils.agents.message_envelope import (
 )
 from utils.agents.message_envelope import content_for_persisted_images as _remove_attached_image_placeholders
 from utils.agents.runtime_gateway import AgentRuntimeRequest, FrontierAgentRuntime
+from utils.agents.sessions import HistoryBoundary, SessionKey, TurnLease, session_manager
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
@@ -61,6 +62,19 @@ from utils.reply_context import (
 )
 
 messages_db = MessageDatabase()
+
+
+async def _is_group_disband(event) -> bool:
+    return isinstance(event, GroupDisbandEvent)
+
+
+group_disband = on_notice(rule=_is_group_disband, priority=10, block=False)
+
+
+@group_disband.handle()
+async def handle_group_disband(event: GroupDisbandEvent):
+    # A notice is not a user request. Preserve history and workspace for retrieval.
+    logger.info("Milky 群已解散: group_id={} operator_id={}", event.data.group_id, event.data.operator_id)
 f_cognitive = FrontierCognitive()
 driver = get_driver()
 
@@ -189,9 +203,58 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
     return reporter
 
 
-async def _process_agent_request(  # noqa: C901
+async def _settle_session(lease: TurnLease | None, **kwargs) -> None:
+    if lease is None or lease.finished:
+        return
+    try:
+        await session_manager.finish(lease, **kwargs)
+    except Exception as exc:
+        # Transport success must never be retried because cache maintenance failed.
+        logger.warning("会话状态结算失败: %s", type(exc).__name__)
+
+
+async def _process_agent_request(
     context: AgentRequestContext,
     history_messages: list[dict[str, Any]] | None = None,
+) -> bool:
+    lease = None
+    bot_id = getattr(context.event, "self_id", None)
+    use_session_history = EnvConfig.SESSIONS.enabled and context.message_id is not None and bot_id is not None
+    if use_session_history:
+        async def begin():
+            return session_manager.begin(
+                SessionKey(str(bot_id), str(context.user_id), context.group_id),
+                HistoryBoundary(context.message_id, context.msg_time),
+                EnvConfig.SESSIONS, EnvConfig.REVISION,
+            )
+        try:
+            lease = await run_serialized(f"workspace:{_agent_workspace_key(context.user_id, context.group_id)}", begin)
+        except Exception as exc:
+            # No graph/tool has started: a cache maintenance failure can safely
+            # fall back to the original execution with the same scoped history.
+            session_manager.metrics["initialization_fallback"] += 1
+            logger.warning("会话缓存初始化失败，使用历史上下文: %s", type(exc).__name__)
+    try:
+        if use_session_history:
+            started = time.monotonic()
+            history_messages = await messages_db.prepare_session_history(
+                bot_user_id=int(bot_id), user_id=int(context.user_id), group_id=context.group_id,
+                before_time=context.msg_time, before_message_id=context.message_id,
+                query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
+                after_message_id=lease.entry.history_cursor if lease is not None and lease.hot else None,
+            )
+            if lease is not None:
+                lease.rebuild_seconds = time.monotonic() - started
+        return await _execute_agent_request(context, history_messages, lease)
+    finally:
+        # Covers cancellation, tool/model failures, early returns and sender errors.
+        await _settle_session(lease)
+
+
+async def _execute_agent_request(  # noqa: C901
+    context: AgentRequestContext,
+    history_messages: list[dict[str, Any]] | None = None,
+    session_turn: TurnLease | None = None,
 ) -> bool:
     messages = build_chat_context(
         payload=build_agent_message_payload(
@@ -219,6 +282,8 @@ async def _process_agent_request(  # noqa: C901
         max_images=EnvConfig.MAX_INLINE_IMAGES,
     )
     capability = EnvConfig.AGENT_CAPABILITY
+    if session_turn is not None:
+        messages[-1]["id"] = session_turn.current_id
 
     result = await FrontierAgentRuntime(cognitive=f_cognitive).run(
         AgentRuntimeRequest(
@@ -235,6 +300,7 @@ async def _process_agent_request(  # noqa: C901
             allow_silent_reply=_allows_silent_reply(context),
             access_profile="frontier",
             enable_acp_subagents=True,
+            session_turn=session_turn,
         ),
         progress_reporter=_chat_progress_reporter(context.group_id),
     )
@@ -245,6 +311,7 @@ async def _process_agent_request(  # noqa: C901
 
     if result.get("should_reply") is False:
         logger.info("Agent 选择本轮不回复: group_id=%s user_id=%s", context.group_id, context.user_id)
+        await _settle_session(session_turn, silent=True)
         return False
 
     response = result["response"]
@@ -277,9 +344,11 @@ async def _process_agent_request(  # noqa: C901
         response = {**response, "messages": [*response_messages[:-1], AIMessage(content=sanitized_response or "")]}
     delivery = await send_messages(context.group_id, context.event_id, response)
     if delivery.successful:
+        delivered_at = int(time.time() * 1000)
+        inserted = None
         try:
-            await messages_db.insert(
-                time=int(time.time() * 1000),
+            inserted = await messages_db.insert(
+                time=delivered_at,
                 msg_id=None,
                 # 私聊按对端 user_id 建立会话范围；群聊保留真实机器人发送者 ID。
                 user_id=int(context.user_id) if context.group_id is None else int(context.event.self_id),
@@ -293,6 +362,12 @@ async def _process_agent_request(  # noqa: C901
         except Exception as exc:
             # Delivery has happened: never retry the send because persistence failed.
             logger.exception("回复已送达但历史记录写入失败: %s", type(exc).__name__)
+        if not artifact_delivery.errors and not result.get("error"):
+            await _settle_session(
+                session_turn, delivered=True, delivered_at=delivered_at,
+                content=outgoing_message_content(response["messages"][-1]),
+                message_id=getattr(inserted, "message_id", None),
+            )
     elif delivery.errors:
         logger.warning("回复未送达，未记入已回复历史: %s", delivery.errors)
     return delivery.sent > 0 or artifact_delivery.sent > 0
@@ -406,6 +481,7 @@ async def _run_agent_turn(
 
 @driver.on_shutdown
 async def on_shutdown():
+    await session_manager.close()
     from tools.ens_professional import clear_ens_cache as clear_ens_professional_cache
 
     clear_ens_professional_cache()
@@ -418,16 +494,12 @@ async def on_shutdown():
 
 @driver.on_startup
 async def on_startup():
+    session_manager.start()
     if EnvConfig.IMAGE_AUTO_CLEANUP:
         try:
             cleaned_attachments = await messages_db.cleanup_expired_attachments()
             if cleaned_attachments:
                 logger.info("已清理过期消息附件: %s", cleaned_attachments)
-            repair_legacy_media = getattr(messages_db, "repair_legacy_media_attachments", None)
-            if repair_legacy_media is not None:
-                verified, corrected = await repair_legacy_media()
-                if verified:
-                    logger.info("已校验历史媒体附件: %s，修正: %s", verified, corrected)
         except Exception as exc:
             logger.warning("消息附件维护失败: %s: %s", type(exc).__name__, exc)
 

@@ -3,7 +3,6 @@
 import asyncio
 import datetime
 import importlib
-import json
 import sys
 import types
 from pathlib import Path
@@ -34,6 +33,19 @@ TaskExecutionHistory = task_models_module.TaskExecutionHistory
 TaskGroupMapping = task_models_module.TaskGroupMapping
 ScheduledTaskMetadata = task_models_module.ScheduledTaskMetadata
 TaskRunResult = task_models_module.TaskRunResult
+
+
+def test_task_schema_rejects_missing_output_summary(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'old-tasks.db'}")
+    TaskExecutionHistory.__table__.create(engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql("ALTER TABLE taskexecutionhistory DROP COLUMN output_summary")
+    manager = TaskManager(DummyScheduler(), engine)
+    with pytest.raises(RuntimeError, match="缺少列 output_summary"):
+        manager.ensure_schema()
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(taskexecutionhistory)")}
+    assert "output_summary" not in columns
 
 
 def test_cenc_is_not_a_clockwork_task_anymore():
@@ -275,30 +287,6 @@ async def test_cancelled_task_is_recorded_and_cancellation_propagates(monkeypatc
         await executor.execute("cancelled")
     history = await task_manager.get_execution_history("cancelled")
     assert history[0].status == "cancelled"
-
-
-@pytest.mark.asyncio
-async def test_migrate_legacy_reminder(task_manager):
-    await task_manager.register_task(
-        job_id="reminder_42_1",
-        name="提醒: 喝水",
-        handler_module="plugins.clockwork.reminder_handler",
-        handler_function="fire_reminder",
-        trigger_type="date",
-        trigger_args={"run_date": "2099-01-01T00:00:00+08:00"},
-        group_ids=[100],
-        description=json.dumps({"text": "喝水", "user_id": "42", "group_id": 100, "private": False}),
-    )
-
-    migrated = await task_manager.migrate_legacy_reminders()
-    task = await task_manager.get_task("reminder_42_1")
-    metadata = await task_manager.get_task_metadata("reminder_42_1")
-    assert migrated == 1
-    assert task is not None
-    assert task.handler_module == "plugins.clockwork.agent_task_handler"
-    assert metadata is not None
-    assert metadata.owner_user_id == "42"
-    assert metadata.target_type == "group"
 
 
 @pytest.mark.asyncio

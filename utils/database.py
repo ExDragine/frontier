@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import posixpath
-import shutil
 import threading
 import time
 from contextlib import contextmanager, suppress
@@ -24,7 +23,6 @@ from utils.agents.message_envelope import (
 )
 from utils.agents.runtime import conversation_workspace_key
 from utils.media import ResolvedMedia, resolve_media
-from utils.storage_migrations import migrate_message_identity, platform_message_key
 
 DATABASE_FILE = "sqlite:///frontier.db"
 SQLITE_BUSY_TIMEOUT_MS = 5000
@@ -130,6 +128,8 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
     if "message" in table_names:
         statements.extend(
             [
+                "CREATE INDEX IF NOT EXISTS ix_message_time_id ON message (time, id)",
+                "CREATE INDEX IF NOT EXISTS ix_message_parent_message_id ON message (parent_message_id)",
                 "CREATE INDEX IF NOT EXISTS ix_message_group_time ON message (group_id, time DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_message_user_group_time ON message (user_id, group_id, time DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_message_group_role_time ON message (group_id, role, time DESC)",
@@ -143,7 +143,6 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
         )
 
     if "messageattachment" in table_names:
-        deduplicate_message_attachments(engine)
         statements.extend(
             [
                 (
@@ -186,44 +185,31 @@ def ensure_database_performance_indexes(engine: Engine) -> None:
         conn.execute(text("PRAGMA optimize"))
 
 
-def ensure_message_schema(engine: Engine) -> None:
-    if "message" not in set(inspect(engine).get_table_names()):
-        return
-    columns = {column["name"] for column in inspect(engine).get_columns("message")}
-    column_migrations = [
-        ("raw_segments_json", "ALTER TABLE message ADD COLUMN raw_segments_json TEXT"),
-        ("normalized_version", "ALTER TABLE message ADD COLUMN normalized_version INTEGER NOT NULL DEFAULT 0"),
-        ("normalized_status", "ALTER TABLE message ADD COLUMN normalized_status TEXT NOT NULL DEFAULT 'legacy'"),
-        ("source_type", "ALTER TABLE message ADD COLUMN source_type TEXT NOT NULL DEFAULT 'message'"),
-        ("parent_msg_id", "ALTER TABLE message ADD COLUMN parent_msg_id INTEGER"),
-        ("parent_msg_time", "ALTER TABLE message ADD COLUMN parent_msg_time INTEGER"),
-        ("parent_forward_id", "ALTER TABLE message ADD COLUMN parent_forward_id TEXT"),
-        ("user_nickname", "ALTER TABLE message ADD COLUMN user_nickname TEXT"),
-        ("user_card", "ALTER TABLE message ADD COLUMN user_card TEXT"),
-        ("reply_context_json", "ALTER TABLE message ADD COLUMN reply_context_json TEXT"),
-        ("model_content", "ALTER TABLE message ADD COLUMN model_content TEXT"),
-        ("sender_user_id", "ALTER TABLE message ADD COLUMN sender_user_id INTEGER"),
-        ("bot_user_id", "ALTER TABLE message ADD COLUMN bot_user_id INTEGER"),
-        (
-            "directly_mentions_bot",
-            "ALTER TABLE message ADD COLUMN directly_mentions_bot INTEGER NOT NULL DEFAULT 0",
-        ),
-    ]
-    statements = [statement for column, statement in column_migrations if column not in columns]
-    if not statements:
-        return
-    with engine.begin() as conn:
-        for statement in statements:
-            conn.execute(text(statement))
-        if "sender_user_id" not in columns:
-            # Existing private assistant rows overloaded user_id with the peer
-            # scope, so only unambiguous legacy authors can be backfilled.
-            conn.execute(
-                text(
-                    "UPDATE message SET sender_user_id = user_id "
-                    "WHERE group_id IS NOT NULL OR role != 'assistant'"
-                )
+def validate_database_schema(engine: Engine, *models: type[SQLModel]) -> None:
+    """Reject incompatible existing tables without rewriting schema or user data."""
+    inspector = inspect(engine)
+    existing = set(inspector.get_table_names())
+    for model in models:
+        table = model.__table__
+        if table.name not in existing:
+            continue  # create_all initializes new databases below.
+        columns = {column["name"] for column in inspector.get_columns(table.name)}
+        missing = set(table.columns.keys()) - columns
+        primary_key = inspector.get_pk_constraint(table.name)["constrained_columns"]
+        if missing or primary_key != list(table.primary_key.columns.keys()):
+            detail = f"缺少列 {', '.join(sorted(missing))}" if missing else f"主键不匹配 {primary_key}"
+            raise RuntimeError(
+                f"数据库表 {table.name} 结构过旧或不兼容：{detail}。"
+                "请先使用包含迁移工具的历史版本升级数据库。"
             )
+
+
+def platform_message_key(*, msg_id, user_id, group_id, bot_user_id, source_type="message") -> str | None:
+    """Build the live platform-event deduplication key independently of migrations."""
+    if msg_id is None or source_type != "message":
+        return None
+    scope = f"group:{group_id}" if group_id is not None else f"dm:{user_id}"
+    return f"milky:{bot_user_id or 0}:{scope}:{msg_id}"
 
 
 def _table_exists(conn, table_name: str) -> bool:
@@ -647,39 +633,6 @@ class MessageAttachment(SQLModel, table=True):
     metadata_json: str = "{}"
 
 
-def deduplicate_message_attachments(engine: Engine) -> int:
-    """Collapse legacy/concurrent duplicate rows before enforcing uniqueness."""
-    removed = 0
-    affected_message_times: set[int] = set()
-    with Session(engine) as session:
-        duplicate_keys = session.exec(
-            select(MessageAttachment.physical_path, MessageAttachment.msg_time)
-            .group_by(MessageAttachment.physical_path, MessageAttachment.msg_time)
-            .having(func.count() > 1)
-        ).all()
-        for physical_path, msg_time in duplicate_keys:
-            records = session.exec(
-                select(MessageAttachment)
-                .where(MessageAttachment.physical_path == physical_path)
-                .where(MessageAttachment.msg_time == msg_time)
-                .order_by(col(MessageAttachment.id))
-            ).all()
-            keeper, *duplicates = records
-            keeper.expires_at = max(record.expires_at for record in records)
-            session.add(keeper)
-            for record in duplicates:
-                session.delete(record)
-                removed += 1
-            affected_message_times.add(msg_time)
-        if removed:
-            session.flush()
-            _refresh_message_model_states(session, affected_message_times)
-            session.commit()
-    if removed:
-        logger.warning("已合并 %s 条重复消息附件索引", removed)
-    return removed
-
-
 class GroupSettings(SQLModel, table=True):
     __tablename__ = "group_settings"
     id: int | None = Field(default=None, primary_key=True)
@@ -713,339 +666,6 @@ def _prune_empty_attachment_dirs(path: str) -> None:
         except OSError:
             break
         current = os.path.dirname(current)
-
-
-def _legacy_attachment_target(
-    record: MessageAttachment,
-) -> tuple[str, str, str] | None:
-    target_workspace_key = _message_workspace_key(record.user_id, record.group_id)
-    legacy_workspace_key = str(record.group_id if record.group_id is not None else record.user_id)
-    if record.workspace_key != legacy_workspace_key:
-        # Only the former numeric Frontier layout is safe to rewrite; custom or
-        # foreign workspace keys retain their own contract.
-        return None
-
-    legacy_root = os.path.normpath(os.path.join("cache", "sandbox", "memory", legacy_workspace_key))
-    source_path = os.path.normpath(record.physical_path)
-    relative_path = os.path.relpath(source_path, legacy_root)
-    if relative_path == os.pardir or relative_path.startswith(os.pardir + os.sep):
-        logger.warning("跳过不在旧 workspace 根目录内的附件迁移: attachment_id=%s", record.id)
-        return None
-    target_root = os.path.join("cache", "sandbox", "memory", target_workspace_key)
-    return target_workspace_key, source_path, os.path.join(target_root, relative_path)
-
-
-def _atomic_copy2(source_path: str, target_path: str) -> None:
-    """Copy through a same-directory temporary file before atomic publication."""
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    temp_path = os.path.join(
-        os.path.dirname(target_path),
-        f".{os.path.basename(target_path)}.frontier-migrate-{os.getpid()}-{time.time_ns()}",
-    )
-    try:
-        shutil.copy2(source_path, temp_path)
-        with open(temp_path, "rb") as copied_file:
-            os.fsync(copied_file.fileno())
-        os.replace(temp_path, target_path)
-    finally:
-        with suppress(FileNotFoundError):
-            os.remove(temp_path)
-
-
-def _copy_legacy_attachment(record: MessageAttachment, source_path: str, target_path: str) -> str | None:
-    source_full_path = os.path.join(os.getcwd(), source_path)
-    target_full_path = os.path.join(os.getcwd(), target_path)
-    if not os.path.isfile(source_full_path):
-        return target_path
-    try:
-        if not os.path.exists(target_full_path):
-            _atomic_copy2(source_full_path, target_full_path)
-            return target_path
-        if os.path.isfile(target_full_path) and (
-            _sha256_file(source_full_path) == _sha256_file(target_full_path)
-        ):
-            return target_path
-        stem, suffix = os.path.splitext(target_path)
-        source_digest = _sha256_file(source_full_path)
-        conflict_stem = f"{stem}-legacy-{record.id}-{source_digest[:10]}"
-        conflict_path = f"{conflict_stem}{suffix}"
-        counter = 2
-        while os.path.exists(conflict_full_path := os.path.join(os.getcwd(), conflict_path)):
-            if _sha256_file(conflict_full_path) == source_digest:
-                return conflict_path
-            conflict_path = f"{conflict_stem}-{counter}{suffix}"
-            counter += 1
-        _atomic_copy2(source_full_path, conflict_full_path)
-        return conflict_path
-    except OSError as exc:
-        logger.warning(
-            "旧附件 workspace 迁移失败，保留原记录: attachment_id=%s error=%s",
-            record.id,
-            exc,
-        )
-        return None
-
-
-def migrate_legacy_attachment_workspaces(engine: Engine) -> int:
-    """Copy indexed legacy attachments into typed group/private workspaces.
-
-    Unindexed files such as SOUL.md remain available for the separate scope
-    migration; successfully re-indexed media no longer needs a legacy copy.
-    """
-    migrated = 0
-    migrated_source_paths: set[str] = set()
-    with Session(engine) as session:
-        records = session.exec(
-            select(MessageAttachment).where(
-                ~col(MessageAttachment.workspace_key).like("group-%"),
-                ~col(MessageAttachment.workspace_key).like("dm-%"),
-            )
-        ).all()
-        affected_message_times: set[int] = set()
-        for record in records:
-            target = _legacy_attachment_target(record)
-            if target is None:
-                continue
-            target_workspace_key, source_path, requested_target_path = target
-            target_path = _copy_legacy_attachment(record, source_path, requested_target_path)
-            if target_path is None:
-                continue
-
-            existing_target = session.exec(
-                select(MessageAttachment)
-                .where(MessageAttachment.physical_path == target_path)
-                .where(MessageAttachment.msg_time == record.msg_time)
-                .where(MessageAttachment.id != record.id)
-                .limit(1)
-            ).first()
-            if existing_target is not None:
-                existing_target.expires_at = max(existing_target.expires_at, record.expires_at)
-                existing_target.created_at = min(existing_target.created_at, record.created_at)
-                session.add(existing_target)
-                session.delete(record)
-                affected_message_times.add(record.msg_time)
-                migrated_source_paths.add(source_path)
-                migrated += 1
-                continue
-
-            target_root = os.path.join("cache", "sandbox", "memory", target_workspace_key)
-            relative_virtual_path = os.path.relpath(target_path, target_root).replace(os.sep, "/")
-            record.workspace_key = target_workspace_key
-            record.file_name = os.path.basename(target_path)
-            record.physical_path = target_path
-            record.virtual_path = posixpath.join("/memory", target_workspace_key, relative_virtual_path)
-            session.add(record)
-            affected_message_times.add(record.msg_time)
-            migrated_source_paths.add(source_path)
-            migrated += 1
-
-        if migrated:
-            session.flush()
-            _refresh_message_model_states(session, affected_message_times)
-            session.commit()
-    with Session(engine) as session:
-        still_referenced = set(
-            session.exec(
-                select(MessageAttachment.physical_path).where(
-                    col(MessageAttachment.physical_path).in_(migrated_source_paths)
-                )
-            ).all()
-        )
-    for source_path in migrated_source_paths - still_referenced:
-        source_full_path = os.path.join(os.getcwd(), source_path)
-        try:
-            os.remove(source_full_path)
-            _prune_empty_attachment_dirs(source_full_path)
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            logger.warning("旧附件迁移完成但源文件清理失败 %s: %s", source_path, exc)
-    if migrated:
-        logger.info("已迁移 %s 个旧版未分 scope 的消息附件索引", migrated)
-    return migrated
-
-
-def _legacy_scope_types(engine: Engine, legacy_ids: set[str]) -> dict[str, set[str]]:
-    scope_types: dict[str, set[str]] = {legacy_id: set() for legacy_id in legacy_ids}
-    numeric_ids = [int(legacy_id) for legacy_id in legacy_ids]
-
-    def remember(scope_id: object, scope_type: str) -> None:
-        if scope_id is not None:
-            scope_types.setdefault(str(scope_id), set()).add(scope_type)
-
-    with Session(engine) as session:
-        for group_id in session.exec(
-            select(Message.group_id)
-            .where(col(Message.group_id).in_(numeric_ids))
-            .distinct()
-        ).all():
-            remember(group_id, "group")
-        for user_id in session.exec(
-            select(Message.user_id)
-            .where(Message.group_id.is_(None))
-            .where(col(Message.user_id).in_(numeric_ids))
-            .distinct()
-        ).all():
-            remember(user_id, "private")
-        for group_id in session.exec(
-            select(MessageAttachment.group_id)
-            .where(col(MessageAttachment.group_id).in_(numeric_ids))
-            .distinct()
-        ).all():
-            remember(group_id, "group")
-        for user_id in session.exec(
-            select(MessageAttachment.user_id)
-            .where(MessageAttachment.group_id.is_(None))
-            .where(col(MessageAttachment.user_id).in_(numeric_ids))
-            .distinct()
-        ).all():
-            remember(user_id, "private")
-    return scope_types
-
-
-def _legacy_conflict_path(target_path: str, source_path: str) -> str:
-    digest = _sha256_file(source_path)[:10]
-    stem, suffix = os.path.splitext(target_path)
-    return f"{stem}.legacy-{digest}{suffix}"
-
-
-def _sha256_file(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as file:
-        for chunk in iter(lambda: file.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _merge_legacy_file(source_path: str, target_path: str) -> None:
-    if os.path.exists(target_path):
-        source_size = os.path.getsize(source_path)
-        target_size = os.path.getsize(target_path)
-        if not source_size or (source_size == target_size and _sha256_file(source_path) == _sha256_file(target_path)):
-            os.remove(source_path)
-            return
-        if not target_size:
-            _atomic_copy2(source_path, target_path)
-        else:
-            conflict_path = _legacy_conflict_path(target_path, source_path)
-            if (
-                not os.path.exists(conflict_path)
-                or os.path.getsize(source_path) != os.path.getsize(conflict_path)
-                or _sha256_file(source_path) != _sha256_file(conflict_path)
-            ):
-                _atomic_copy2(source_path, conflict_path)
-    else:
-        _atomic_copy2(source_path, target_path)
-    os.remove(source_path)
-
-
-def _merge_legacy_directory(
-    source_dir: str,
-    target_dir: str,
-    *,
-    protected_source_paths: set[str] | None = None,
-) -> bool:
-    """Merge one unambiguous legacy tree without overwriting newer files."""
-    if not os.path.isdir(source_dir):
-        return False
-    os.makedirs(target_dir, exist_ok=True)
-    incomplete_migration = False
-    protected_source_paths = protected_source_paths or set()
-    for current_root, dir_names, file_names in os.walk(source_dir, topdown=True):
-        safe_dirs = []
-        for name in dir_names:
-            source_child = os.path.join(current_root, name)
-            if os.path.islink(source_child):
-                incomplete_migration = True
-                logger.warning("跳过旧 workspace 中的符号链接: %s", source_child)
-            else:
-                safe_dirs.append(name)
-        dir_names[:] = safe_dirs
-        relative_root = os.path.relpath(current_root, source_dir)
-        target_root = target_dir if relative_root == "." else os.path.join(target_dir, relative_root)
-        os.makedirs(target_root, exist_ok=True)
-        for name in file_names:
-            source_path = os.path.join(current_root, name)
-            if os.path.abspath(source_path) in protected_source_paths:
-                incomplete_migration = True
-                continue
-            if os.path.islink(source_path):
-                incomplete_migration = True
-                logger.warning("跳过旧 workspace 中的符号链接: %s", source_path)
-                continue
-            target_path = os.path.join(target_root, name)
-            _merge_legacy_file(source_path, target_path)
-
-    if incomplete_migration:
-        return False
-    shutil.rmtree(source_dir)
-    return True
-
-
-def migrate_legacy_scope_directories(
-    engine: Engine,
-    *,
-    working_dir: str | None = None,
-) -> tuple[int, int]:
-    """Move untyped SOUL/workspace trees when SQL proves one unique scope."""
-    working_dir = working_dir or os.path.join(os.getcwd(), "cache", "sandbox")
-    legacy_ids: set[str] = set()
-    for area in ("memory", "workspaces"):
-        root = os.path.join(working_dir, area)
-        try:
-            entries = os.scandir(root)
-        except FileNotFoundError:
-            continue
-        except OSError as exc:
-            logger.warning("无法扫描旧 workspace 目录 %s: %s", root, exc)
-            continue
-        with entries:
-            legacy_ids.update(
-                entry.name
-                for entry in entries
-                if entry.is_dir(follow_symlinks=False)
-                and entry.name.isascii()
-                and entry.name.isdecimal()
-            )
-    if not legacy_ids:
-        return 0, 0
-
-    migrated = 0
-    ambiguous = 0
-    for legacy_id, scope_types in _legacy_scope_types(engine, legacy_ids).items():
-        if len(scope_types) != 1:
-            ambiguous += 1
-            reason = "同时匹配群聊和私聊" if scope_types else "缺少可判定 scope 的 SQL 记录"
-            logger.warning("旧 workspace %s %s，保留原目录等待人工合并", legacy_id, reason)
-            continue
-        scope_type = next(iter(scope_types))
-        target_key = f"group-{legacy_id}" if scope_type == "group" else f"dm-{legacy_id}"
-        legacy_memory_prefix = os.path.join("cache", "sandbox", "memory", legacy_id) + os.sep
-        with Session(engine) as session:
-            protected_memory_paths = {
-                os.path.abspath(os.path.join(os.getcwd(), physical_path))
-                for physical_path in session.exec(
-                    select(MessageAttachment.physical_path).where(
-                        col(MessageAttachment.physical_path).like(f"{legacy_memory_prefix}%")
-                    )
-                ).all()
-            }
-        moved_any = False
-        for area in ("memory", "workspaces"):
-            try:
-                moved = _merge_legacy_directory(
-                    os.path.join(working_dir, area, legacy_id),
-                    os.path.join(working_dir, area, target_key),
-                    protected_source_paths=protected_memory_paths if area == "memory" else None,
-                )
-            except OSError as exc:
-                logger.warning("旧 workspace 自动迁移失败 %s/%s: %s", area, legacy_id, exc)
-                continue
-            moved_any = moved or moved_any
-        migrated += int(moved_any)
-    if migrated:
-        logger.info("已自动迁移 %s 个可唯一判定 scope 的旧 SOUL/workspace", migrated)
-    return migrated, ambiguous
 
 
 class _PendingFileWrite:
@@ -1394,72 +1014,6 @@ class _MessageAttachmentManager:
 
         return await _run_database(self.engine, _do)
 
-    async def repair_legacy_media_attachments(self, limit: int = 200) -> tuple[int, int]:
-        """Gradually repair legacy image rows whose `.jpg` suffix did not match their bytes.
-
-        Returns ``(verified, corrected)``. A marker in ``metadata_json`` keeps later
-        startups from reopening files that have already been checked.
-        """
-
-        def _do():
-            verified = 0
-            corrected = 0
-            with Session(self.engine) as session:
-                affected_message_times: set[int] = set()
-                records = session.exec(
-                    select(MessageAttachment)
-                    .where(MessageAttachment.kind == "image")
-                    .order_by(col(MessageAttachment.id))
-                ).all()
-                for record in records:
-                    try:
-                        metadata = json.loads(record.metadata_json or "{}")
-                    except TypeError, ValueError:
-                        metadata = {}
-                    if metadata.get("media_type_verified") is True:
-                        continue
-                    if verified >= limit:
-                        break
-
-                    full_path = os.path.join(os.getcwd(), record.physical_path)
-                    if os.path.isfile(full_path):
-                        with open(full_path, "rb") as file:
-                            resolved = resolve_media(file.read(), "image", file_name=record.file_name)
-                        target_name = f"{os.path.splitext(record.file_name)[0]}{resolved.extension}"
-                        target_full_path = os.path.join(os.path.dirname(full_path), target_name)
-                        if os.path.abspath(target_full_path) != os.path.abspath(full_path):
-                            if os.path.exists(target_full_path):
-                                stem, suffix = os.path.splitext(target_name)
-                                target_name = f"{stem}-{record.id}{suffix}"
-                                target_full_path = os.path.join(os.path.dirname(full_path), target_name)
-                            os.replace(full_path, target_full_path)
-                            record.file_name = target_name
-                            record.physical_path = os.path.join(
-                                os.path.dirname(record.physical_path),
-                                target_name,
-                            )
-                            record.virtual_path = posixpath.join(
-                                posixpath.dirname(record.virtual_path),
-                                target_name,
-                            )
-                            corrected += 1
-                        if record.mime_type != resolved.mime_type:
-                            record.mime_type = resolved.mime_type
-                            corrected += 1
-
-                    metadata["media_type_verified"] = True
-                    record.metadata_json = json.dumps(metadata, ensure_ascii=False)
-                    session.add(record)
-                    affected_message_times.add(record.msg_time)
-                    verified += 1
-                session.flush()
-                _refresh_message_model_states(session, affected_message_times)
-                session.commit()
-            return verified, corrected
-
-        return await _run_database(self.engine, _do)
-
-
 class GroupSettingsManager:
     """群级别 key-value 设置管理器。同一 key 允许多行（支持多唤醒词等）。"""
 
@@ -1533,17 +1087,10 @@ class GroupSettingsManager:
 class MessageDatabase:
     def __init__(self):
         self.engine = get_engine()
+        validate_database_schema(self.engine, Message, MessageAttachment)
         self._attachments = _MessageAttachmentManager(self.engine)
         Message.metadata.create_all(self.engine)
-        ensure_message_schema(self.engine)
         MessageAttachment.metadata.create_all(self.engine)
-        supports_fts = sqlite_supports_fts5(self.engine)
-        migrate_message_identity(
-            self.engine,
-            rebuild_fts=_ensure_message_fts_connection if supports_fts else lambda conn: None,
-        )
-        migrate_legacy_attachment_workspaces(self.engine)
-        migrate_legacy_scope_directories(self.engine)
         GroupSettings.metadata.create_all(self.engine)
         ensure_database_performance_indexes(self.engine)
         ensure_message_fts(self.engine)
@@ -1826,6 +1373,43 @@ class MessageDatabase:
 
         await _run_database(self.engine, _do)
 
+    async def prepare_session_history(
+        self, *, bot_user_id: int, user_id: int, group_id: int | None,
+        before_time: int, before_message_id: int, query_numbers: int,
+        after_message_id: int | None = None,
+    ) -> list[dict[str, object]]:
+        """Read only this bot's records visible when the triggering message arrived.
+
+        The ID bound excludes later/backdated inserts; the time bound preserves
+        the existing QQ snapshot contract. Null/ambiguous bot ownership is excluded.
+        """
+        def read():
+            conditions = [
+                Message.bot_user_id == bot_user_id,
+                Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL,
+                Message.time < before_time,
+                Message.id < before_message_id,
+            ]
+            if group_id is None:
+                conditions.extend([Message.group_id.is_(None), Message.user_id == user_id])
+            else:
+                conditions.append(Message.group_id == group_id)
+            if after_message_id is not None:
+                conditions.append(Message.id > after_message_id)
+            with Session(self.engine) as session:
+                return list(reversed(session.exec(
+                    select(Message).where(*conditions).order_by(desc(Message.time), desc(Message.id)).limit(query_numbers)
+                ).all()))
+
+        records = await _run_database(self.engine, read)
+        rendered = await self.prepare_message_records(
+            records, accessible_workspace_key=_message_workspace_key(user_id, group_id),
+        )
+        return [
+            {**message, "id": f"qq:{bot_user_id}:message:{record.id}"}
+            for record, message in zip(records, rendered, strict=True)
+        ]
+
     async def prepare_message(
         self,
         user_id: int | None = None,
@@ -1958,10 +1542,6 @@ class MessageDatabase:
     async def cleanup_expired_attachments(self, now_ms: int | None = None) -> int:
         self._attachments.engine = self.engine
         return await self._attachments.cleanup_expired_attachments(now_ms=now_ms)
-
-    async def repair_legacy_media_attachments(self, limit: int = 200) -> tuple[int, int]:
-        self._attachments.engine = self.engine
-        return await self._attachments.repair_legacy_media_attachments(limit=limit)
 
     async def count_group_messages_since(self, *, group_id: int, since_time: int) -> int:
         def _do():

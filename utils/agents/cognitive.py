@@ -12,9 +12,11 @@ from deepagents.graph import DeepAgentState
 from langchain.agents.middleware import (
     AgentMiddleware,
     FilesystemFileSearchMiddleware,
+    ModelCallLimitMiddleware,
     ModelRetryMiddleware,
     PIIMiddleware,
     ProviderToolSearchMiddleware,
+    ToolCallLimitMiddleware,
     ToolRetryMiddleware,
     hook_config,
 )
@@ -22,7 +24,6 @@ from langchain.messages import AIMessage, ToolMessage
 from langchain.tools import ToolRuntime
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langchain_quickjs import CodeInterpreterMiddleware
 from langgraph.types import Command
 from nonebot import logger
 
@@ -41,6 +42,7 @@ from utils.llm_factory import (
 from utils.media import inline_media_bytes, media_block_kind
 
 from .capture import detect_browser_capture_intent
+from .code_interpreter import CodeInterpreterMiddleware
 from .execution import current_run_id, managed_agent_turn
 from .inputs import filter_messages_for_model_capabilities
 from .progress import (
@@ -53,11 +55,15 @@ from .progress import (
 from .prompts import build_workspace_soul_prompt
 from .prompts import load_system_prompt as compose_system_prompt
 from .runtime import agent_thread_id, conversation_workspace_key
+from .session_context import SessionHistoryMiddleware, history_budget, messages_contain_media, recent_complete_turns
+from .session_errors import SessionInterruptedError
+from .sessions import TurnLease
 from .subagents import (
     build_acp_subagents,
     build_document_subagent,
     build_research_subagent,
 )
+from .tool_errors import prepare_ptc_tools, tool_error_middleware
 from .workspace import SKILLS_BACKEND_PATH, build_agent_backend
 
 register_frontier_harness_profiles()
@@ -339,6 +345,7 @@ class FrontierCognitive:
         access_profile: Literal["frontier", "acp"] = "frontier",
         enable_acp_subagents: bool = True,
         allow_silent_reply: bool = False,
+        session_turn: TurnLease | None = None,
     ):
         allowed_capture_tools = (
             await detect_browser_capture_intent(user_text)
@@ -346,6 +353,11 @@ class FrontierCognitive:
             else set()
         )
         await self._prepare_components()
+        if session_turn is not None and session_turn.entry.revision != EnvConfig.REVISION:
+            # Configuration can reload during intent detection/MCP discovery.
+            # No model or tool has run: retire this lease rather than restore an
+            # old state schema with a newly configured graph.
+            raise SessionInterruptedError("configuration changed before session execution")
         # Keep construction synchronous until the graph is ready: a Dashboard reload
         # may run during the awaits above, but cannot split model/capability selection.
         workspace_key = conversation_workspace_key(user_id, group_id)
@@ -359,6 +371,7 @@ class FrontierCognitive:
             "max_retries": 0,
             "timeout": EnvConfig.AGENT_LLM_TIMEOUT_SECONDS,
             "provider": EnvConfig.ADVAN_MODEL_PROVIDER,
+            "tags": ["frontier:main"],
         }
         if uses_responses_api:
             model_kwargs["reasoning_effort"] = capability
@@ -376,6 +389,9 @@ class FrontierCognitive:
         thread_id = thread_id_override or agent_thread_id(user_id, group_id)
         if not isinstance(thread_id, uuid.UUID):
             thread_id = uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=str(thread_id))
+        if session_turn is not None:
+            thread_id = session_turn.entry.thread_id
+            session_turn.run_id = current_run_id.get()
         backend = build_agent_backend(working_dir, workspace_key)
         workspace_dir = os.path.join(working_dir, "workspaces", workspace_key)
         memory_dir = os.path.join(working_dir, "memory", workspace_key)
@@ -407,7 +423,7 @@ class FrontierCognitive:
             logger.debug("用户未请求截图/录屏，restricted 工具未暴露")
 
         ptc_tools = (
-            _stable_named_items(getattr(self, "ptc_tools", []))
+            prepare_ptc_tools(_stable_named_items(getattr(self, "ptc_tools", [])))
             if access_profile == "frontier"
             else []
         )
@@ -435,8 +451,16 @@ class FrontierCognitive:
             EnvConfig.ADVAN_MODEL,
             role="advanced",
         )
+        if session_turn is not None:
+            # Mark even omitted background as covered so it is not re-injected.
+            messages = session_turn.inputs(messages)
+            messages = [
+                *recent_complete_turns(messages[:-1], history_budget(session_turn.entry.settings, model.profile)),
+                messages[-1],
+            ]
         # These third-party middleware classes intentionally use different
         # context type parameters while sharing the same runtime protocol.
+        interpreter = CodeInterpreterMiddleware(ptc=ptc_tools, max_ptc_calls=EnvConfig.AGENT_PTC_CALL_LIMIT)
         middleware: list[Any] = [
             PIIMiddleware(
                 "api_key",
@@ -444,10 +468,16 @@ class FrontierCognitive:
                 strategy="mask",
             ),
             # Platform writes must never be automatically repeated after an ambiguous failure.
-            ToolRetryMiddleware(tools=ptc_tools, max_retries=1),
+            ToolRetryMiddleware(tools=ptc_tools, max_retries=1, on_failure="error"),
+            tool_error_middleware(read_only_tools=[
+                *ptc_tools, "ls", "glob", "grep", "read_file",
+                "get_recent_conversation", "search_messages", "get_history_messages",
+            ]),
+            ModelCallLimitMiddleware(run_limit=EnvConfig.AGENT_MODEL_CALL_LIMIT, exit_behavior="error"),
+            ToolCallLimitMiddleware(run_limit=EnvConfig.AGENT_TOOL_CALL_LIMIT, exit_behavior="error"),
             ModelRetryMiddleware(on_failure="error"),
             FilesystemFileSearchMiddleware(root_path=workspace_dir),
-            CodeInterpreterMiddleware(ptc=ptc_tools),
+            interpreter,
             MemoryMiddleware(
                 backend=backend,
                 sources=[soul_path],
@@ -465,6 +495,8 @@ class FrontierCognitive:
             )
         if native_web_search:
             middleware.append(NativeWebSearchMiddleware())
+        if session_turn is not None:
+            middleware.append(SessionHistoryMiddleware(session_turn, model.profile))
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
@@ -485,6 +517,7 @@ class FrontierCognitive:
             state_schema=FrontierAgentState,
             context_schema=FrontierRuntimeContext,
             debug=EnvConfig.AGENT_DEBUG_MODE,
+            **({"checkpointer": session_turn.saver} if session_turn is not None else {}),
         )
         start_time = time.time()
         logger.info(f"Agent烧烤中~🍖 思考等级: {capability} 用户: {user_name} (ID: {user_id})")
@@ -517,6 +550,13 @@ class FrontierCognitive:
             "video_inputs": video_inputs or [],
             "suppress_reply": False,
         }
+        prior_ids = set()
+        if session_turn is not None:
+            snapshot = await agent.aget_state(config)
+            if snapshot.next or any(getattr(task, "interrupts", ()) for task in snapshot.tasks):
+                raise SessionInterruptedError("unfinished QQ session")
+            prior_ids = {message.id for message in snapshot.values.get("messages", [])}
+            input_data["todos"] = []
         stream = await agent.astream_events(
             input_data,
             config=config,
@@ -527,10 +567,27 @@ class FrontierCognitive:
         try:
             response = await stream.output()
         finally:
-            await finish_progress_collection(progress_task)
+            try:
+                # Close the graph before releasing its workspace/session lease.
+                if callable(abort := getattr(stream, "abort", None)):
+                    await abort()
+            finally:
+                try:
+                    await finish_progress_collection(progress_task)
+                finally:
+                    if callable(close := getattr(interpreter, "aclose", None)):
+                        await close()
 
         if response is None:
             response = {}
+        if session_turn is not None:
+            snapshot = await agent.aget_state(config)
+            if snapshot.next or any(getattr(task, "interrupts", ()) for task in snapshot.tasks):
+                raise SessionInterruptedError("QQ session interrupted")
+            response = {**response, "messages": [
+                message for message in response.get("messages", [])
+                if getattr(message, "id", None) not in prior_ids
+            ]}
         should_reply = not bool(response.get("suppress_reply", False))
         uni_messages = (
             await FrontierCognitive.extract_uni_messages(response) if should_reply else []
@@ -544,6 +601,16 @@ class FrontierCognitive:
             )
         else:
             final_response = AIMessage("")
+
+        if session_turn is not None:
+            session_turn.graph, session_turn.config = agent, config
+            session_turn.final_message = final_response if ai_messages and should_reply else None
+            session_turn.valid_result = bool(ai_messages) or not should_reply
+            session_turn.entry.state = "awaiting_delivery"
+            session_turn.media_turn = bool(
+                image_inputs or audio_inputs or video_inputs or uni_messages
+                or messages_contain_media([*messages, *response.get("messages", [])])
+            )
 
         processing_time = time.time() - start_time
         logger.info(f"Agent烤熟了~🥓 (耗时: {processing_time:.2f}s)")

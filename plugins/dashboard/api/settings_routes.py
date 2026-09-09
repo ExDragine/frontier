@@ -145,7 +145,11 @@ async def _read_settings() -> dict:
     # Readers must not observe a published file whose runtime reload is still
     # pending, especially when activation subsequently rolls back.
     async with _settings_write_lock:
-        return await asyncio.to_thread(_read_toml)
+        config = await asyncio.to_thread(_read_toml)
+        from utils.configs import SessionConfig
+
+        config["sessions"] = {**SessionConfig().model_dump(), **config.get("sessions", {})}
+        return config
 
 
 @router.get("/{section}")
@@ -194,9 +198,11 @@ def _persist_section(section: str, new_values: dict) -> tuple[dict, dict, Path |
     """Read, validate, back up and publish under the caller's write lock."""
     with open(TOML_PATH, encoding="utf-8") as stream:
         doc = tomlkit.load(stream)
-    if section not in doc:
-        raise HTTPException(status_code=404, detail=f"配置段 '{section}' 不存在")
     old_config = doc.unwrap()
+    if section not in doc:
+        if section != "sessions":
+            raise HTTPException(status_code=404, detail=f"配置段 '{section}' 不存在")
+        doc.add(section, tomlkit.table())
     original = _table_values(doc[section], section)
     for key, value in new_values.items():
         doc[section][key] = _resolve_update_value(section, key, original.get(key), value)  # type: ignore

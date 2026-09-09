@@ -384,6 +384,7 @@ async def _message_file_download_url(
     *,
     user_id: str | int,
     group_id: int | None,
+    is_self_send: bool = False,
 ) -> str | None:
     if file_item.url:
         return file_item.url
@@ -399,6 +400,7 @@ async def _message_file_download_url(
             user_id=int(user_id),
             file_id=file_item.file_id,
             file_hash=file_item.file_hash,
+            is_self_send=is_self_send,
         )
     except Exception as exc:
         logger.warning(f"获取文件下载链接失败 {file_item.file_name}: {type(exc).__name__}: {exc}")
@@ -488,6 +490,7 @@ async def stage_message_files(
     message_id: int | None = None,
     user_id: str | int,
     group_id: int | None,
+    is_self_send: bool = False,
 ) -> list[StagedMessageFile]:
     """Download incoming file segments into the agent memory files directory."""
     if not file_items:
@@ -505,7 +508,9 @@ async def stage_message_files(
 
     try:
         for file_item in file_items:
-            url = await _message_file_download_url(bot, file_item, user_id=user_id, group_id=group_id)
+            url = await _message_file_download_url(
+                bot, file_item, user_id=user_id, group_id=group_id, is_self_send=is_self_send,
+            )
             if not url:
                 logger.warning(f"文件缺少可下载链接，无法注入工作区: {file_item.file_name}")
                 continue
@@ -601,6 +606,10 @@ async def message_extract(  # noqa: C901
         msg_data = message.get("data", {})
 
         match msg_type:
+            case "markdown":
+                if content := msg_data.get("content"):
+                    text_parts.append(content)
+
             case "text":
                 if text_content := msg_data.get("text"):
                     text_parts.append(text_content)
@@ -821,7 +830,14 @@ async def message_gateway(event: MessageEvent, messages: list) -> bool:
         return False
     if group_id == 0 and (event.is_tome() or event.to_me):
         return True
-    plaintext = event.get_plaintext().strip()
+    segments = getattr(event.data, "segments", [])
+    # The adapter's get_plaintext() only includes text segments, not Markdown.
+    plaintext = (
+        "".join(
+            str(segment.get("data", {}).get("content" if segment.get("type") == "markdown" else "text", ""))
+            for segment in segments if segment.get("type") in {"text", "markdown"}
+        ) if any(segment.get("type") == "markdown" for segment in segments) else event.get_plaintext()
+    ).strip()
     wake_words = _get_wake_words(group_id)
     active_triggered = event.is_tome() or event.to_me or any(plaintext.startswith(w) for w in wake_words)
     if active_triggered:

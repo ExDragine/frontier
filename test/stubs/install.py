@@ -4,8 +4,17 @@ import sys
 import types
 from typing import TypedDict
 
+import langchain_core.callbacks  # noqa: F401
+
 # Keep the real, lightweight exception hierarchy for model failure tests.
 import langchain_core.exceptions  # noqa: F401
+import langchain_core.tracers.context  # noqa: F401
+import langgraph.checkpoint.serde.jsonplus  # noqa: F401
+from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
+from langchain.agents.middleware.tool_call_limit import ToolCallLimitExceededError
+from langchain.agents.middleware.tool_error import ToolErrorMiddleware
+from langchain_core.tools import ToolException
+from langgraph.checkpoint.memory import InMemorySaver
 
 from .dummies import (
     DummyCompositeBackend,
@@ -115,7 +124,10 @@ def install_all_third_party_stubs():
         ToolCallLimitMiddleware=type(
             "ToolCallLimitMiddleware", (), {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)}
         ),
+        ToolErrorMiddleware=ToolErrorMiddleware,
     )
+    install_stub("langchain.agents.middleware.model_call_limit", ModelCallLimitExceededError=ModelCallLimitExceededError)
+    install_stub("langchain.agents.middleware.tool_call_limit", ToolCallLimitExceededError=ToolCallLimitExceededError)
     install_stub(
         "langchain.messages",
         AIMessage=type("AIMessage", (), {"__init__": lambda self, content=None: setattr(self, "content", content)}),
@@ -131,7 +143,7 @@ def install_all_third_party_stubs():
         RunnableLambda=DummyRunnableLambda,
     )
     install_stub("langchain_core.language_models", ModelProfile=dict)
-    install_stub("langchain_core.tools", tool=fake_tool)
+    install_stub("langchain_core.tools", tool=fake_tool, ToolException=ToolException)
     install_stub("langchain_openai", ChatOpenAI=type("ChatOpenAI", (), {"__init__": lambda self, **_kw: None}))
     install_stub("langchain_deepseek", ChatDeepSeek=type("ChatDeepSeek", (), {"__init__": lambda self, **_kw: None}))
     install_stub(
@@ -142,7 +154,7 @@ def install_all_third_party_stubs():
         "langchain_google_genai",
         ChatGoogleGenerativeAI=type("ChatGoogleGenerativeAI", (), {"__init__": lambda self, **_kw: None}),
     )
-    install_stub("langgraph.checkpoint.memory", InMemorySaver=object)
+    install_stub("langgraph.checkpoint.memory", InMemorySaver=InMemorySaver)
     install_stub("langgraph.prebuilt", InjectedState=type("InjectedState", (), {}))
     install_stub(
         "langgraph.types",

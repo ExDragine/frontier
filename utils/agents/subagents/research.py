@@ -9,21 +9,14 @@ from langchain.agents.middleware import (
     ModelCallLimitMiddleware,
     ModelRetryMiddleware,
     ToolCallLimitMiddleware,
-    ToolRetryMiddleware,
 )
 
 from utils.configs import EnvConfig
 from utils.llm_factory import create_llm
 
+from ..tool_errors import tool_error_middleware
+
 RESEARCH_SUBAGENT_NAME = "research-agent"
-
-
-def _tool_failure_message(exc: Exception) -> str:
-    message = str(exc)
-    normalized = message.lower()
-    if any(marker in normalized for marker in ("429", "rate limit", "too many requests", "usage limit", "quota")):
-        return "搜索服务已限流。停止继续搜索，使用已取得的证据完成报告，并明确说明资料可能不完整。"
-    return f"资料查询失败：{type(exc).__name__}: {message}。请基于已有证据完成报告并说明限制。"
 
 
 def build_research_subagent(tools: Sequence[Any]) -> CompiledSubAgent:
@@ -34,9 +27,10 @@ def build_research_subagent(tools: Sequence[Any]) -> CompiledSubAgent:
         streaming=False,
         max_retries=2,
         timeout=300,
+        tags=["frontier:research"],
     )
     middleware: list[Any] = [
-        ToolRetryMiddleware(max_retries=0, on_failure=_tool_failure_message),
+        tool_error_middleware(all_read_only=True),
         ToolCallLimitMiddleware(run_limit=6, exit_behavior="end"),
         ModelCallLimitMiddleware(run_limit=5, exit_behavior="end"),
         ModelRetryMiddleware(),

@@ -288,6 +288,10 @@ async def _quoted_file_context(  # noqa: C901
             workspace_key=workspace_key,
             message_time=quoted.time,
             **({"message_id": quoted.id} if getattr(quoted, "id", None) is not None else {}),
+            is_self_send=(
+                str(resolve_message_sender_user_id(quoted)) == str(event.self_id)
+                or getattr(quoted, "role", None) == "assistant"
+            ),
             user_id=quoted.user_id,
             group_id=quoted.group_id,
         )

@@ -19,7 +19,7 @@ QQ 入口另有 `delivery:` 队列保证生成、发送和落库顺序；锁顺�
 ## 结果和错误
 
 `AgentResult` 保留兼容的 `response`、`uni_messages`、`should_reply` 和 `total_time` 字段，
-新增 `status`、`run_id`，失败时附加 `error` / `error_code`。
+包含 `status`、`run_id`、`usage`，失败时附加 `error` / `error_code`。调用预算、统计范围与工具异常规则见 [Agent 执行控制](agent-execution-controls.md)。
 
 - `success`：生成完成；是否送达另由投递结果确定。
 - `silent`：主动选择不回复。
@@ -50,9 +50,13 @@ FrontierCognitive 构造函数不再构建模型或子代理。首次执行才�
 
 ## 持久化
 
+QQ 可选会话缓存由进程级 `SessionManager` 和 `BoundedMemorySaver` 管理，默认关闭。身份为机器人＋群／私聊＋代次；图每轮重新构建，saver 跨轮复用，权限和动态工具每轮重新绑定。`TurnLease` 通过运行请求传入并保留到投递结算。TTL、轮数、会话数和序列化容量共同限制存储；历史 token 预算单独由 middleware 控制。过期／轮换后下一次从原历史边界重建，不恢复旧任务。配置、指标、媒体与失败规则见 [QQ 会话缓存](agent-sessions.md)。
+
+v3 图流在退出时显式 abort；QuickJS 使用请求级生命周期适配，取消／失败时仍通过公开 after_agent hook 清理解释器资源。活动会话的 checkpoint 必须等执行结束后才能删除。
+
 消息身份、时间和平台去重键是不同概念。查询可以按时间排序，但附件、转发关联和 FTS
 必须使用独立消息 ID，不能再把毫秒时间戳当作唯一标识。
-升级和恢复步骤见数据库迁移文档；只在合成数据或经授权的副本上演练。
+历史迁移已退役；当前结构要求与旧备份恢复说明见 [数据库说明](database-identity-migration.md)。启动只检查已有表结构、初始化新表并维护索引/FTS。
 
 ## 验证与依赖
 

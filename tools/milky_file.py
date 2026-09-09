@@ -1,13 +1,16 @@
 from pathlib import Path
 from typing import cast
 
+from langchain.tools import ToolRuntime
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot
 
+from utils.agent_context import FrontierRuntimeContext
 from utils.milky_tools import binary_kwargs_from_uri, format_files_info, resolve_group_id, resolve_user_id
 
 _DEFAULT_CONFIG = cast(RunnableConfig, None)
+_DEFAULT_RUNTIME = cast(ToolRuntime[FrontierRuntimeContext, dict], None)
 
 
 def _file_name_from_uri(file_uri: str, file_name: str | None, root_dir: str | None = None) -> str | None:
@@ -82,19 +85,43 @@ async def get_private_file_download_url(
     file_hash: str,
     user_id: int | None = None,
     config: RunnableConfig = _DEFAULT_CONFIG,
+    is_self_send: bool = False,
 ) -> str:
     """获取私聊文件下载链接。
     Args:
         file_id: 文件 ID
         file_hash: 文件 TriSHA1 哈希
+        is_self_send: 文件是否由机器人自己发送，下载本人发出的私聊文件时为 true
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
     """
     resolved_user_id, error = resolve_user_id(user_id, dict(config or {}))
     if error:
         return error
     return await get_bot().get_private_file_download_url(
-        user_id=resolved_user_id, file_id=file_id, file_hash=file_hash
+        user_id=resolved_user_id, file_id=file_id, file_hash=file_hash, is_self_send=is_self_send
     )
+
+
+@tool(response_format="content")
+async def persist_group_file(
+    file_id: str,
+    group_id: int | None = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
+) -> str:
+    """将群临时文件转存为永久文件。仅允许目标群的群主或管理员操作，需要 Milky 1.3。
+
+    Args:
+        file_id: 已存在的群临时文件 ID
+        group_id: 可选目标群号，默认当前群
+    """
+    from .milky_group import _resolve_admin_group
+
+    resolved_group_id, error = _resolve_admin_group(group_id, config, runtime)
+    if error:
+        return error
+    await get_bot().persist_group_file(group_id=resolved_group_id, file_id=file_id)
+    return f"已将群 {resolved_group_id} 文件 {file_id} 转存为永久文件"
 
 
 @tool(response_format="content")

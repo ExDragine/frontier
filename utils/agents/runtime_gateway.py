@@ -11,6 +11,7 @@ from utils.media import detect_mime_type, resolve_media, standard_media_block
 
 if TYPE_CHECKING:
     from .execution import AgentResult
+    from .sessions import TurnLease
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +39,7 @@ class AgentRuntimeRequest:
     image_inputs: tuple[bytes, ...] = ()
     audio_inputs: tuple[bytes, ...] = ()
     video_inputs: tuple[bytes, ...] = ()
+    session_turn: TurnLease | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +49,7 @@ class AgentRuntimeResult:
     error: str | None = None
     status: str = "success"
     run_id: str | None = None
+    usage: dict[str, Any] | None = None
 
 
 class AgentRuntime(Protocol):
@@ -148,6 +151,7 @@ class FrontierAgentRuntime:
             access_profile=request.access_profile,
             enable_acp_subagents=request.enable_acp_subagents,
             allow_silent_reply=request.allow_silent_reply,
+            **({"session_turn": request.session_turn} if request.session_turn is not None else {}),
         )
 
     async def prompt(
@@ -168,6 +172,7 @@ class FrontierAgentRuntime:
             error=str(result["error"]) if isinstance(result, dict) and result.get("error") else None,
             status=result.get("status", "failed" if result.get("error") else "success"),
             run_id=result.get("run_id"),
+            usage=result.get("usage"),
         )
 
 

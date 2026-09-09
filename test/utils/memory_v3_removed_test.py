@@ -75,5 +75,4 @@ def test_clockwork_no_longer_registers_dreaming_task():
 
     assert "dreaming_pipeline" not in clockwork_source
     assert "build_dreaming_task_config" not in clockwork_source
-    assert "delete_task" in clockwork_source
-    assert "dreaming_daily_v3" in clockwork_source
+    assert "dreaming_daily_v3" not in clockwork_source

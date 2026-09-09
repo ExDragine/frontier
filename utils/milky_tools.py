@@ -200,6 +200,8 @@ def segments_to_text(segments: list[dict] | None) -> str:
         data = segment_data if isinstance(segment_data, dict) else segment
         if segment_type == "text":
             parts.append(str(data.get("text", "")))
+        elif segment_type == "markdown":
+            parts.append(str(data.get("content", "")))
         else:
             parts.append(f"[{segment_type}]")
     return truncate_text("".join(parts), 120)

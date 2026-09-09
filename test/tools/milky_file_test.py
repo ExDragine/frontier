@@ -108,7 +108,7 @@ async def test_file_upload_and_download_tools_call_milky(load_tool_module, monke
                 "parent_folder_id": "/docs",
             },
         ),
-        ("get_private_file_download_url", {"user_id": 456, "file_id": "p1", "file_hash": "hash"}),
+        ("get_private_file_download_url", {"user_id": 456, "file_id": "p1", "file_hash": "hash", "is_self_send": False}),
         ("get_group_file_download_url", {"group_id": 123, "file_id": "g1"}),
     ]
 

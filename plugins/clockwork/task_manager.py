@@ -6,11 +6,10 @@ from typing import Any
 from apscheduler.events import EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from nonebot import logger
-from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, select
 
-from utils.database import ensure_database_performance_indexes
+from utils.database import ensure_database_performance_indexes, validate_database_schema
 
 from .task_execution import TaskExecutor as TaskExecutor
 from .task_models import ScheduledTaskMetadata, TaskConfig, TaskExecutionHistory, TaskGroupMapping
@@ -45,14 +44,8 @@ class TaskManager:
         self._job_func = func
 
     def ensure_schema(self) -> None:
-        """补齐 create_all 不会自动添加的轻量 schema 变更。"""
-        inspector = inspect(self.engine)
-        table_names = set(inspector.get_table_names())
-        if "taskexecutionhistory" in table_names:
-            columns = {column["name"] for column in inspector.get_columns("taskexecutionhistory")}
-            if "output_summary" not in columns:
-                with self.engine.begin() as conn:
-                    conn.execute(text("ALTER TABLE taskexecutionhistory ADD COLUMN output_summary VARCHAR"))
+        """检查当前表结构并维护索引；历史 schema 迁移已退役。"""
+        validate_database_schema(self.engine, TaskConfig, TaskGroupMapping, TaskExecutionHistory, ScheduledTaskMetadata)
         ensure_database_performance_indexes(self.engine)
 
     def add_job_to_scheduler(self, task: TaskConfig):
@@ -675,63 +668,6 @@ class TaskManager:
             if config_key:
                 setattr(EnvConfig, config_key, group_ids)
                 self.logger.info(f"同步群组配置: {config_key} = {group_ids}")
-
-    async def migrate_legacy_reminders(self) -> int:
-        """将旧 reminder_handler 任务迁移到统一 Scheduled Agent Task。"""
-        migrated = 0
-        with Session(self.engine) as session:
-            statement = select(TaskConfig).where(TaskConfig.job_id.startswith("reminder_"))  # type: ignore[attr-defined]
-            tasks = session.exec(statement).all()
-            for task in tasks:
-                existing = session.exec(
-                    select(ScheduledTaskMetadata).where(ScheduledTaskMetadata.job_id == task.job_id)
-                ).first()
-                if existing:
-                    continue
-                if (
-                    task.handler_module != "plugins.clockwork.reminder_handler"
-                    or task.handler_function != "fire_reminder"
-                ):
-                    continue
-                if not task.description:
-                    continue
-                try:
-                    payload = json.loads(task.description)
-                except json.JSONDecodeError:
-                    self.logger.warning(f"旧提醒任务 {task.job_id} description 不是 JSON，跳过迁移")
-                    continue
-
-                reminder_text = str(payload.get("text") or "")
-                owner_user_id = str(payload.get("user_id") or "")
-                group_id = payload.get("group_id")
-                private = bool(payload.get("private", False))
-                if not reminder_text or not owner_user_id:
-                    self.logger.warning(f"旧提醒任务 {task.job_id} 缺少 text/user_id，跳过迁移")
-                    continue
-
-                target_type = "user" if private or not group_id else "group"
-                target_id = owner_user_id if target_type == "user" else str(group_id)
-                metadata = ScheduledTaskMetadata(
-                    job_id=task.job_id,
-                    owner_user_id=owner_user_id,
-                    target_type=target_type,
-                    target_id=str(target_id),
-                    prompt=f"在指定时间提醒用户：{reminder_text}。请生成一条简短提醒消息。",
-                    created_from="legacy_reminder",
-                    delivery_mode="final",
-                )
-                session.add(metadata)
-                task.handler_module = self.AGENT_TASK_HANDLER_MODULE
-                task.handler_function = self.AGENT_TASK_HANDLER_FUNCTION
-                task.description = f"提醒: {reminder_text[:80]}"
-                task.updated_at = int(time.time())
-                session.add(task)
-                migrated += 1
-
-            session.commit()
-        if migrated:
-            self.logger.info(f"已迁移 {migrated} 个旧提醒任务到统一自动任务")
-        return migrated
 
     def _sync_group_config(self, job_id: str, group_ids: list[int]) -> None:
         """运行期同步群组配置到 EnvConfig"""

@@ -30,11 +30,11 @@ router.beforeEach((to, from, next) => {
 // 根组件
 const App = {
     template: `
-        <div v-if="!isLoginPage" class="flex h-screen overflow-hidden">
+        <div v-if="!isLoginPage" class="flex flex-col md:flex-row h-screen overflow-hidden">
             <Sidebar />
-            <div class="flex-1 flex flex-col overflow-hidden">
+            <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
                 <Header :botName="botName" :botConnected="botConnected" />
-                <main class="flex-1 overflow-y-auto p-6 bg-gray-50">
+                <main class="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
                     <router-view></router-view>
                 </main>
             </div>

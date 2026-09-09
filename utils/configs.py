@@ -7,7 +7,7 @@ import sys
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 import dotenv
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
@@ -100,6 +100,7 @@ class ProviderProfile(BaseModel):
     base_url: str = ""
     api_key: str = ""
     native_web_search: bool = False
+    structured_output_method: Literal["auto", "json_schema", "function_calling", "json_mode"] = "auto"
 
 
 class KeyConfig(_FrozenConfig):
@@ -140,6 +141,22 @@ class LimitConfig(_FrozenConfig):
     video_poll_timeout_seconds: int = Field(default=900, ge=1)
     agent_llm_timeout_seconds: int = Field(default=900, ge=1)
     agent_job_timeout_seconds: int = Field(default=3600, ge=1)
+    agent_model_call_limit: int = Field(default=20, ge=1)
+    agent_tool_call_limit: int = Field(default=40, ge=1)
+    agent_ptc_call_limit: int = Field(default=20, ge=1)
+
+
+class SessionConfig(_FrozenConfig):
+    enabled: bool = False
+    group_idle_seconds: int = Field(default=1800, ge=1)
+    private_idle_seconds: int = Field(default=7200, ge=1)
+    max_sessions: int = Field(default=128, ge=1)
+    max_generation_turns: int = Field(default=30, ge=1)
+    max_session_bytes: int = Field(default=64 * 1024 * 1024, ge=1024)
+    max_total_bytes: int = Field(default=256 * 1024 * 1024, ge=1024)
+    history_max_tokens: int = Field(default=32000, ge=1)
+    history_window_fraction: float = Field(default=0.25, gt=0, le=1)
+    cleanup_interval_seconds: int = Field(default=60, ge=1)
 
 
 class NotificationConfig(_FrozenConfig):
@@ -177,7 +194,7 @@ class ContentCheckConfig(_FrozenConfig):
 
 
 class FrontierSettings(_FrozenConfig):
-    config_version: int = Field(default=1, ge=1, le=CONFIG_VERSION)
+    config_version: int = Field(default=CONFIG_VERSION, ge=CONFIG_VERSION, le=CONFIG_VERSION)
     bot: BotConfig = Field(default_factory=BotConfig)
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     providers: dict[str, ProviderProfile] = Field(default_factory=dict)
@@ -188,6 +205,7 @@ class FrontierSettings(_FrozenConfig):
     auto_reply_policy: AutoReplyPolicy = Field(default_factory=AutoReplyPolicy)
     paint_policy: AccessPolicy = Field(default_factory=AccessPolicy)
     limits: LimitConfig = Field(default_factory=LimitConfig)
+    sessions: SessionConfig = Field(default_factory=SessionConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     debug: DebugConfig = Field(default_factory=DebugConfig)
@@ -200,12 +218,6 @@ def _section(config: Mapping[str, Any], name: str) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise TypeError(f"配置段 [{name}] 必须是 TOML table")
     return dict(value)
-
-
-def _pick(modern: Mapping[str, Any], legacy: Mapping[str, Any], key: str, default: Any, legacy_key: str | None = None):
-    if key in modern:
-        return modern[key]
-    return legacy.get(legacy_key or key, default)
 
 
 def load_nicknames(raw: str | None = None) -> tuple[str, ...]:
@@ -239,14 +251,11 @@ def load_nicknames(raw: str | None = None) -> tuple[str, ...]:
     return tuple(nicknames)
 
 
-def _validate_v2_model_provider_sections(
-    config_version: object,
+def _validate_model_provider_sections(
     models: Mapping[str, Any],
     providers: Mapping[str, Any],
     keys: Mapping[str, Any],
 ) -> None:
-    if not isinstance(config_version, int) or config_version < 2:
-        return
     removed_model_fields = sorted(
         key
         for key in models
@@ -283,41 +292,20 @@ def _validate_v2_model_provider_sections(
         api_mode = raw_profile.get("api_mode")
         if api_mode is not None and (not isinstance(api_mode, str) or api_mode.strip().lower() not in _VALID_API_MODES):
             raise ValueError(f"[providers.{name}].api_mode 无效: {api_mode!r}")
-        if "use_responses_api" in raw_profile and api_mode is not None:
-            uses_responses = bool(raw_profile["use_responses_api"])
-            if (api_mode.strip().lower() == _API_MODE_RESPONSES) != uses_responses:
-                raise ValueError(
-                    f"[providers.{name}] 的 api_mode 与旧字段 use_responses_api 冲突；请只保留 api_mode"
-                )
+        removed = {"provider", "use_responses_api"} & raw_profile.keys()
+        if removed:
+            raise ValueError(
+                f"[providers.{name}] 不再接受 {', '.join(sorted(removed))}，请使用 type 和 api_mode"
+            )
 
 
-def _default_api_mode(provider_type: str, *, legacy_openai_responses: bool = False) -> str:
-    if provider_type == "deepseek_responses":
-        return _API_MODE_RESPONSES
-    if provider_type == "openai":
-        return _API_MODE_RESPONSES if legacy_openai_responses else _API_MODE_CHAT_COMPLETIONS
+def _default_api_mode(provider_type: str) -> str:
     return {
+        "openai": _API_MODE_CHAT_COMPLETIONS,
         "google": _API_MODE_GENERATE_CONTENT,
         "anthropic": _API_MODE_MESSAGES,
         "deepseek": _API_MODE_CHAT_COMPLETIONS,
     }.get(provider_type, "")
-
-
-def _legacy_api_mode(provider_type: str, use_responses_api: bool) -> str:
-    if provider_type in {"openai", "deepseek", "deepseek_responses"}:
-        return _API_MODE_RESPONSES if use_responses_api else _API_MODE_CHAT_COMPLETIONS
-    return _default_api_mode(provider_type)
-
-
-def _migrate_legacy_responses_adapter(profile: dict[str, Any], used_legacy_flag: bool) -> None:
-    provider_type = str(profile.get("type", "")).strip().lower()
-    if provider_type == "deepseek_responses":
-        profile["type"] = "openai"
-        profile["api_mode"] = _API_MODE_RESPONSES
-        profile["base_url"] = profile.get("base_url") or _DEEPSEEK_RESPONSES_BASE_URL
-    elif used_legacy_flag and provider_type == "deepseek" and profile.get("api_mode") == _API_MODE_RESPONSES:
-        profile["type"] = "openai"
-        profile["base_url"] = profile.get("base_url") or _DEEPSEEK_RESPONSES_BASE_URL
 
 
 def _validate_normalized_provider_protocols(provider_profiles: dict[str, dict[str, Any]]) -> None:
@@ -328,426 +316,109 @@ def _validate_normalized_provider_protocols(provider_profiles: dict[str, dict[st
         profile["api_mode"] = api_mode
         supported_modes = _PROVIDER_API_MODES.get(provider_type)
         if supported_modes is None:
-            continue
+            raise ValueError(f"[providers.{name}].type 无效: {provider_type!r}")
         if api_mode not in supported_modes:
             raise ValueError(
                 f"[providers.{name}] 的 type={provider_type!r} 不支持 api_mode={api_mode!r}"
             )
 
 
-def _normalize_modern_provider_profile(
-    name: str,
+def _normalize_provider_profile(
     raw_profile: Mapping[str, Any],
     existing: Mapping[str, Any],
-) -> tuple[dict[str, Any], bool]:
+) -> dict[str, Any]:
     profile = dict(raw_profile)
-    used_legacy_flag = "use_responses_api" in profile
-    provider_type = str(
-        profile.pop("provider", profile.get("type", existing.get("type", name if existing else "")))
-    ).strip().lower()
+    provider_type = str(profile.get("type", existing.get("type", ""))).strip().lower()
     profile["type"] = provider_type
-    legacy_response_value = profile.pop("use_responses_api", None)
     if "api_mode" not in profile:
-        if used_legacy_flag:
-            profile["api_mode"] = _legacy_api_mode(provider_type, bool(legacy_response_value))
-        elif existing and provider_type == existing.get("type"):
-            profile["api_mode"] = existing.get("api_mode", "")
-        else:
-            profile["api_mode"] = _default_api_mode(provider_type)
-    profile.pop("capabilities", None)
-    normalized = {**existing, **profile}
-    _migrate_legacy_responses_adapter(normalized, used_legacy_flag)
-    return normalized, used_legacy_flag or "api_mode" in raw_profile
+        profile["api_mode"] = (
+            existing["api_mode"]
+            if existing and provider_type == existing.get("type")
+            else _default_api_mode(provider_type)
+        )
+    return {**existing, **profile}
 
 
-def _normalize_legacy_provider_profile(
-    raw_profile: Mapping[str, Any],
-    existing: Mapping[str, Any],
-) -> tuple[dict[str, Any], bool]:
-    profile = dict(raw_profile)
-    used_legacy_flag = "use_responses_api" in profile
-    provider_type = str(profile.get("type") or profile.get("provider") or existing.get("type", "")).strip().lower()
-    if "api_mode" in profile:
-        api_mode = profile["api_mode"]
-    elif used_legacy_flag:
-        api_mode = _legacy_api_mode(provider_type, bool(profile["use_responses_api"]))
-    elif existing.get("api_mode"):
-        api_mode = existing["api_mode"]
-    else:
-        api_mode = _default_api_mode(provider_type, legacy_openai_responses=True)
-    normalized = {
-        **existing,
-        "type": provider_type,
-        "api_mode": api_mode,
-        "base_url": profile.get("base_url") or existing.get("base_url", ""),
-        # 旧版 endpoint profile 的空密钥会回退到 [key] 中对应供应商的密钥。
-        "api_key": profile.get("api_key") or existing.get("api_key", ""),
-    }
-    _migrate_legacy_responses_adapter(normalized, used_legacy_flag)
-    return normalized, used_legacy_flag or "api_mode" in profile
-
-
-def _normalize_provider_profiles(
-    providers: Mapping[str, Any],
-    legacy_endpoint: Mapping[str, Any],
-    keys: Mapping[str, Any],
-    legacy_profiles: Mapping[str, Any],
-) -> tuple[dict[str, dict[str, Any]], set[str]]:
+def _normalize_provider_profiles(providers: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     profiles: dict[str, dict[str, Any]] = {
-        "openai": {
-            "type": "openai",
-            "api_mode": _API_MODE_RESPONSES,
-            "base_url": _pick(providers, legacy_endpoint, "openai_base_url", ""),
-            "api_key": keys.get("openai_api_key", ""),
-        },
-        "google": {
-            "type": "google",
-            "api_mode": _API_MODE_GENERATE_CONTENT,
-            "base_url": "",
-            "api_key": keys.get("google_api_key", ""),
-        },
-        "anthropic": {
-            "type": "anthropic",
-            "api_mode": _API_MODE_MESSAGES,
-            "base_url": _pick(providers, keys, "anthropic_base_url", ""),
-            "api_key": keys.get("anthropic_api_key", ""),
-        },
-        "deepseek": {
-            "type": "deepseek",
-            "api_mode": _API_MODE_CHAT_COMPLETIONS,
-            "base_url": _pick(providers, keys, "deepseek_base_url", "", "deepseek_api_base"),
-            "api_key": keys.get("deepseek_api_key", ""),
-        },
+        "openai": {"type": "openai", "api_mode": _API_MODE_RESPONSES},
+        "google": {"type": "google", "api_mode": _API_MODE_GENERATE_CONTENT},
+        "anthropic": {"type": "anthropic", "api_mode": _API_MODE_MESSAGES},
+        "deepseek": {"type": "deepseek", "api_mode": _API_MODE_CHAT_COMPLETIONS},
         "deepseek_responses": {
             "type": "openai",
             "api_mode": _API_MODE_RESPONSES,
             "base_url": _DEEPSEEK_RESPONSES_BASE_URL,
-            "api_key": keys.get("deepseek_api_key", ""),
         },
         "deepseek_anthropic": {
             "type": "anthropic",
             "api_mode": _API_MODE_MESSAGES,
             "base_url": _DEEPSEEK_ANTHROPIC_BASE_URL,
-            "api_key": keys.get("deepseek_api_key", ""),
         },
     }
-    explicit_api_modes: set[str] = set()
     for name, raw_profile in providers.items():
-        if not isinstance(raw_profile, Mapping):
-            continue
-        normalized, explicit_mode = _normalize_modern_provider_profile(name, raw_profile, profiles.get(name, {}))
-        profiles[name] = normalized
-        if explicit_mode:
-            explicit_api_modes.add(name)
-
-    for name, raw_profile in legacy_profiles.items():
-        if not isinstance(raw_profile, Mapping):
-            continue
-        normalized, explicit_mode = _normalize_legacy_provider_profile(raw_profile, profiles.get(name, {}))
-        profiles[name] = normalized
-        if explicit_mode:
-            explicit_api_modes.add(name)
-    return profiles, explicit_api_modes
+        profiles[name] = _normalize_provider_profile(raw_profile, profiles.get(name, {}))
+    _validate_normalized_provider_protocols(profiles)
+    return profiles
 
 
-def _normalize_model_roles(
-    models: Mapping[str, Any],
-    legacy_endpoint: Mapping[str, Any],
-    legacy_profiles: Mapping[str, Any],
-    provider_profiles: dict[str, dict[str, Any]],
-    explicit_api_modes: set[str],
-) -> dict[str, dict[str, Any]]:
-    def model_role(prefix: str, legacy_prefix: str, defaults: tuple[Any, str, list[str], bool]) -> dict[str, Any]:
-        default_model, default_provider, default_capabilities, default_responses = defaults
-
-        def role_value(suffix: str, default: Any):
-            modern_key = f"{prefix}_{suffix}"
-            legacy_key = f"{legacy_prefix}_{suffix}"
-            return models[modern_key] if modern_key in models else legacy_endpoint.get(legacy_key, default)
-
-        provider_name = role_value("model_provider", default_provider)
-        endpoint_name = role_value("model_endpoint", "")
-        provider_ref = endpoint_name or provider_name
-        capabilities = role_value("model_capabilities", default_capabilities)
-        legacy_profile = legacy_profiles.get(endpoint_name, {})
-        if not capabilities and isinstance(legacy_profile, Mapping):
-            capabilities = legacy_profile.get("capabilities", [])
-
-        response_key = f"{prefix}_model_use_responses_api"
-        legacy_response_key = f"{legacy_prefix}_model_use_responses_api"
-        response_explicit = response_key in models or legacy_response_key in legacy_endpoint
-        response_value = (
-            models[response_key]
-            if response_key in models
-            else legacy_endpoint.get(legacy_response_key, default_responses)
-        )
-        if provider_ref and response_explicit and provider_ref not in explicit_api_modes:
-            profile = provider_profiles.setdefault(
-                provider_ref,
-                {
-                    "type": provider_name or provider_ref,
-                    "base_url": "",
-                },
-            )
-            provider_type = str(profile.get("type", "")).strip().lower()
-            profile["api_mode"] = _legacy_api_mode(provider_type, bool(response_value))
-            _migrate_legacy_responses_adapter(profile, used_legacy_flag=True)
-        return {
-            "model": role_value("model", default_model),
-            "provider": provider_ref,
-            "capabilities": capabilities,
-        }
-
-    return {
-        "basic": model_role("basic", "basic", ("", "", [], True)),
-        "signal": model_role("signal", "signal", ("deepseek-v4-flash", "deepseek", ["text"], False)),
-        "advanced": model_role("advanced", "advan", ("", "", [], True)),
-        "daily_news": model_role(
-            "daily_news",
-            "daily_news",
-            ("deepseek-v4-flash", "deepseek_responses", ["text"], True),
-        ),
-    }
-
-
-def _legacy_media_provider(
-    profiles: dict[str, dict[str, Any]],
-    *,
-    preferred_name: str,
-    base_url: str,
-    api_key: str,
-) -> str:
-    for name, profile in profiles.items():
-        if (
-            profile.get("type") == "openai"
-            and profile.get("base_url", "") == base_url
-            and profile.get("api_key", "") == api_key
-        ):
-            return name
-
-    name = preferred_name
-    suffix = 2
-    while name in profiles:
-        name = f"{preferred_name}_{suffix}"
-        suffix += 1
-    profiles[name] = {
-        "type": "openai",
-        "api_mode": _API_MODE_CHAT_COMPLETIONS,
-        "base_url": base_url,
-        "api_key": api_key,
-    }
-    return name
-
-
-def _normalize_paint_size(models: Mapping[str, Any], legacy_endpoint: Mapping[str, Any]) -> str:
-    if "paint_size" in models:
-        return str(models["paint_size"])
-
-    image_size = str(_pick(models, legacy_endpoint, "paint_image_size", "1K")).upper()
-    aspect_ratio = str(_pick(models, legacy_endpoint, "paint_aspect_ratio", "1:1"))
-    if "x" in image_size.lower():
-        return image_size.lower()
-
-    legacy_sizes = {
-        ("1K", "1:1"): "1024x1024",
-        ("1K", "16:9"): "1536x1024",
-        ("1K", "9:16"): "1024x1536",
-        ("2K", "1:1"): "2048x2048",
-        ("2K", "16:9"): "2048x1152",
-        ("2K", "9:16"): "1152x2048",
-        ("4K", "16:9"): "3840x2160",
-        ("4K", "9:16"): "2160x3840",
-    }
-    return legacy_sizes.get((image_size, aspect_ratio), "1024x1024")
-
-
-def _normalize_media_models(
-    models: Mapping[str, Any],
-    legacy_endpoint: Mapping[str, Any],
-    keys: Mapping[str, Any],
-    provider_profiles: dict[str, dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    paint_provider = models.get("paint_model_provider")
-    if not paint_provider:
-        paint_provider = _legacy_media_provider(
-            provider_profiles,
-            preferred_name="paint",
-            base_url=legacy_endpoint.get("paint_base_url") or legacy_endpoint.get("openai_base_url", ""),
-            api_key=keys.get("paint_api_key") or keys.get("openai_api_key", ""),
-        )
-
-    video_provider = models.get("video_model_provider")
-    if not video_provider:
-        video_provider = _legacy_media_provider(
-            provider_profiles,
-            preferred_name="video",
-            base_url=legacy_endpoint.get("video_base_url", ""),
-            api_key=keys.get("video_api_key") or os.getenv("ZENMUX_API_KEY", ""),
-        )
-
-    return {
-        "paint": {
-            "model": _pick(models, legacy_endpoint, "paint_model", ""),
-            "provider": paint_provider,
-            "size": _normalize_paint_size(models, legacy_endpoint),
-            "quality": _pick(models, legacy_endpoint, "paint_quality", "auto"),
-        },
-        "video": {
-            "model": _pick(models, legacy_endpoint, "video_model", "sora-2"),
-            "provider": video_provider,
-            "size": _pick(models, legacy_endpoint, "video_size", "1280x720"),
-            "seconds": str(_pick(models, legacy_endpoint, "video_seconds", "8")),
-        },
-    }
+def _normalize_models(models: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Map current flat TOML model fields onto typed model roles."""
+    defaults = ModelsConfig()
+    normalized = {}
+    known_fields = set()
+    for role in ModelsConfig.model_fields:
+        model = getattr(defaults, role)
+        values = {}
+        for field in type(model).model_fields:
+            suffix = {
+                "model": "model",
+                "provider": "model_provider",
+                "capabilities": "model_capabilities",
+            }.get(field, field)
+            key = f"{role}_{suffix}"
+            known_fields.add(key)
+            values[field] = models.get(key, getattr(model, field))
+        normalized[role] = values
+    unknown = models.keys() - known_fields
+    if unknown:
+        raise ValueError("[models] 不支持的字段: " + ", ".join(sorted(unknown)))
+    return normalized
 
 
 def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
-    """解析 v2 配置；缺少新分区时从 v1 字段兼容迁移。"""
+    """Validate the current configuration without converting older formats."""
     if not isinstance(config, Mapping):
         raise TypeError("配置根节点必须是 TOML table")
+    version = config.get("config_version")
+    if type(version) is not int or version != CONFIG_VERSION:
+        raise ValueError(f"仅支持 config_version = {CONFIG_VERSION}，请按 env.toml.example 更新配置")
 
-    information = _section(config, "information")
-    bot = _section(config, "bot")
-    legacy_endpoint = _section(config, "endpoint")
+    retired_sections = {
+        "information", "endpoint", "llm_endpoints", "function", "message", "database", "image_memory", "memory",
+    } & config.keys()
+    if retired_sections:
+        raise ValueError("不支持的配置段，请按 env.toml.example 更新配置: " + ", ".join(sorted(retired_sections)))
+
     models = _section(config, "models")
     providers = _section(config, "providers")
     keys = _section(config, "key")
-    legacy_function = _section(config, "function")
-    features = _section(config, "features")
-    agent = _section(config, "agent")
-    agent_policy = _section(config, "agent_policy")
-    auto_reply_policy = _section(config, "auto_reply_policy")
-    paint_policy = _section(config, "paint_policy")
-    limits = _section(config, "limits")
-    legacy_message = _section(config, "message")
-    notifications = _section(config, "notifications")
-    legacy_database = _section(config, "database")
-    legacy_image_memory = _section(config, "image_memory")
-    storage = _section(config, "storage")
-
-    config_version = config.get("config_version", 1)
-    _validate_v2_model_provider_sections(config_version, models, providers, keys)
-    legacy_profiles = _section(config, "llm_endpoints")
-    provider_profiles, explicit_api_modes = _normalize_provider_profiles(
-        providers,
-        legacy_endpoint,
-        keys,
-        legacy_profiles,
-    )
-    model_roles = _normalize_model_roles(
-        models,
-        legacy_endpoint,
-        legacy_profiles,
-        provider_profiles,
-        explicit_api_modes,
-    )
-    _validate_normalized_provider_protocols(provider_profiles)
-    media_models = _normalize_media_models(models, legacy_endpoint, keys, provider_profiles)
-
-    paint_enabled = _pick(features, legacy_function, "paint_enabled", True, "paint_module_enabled")
+    _validate_model_provider_sections(models, providers, keys)
     normalized = {
-        "config_version": config_version,
-        "bot": {
-            "system_prompt": _pick(bot, information, "system_prompt", ""),
-        },
-        "providers": provider_profiles,
-        "models": {
-            **model_roles,
-            **media_models,
-        },
-        "keys": {
-            name: keys.get(name, default)
-            for name, default in (
-                ("nasa_api_key", "DEMO_KEY"),
-                ("github_pat", ""),
-            )
-        },
-        "features": {
-            "agent_enabled": _pick(features, legacy_function, "agent_enabled", True, "agent_module_enabled"),
-            "paint_enabled": paint_enabled,
-            "video_enabled": _pick(
-                features,
-                legacy_function,
-                "video_enabled",
-                paint_enabled,
-                "video_module_enabled",
-            ),
-        },
-        "agent": {"reasoning_effort": _pick(agent, legacy_function, "reasoning_effort", "medium", "agent_capability")},
-        "agent_policy": {
-            field: _pick(agent_policy, legacy_function, field, default, f"agent_{field}")
-            for field, default in (
-                ("whitelist_mode", False),
-                ("whitelist_person_list", []),
-                ("whitelist_group_list", []),
-                ("blacklist_person_list", []),
-                ("blacklist_group_list", []),
-            )
-        },
-        "auto_reply_policy": {
-            field: _pick(
-                auto_reply_policy,
-                legacy_function,
-                field,
-                default,
-                f"agent_auto_reply_{field}",
-            )
-            for field, default in (
-                ("whitelist_mode", False),
-                ("whitelist_group_list", []),
-                ("blacklist_group_list", []),
-            )
-        },
-        "paint_policy": {
-            field: _pick(paint_policy, legacy_function, field, default, f"paint_{field}")
-            for field, default in (
-                ("whitelist_mode", False),
-                ("whitelist_person_list", []),
-                ("whitelist_group_list", []),
-                ("blacklist_person_list", []),
-                ("blacklist_group_list", []),
-            )
-        },
-        "limits": {
-            field: _pick(limits, legacy_function, field, default)
-            for field, default in (
-                ("paint_rate_limit_max_requests", 3),
-                ("paint_rate_limit_window_seconds", 600),
-                ("video_rate_limit_max_requests", 1),
-                ("video_rate_limit_window_seconds", 900),
-                ("video_poll_interval_seconds", 15),
-                ("video_poll_timeout_seconds", 900),
-                ("agent_llm_timeout_seconds", 900),
-                ("agent_job_timeout_seconds", 3600),
-            )
-        },
-        "notifications": {
-            field: _pick(notifications, legacy_message, field, []) for field in NotificationConfig.model_fields
-        },
-        "storage": {
-            "query_message_numbers": _pick(storage, legacy_database, "query_message_numbers", 100),
-            "image_enabled": _pick(storage, legacy_image_memory, "image_enabled", True, "enabled"),
-            "image_ttl_days": _pick(storage, legacy_image_memory, "image_ttl_days", 30, "ttl_days"),
-            "media_ttl_days": _pick(
-                storage,
-                legacy_image_memory,
-                "media_ttl_days",
-                _pick(storage, legacy_image_memory, "image_ttl_days", 30, "ttl_days"),
-            ),
-            "max_inline_images": _pick(storage, legacy_image_memory, "max_inline_images", 4),
-            "max_inline_media_bytes": _pick(
-                storage,
-                legacy_image_memory,
-                "max_inline_media_bytes",
-                20 * 1024 * 1024,
-            ),
-            "image_auto_cleanup": _pick(storage, legacy_image_memory, "image_auto_cleanup", True, "auto_cleanup"),
-        },
-        "debug": _section(config, "debug"),
-        "dashboard": _section(config, "dashboard"),
-        "content_check": _section(config, "content_check"),
+        key: _section(config, key)
+        for key in FrontierSettings.model_fields
+        if key not in {"config_version", "models", "providers", "keys"}
     }
-    return FrontierSettings.model_validate(normalized)
+    # Preserve the documented defaults for omitted current-format fields.
+    normalized["features"].setdefault("video_enabled", normalized["features"].get("paint_enabled", True))
+    normalized["storage"].setdefault("media_ttl_days", normalized["storage"].get("image_ttl_days", 30))
+    return FrontierSettings.model_validate({
+        **normalized,
+        "config_version": version,
+        "models": _normalize_models(models),
+        "providers": _normalize_provider_profiles(providers),
+        "keys": keys,
+    })
 
 
 def load_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
@@ -847,6 +518,10 @@ class EnvConfig:
     VIDEO_POLL_TIMEOUT_SECONDS: ClassVar[int]
     AGENT_LLM_TIMEOUT_SECONDS: ClassVar[int]
     AGENT_JOB_TIMEOUT_SECONDS: ClassVar[int]
+    AGENT_MODEL_CALL_LIMIT: ClassVar[int]
+    AGENT_TOOL_CALL_LIMIT: ClassVar[int]
+    AGENT_PTC_CALL_LIMIT: ClassVar[int]
+    SESSIONS: ClassVar[SessionConfig]
 
     # Notification targets
     TEST_GROUP_ID: ClassVar[list[int | str]]
@@ -881,6 +556,7 @@ class EnvConfig:
         keys = settings.keys
         providers = _provider_profiles(settings)
         values: dict[str, Any] = {
+            "SESSIONS": settings.sessions,
             "BOT_NAME": nicknames[0],
             "BOT_NICKNAMES": list(nicknames),
             "SYSTEM_PROMPT": settings.bot.system_prompt,
@@ -961,11 +637,6 @@ class EnvConfig:
         if warn and settings.dashboard.jwt_secret == _DEFAULT_DASHBOARD_JWT_SECRET:
             print(
                 "⚠️  Dashboard JWT secret 未配置，已生成仅保存在 cache 中的运行时密钥。",
-                file=sys.stderr,
-            )
-        if warn and settings.config_version < CONFIG_VERSION:
-            print(
-                "⚠️  当前 env.toml 使用旧版配置结构；仍可正常运行，建议按 env.toml.example 渐进迁移。",
                 file=sys.stderr,
             )
 

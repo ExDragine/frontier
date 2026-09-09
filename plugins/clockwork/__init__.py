@@ -17,10 +17,6 @@ task_executor = TaskExecutor(task_manager_instance)
 task_manager_instance.set_job_func(task_executor.execute)
 
 driver = get_driver()
-_REMOVED_TASKS = {
-    "dreaming_daily_v3": "旧版结构化记忆后台整理任务",
-    "eq_cenc": "旧版 CENC 定时轮询任务",
-}
 
 # 导入命令和处理器（必须在 task_manager 创建之后）
 from . import agent_task_handler, task_commands, task_handlers  # noqa: E402, F401, I001
@@ -48,18 +44,7 @@ async def init_task_system():
     task_manager.ensure_schema()
     logger.info("数据库表创建完成")
 
-    # 移除已下线任务，避免历史数据库配置在启动时重新注册。
-    for job_id, description in _REMOVED_TASKS.items():
-        if not await task_manager.get_task(job_id):
-            continue
-        try:
-            await task_manager.delete_task(job_id)
-            logger.info(f"已删除{description}")
-        except Exception as exc:
-            logger.warning(f"删除{description}失败: {exc}")
-
-    # 2. 迁移旧提醒并读取所有任务配置
-    await task_manager.migrate_legacy_reminders()
+    # 2. 读取所有任务配置
     tasks = await task_manager.list_tasks()
     logger.info(f"发现 {len(tasks)} 个已存在的任务配置")
 

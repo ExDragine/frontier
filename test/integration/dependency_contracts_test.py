@@ -70,3 +70,52 @@ assert (Path(agent.working_dir) / "memory" / workspace_key / "SOUL.md").is_file(
         timeout=60,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_real_milky_13_adapter_and_tool_schemas(tmp_path):
+    script = r'''
+import asyncio
+import sys
+from types import SimpleNamespace
+sys.path.insert(0, sys.argv[1])
+
+from nonebot.adapters.milky.event import EVENT_CLASSES, GroupDisbandEvent, MessageEvent
+from nonebot.adapters.milky.message import Message
+from tools import milky_message, milky_file
+
+event = MessageEvent.model_validate({
+    "time": 123, "self_id": 999,
+    "data": {"message_scene": "friend", "peer_id": 456, "message_seq": 1,
+             "sender_id": 456, "time": 123,
+             "segments": [{"type": "markdown", "data": {"content": "# hello"}}]},
+})
+assert event.data.segments[0]["data"]["content"] == "# hello"
+assert event.message[0].type == "markdown"
+assert EVENT_CLASSES["group_disband"] is GroupDisbandEvent
+assert "runtime" not in milky_file.persist_group_file.tool_call_schema.model_json_schema()["properties"]
+assert "is_self_send" in milky_file.get_private_file_download_url.args
+
+calls = []
+async def send(**kwargs):
+    message = kwargs["message"]
+    assert isinstance(message, Message)
+    elements = message.to_elements()
+    assert elements[0]["data"]["messages"][0]["time"] == 123
+    calls.append(kwargs)
+    return SimpleNamespace(message_seq=9, time=456)
+
+milky_message.get_bot = lambda: SimpleNamespace(send_group_message=send)
+async def run():
+    result = await milky_message.send_forwarded_message.ainvoke({
+        "messages": [{"user_id": 456, "sender_name": "Alice", "text": "hello", "time": 123}],
+        "message_scene": "group", "peer_id": 789,
+    })
+    assert "message_seq=9" in result
+    assert calls[0]["group_id"] == 789
+asyncio.run(run())
+'''
+    result = subprocess.run(  # noqa: S603 - fixed script and repository path
+        [sys.executable, "-c", script, str(Path(__file__).resolve().parents[2])],
+        cwd=tmp_path, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

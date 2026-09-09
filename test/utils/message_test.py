@@ -269,7 +269,7 @@ async def test_stage_message_files_passes_empty_private_file_hash(monkeypatch, t
     assert staged[0].virtual_path == "/memory/456/files/private.txt"
     assert staged[0].local_path.read_bytes() == b"private-file"
     assert calls == [
-        ("get_private_file_download_url", {"user_id": 456, "file_id": "file-1", "file_hash": ""}),
+        ("get_private_file_download_url", {"user_id": 456, "file_id": "file-1", "file_hash": "", "is_self_send": False}),
         ("get", "https://example.com/private.txt"),
     ]
 

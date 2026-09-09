@@ -8,6 +8,7 @@ import pytest
 from utils.agents.acp.service import AcpAgentConfig, AcpArtifact, AcpRunResult
 from utils.agents.subagents import acp as acp_subagents
 from utils.agents.subagents import document, research
+from utils.agents.tool_errors import read_only_error_message
 
 
 def test_build_research_subagent_is_bounded_and_uses_only_injected_tools(monkeypatch):
@@ -35,7 +36,7 @@ def test_build_research_subagent_is_bounded_and_uses_only_injected_tools(monkeyp
     assert "429" in captured["agent_kwargs"]["system_prompt"]
     middleware = captured["agent_kwargs"]["middleware"]
     assert [type(item).__name__ for item in middleware] == [
-        "ToolRetryMiddleware",
+        "ToolErrorMiddleware",
         "ToolCallLimitMiddleware",
         "ModelCallLimitMiddleware",
         "ModelRetryMiddleware",
@@ -47,14 +48,14 @@ def test_build_research_subagent_is_bounded_and_uses_only_injected_tools(monkeyp
 
 
 def test_research_rate_limit_stops_retrying():
-    message = research._tool_failure_message(RuntimeError("429 Too Many Requests"))
+    message = read_only_error_message(RuntimeError("429 Too Many Requests"))
 
     assert "停止继续搜索" in message
     assert "可能不完整" in message
 
 
 def test_research_quota_error_stops_switching_backends():
-    message = research._tool_failure_message(RuntimeError("Tavily usage limit exceeded"))
+    message = read_only_error_message(RuntimeError("Tavily usage limit exceeded"))
 
     assert "停止继续搜索" in message
 
@@ -75,12 +76,13 @@ def test_build_document_subagent_is_read_only_and_bounded(monkeypatch):
     assert subagent["model"] == "basic-llm"
     assert subagent["tools"] == []
     assert [type(item).__name__ for item in subagent["middleware"]] == [
+        "ToolErrorMiddleware",
         "ToolCallLimitMiddleware",
         "ModelCallLimitMiddleware",
     ]
     middleware = cast(list[Any], subagent["middleware"])
-    assert middleware[0].run_limit == 8
-    assert middleware[1].run_limit == 6
+    assert middleware[1].run_limit == 8
+    assert middleware[2].run_limit == 6
     permission = subagent["permissions"][0]
     assert permission.operations == ["write"]
     assert permission.paths == ["/**"]

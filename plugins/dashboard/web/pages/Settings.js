@@ -29,6 +29,7 @@ const SettingsPage = {
 
                                 <template v-if="typeof value === 'boolean'">
                                     <button @click="configData[activeTab][key] = !configData[activeTab][key]"
+                                            role="switch" :aria-label="key" :aria-checked="configData[activeTab][key]"
                                             :class="configData[activeTab][key] ? 'bg-green-500' : 'bg-gray-300'"
                                             class="relative w-12 h-6 rounded-full transition">
                                         <span :class="configData[activeTab][key] ? 'translate-x-6' : 'translate-x-0.5'"
@@ -71,7 +72,7 @@ const SettingsPage = {
                                 </template>
 
                                 <template v-else-if="typeof value === 'number'">
-                                    <input type="number" v-model.number="configData[activeTab][key]"
+                                    <input type="number" step="any" :aria-label="key" v-model.number="configData[activeTab][key]"
                                            class="border rounded px-3 py-2 text-sm w-48">
                                 </template>
 
@@ -122,19 +123,12 @@ const SettingsPage = {
             { key: 'auto_reply_policy', label: '自动回复' },
             { key: 'paint_policy', label: '绘图权限' },
             { key: 'limits', label: '限流与超时' },
+            { key: 'sessions', label: '会话缓存' },
             { key: 'notifications', label: '消息推送' },
             { key: 'storage', label: '存储' },
             { key: 'debug', label: '调试' },
             { key: 'dashboard', label: 'Dashboard' },
             { key: 'content_check', label: '内容检查' },
-            // v1 配置兼容：旧文件仍可从 Dashboard 编辑并热重载。
-            { key: 'information', label: '基本信息（旧版）' },
-            { key: 'endpoint', label: '接口配置（旧版）' },
-            { key: 'llm_endpoints', label: '供应商端点（旧版）' },
-            { key: 'function', label: '功能设置（旧版）' },
-            { key: 'message', label: '消息推送（旧版）' },
-            { key: 'database', label: '数据库（旧版）' },
-            { key: 'image_memory', label: '图片记忆（旧版）' },
         ];
         const visibleTabs = Vue.computed(() => tabs.filter(tab => configData[tab.key]));
 

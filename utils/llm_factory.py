@@ -399,6 +399,39 @@ def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile 
     return profile
 
 
+def structured_output_options(
+    model: str,
+    provider: str | None,
+    llm: BaseChatModel,
+    *,
+    method: str | None = None,
+) -> dict[str, Any]:
+    """Select schema enforcement without silently changing API endpoints."""
+    _, profile = _provider_profile(model, provider)
+    provider_type, _ = _provider_protocol(model, profile)
+    selected = method or profile.get("structured_output_method", "auto")
+    if selected not in {"auto", "json_schema", "function_calling", "json_mode"}:
+        raise ValueError("不支持的 structured_output_method")
+    if selected == "auto":
+        capabilities = getattr(llm, "profile", None) or {}
+        if provider_type == "google":
+            selected = "json_schema"
+        elif capabilities.get("structured_output") is True and (
+            provider_is_official_openai(model, provider) or provider_is_official_anthropic(model, provider)
+        ):
+            selected = "json_schema"
+        elif provider_type == "anthropic" or capabilities.get("tool_calling") is True or provider_type == "deepseek":
+            selected = "function_calling"
+        else:
+            selected = "json_mode"
+    # ChatDeepSeek implements json_schema via function calling; strict=True can
+    # switch to its beta endpoint. Do not opt into that behavior automatically.
+    options: dict[str, Any] = {"method": selected}
+    if selected == "json_schema" and provider_type == "openai":
+        options["strict"] = True
+    return options
+
+
 def _defer_anthropic_request_metadata(provider_type: str, filtered: dict) -> dict[str, Any] | None:
     """Keep API metadata away from BaseChatModel's tracing metadata field."""
     model_kwargs = filtered.get("model_kwargs")
@@ -447,7 +480,7 @@ def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatMod
     api_key = SecretStr(_clean_optional(profile.get("api_key")))
     filtered: dict = {}
     for k, v in kwargs.items():
-        if k in config.valid_kwargs:
+        if k in config.valid_kwargs or k == "tags":
             actual_key = config.kwarg_map.get(k, k)
             filtered[actual_key] = v
     # BaseChatModel already defines ``metadata`` for tracing. ChatAnthropic's

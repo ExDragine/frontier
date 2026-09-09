@@ -47,6 +47,58 @@ const DashboardPage = {
                 </div>
             </div>
             
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold text-gray-800">Agent 用量</h2>
+                <p class="text-xs text-gray-500 mt-1 mb-4">本次启动以来已结束任务的累计统计，含主模型和本地子代理；重启后重新计数。</p>
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-500">任务 / 达到预算上限</p>
+                        <p class="text-xl font-semibold">{{ overview.agent_usage?.runs || 0 }} / {{ overview.agent_usage?.budget_exceeded_runs || 0 }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">模型 / 工具调用</p>
+                        <p class="text-xl font-semibold">{{ overview.agent_usage?.model_calls || 0 }} / {{ overview.agent_usage?.tool_calls || 0 }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">输入 / 输出 token</p>
+                        <p class="text-xl font-semibold">{{ overview.agent_usage?.input_tokens || 0 }} / {{ overview.agent_usage?.output_tokens || 0 }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">缓存命中 / 推理 token</p>
+                        <p class="text-xl font-semibold">{{ overview.agent_usage?.cache_read_tokens || 0 }} / {{ overview.agent_usage?.reasoning_tokens || 0 }}</p>
+                    </div>
+                </div>
+                <p v-if="overview.agent_usage?.usage_missing_calls" class="text-sm text-amber-700 mt-3">
+                    有 {{ overview.agent_usage.usage_missing_calls }} 次模型调用未返回用量，token 统计可能不完整。
+                </p>
+            </div>
+
+            <div v-if="overview.agent_sessions" class="bg-white rounded-lg shadow p-6">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-lg font-semibold text-gray-800">会话缓存</h2>
+                    <span class="text-sm text-gray-500">{{ overview.agent_sessions.enabled ? '已启用' : '已关闭' }}</span>
+                </div>
+                <p class="text-xs text-gray-500 mb-4">连续对话复用状态，空闲后释放；重启后从聊天记录重建。</p>
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-500">常驻会话</p>
+                        <p class="text-xl font-semibold">{{ overview.agent_sessions.sessions || 0 }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">复用 / 重建</p>
+                        <p class="text-xl font-semibold">{{ overview.agent_sessions.hot_hits || 0 }} / {{ overview.agent_sessions.cold_starts || 0 }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">缓存占用上界</p>
+                        <p class="text-xl font-semibold">{{ ((overview.agent_sessions.serialized_bytes_upper_bound || 0) / 1048576).toFixed(1) }} MiB</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">快照冲突回退</p>
+                        <p class="text-xl font-semibold">{{ overview.agent_sessions.snapshot_conflict || 0 }}</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- 系统信息 -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="bg-white rounded-lg shadow p-6">

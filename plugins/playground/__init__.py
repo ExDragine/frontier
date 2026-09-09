@@ -14,7 +14,12 @@ from utils.message import download_media, message_extract
 from utils.paint_service import PaintRateLimiter, paint
 from utils.video_service import generate_video
 
-notice = on_notice(priority=0, block=True)
+
+async def _is_nudge(event) -> bool:
+    return isinstance(event, (FriendNudgeEvent, GroupNudgeEvent))
+
+
+notice = on_notice(rule=_is_nudge, priority=0, block=True)
 paint_entry = on_command("paint", priority=3, block=True, aliases={"画图", "绘图"})
 video_entry = on_command("video", priority=3, block=True, aliases={"视频", "生成视频"})
 
