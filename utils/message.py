@@ -13,7 +13,6 @@ from typing import Any, Literal
 
 from nonebot import logger
 from nonebot.adapters.milky.event import MessageEvent
-from nonebot.exception import ActionFailed
 from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 
@@ -21,6 +20,7 @@ from utils.alconna import Image, UniMessage, Video
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
 from utils.database import GroupSettingsManager, MessageDatabase, get_engine
+from utils.delivery import DeliveryResult
 from utils.http_client import get_http_client
 from utils.markdown_render import markdown_to_image, markdown_to_text
 from utils.media import detect_mime_type
@@ -422,16 +422,20 @@ def _safe_attachment_file_name(file_name: str) -> str:
     return safe_name or "file"
 
 
-def _unique_attachment_path(directory: Path, file_name: str) -> Path:
+def _reserve_attachment_path(directory: Path, file_name: str) -> Path:
+    """Atomically reserve a fresh path before another download can select it."""
     original = Path(file_name)
     stem = original.stem or "file"
     suffix = original.suffix
     candidate = directory / file_name
     counter = 2
-    while candidate.exists():
-        candidate = directory / f"{stem}-{counter}{suffix}"
-        counter += 1
-    return candidate
+    while True:
+        try:
+            candidate.open("xb").close()
+            return candidate
+        except FileExistsError:
+            candidate = directory / f"{stem}-{counter}{suffix}"
+            counter += 1
 
 
 def cleanup_staged_message_files(staged_files: list[StagedMessageFile]) -> None:
@@ -448,9 +452,7 @@ def cleanup_staged_message_files(staged_files: list[StagedMessageFile]) -> None:
 
 
 def _write_staged_file(target_path: Path, data: bytes) -> None:
-    temp_path = target_path.with_name(
-        f".{target_path.name}.frontier-pending-{os.getpid()}-{time.time_ns()}"
-    )
+    temp_path = target_path.with_name(f".{target_path.name}.frontier-pending-{os.getpid()}-{time.time_ns()}")
     try:
         with temp_path.open("xb") as file:
             file.write(data)
@@ -464,6 +466,18 @@ def _write_staged_file(target_path: Path, data: bytes) -> None:
             logger.warning("清理消息文件临时写入失败 %s: %s", temp_path, exc)
 
 
+async def _complete_staged_write(target_path: Path, data: bytes) -> None:
+    # Cancellation cannot stop a worker thread. Let it finish before caller cleanup
+    # so the thread cannot recreate an unindexed file after it was removed.
+    write = asyncio.create_task(asyncio.to_thread(_write_staged_file, target_path, data))
+    try:
+        await asyncio.shield(write)
+    except asyncio.CancelledError:
+        with suppress(Exception):
+            await write
+        raise
+
+
 async def stage_message_files(
     bot,
     file_items: list[MessageFileItem],
@@ -471,6 +485,7 @@ async def stage_message_files(
     memory_dir: str | Path,
     workspace_key: str,
     message_time: int | None = None,
+    message_id: int | None = None,
     user_id: str | int,
     group_id: int | None,
 ) -> list[StagedMessageFile]:
@@ -480,7 +495,10 @@ async def stage_message_files(
 
     memory_path = Path(memory_dir)
     files_dir = memory_path / "files"
-    if message_time is not None:
+    if message_id is not None:
+        prefix = f"{int(message_time)}-" if message_time is not None else ""
+        files_dir /= f"{prefix}m{int(message_id)}"
+    elif message_time is not None:
         files_dir /= str(int(message_time))
     files_dir.mkdir(parents=True, exist_ok=True)
     staged_files: list[StagedMessageFile] = []
@@ -496,8 +514,7 @@ async def stage_message_files(
                 continue
 
             safe_name = _safe_attachment_file_name(file_item.file_name)
-            target_path = _unique_attachment_path(files_dir, safe_name)
-            await asyncio.to_thread(_write_staged_file, target_path, file_bytes)
+            target_path = _reserve_attachment_path(files_dir, safe_name)
             virtual_path = f"/memory/{workspace_key}/{target_path.relative_to(memory_path).as_posix()}"
             staged_files.append(
                 StagedMessageFile(
@@ -509,6 +526,7 @@ async def stage_message_files(
                     sha256=hashlib.sha256(file_bytes).hexdigest(),
                 )
             )
+            await _complete_staged_write(target_path, file_bytes)
     except BaseException:
         cleanup_staged_message_files(staged_files)
         raise
@@ -655,35 +673,42 @@ async def message_extract(  # noqa: C901
     return text, image_downloaders, audio_downloaders, video_downloaders
 
 
-async def send_artifacts(artifacts):
-    """发送提取到的工件。多段媒体 UniMessage 拆分为独立消息串行发送。"""
+def _artifact_messages(artifact: UniMessage) -> list[UniMessage]:
+    """Split multiple media while preserving every caption and segment in order."""
+    if sum(isinstance(segment, (Image, Video)) for segment in artifact) <= 1:
+        return [artifact]
+    messages: list[UniMessage] = []
+    segments = []
+    has_media = False
+    for segment in artifact:
+        is_media = isinstance(segment, (Image, Video))
+        if is_media and has_media:
+            messages.append(UniMessage(segments))
+            segments = []
+        segments.append(segment)
+        has_media = has_media or is_media
+    if segments:
+        messages.append(UniMessage(segments))
+    return messages
 
-    parallel_tasks = []
-    serial_artifacts: list[UniMessage] = []
 
+async def send_artifacts(artifacts: list[object]) -> DeliveryResult:
+    """Send typed artifacts serially; stop after a failure to preserve ordering."""
+    result = DeliveryResult()
     for artifact in artifacts:
-        if isinstance(artifact, UniMessage):
-            media_segs = [s for s in artifact if isinstance(s, (Image, Video))]
-            if len(media_segs) > 1:
-                # 多段媒体：拆为独立 UniMessage，串行发送以保证顺序
-                serial_artifacts.extend(UniMessage([seg]) for seg in media_segs)
+        if not isinstance(artifact, UniMessage):
+            logger.warning("忽略不可发送的工具工件类型: %s", type(artifact).__name__)
+            continue
+        for message in _artifact_messages(artifact):
+            if not message:
                 continue
-        try:
-            parallel_tasks.append(asyncio.create_task(artifact.send()))
-        except Exception as e:
-            logger.exception("创建发送任务失败: %s", e)
-
-    if parallel_tasks:
-        results = await asyncio.gather(*parallel_tasks, return_exceptions=True)
-        for res in results:
-            if isinstance(res, Exception):
-                logger.exception("发送工件时发生错误: %s", res)
-
-    for single in serial_artifacts:
-        try:
-            await single.send()
-        except Exception as e:
-            logger.exception("发送多段工件时发生错误: %s", e)
+            try:
+                await message.send()
+            except Exception as exc:
+                logger.exception("工件发送失败: %s", type(exc).__name__)
+                return result.combine(DeliveryResult(attempted=1, errors=(type(exc).__name__,)))
+            result = result.combine(DeliveryResult(attempted=1, sent=1))
+    return result
 
 
 def outgoing_message_content(raw: Any) -> str:
@@ -751,42 +776,42 @@ async def _markdown_to_image_with_retry(content: str) -> bytes | None:
     return None
 
 
-async def send_messages(group_id: int | None, message_id, response: dict[str, list]):
-    raw = response["messages"][-1]
-    content = outgoing_message_content(raw)
-    if content:
-        if not _message_should_render_as_image(content):
-            text_content = (await markdown_to_text(content)).rstrip("\r\n").strip()
-            messages = (
-                UniMessage.reply(str(message_id)) + UniMessage.text(text_content)
-                if group_id
-                else UniMessage.text(text_content)
-            )
-            try:
-                await messages.send()
-                return
-            except ActionFailed as e:
-                logger.warning(f"文本消息发送失败，尝试图片回退: {e}")
+async def send_messages(group_id: int | None, message_id, response: dict[str, list]) -> DeliveryResult:
+    """Deliver final text or its rendered image and report only actual content delivery."""
+    raw_messages = response.get("messages", [])
+    if not raw_messages:
+        return DeliveryResult()
+    content = outgoing_message_content(raw_messages[-1])
+    if not content:
+        return DeliveryResult()
 
-        result = await _markdown_to_image_with_retry(content)
-        if not result:
-            logger.error(f"图片生成失败 (内容长度: {len(content)})")
-            # 尝试发送错误提示
-            try:
-                fallback_msg = UniMessage.reply(str(message_id)) + UniMessage.text("❌ 消息生成失败，请稍后重试。")
-                await fallback_msg.send()
-            except ActionFailed as e:
-                logger.error(f"错误消息发送失败: {e}")
-            return
-        messages = (
-            UniMessage.reply(str(message_id)) + UniMessage.image(raw=result)
-            if group_id
-            else UniMessage.image(raw=result)
-        )
+    def with_reply(message: UniMessage) -> UniMessage:
+        return UniMessage.reply(str(message_id)) + message if group_id is not None else message
+
+    if not _message_should_render_as_image(content):
         try:
-            await messages.send()
-        except ActionFailed as e:
-            logger.error(f"图片消息发送失败: {e}")
+            text_content = (await markdown_to_text(content)).rstrip("\r\n").strip()
+            await with_reply(UniMessage.text(text_content)).send()
+            return DeliveryResult(attempted=1, sent=1)
+        except Exception as exc:
+            logger.warning("文本消息发送失败，尝试图片回退: %s", type(exc).__name__)
+
+    result = await _markdown_to_image_with_retry(content)
+    if not result:
+        logger.error("图片生成失败 (内容长度: %s)", len(content))
+        errors = ("render_failed",)
+        try:
+            await with_reply(UniMessage.text("❌ 消息生成失败，请稍后重试。")).send()
+        except Exception as exc:
+            logger.error("错误消息发送失败: %s", type(exc).__name__)
+            errors += (type(exc).__name__,)
+        return DeliveryResult(attempted=1, errors=errors)
+    try:
+        await with_reply(UniMessage.image(raw=result)).send()
+    except Exception as exc:
+        logger.error("图片消息发送失败: %s", type(exc).__name__)
+        return DeliveryResult(attempted=1, errors=(type(exc).__name__,))
+    return DeliveryResult(attempted=1, sent=1)
 
 
 async def message_gateway(event: MessageEvent, messages: list) -> bool:

@@ -11,7 +11,7 @@ async def test_aurora_live_success_and_failure(load_tool_module, monkeypatch):
 
     text, artifact = await mod.aurora_live()
     assert "成功获取北极光实时图像" in text
-    assert artifact.content["type"] == "image"
+    assert artifact[0].type == "image"
 
     def broken_image(**_kwargs):
         raise RuntimeError("boom")
@@ -71,7 +71,7 @@ async def test_station_location(load_tool_module, monkeypatch):
     monkeypatch.setattr(mod, "httpx_client", DummyClient())
     text, artifact = await mod.station_location("国际空间站")
     assert text.startswith("空间站位置获取成功")
-    assert artifact.content["raw"] == b"img"
+    assert artifact[0].raw == b"img"
 
 
 @pytest.mark.asyncio
@@ -101,13 +101,13 @@ async def test_get_launches_success(load_tool_module, monkeypatch):
 
         def json(self):
             return {
-                "pagination": {"total": 1},
-                "data": [
+                "count": 1,
+                "results": [
                     {
                         "name": "Falcon 9 | Starlink",
-                        "site": "LC-39A",
-                        "provider": "SpaceX",
-                        "launch_date": launch_time.isoformat(),
+                        "pad": {"name": "LC-39A"},
+                        "launch_service_provider": {"name": "SpaceX"},
+                        "net": launch_time.isoformat(),
                     }
                 ],
             }

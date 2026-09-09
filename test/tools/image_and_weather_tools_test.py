@@ -1,7 +1,6 @@
 # ruff: noqa: S101
 
 import base64
-from types import SimpleNamespace
 
 import pytest
 
@@ -26,7 +25,7 @@ async def test_get_paint_generate_uses_shared_paint_service(load_tool_module, mo
 
     assert captured == {"prompt": "a cat", "reference_images": []}
     assert "成功生成图片" in text
-    assert artifact.content["raw"] == b"img"
+    assert artifact[0].raw == b"img"
 
 
 @pytest.mark.asyncio
@@ -41,7 +40,7 @@ async def test_get_paint_returns_direct_artifact(load_tool_module, monkeypatch):
 
     text, artifact = await mod.get_paint("a cat")
 
-    assert artifact.content["raw"] == b"img"
+    assert artifact[0].raw == b"img"
 
 
 @pytest.mark.asyncio
@@ -90,7 +89,7 @@ async def test_get_paint_edit_uses_images_from_latest_user_message(load_tool_mod
     assert captured["reference_images"] == [b"quoted-image", b"current-image"]
     assert b"history-image" not in captured["reference_images"]
     assert "成功编辑图片" in text
-    assert artifact.content["raw"] == b"edited"
+    assert artifact[0].raw == b"edited"
 
 
 @pytest.mark.asyncio
@@ -297,7 +296,7 @@ async def test_radar_tool(load_tool_module, monkeypatch):
     monkeypatch.setattr(mod, "china_static_radar", ok)
     text, artifact = await mod.get_static_china_radar("北京")
     assert "成功获取" in text
-    assert artifact.content["url"] == "https://img/radar.png"
+    assert artifact[0].url == "https://img/radar.png"
 
     async def none_url(_area):
         return None
@@ -312,15 +311,6 @@ async def test_radar_tool(load_tool_module, monkeypatch):
 async def test_satellite_tools(load_tool_module, monkeypatch):
     mod = load_tool_module("satellite")
 
-    class FakeUniMessage:
-        @staticmethod
-        def image(**kwargs):
-            return SimpleNamespace(content={"type": "image", **kwargs})
-
-        @staticmethod
-        def video(**kwargs):
-            return SimpleNamespace(content={"type": "video", **kwargs})
-
     class DummyResp:
         content = b"video"
 
@@ -331,36 +321,31 @@ async def test_satellite_tools(load_tool_module, monkeypatch):
         async def get(self, *_args, **_kwargs):
             return DummyResp()
 
-    monkeypatch.setattr(mod, "UniMessage", FakeUniMessage)
     monkeypatch.setattr(mod, "httpx_client", DummyClient())
 
     image_text, image_artifact = await mod.get_fy4b_satellite_image("china")
     assert image_text == "成功获取FY4B 中国区域真彩色云图"
-    assert image_artifact.content == {
-        "type": "image",
-        "url": "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_REGC_GCLR.JPG",
-    }
+    assert image_artifact[0].type == "image"
+    assert image_artifact[0].url == "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/FY4B_REGC_GCLR.JPG"
 
     sandwich_text, sandwich_artifact = await mod.get_fy4b_satellite_image("sandwich")
     assert sandwich_text == "成功获取FY4B 全盘三明治云图"
-    assert sandwich_artifact.content == {
-        "type": "image",
-        "url": "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/SWCI/FY4B_DISK_SWCI.JPG",
-    }
+    assert sandwich_artifact[0].type == "image"
+    assert sandwich_artifact[0].url == "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/SWCI/FY4B_DISK_SWCI.JPG"
 
     text, artifact = await mod.get_fy4b_cloud_map("china", "72h")
     assert text == "成功获取china地区的卫星云图动画（最近72小时）"
-    assert artifact.content["type"] == "video"
+    assert artifact[0].type == "video"
 
     text2, artifact2 = await mod.get_fy4b_geos_cloud_map("MOS", "24h")
     assert text2.startswith("成功获取FY4B卫星全地球视角云图视频")
-    assert artifact2.content["type"] == "video"
+    assert artifact2[0].type == "video"
 
     assert await mod.get_fy4b_geos_cloud_map("BAD", "24h") is None
 
     text3, artifact3 = await mod.get_himawari_satellite_image()
     assert "成功获取Himawari静止气象卫星最新可见光合成图像" in text3
-    assert artifact3.content["type"] == "image"
+    assert artifact3[0].type == "image"
 
 
 @pytest.mark.asyncio
@@ -384,4 +369,4 @@ async def test_weather_tools(load_tool_module, monkeypatch):
 
     text, artifact = await mod.get_wind_map("wind_shear")
     assert text.startswith("获取成功")
-    assert artifact.content["type"] == "image"
+    assert artifact[0].type == "image"

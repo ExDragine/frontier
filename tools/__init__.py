@@ -119,12 +119,23 @@ class ModuleTools:
     @property
     def mcp_tools(self):
         if self._mcp_tools is None:
-            self._mcp_tools = mcp_get_tools()
-            self.subagent_tools["external"].extend(self._mcp_tools)
-            self.subagent_tools["main"].extend(self._mcp_tools)
-            for tool_obj in self._mcp_tools:
-                self.tool_metadata[tool_obj.name] = {"module": "mcp", "group": "external"}
+            self._register_mcp_tools(mcp_get_tools())
         return self._mcp_tools
+
+    def _register_mcp_tools(self, tools):
+        if self._mcp_tools is not None:
+            return
+        self._mcp_tools = tools
+        self.subagent_tools["external"].extend(tools)
+        self.subagent_tools["main"].extend(tools)
+        for tool_obj in tools:
+            self.tool_metadata[tool_obj.name] = {"module": "mcp", "group": "external"}
+
+    async def initialize(self):
+        from .mcp_client import mcp_get_tools_async
+
+        if self._mcp_tools is None:
+            self._register_mcp_tools(await mcp_get_tools_async())
 
     @property
     def restricted_tools(self):

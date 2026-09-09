@@ -5,7 +5,7 @@ import os
 import re
 import stat
 
-from langchain_mcp_adapters.client import MultiServerMCPClient
+from utils.mcp import build_mcp_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +103,7 @@ def _load_and_validate(config_path: str = "mcp.json") -> dict:
     return description
 
 
-tools_description = _load_and_validate()
-client = MultiServerMCPClient(tools_description)
+tools_description = None
 
 _mcp_tools = None
 
@@ -116,10 +115,15 @@ def _error_summary(exc: BaseException) -> str:
 
 
 async def _load_mcp_tools() -> list:
+    global tools_description
+    if tools_description is None:
+        tools_description = _load_and_validate()
+
     async def load_server(name: str) -> list:
         try:
+            adapter = build_mcp_adapter(tools_description[name])
             return await asyncio.wait_for(
-                client.get_tools(server_name=name),
+                adapter.list_tools(),
                 timeout=_MCP_STARTUP_TIMEOUT_SECONDS,
             )
         except Exception as exc:
@@ -130,11 +134,30 @@ async def _load_mcp_tools() -> list:
     return [tool for batch in batches for tool in batch]
 
 
+async def mcp_get_tools_async():
+    """Load once in the caller's event loop, without blocking bot startup imports."""
+    from utils.agents.runtime import run_serialized
+
+    async def load():
+        global _mcp_tools
+        if _mcp_tools is None:
+            _mcp_tools = await _load_mcp_tools()
+        return _mcp_tools
+
+    return await run_serialized("mcp-discovery", load)
+
+
 def mcp_get_tools():
     """在同步启动阶段加载 MCP 工具；单个服务失败时跳过该服务。"""
     global _mcp_tools
     if _mcp_tools is not None:
         return _mcp_tools
 
-    _mcp_tools = asyncio.run(_load_mcp_tools())
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("MCP tools are not initialized; await agent_tools.initialize() first")
+    _mcp_tools = asyncio.run(mcp_get_tools_async())
     return _mcp_tools

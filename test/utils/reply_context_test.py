@@ -449,7 +449,7 @@ async def test_build_reply_context_downloads_and_indexes_quoted_group_file(monke
             "temp_url": "https://expired.example/report.txt",
         },
     }
-    await database.insert(
+    inserted = await database.insert(
         time=500,
         msg_id=900,
         user_id=111,
@@ -514,8 +514,8 @@ async def test_build_reply_context_downloads_and_indexes_quoted_group_file(monke
         ("download", "https://fresh.example/report.txt"),
     ]
     assert quote_payload is not None
-    assert quote_payload["attachments"][0]["path"] == "/memory/group-123/files/500/report.txt"
-    assert (memory_dir / "files/500/report.txt").read_bytes() == b"quoted-file"
+    assert quote_payload["attachments"][0]["path"] == f"/memory/group-123/files/500-m{inserted.message_id}/report.txt"
+    assert (memory_dir / f"files/500-m{inserted.message_id}/report.txt").read_bytes() == b"quoted-file"
     records = await database.select_attachments_by_msg_time(500)
     assert [(record.kind, record.file_name) for record in records] == [("file", "report.txt")]
 
@@ -528,7 +528,7 @@ async def test_build_reply_context_refreshes_private_quoted_file_with_peer_hash(
     database = MessageDatabase()
     database.engine = engine
     Message.metadata.create_all(engine)
-    await database.insert(
+    inserted = await database.insert(
         time=500,
         msg_id=900,
         user_id=111,
@@ -586,8 +586,8 @@ async def test_build_reply_context_refreshes_private_quoted_file_with_peer_hash(
     assert images == []
     assert calls == [(111, "private-1", "hash-1")]
     assert quote_payload is not None
-    assert quote_payload["attachments"][0]["path"] == "/memory/dm-111/files/500/private.txt"
-    assert (memory_dir / "files/500/private.txt").read_bytes() == b"private-file"
+    assert quote_payload["attachments"][0]["path"] == f"/memory/dm-111/files/500-m{inserted.message_id}/private.txt"
+    assert (memory_dir / f"files/500-m{inserted.message_id}/private.txt").read_bytes() == b"private-file"
 
 
 @pytest.mark.asyncio
@@ -700,9 +700,7 @@ async def test_build_reply_context_restores_image_directly_from_raw_milky_segmen
         data=types.SimpleNamespace(message_scene="group", peer_id=123),
     )
 
-    quote_payload, images = await _build_reply_context(
-        DummyBot(), event, 900, 123, DummyMessagesDb()
-    )
+    quote_payload, images = await _build_reply_context(DummyBot(), event, 900, 123, DummyMessagesDb())
 
     assert images == [b"restored-image"]
     assert cached["images"] == [b"restored-image"]

@@ -9,9 +9,6 @@ current_dir = Path(__file__).resolve().parent
 # 项目根目录下的 temp 文件夹
 temp_dir = current_dir.parents[2] / "temp"
 
-# 如果 temp 文件夹不存在就创建
-temp_dir.mkdir(parents=True, exist_ok=True)
-
 # 拼出目标文件路径
 file_path = temp_dir / "earth_now_test.jpg"
 
@@ -49,8 +46,8 @@ async def fetch_earth_image():
         return None
 
     # 保存文件以验证完整性
-    with open(file_path, "wb", encoding="utf-8") as f:
-        f.write(content)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_bytes(content)
     print(f"✅ 文件已保存到: {file_path}")
 
     return content

@@ -1,5 +1,7 @@
 """Signal-LLM gate for browser capture tools."""
 
+import re
+
 from nonebot import logger
 from pydantic import BaseModel, Field
 
@@ -13,9 +15,20 @@ class BrowserCaptureIntent(BaseModel):
     recording: bool = Field(description="用户是否要求录制网页视频（录屏/录制/录视频等）")
 
 
+# This is a broad candidate filter, not authorization. Ambiguous visual requests
+# still go to Signal; URLs alone and ordinary conversation require no extra call.
+_CAPTURE_CANDIDATE = re.compile(
+    r"截|拍照|拍个|拍张|快照|录屏|录制|录视频|录下来|录一段|来张|来一张|"
+    r"打开|访问|看看|长啥样|长什么样|什么样|外观|页面|网页|首页|"
+    r"\b(?:screen\s*shots?|screen\s*cast|screen\s*record(?:ing)?|snapshot|capture|"
+    r"record(?:ing)?|open|visit|preview|show|look|appearance|homepage)\b",
+    re.IGNORECASE,
+)
+
+
 async def detect_browser_capture_intent(user_text: str | None) -> set[str]:
     """仅在用户明确要求查看网页外观时暴露截图或录屏工具。"""
-    if not user_text:
+    if not user_text or not _CAPTURE_CANDIDATE.search(user_text):
         return set()
     from utils.signal_llm import signal_structured
 

@@ -1,0 +1,33 @@
+name: Python checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: '3.14'
+      - name: Install the locked dependency baseline
+        run: uv sync --locked --group dev
+      - name: Lint
+        run: uv run --locked ruff check .
+      - name: Check typed runtime boundaries
+        run: >-
+          uv run --locked ty check
+          utils/agent_context.py utils/harness_profiles.py utils/mcp.py
+          utils/agents/inputs.py utils/agents/execution.py
+          utils/agents/runtime.py utils/agents/runtime_gateway.py
+          utils/agents/chat_context.py utils/delivery.py
+          plugins/dashboard/api/settings_routes.py
+      - name: Test (including real dependency contracts)
+        run: uv run --locked pytest test/ -q

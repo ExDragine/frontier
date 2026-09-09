@@ -46,7 +46,7 @@ async def list_messages(
 
         # 分页查询
         statement = (
-            statement.order_by(Message.time.desc())  # type: ignore
+            statement.order_by(col(Message.time).desc(), col(Message.id).desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -55,6 +55,7 @@ async def list_messages(
         return {
             "messages": [
                 {
+                    "id": m.id,
                     "time": m.time,
                     "msg_id": m.msg_id,
                     "user_id": m.user_id,

@@ -27,7 +27,7 @@ async def test_get_video_uses_shared_video_service(load_tool_module, monkeypatch
 
     assert captured == {"prompt": "a happy horse", "image": None, "video": None}
     assert "视频生成OK了" in text
-    assert artifact.content["raw"] == b"generated-video"
+    assert artifact[0].raw == b"generated-video"
 
 
 @pytest.mark.asyncio
@@ -45,7 +45,7 @@ async def test_get_video_can_return_url_artifact(load_tool_module, monkeypatch):
     text, artifact = await mod.get_video("a happy horse", state={"user_id": "10001"})
 
     assert "视频生成OK了" in text
-    assert artifact.content["url"] == "https://example.com/video.mp4"
+    assert artifact[0].url == "https://example.com/video.mp4"
 
 
 @pytest.mark.asyncio
@@ -87,7 +87,7 @@ async def test_get_video_image_input_uses_latest_user_image(load_tool_module, mo
     assert captured["image"] == mod.MediaReference(data=b"current-image", mime_type="image/jpeg")
     assert captured["video"] is None
     assert "视频生成OK了" in text
-    assert artifact.content["raw"] == b"generated-video"
+    assert artifact[0].raw == b"generated-video"
 
 
 @pytest.mark.asyncio
@@ -154,7 +154,7 @@ async def test_get_video_video_input_uses_latest_user_video(load_tool_module, mo
     assert captured["image"] is None
     assert captured["video"] == mod.MediaReference(data=b"current-video", mime_type="video/mp4")
     assert "视频生成OK了" in text
-    assert artifact.content["raw"] == b"generated-video"
+    assert artifact[0].raw == b"generated-video"
 
 
 @pytest.mark.asyncio

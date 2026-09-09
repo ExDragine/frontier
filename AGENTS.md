@@ -37,15 +37,18 @@ Milky MessageEvent → NoneBot on_message(priority=10)
   │    message_check 返回 Safe / Controversial / Unsafe
   │
   └─ Agent 执行
-       run_serialized(thread_id) 按会话互斥
-       _process_agent_request → FrontierCognitive.chat_agent
+       run_serialized(delivery:workspace) 按群/私聊排队，覆盖执行与发送
+       _process_agent_request → FrontierAgentRuntime.run → FrontierCognitive.chat_agent
+       managed_agent_turn 在 workspace 锁内管理初始化、超时、取消和结果
        create_deep_agent → 工具调用 → extract_uni_messages → send_artifacts/send_messages
 ```
 
 关键边界：
 - 网关在媒体下载前执行，避免未触发回复的图片/视频下载成本。
 - 当前消息写入 DB 后再准备历史，但 `prepare_message(..., before_time=msg_time)` 会排除当前消息，只把历史作为上下文。
-- 同一 `(user_id, group_id)` 对话通过 `asyncio.Lock` 串行执行，不同会话可并发。
+- 同一群的不同成员共享 workspace 锁；不同群和不同私聊可并发。QQ 锁顺序是 `delivery:` → `workspace:`，不可反向嵌套。
+- 平台消息按机器人和会话去重；当前消息/引用/历史分别分配媒体预算，当前输入优先。
+- QQ 最终文本确认发送成功后才写入 assistant 历史；队列与投递失败规则见 `docs/message_flow.md`。
 - 私聊会消费 Agent progress 事件并发送“正在思考/调用工具”等进度消息；群聊不发进度消息。
 
 ---
@@ -68,6 +71,9 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 |------|------|
 | `agents/` | Agent 包：主 Deep Agent 编排、轻量 Agent、输入适配、进度流、Prompt、workspace、运行时与 Subagent |
 | `database.py` | SQLite/SQLModel、消息/附件/群设置模型、WAL/FTS/索引、历史上下文构造、检索和维护 |
+| `storage_migrations.py` | 消息身份的版本化事务迁移、关联回填和回滚 |
+| `agents/execution.py` / `agents/runtime_gateway.py` | 内置 Agent 的统一请求/结果、运行 ID、超时和取消边界 |
+| `agents/chat_context.py` / `delivery.py` | 当前消息与历史预算、不可变投递结果 |
 | `message.py` | 消息段提取、文件暂存、媒体下载、回复网关、内容安全、Markdown/图片回复渲染 |
 | `configs.py` | `EnvConfig`：从 `env.toml` 读取模型、端点、密钥、功能开关、Dashboard、内容安全配置 |
 | `llm_factory.py` | OpenAI-compatible / Google / Anthropic / DeepSeek 模型路由，供应商 profile，能力判断 |
@@ -94,7 +100,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `memory` | `memory` | 当前会话最近对话、聊天记录搜索和平台历史读取，由主 Agent 按需调用 |
 | `divination` | `iching`, `tarot` | 易经、塔罗 |
 | `restricted` | `ens_normal`, `ens_professional`, `webpage_screenshot`, `webpage_recording` | 受控工具：ENS 在 Agent 中显式追加；网页截图/录屏需 Signal LLM 判断用户明确要求 |
-| `external` | MCP tools | `mcp.json` 定义的外部工具，首次访问 `agent_tools.mcp_tools` 时懒加载 |
+| `external` | MCP tools | `mcp.json` 定义的外部工具，首次 Agent 执行通过 `agent_tools.initialize()` 异步加载 |
 
 工具注册约定：
 - 新工具模块要放在 `tools/` 下，用 `@tool` 装饰函数。
@@ -106,6 +112,8 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 ## Agent Construction
 
 `FrontierCognitive.chat_agent()` 的关键行为：
+- 构造函数不创建模型或连接 MCP。首轮初始化组件，`EnvConfig.REVISION` 变化后在下一轮重建。
+- QQ、用户定时任务和内置 ACP 服务经 `FrontierAgentRuntime.run()` 调用；`chat_agent()` 保留兼容入口。
 - 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，Signal 判断使用 `EnvConfig.SIGNAL_MODEL`。
 - 当模型引用的供应商 `api_mode` 为 `responses` 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；其他协议路径会跳过这些参数。
 - 根据模型自身的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
@@ -119,8 +127,9 @@ Milky MessageEvent → NoneBot on_message(priority=10)
   - `/skills/`: 仓库内置 `skills/`，Agent 只读
   - `/memory/{workspace_key}/`: `cache/sandbox/memory/{workspace_key}`
 - 对每个 workspace，如果缺少 memory `SOUL.md`，会创建零字节空文件；群聊按 `group_id` 共享，私聊按 `user_id` 隔离。
-- middleware 顺序是 `PII → ToolRetry → ModelRetry → FilesystemFileSearch → CodeInterpreter`。
-- `interrupt_on` 对 read/write/edit/execute 均关闭，Agent 工具执行不走人工确认。
+- 核心 middleware 顺序是 `PII → ToolRetry → ModelRetry → FilesystemFileSearch → CodeInterpreter → Memory`，随后按需追加静默回复、工具搜索和原生网页搜索。
+- 主模型 SDK 重试关闭，由 ModelRetry 控制模型重试；ToolRetry 只作用于 PTC 只读工具，平台写操作不能自动重试。
+- 内置 skills 路径通过 FilesystemPermission 禁止写入。
 
 Prompt 加载链：
 - `FrontierCognitive.load_system_prompt()` 组合 `env.toml` 的 `[bot].system_prompt` 与 `prompts/AGENTS.md` 始终适用的全局操作规范；基础人设中的 `{name}` 会按当前唤醒词注入。
@@ -138,6 +147,8 @@ Prompt 加载链：
 - 开启 SQLite WAL、busy timeout、cache/mmap、FTS5 支持和面向查询形状的索引。
 - 将同步 DB 操作包进 `asyncio.to_thread()`，避免阻塞事件循环；内存库例外。
 - 存储普通消息、合并转发 derived messages、图片/附件索引、群级 key-value 设置。
+- `Message.id` 是独立主键，`time` 仅表示时间；附件、转发和 FTS 使用 ID 关联。`insert()` 返回 `MessageInsertResult(message_id, time, inserted)`。
+- `utils/storage_migrations.py` 在启动时事务迁移旧时间主键；升级前的备份和回滚步骤见 `docs/database-identity-migration.md`。
 - 通过 `prepare_message()` 将历史消息格式化为 JSON metadata + content，并把可用历史图片重新注入为 `image_url`。
 
 附件和 Agent 文件路径：
@@ -162,6 +173,7 @@ Prompt 加载链：
 Dashboard 配置：
 - 默认密码和默认 JWT secret 会在启动时打印安全警告。
 - Dashboard settings API 会对敏感值做 mask，并在 masked value 未修改时保留原值。
+- 保存配置使用串行事务、独立临时文件和原子替换，失败会回滚；成功 reload 才递增 `EnvConfig.REVISION`。`.env` 和 `mcp.json` 变更仍需重启。
 
 ---
 
@@ -179,7 +191,7 @@ from utils.agents import assistant_agent  # 放在函数内，避免循环依赖
 
 ### UniMessage 延迟加载
 
-`FrontierCognitive._uni_message_cls()` 用 `require("nonebot_plugin_alconna")` 延迟加载 `UniMessage`。测试中经常 monkeypatch `nonebot.require`，不要把 alconna 加载提前到不必要的模块顶层。
+Agent 提取工件时延迟从 `utils.alconna` 加载 `UniMessage`，只接受真实 `UniMessage` 工件；MCP 返回的普通字典不进入 QQ 发送器。测试中经常 monkeypatch `nonebot.require`，不要把 alconna 加载提前到不必要的模块顶层。
 
 ### Agent 返回值约定
 
@@ -190,11 +202,14 @@ from utils.agents import assistant_agent  # 放在函数内，避免循环依赖
     "response": {"messages": [AIMessage(...)]},
     "total_time": float,
     "uni_messages": list[UniMessage],
+    "should_reply": bool,
+    "status": "success" | "silent" | "failed" | "timeout",
+    "run_id": str,
     "error": str | None,  # 仅错误路径
 }
 ```
 
-`_process_agent_request()` 负责落库 assistant 回复、内容安全清洗、发送媒体工件和最终文本/图片回复。
+`_process_agent_request()` 负责内容安全清洗、发送媒体工件和最终文本/图片回复，并在最终回复发送成功后落库。发送函数返回 `DeliveryResult`，生成成功和送达成功分别判断。
 
 ### 输出发送规则
 
@@ -211,7 +226,7 @@ Milky 群管理工具会读取 `RunnableConfig.configurable.group_member_role` �
 
 ## Gotchas
 
-1. `utils/database.py` 耦合了 schema migration、索引、FTS、附件文件、derived messages 和线程调度。修改前先读相关测试，避免破坏历史注入和搜索性能。
+1. `utils/database.py` 仍包含索引、FTS、附件文件、derived messages 和线程调度；身份迁移位于 `utils/storage_migrations.py`。修改前先读相关测试，避免破坏历史注入和搜索性能。
 
 2. `EnvConfig` 在 import 时读取 `env.toml`。运行时 Dashboard 能调用 `EnvConfig.reload()` 更新部分配置，但普通代码不要假设配置文件变更会自动生效。
 
@@ -232,19 +247,21 @@ Milky 群管理工具会读取 `RunnableConfig.configurable.group_member_role` �
 优先使用项目自己的 uv 环境：
 
 ```bash
-uv run pytest test/ -x -v
-uv run pytest test/utils/agents_test.py -x
-uv run pytest --collect-only -q
-uv run ruff check .
+uv sync --locked --group dev
+uv run --locked pytest test/ -x -v
+uv run --locked pytest test/utils/agents_test.py -x
+uv run --locked pytest --collect-only -q
+uv run --locked ruff check .
 ```
 
-当前测试收集规模约 444 个测试，覆盖：
+测试规模以 `--collect-only` 输出为准，覆盖：
 - Agent 消息主流程和图片/文件记忆
 - `FrontierCognitive`、LLM 路由、进度事件
 - 消息提取、网关、内容安全、Markdown 渲染
 - SQLite schema、索引、FTS、附件清理、历史检索
 - Milky 平台工具、媒体工具、ENS/天气/天文/占卜工具
 - clockwork 定时任务和 Dashboard API
+- 独立进程中的真实 LangChain/Deep Agents/MCP 契约、取消/超时、旧库迁移和投递失败
 
 写测试时的惯例：
 - 使用 `nonebug` 的 `App.test_matcher()` 模拟 NoneBot 事件。

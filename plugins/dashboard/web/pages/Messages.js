@@ -48,7 +48,7 @@ const MessagesPage = {
 
             <div v-else class="bg-white rounded-lg shadow overflow-hidden">
                 <div class="divide-y max-h-[60vh] overflow-y-auto">
-                    <div v-for="msg in messages" :key="msg.time"
+                    <div v-for="msg in messages" :key="msg.id"
                          class="px-6 py-4 hover:bg-gray-50 transition"
                          :class="msg.role === 'assistant' ? 'bg-blue-50/30' : ''">
                         <div class="flex items-center gap-3 mb-2">

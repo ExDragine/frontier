@@ -871,6 +871,8 @@ class EnvConfig:
     DASHBOARD_JWT_EXPIRE_HOURS: ClassVar[int]
     CONTENT_CHECK_ENABLED: ClassVar[bool]
 
+    REVISION: ClassVar[int] = 0
+
     @classmethod
     def reload(cls, config: Mapping[str, Any], *, warn: bool = False) -> None:
         settings = parse_config(config)
@@ -949,6 +951,7 @@ class EnvConfig:
         for name, value in values.items():
             setattr(cls, name, value)
         cls.settings = settings
+        cls.REVISION += 1
 
         if warn and settings.dashboard.password == "admin":  # noqa: S105
             print(

@@ -12,9 +12,15 @@ from nonebot.adapters.milky.model.common import Friend, FriendCategory, Group, M
 from nonebot.adapters.milky.model.message import IncomingMessage
 from nonebug import App
 
+from utils.delivery import DeliveryResult
+
 
 async def _noop(*_args, **_kwargs):
     return None
+
+
+async def _delivered(*_args, **_kwargs):
+    return DeliveryResult(attempted=1, sent=1)
 
 
 def _first_text(content) -> str:
@@ -189,10 +195,10 @@ async def test_agent_image_placeholders_follow_persistence(  # noqa: C901
         return True
 
     async def fake_send_messages(*_args, **_kwargs):
-        return None
+        return DeliveryResult(attempted=1, sent=1)
 
     async def fake_send_artifacts(*_args, **_kwargs):
-        return None
+        return DeliveryResult()
 
     def fake_schedule_summary(*_args, **_kwargs):
         calls["schedule_summary"] += 1
@@ -301,21 +307,25 @@ async def test_agent_lazily_hydrates_recent_media_followup(monkeypatch):  # noqa
 
     async def fake_hydrate(_bot, _event, **kwargs):
         captured["hydrate"] = kwargs
-        return [b"recent-image"], [
-            {
-                "kind": "file",
-                "file_name": "recent.txt",
-                "path": "/memory/group-123/files/recent.txt",
-            }
-        ], True
+        return (
+            [b"recent-image"],
+            [
+                {
+                    "kind": "file",
+                    "file_name": "recent.txt",
+                    "path": "/memory/group-123/files/recent.txt",
+                }
+            ],
+            True,
+        )
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "hydrate_recent_media_context", fake_hydrate)
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
@@ -439,8 +449,8 @@ async def test_agent_injects_staged_file_memory_path_even_if_indexing_fails(  # 
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "stage_message_files", fake_stage_message_files)
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
@@ -623,7 +633,9 @@ async def test_rejected_group_file_message_does_not_stage_file_before_gateway(mo
             shut_up_end_time=0,
         ),
     )
-    event = MessageEvent(data=incoming, to_me=False, time=0, self_id="1", message=Message(), original_message=Message())
+    event = MessageEvent(
+        data=incoming, to_me=False, time=0, self_id="1", message=Message(), original_message=Message()
+    )
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -706,8 +718,8 @@ async def test_agent_stores_expanded_forward_message_and_derived_nodes(monkeypat
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
@@ -801,8 +813,8 @@ async def test_agent_does_not_duplicate_normalized_video_marker(monkeypatch):  #
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "download_media", fake_download_media)
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
@@ -908,8 +920,8 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
@@ -1152,8 +1164,8 @@ async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setitem(agent.build_reply_context.__globals__, "_httpx_client", types.SimpleNamespace(get=fake_get))
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
@@ -1232,8 +1244,8 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
@@ -1368,8 +1380,8 @@ async def test_process_agent_request_inlines_recent_history_image(monkeypatch):
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
     context = agent.AgentRequestContext(
@@ -1409,8 +1421,8 @@ async def test_process_agent_request_interprets_empty_text_as_user_calling_bot(m
             return {"response": {"messages": [types.SimpleNamespace(text="在呢")]}, "uni_messages": []}
 
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
 
     context = agent.AgentRequestContext(
@@ -1467,8 +1479,8 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
 
     context_a = agent.AgentRequestContext(
@@ -1495,7 +1507,7 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
         images=[],
         videos=[],
     )
-    thread_id = str(agent.agent_thread_id("456", 123))
+    thread_id = "delivery:group-123"
 
     task_a = asyncio.create_task(run_serialized(thread_id, agent._process_agent_request(context_a)))
     await first_started.wait()
@@ -1590,8 +1602,8 @@ async def test_gateway_approved_message_routes_directly_to_agent(monkeypatch):  
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
@@ -1644,7 +1656,7 @@ async def test_gateway_approved_weather_request_routes_directly_to_agent(monkeyp
     calls = {"queue": 0}
     sent_messages = []
 
-    async def fake_run_serialized(_key, coro):
+    async def fake_run_serialized(_key, coro, **_kwargs):
         calls["queue"] += 1
         coro.close()
         return None
@@ -1743,13 +1755,13 @@ async def test_process_agent_request_passes_configured_capability_directly(monke
 
     class DummyCognitive:
         async def chat_agent(self, *_args, **_kwargs):
-            captured["capability"] = _args[3]
+            captured["capability"] = _kwargs["capability"]
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "send_messages", _noop)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_messages", _delivered)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
 
     context = agent.AgentRequestContext(
@@ -1797,12 +1809,13 @@ async def test_process_agent_request_sanitizes_final_response(monkeypatch):
 
     async def fake_send_messages(_group_id, _message_id, response):
         captured["sent"] = agent.outgoing_message_content(response["messages"][-1])
+        return DeliveryResult(attempted=1, sent=1)
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
     monkeypatch.setattr(agent, "send_messages", fake_send_messages)
-    monkeypatch.setattr(agent, "send_artifacts", _noop)
+    monkeypatch.setattr(agent, "send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
 
     context = agent.AgentRequestContext(
@@ -1836,7 +1849,7 @@ async def test_gateway_approved_greeting_runs_agent(monkeypatch):  # noqa: C901
     assistant_messages = []
     sent_messages = []
 
-    async def fake_run_serialized(_key, coro):
+    async def fake_run_serialized(_key, coro, **_kwargs):
         calls["queue"] += 1
         coro.close()
         return None
@@ -1928,7 +1941,7 @@ async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # n
 
     calls = {"queue": 0}
 
-    async def fake_run_serialized(_key, coro):
+    async def fake_run_serialized(_key, coro, **_kwargs):
         calls["queue"] += 1
         coro.close()
         return None
@@ -2020,7 +2033,7 @@ async def test_gateway_approved_closing_message_runs_agent(monkeypatch):  # noqa
 
     calls = {"queue": 0}
 
-    async def fake_run_serialized(_key, coro):
+    async def fake_run_serialized(_key, coro, **_kwargs):
         calls["queue"] += 1
         coro.close()
         return None
@@ -2098,7 +2111,7 @@ async def test_gateway_approved_private_chat_routes_to_agent_without_group_react
 
     calls: dict[str, Any] = {"queue": 0, "reactions": []}
 
-    async def fake_run_serialized(_key, coro):
+    async def fake_run_serialized(_key, coro, **_kwargs):
         calls["queue"] += 1
         coro.close()
         return None

@@ -226,6 +226,15 @@ FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
 配置仍可读取，便于渐进迁移。`utils/configs.py` 会先校验完整配置，再原子切换运行时快照；
 Dashboard 保存前也会执行相同校验。
 
+Dashboard 配置保存会串行处理并发更新，使用独立临时文件原子替换；备份仅保留最近 10 份，
+配置和备份权限为当前用户可读写。重载失败时会原子恢复旧文件并重新加载旧配置。
+保存结果包含 `changed_fields`、`config_revision`、`activation` 和 `restart_required`。
+当前 `env.toml` 管理的配置在后续请求/任务读取时生效，无需重启；模型相关子代理在下一轮按配置版本重建，
+已经开始的模型调用不会因此重新执行。保留的脱敏值不会覆盖原密钥，无实际变更时不创建备份。
+`.env` 中的 NoneBot 启动参数和 `mcp.json` 的服务器列表仍需重启。
+定时任务推送群以任务管理页保存的数据库映射为准，启动时会覆盖相应的 `notifications` 值；
+需要持久修改现有任务的接收群时，应使用任务管理页。
+
 `*_model_provider` 填写供应商 profile 名称，而不是重复填写 URL。例如
 `advanced_model_provider = "openrouter"` 会读取 `[providers.openrouter]`；其中 `type = "openai"`
 决定底层 LangChain 适配器。`paint_model_provider` 和 `video_model_provider` 使用相同规则；模型能力只配置在
@@ -324,10 +333,11 @@ frontier/
 ## 测试与维护
 
 ```bash
-uv run pytest --collect-only -q
-uv run pytest test/ -x -v
-uv run pytest test/utils/agents_test.py -x
-uv run ruff check .
+uv sync --locked --group dev
+uv run --locked pytest --collect-only -q
+uv run --locked pytest test/ -q
+uv run --locked ruff check .
+uv run --locked ty check utils/agent_context.py utils/harness_profiles.py utils/mcp.py utils/agents/inputs.py utils/agents/execution.py utils/agents/runtime.py utils/agents/runtime_gateway.py utils/agents/chat_context.py utils/delivery.py plugins/dashboard/api/settings_routes.py
 ```
 
 数据库维护脚本：
@@ -337,6 +347,9 @@ uv run python scripts/database_maintenance.py
 ```
 
 测试使用 nonebug、pytest-asyncio 和第三方 stub；测试 fixture 会生成临时 `env.toml`，不依赖本地真实配置。
+工具媒体断言使用真实 `UniMessage` 消息段接口。独立子进程集成测试绕过全局 stub，覆盖真实 Deep Agents
+图构建、v3 事件流、工具媒体工件，以及本地 stdio MCP 服务的跨事件循环调用，不依赖外部模型密钥。
+CI 按 `uv.lock` 安装相同依赖组合，执行全量测试、Ruff 和以上运行边界的类型检查；其余旧模块的类型检查仍待逐步收紧。
 
 ## 开发提示
 

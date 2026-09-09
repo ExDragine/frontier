@@ -1,5 +1,6 @@
 # ruff: noqa: S101
 
+import asyncio
 import datetime
 import importlib
 import json
@@ -226,6 +227,54 @@ async def test_date_scheduled_task_archives_after_success(monkeypatch, task_mana
     assert metadata is not None and metadata.archived is True
     assert task is not None and task.enabled is False
     assert "scheduled_date" not in task_manager.scheduler.jobs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["failed", "timeout"])
+async def test_agent_failure_is_not_delivered_or_archived(monkeypatch, task_manager, failure):
+    await task_manager.register_scheduled_task(
+        job_id="failed_date", name="One shot", prompt="Do once", trigger_type="date",
+        trigger_args={"run_date": "2099-01-01T00:00:00+08:00"},
+        owner_user_id="1", target_type="user", target_id="1",
+    )
+
+    class FailingCognitive:
+        async def chat_agent(self, *_args, **_kwargs):
+            return {"error": "ModelTimeoutError", "status": failure,
+                    "response": {"messages": [types.SimpleNamespace(text="请求超时")]}}
+
+    async def unexpected_delivery(*_args):
+        pytest.fail("An unsuccessful task must not deliver a success response")
+
+    monkeypatch.setattr(clockwork_pkg, "task_manager", task_manager, raising=False)
+    monkeypatch.setattr(agent_task_handler_module, "FrontierCognitive", FailingCognitive)
+    monkeypatch.setattr(agent_task_handler_module, "_send_final_text", unexpected_delivery)
+    executor = TaskExecutor(task_manager)
+    monkeypatch.setattr(executor, "_load_handler", lambda *_args: agent_task_handler_module.run_agent_task)
+    await executor.execute("failed_date")
+    metadata = await task_manager.get_task_metadata("failed_date")
+    assert metadata is not None and not metadata.archived
+    history = await task_manager.get_execution_history("failed_date")
+    assert history[0].status == failure
+    assert history[0].messages_sent == 0
+
+
+@pytest.mark.asyncio
+async def test_cancelled_task_is_recorded_and_cancellation_propagates(monkeypatch, task_manager):
+    await task_manager.register_task(
+        job_id="cancelled", name="Cancelable", handler_module="module", handler_function="func",
+        trigger_type="interval", trigger_args={"minutes": 1}, group_ids=[],
+    )
+
+    async def cancelled(**kwargs):
+        raise asyncio.CancelledError
+
+    executor = TaskExecutor(task_manager)
+    monkeypatch.setattr(executor, "_load_handler", lambda *_args: cancelled)
+    with pytest.raises(asyncio.CancelledError):
+        await executor.execute("cancelled")
+    history = await task_manager.get_execution_history("cancelled")
+    assert history[0].status == "cancelled"
 
 
 @pytest.mark.asyncio

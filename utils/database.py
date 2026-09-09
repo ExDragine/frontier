@@ -8,9 +8,11 @@ import shutil
 import threading
 import time
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from functools import lru_cache
 
-from sqlalchemy import Engine, UniqueConstraint, event, inspect, text
+from sqlalchemy import Engine, Index, UniqueConstraint, event, inspect, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Field, Session, SQLModel, col, create_engine, desc, func, select
 
@@ -22,6 +24,7 @@ from utils.agents.message_envelope import (
 )
 from utils.agents.runtime import conversation_workspace_key
 from utils.media import ResolvedMedia, resolve_media
+from utils.storage_migrations import migrate_message_identity, platform_message_key
 
 DATABASE_FILE = "sqlite:///frontier.db"
 SQLITE_BUSY_TIMEOUT_MS = 5000
@@ -365,67 +368,70 @@ def ensure_message_fts(engine: Engine) -> None:
         return
 
     with engine.begin() as conn:
-        table_exists = _table_exists(conn, "message_fts")
-        conn.execute(
-            text(
-                """
-                CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
-                    content,
-                    group_id UNINDEXED,
-                    user_id UNINDEXED,
-                    role UNINDEXED,
-                    user_name UNINDEXED,
-                    msg_id UNINDEXED,
-                    content='message',
-                    content_rowid='time',
-                    tokenize='trigram'
-                )
-                """
-            )
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TRIGGER IF NOT EXISTS message_ai_fts AFTER INSERT ON message BEGIN
-                    INSERT INTO message_fts(rowid, content, group_id, user_id, role, user_name, msg_id)
-                    VALUES (new.time, new.content, new.group_id, new.user_id, new.role, new.user_name, new.msg_id);
-                END
-                """
-            )
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TRIGGER IF NOT EXISTS message_ad_fts AFTER DELETE ON message BEGIN
-                    INSERT INTO message_fts(message_fts, rowid, content, group_id, user_id, role, user_name, msg_id)
-                    VALUES ('delete', old.time, old.content, old.group_id, old.user_id, old.role, old.user_name, old.msg_id);
-                END
-                """
-            )
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TRIGGER IF NOT EXISTS message_au_fts AFTER UPDATE ON message BEGIN
-                    INSERT INTO message_fts(message_fts, rowid, content, group_id, user_id, role, user_name, msg_id)
-                    VALUES ('delete', old.time, old.content, old.group_id, old.user_id, old.role, old.user_name, old.msg_id);
-                    INSERT INTO message_fts(rowid, content, group_id, user_id, role, user_name, msg_id)
-                    VALUES (new.time, new.content, new.group_id, new.user_id, new.role, new.user_name, new.msg_id);
-                END
-                """
-            )
-        )
-        if not table_exists:
-            message_count = _safe_table_count(conn, "message") or 0
-            started_at = time.monotonic()
-            logger.info("FTS5 message index rebuild started: rows=%s", message_count)
-            conn.execute(text("INSERT INTO message_fts(message_fts) VALUES ('rebuild')"))
-            elapsed = time.monotonic() - started_at
-            logger.info("FTS5 message index rebuild finished: rows=%s elapsed=%.2fs", message_count, elapsed)
-        else:
-            logger.info("FTS5 message index ready")
-        conn.execute(text("PRAGMA optimize"))
+        _ensure_message_fts_connection(conn)
 
+
+def _ensure_message_fts_connection(conn) -> None:
+    table_exists = _table_exists(conn, "message_fts")
+    conn.execute(
+        text(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
+                content,
+                group_id UNINDEXED,
+                user_id UNINDEXED,
+                role UNINDEXED,
+                user_name UNINDEXED,
+                msg_id UNINDEXED,
+                content='message',
+                content_rowid='id',
+                tokenize='trigram'
+            )
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            CREATE TRIGGER IF NOT EXISTS message_ai_fts AFTER INSERT ON message BEGIN
+                INSERT INTO message_fts(rowid, content, group_id, user_id, role, user_name, msg_id)
+                VALUES (new.id, new.content, new.group_id, new.user_id, new.role, new.user_name, new.msg_id);
+            END
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            CREATE TRIGGER IF NOT EXISTS message_ad_fts AFTER DELETE ON message BEGIN
+                INSERT INTO message_fts(message_fts, rowid, content, group_id, user_id, role, user_name, msg_id)
+                VALUES ('delete', old.id, old.content, old.group_id, old.user_id, old.role, old.user_name, old.msg_id);
+            END
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            CREATE TRIGGER IF NOT EXISTS message_au_fts AFTER UPDATE ON message BEGIN
+                INSERT INTO message_fts(message_fts, rowid, content, group_id, user_id, role, user_name, msg_id)
+                VALUES ('delete', old.id, old.content, old.group_id, old.user_id, old.role, old.user_name, old.msg_id);
+                INSERT INTO message_fts(rowid, content, group_id, user_id, role, user_name, msg_id)
+                VALUES (new.id, new.content, new.group_id, new.user_id, new.role, new.user_name, new.msg_id);
+            END
+            """
+        )
+    )
+    if not table_exists:
+        message_count = _safe_table_count(conn, "message") or 0
+        started_at = time.monotonic()
+        logger.info("FTS5 message index rebuild started: rows=%s", message_count)
+        conn.execute(text("INSERT INTO message_fts(message_fts) VALUES ('rebuild')"))
+        elapsed = time.monotonic() - started_at
+        logger.info("FTS5 message index rebuild finished: rows=%s elapsed=%.2fs", message_count, elapsed)
+    else:
+        logger.info("FTS5 message index ready")
+    conn.execute(text("PRAGMA optimize"))
 
 def _fts_query(value: str) -> str:
     escaped = value.replace('"', '""')
@@ -439,7 +445,15 @@ class User(SQLModel, table=True):
 
 
 class Message(SQLModel, table=True):
-    time: int = Field(primary_key=True)
+    __table_args__ = (
+        Index("ux_message_platform_key", "platform_key", unique=True),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    time: int
+    platform_key: str | None = None
+    parent_message_id: int | None = None
     msg_id: int | None = Field(default=None)
     user_id: int = Field(index=True)
     group_id: int | None = Field(default=None, index=True)
@@ -525,23 +539,68 @@ def _attachment_agent_payload(attachment: MessageAttachment) -> dict[str, object
 _REPLY_CONTEXT_UNSET = object()
 
 
+@dataclass(frozen=True, slots=True)
+class MessageInsertResult:
+    message_id: int
+    time: int
+    inserted: bool
+
+
+def _find_message(
+    session: Session,
+    msg_time: int,
+    *,
+    message_id: int | None = None,
+    scope: tuple[int, int | None] | None = None,
+    msg_id: int | None = None,
+) -> Message | None:
+    statement = select(Message).where(
+        Message.time == msg_time, Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL,
+    )
+    if message_id is not None:
+        statement = statement.where(Message.id == message_id)
+    if scope is not None:
+        user_id, group_id = scope
+        statement = statement.where(Message.group_id == group_id, Message.user_id == user_id)
+    if msg_id is not None:
+        statement = statement.where(Message.msg_id == msg_id)
+    candidates = session.exec(statement.limit(2)).all()
+    if len(candidates) > 1:
+        raise ValueError("Ambiguous message timestamp; provide message_id")
+    if not candidates and message_id is not None:
+        raise ValueError("message_id does not match the supplied timestamp or conversation")
+    return candidates[0] if candidates else None
+
+
+def _attachments_for_message(session: Session, message: Message) -> list[MessageAttachment]:
+    statement = select(MessageAttachment).where(
+        (MessageAttachment.message_id == message.id)
+        | ((MessageAttachment.message_id.is_(None)) & (MessageAttachment.msg_time == message.time))
+    ).where(MessageAttachment.group_id == message.group_id)
+    if message.group_id is None:
+        statement = statement.where(MessageAttachment.user_id == message.user_id)
+    records = session.exec(statement.order_by(col(MessageAttachment.file_name))).all()
+    return [
+        record for record in records
+        if record.message_id is not None
+        or (record.user_id == message.user_id and record.msg_id in (None, message.msg_id))
+    ]
+
+
 def _refresh_message_model_state(
     session: Session,
     msg_time: int,
     *,
+    message_id: int | None = None,
     reply_context_json: str | None | object = _REPLY_CONTEXT_UNSET,
 ) -> None:
     """Rebuild all attachment-derived message fields inside one transaction."""
-    message = session.get(Message, msg_time)
+    message = _find_message(session, msg_time, message_id=message_id)
     if message is None:
         return
     if reply_context_json is not _REPLY_CONTEXT_UNSET:
         message.reply_context_json = reply_context_json  # type: ignore[assignment]
-    attachments = session.exec(
-        select(MessageAttachment)
-        .where(MessageAttachment.msg_time == msg_time)
-        .order_by(col(MessageAttachment.file_name))
-    ).all()
+    attachments = _attachments_for_message(session, message)
     model_content = content_for_persisted_images(
         message.content,
         sum(attachment.kind == "image" for attachment in attachments),
@@ -551,8 +610,11 @@ def _refresh_message_model_state(
 
 
 def _refresh_message_model_states(session: Session, msg_times: set[int]) -> None:
-    for msg_time in sorted(msg_times):
-        _refresh_message_model_state(session, msg_time)
+    messages = session.exec(select(Message).where(
+        col(Message.time).in_(msg_times), Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL,
+    )).all()
+    for message in messages:
+        _refresh_message_model_state(session, message.time, message_id=message.id)
 
 
 class TimeStamp(SQLModel, table=True):
@@ -567,6 +629,7 @@ class MessageAttachment(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     msg_time: int = Field(index=True)
+    message_id: int | None = Field(default=None, index=True)
     msg_id: int | None = Field(default=None, index=True)
     user_id: int = Field(index=True)
     group_id: int | None = Field(default=None, index=True)
@@ -1063,11 +1126,16 @@ class _MessageAttachmentManager:
         mime_type: str | None = None,
         sha256: str | None = None,
         metadata_json: str = "{}",
+        message_id: int | None = None,
     ) -> MessageAttachment:
         def _do():
             workspace_key = _message_workspace_key(user_id, group_id)
             now_ms = int(time.time() * 1000)
             with Session(self.engine, expire_on_commit=False) as session:
+                message = _find_message(
+                    session, msg_time, message_id=message_id, scope=(user_id, group_id), msg_id=msg_id,
+                )
+                resolved_id = message.id if message is not None else message_id
                 attachment = session.exec(
                     select(MessageAttachment).where(MessageAttachment.physical_path == physical_path).limit(1)
                 ).first()
@@ -1075,6 +1143,7 @@ class _MessageAttachmentManager:
                 if attachment is None:
                     attachment = MessageAttachment(
                         msg_time=msg_time,
+                        message_id=resolved_id,
                         msg_id=msg_id,
                         user_id=user_id,
                         group_id=group_id,
@@ -1094,6 +1163,7 @@ class _MessageAttachmentManager:
                 else:
                     affected_message_times.add(attachment.msg_time)
                     attachment.msg_time = msg_time
+                    attachment.message_id = resolved_id
                     attachment.msg_id = msg_id
                     attachment.user_id = user_id
                     attachment.group_id = group_id
@@ -1119,13 +1189,17 @@ class _MessageAttachmentManager:
 
         return await _run_database(self.engine, _locked_do)
 
-    async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
+    async def insert_images(
+        self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes],
+        *, message_id: int | None = None,
+    ) -> list[str]:
         attachments = await self.insert_media(
             msg_time=msg_time,
             msg_id=None,
             user_id=user_id,
             group_id=group_id,
             media=[resolve_media(image, "image") for image in images],
+            message_id=message_id,
         )
         return [attachment.physical_path for attachment in attachments]
 
@@ -1138,6 +1212,7 @@ class _MessageAttachmentManager:
         group_id: int | None,
         media: list[ResolvedMedia],
         source_type: str = "message",
+        message_id: int | None = None,
     ) -> list[MessageAttachment]:
         """Persist downloaded media and create attachment rows in one DB operation."""
 
@@ -1151,9 +1226,14 @@ class _MessageAttachmentManager:
             pending_writes: list[_PendingFileWrite] = []
             try:
                 with Session(self.engine, expire_on_commit=False) as session:
+                    message = _find_message(
+                        session, msg_time, message_id=message_id, scope=(user_id, group_id), msg_id=msg_id,
+                    )
+                    resolved_id = message.id if message is not None else message_id
                     affected_message_times = {msg_time}
                     for index, item in enumerate(media):
-                        file_name = f"{msg_time}_{index}{item.extension}"
+                        stem = f"{msg_time}-m{resolved_id}" if resolved_id is not None else str(msg_time)
+                        file_name = f"{stem}_{index}{item.extension}"
                         file_path, virtual_path = _attachment_paths(
                             user_id,
                             group_id,
@@ -1169,6 +1249,7 @@ class _MessageAttachmentManager:
                         if attachment is None:
                             attachment = MessageAttachment(
                                 msg_time=msg_time,
+                                message_id=resolved_id,
                                 msg_id=msg_id,
                                 user_id=user_id,
                                 group_id=group_id,
@@ -1187,6 +1268,7 @@ class _MessageAttachmentManager:
                         else:
                             affected_message_times.add(attachment.msg_time)
                             attachment.msg_time = msg_time
+                            attachment.message_id = resolved_id
                             attachment.msg_id = msg_id
                             attachment.user_id = user_id
                             attachment.group_id = group_id
@@ -1232,14 +1314,21 @@ class _MessageAttachmentManager:
 
         return await _run_database(self.engine, _locked_do)
 
-    async def select_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
+    async def select_by_msg_time(
+        self, msg_time: int, *, message_id: int | None = None,
+    ) -> list[MessageAttachment]:
         def _do():
             with Session(self.engine) as session:
+                message = _find_message(session, msg_time, message_id=message_id)
+                if message is not None:
+                    return _attachments_for_message(session, message)
                 statement = (
                     select(MessageAttachment)
                     .where(MessageAttachment.msg_time == msg_time)
                     .order_by(col(MessageAttachment.id))
                 )
+                if message_id is not None:
+                    statement = statement.where(MessageAttachment.message_id == message_id)
                 return session.exec(statement).all()
 
         return await _run_database(self.engine, _do)
@@ -1448,6 +1537,11 @@ class MessageDatabase:
         Message.metadata.create_all(self.engine)
         ensure_message_schema(self.engine)
         MessageAttachment.metadata.create_all(self.engine)
+        supports_fts = sqlite_supports_fts5(self.engine)
+        migrate_message_identity(
+            self.engine,
+            rebuild_fts=_ensure_message_fts_connection if supports_fts else lambda conn: None,
+        )
         migrate_legacy_attachment_workspaces(self.engine)
         migrate_legacy_scope_directories(self.engine)
         GroupSettings.metadata.create_all(self.engine)
@@ -1476,14 +1570,18 @@ class MessageDatabase:
         sender_user_id: int | None = None,
         bot_user_id: int | None = None,
         directly_mentions_bot: bool = False,
-    ):
+    ) -> MessageInsertResult:
         def _do():
-            with Session(self.engine) as session:
+            with Session(self.engine, expire_on_commit=False) as session:
                 resolved_sender_user_id = sender_user_id
                 if resolved_sender_user_id is None and (group_id is not None or role != "assistant"):
                     resolved_sender_user_id = user_id
                 message = Message(
                     time=time,
+                    platform_key=platform_message_key(
+                        msg_id=msg_id, user_id=user_id, group_id=group_id,
+                        bot_user_id=bot_user_id, source_type=source_type,
+                    ),
                     msg_id=msg_id,
                     user_id=user_id,
                     group_id=group_id,
@@ -1505,9 +1603,21 @@ class MessageDatabase:
                     directly_mentions_bot=directly_mentions_bot,
                 )
                 session.add(message)
-                session.commit()
+                try:
+                    session.commit()
+                except IntegrityError:
+                    session.rollback()
+                    if message.platform_key is None:
+                        raise
+                    existing = session.exec(
+                        select(Message).where(Message.platform_key == message.platform_key)
+                    ).first()
+                    if existing is None:
+                        raise
+                    return MessageInsertResult(message_id=existing.id, time=existing.time, inserted=False)
+                return MessageInsertResult(message_id=message.id, time=message.time, inserted=True)
 
-        await _run_database(self.engine, _do)
+        return await _run_database(self.engine, _do)
 
     async def select(
         self,
@@ -1531,7 +1641,7 @@ class MessageDatabase:
                 statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
                 if before_time is not None:
                     statement = statement.where(Message.time < before_time)
-                statement = statement.order_by(desc(Message.time)).limit(query_numbers)
+                statement = statement.order_by(desc(Message.time), desc(Message.id)).limit(query_numbers)
                 results = session.exec(statement)
                 return results.all()
 
@@ -1569,7 +1679,7 @@ class MessageDatabase:
                 statement = (
                     select(Message)
                     .where(*conditions)
-                    .order_by(desc(Message.time))
+                    .order_by(desc(Message.time), desc(Message.id))
                     .limit(max(1, min(limit, 100)))
                 )
                 for message in session.exec(statement).all():
@@ -1605,7 +1715,7 @@ class MessageDatabase:
                     statement = statement.where(Message.user_id == peer_user_id)
                 else:
                     statement = statement.where(Message.group_id == group_id)
-                statement = statement.order_by(desc(Message.time)).limit(1)
+                statement = statement.order_by(desc(Message.time), desc(Message.id)).limit(1)
                 return session.exec(statement).first()
 
         return await _run_database(self.engine, _do)
@@ -1618,10 +1728,11 @@ class MessageDatabase:
         raw_segments_json: str | None,
         normalized_version: int,
         normalized_status: str,
+        message_id: int | None = None,
     ) -> None:
         def _do():
             with Session(self.engine) as session:
-                message = session.get(Message, time)
+                message = _find_message(session, time, message_id=message_id)
                 if message is None:
                     return
                 message.content = content
@@ -1632,7 +1743,7 @@ class MessageDatabase:
                 message.normalized_status = normalized_status
                 session.add(message)
                 session.flush()
-                _refresh_message_model_state(session, time)
+                _refresh_message_model_state(session, time, message_id=message.id)
                 session.commit()
 
         await _run_database(self.engine, _do)
@@ -1641,6 +1752,7 @@ class MessageDatabase:
         self,
         *,
         time: int,
+        message_id: int | None = None,
         reply_context_json: str | None | object = _REPLY_CONTEXT_UNSET,
     ) -> None:
         """Rebuild the model-facing view after lazy attachments resolve."""
@@ -1650,15 +1762,12 @@ class MessageDatabase:
                 _refresh_message_model_state(
                     session,
                     time,
+                    message_id=message_id,
                     reply_context_json=reply_context_json,
                 )
                 session.commit()
 
         await _run_database(self.engine, _do)
-
-    @staticmethod
-    def _derived_message_time(parent_msg_time: int, ordinal: int) -> int:
-        return -(abs(parent_msg_time) * 1000 + ordinal + 1)
 
     async def replace_derived_messages(
         self,
@@ -1670,20 +1779,33 @@ class MessageDatabase:
         role: str,
         derived_messages: list,
         normalized_version: int,
+        parent_message_id: int | None = None,
     ) -> None:
         def _do():
             with Session(self.engine) as session:
-                existing = session.exec(
-                    select(Message)
-                    .where(Message.parent_msg_time == parent_msg_time)
-                    .where(Message.source_type != MESSAGE_SOURCE_TYPE_NORMAL)
-                ).all()
+                parent = _find_message(
+                    session, parent_msg_time, message_id=parent_message_id,
+                    scope=(user_id, group_id), msg_id=parent_msg_id,
+                )
+                resolved_parent_id = parent.id if parent is not None else parent_message_id
+                statement = select(Message).where(Message.source_type != MESSAGE_SOURCE_TYPE_NORMAL)
+                if resolved_parent_id is not None:
+                    statement = statement.where(Message.parent_message_id == resolved_parent_id)
+                else:
+                    statement = statement.where(
+                        Message.parent_msg_time == parent_msg_time,
+                        Message.parent_message_id.is_(None),
+                        Message.group_id == group_id,
+                    )
+                    if group_id is None:
+                        statement = statement.where(Message.user_id == user_id)
+                existing = session.exec(statement).all()
                 for message in existing:
                     session.delete(message)
 
-                for ordinal, item in enumerate(derived_messages):
+                for item in derived_messages:
                     message = Message(
-                        time=self._derived_message_time(parent_msg_time, ordinal),
+                        time=getattr(item, "time_ms", None) or parent_msg_time,
                         msg_id=None,
                         user_id=user_id,
                         group_id=group_id,
@@ -1696,6 +1818,7 @@ class MessageDatabase:
                         source_type=MESSAGE_SOURCE_TYPE_FORWARD_NODE,
                         parent_msg_id=parent_msg_id,
                         parent_msg_time=parent_msg_time,
+                        parent_message_id=resolved_parent_id,
                         parent_forward_id=getattr(item, "forward_id", None),
                     )
                     session.add(message)
@@ -1736,7 +1859,7 @@ class MessageDatabase:
         """Render already-selected records in chronological order for an LLM."""
         if not messages:
             return []
-        messages = sorted(messages, key=lambda message: message.time)
+        messages = sorted(messages, key=lambda message: (message.time, message.id or 0))
         messages_seq: list[dict[str, object]] = []
 
         all_msg_times = [m.time for m in messages]
@@ -1745,7 +1868,16 @@ class MessageDatabase:
         attachments_by_time = await self._attachments.select_by_msg_times(all_msg_times)
 
         for message in messages:
-            msg_attachments = attachments_by_time.get(message.time, [])
+            msg_attachments = [
+                attachment for attachment in attachments_by_time.get(message.time, [])
+                if (
+                    attachment.message_id == message.id
+                    if attachment.message_id is not None
+                    else attachment.group_id == message.group_id
+                    and attachment.user_id == message.user_id
+                    and attachment.msg_id in (None, message.msg_id)
+                )
+            ]
             attachment_refs = []
             missing_kinds: list[str] = []
             message_workspace_key = _message_workspace_key(message.user_id, message.group_id)
@@ -1793,9 +1925,12 @@ class MessageDatabase:
 
         return messages_seq
 
-    async def insert_images(self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes]) -> list[str]:
+    async def insert_images(
+        self, msg_time: int, user_id: int, group_id: int | None, images: list[bytes],
+        *, message_id: int | None = None,
+    ) -> list[str]:
         self._attachments.engine = self.engine
-        return await self._attachments.insert_images(msg_time, user_id, group_id, images)
+        return await self._attachments.insert_images(msg_time, user_id, group_id, images, message_id=message_id)
 
     async def insert_media(self, **kwargs) -> list[MessageAttachment]:
         self._attachments.engine = self.engine
@@ -1805,13 +1940,17 @@ class MessageDatabase:
         self._attachments.engine = self.engine
         return await self._attachments.insert_attachment(**kwargs)
 
-    async def select_image_attachments_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
-        attachments = await self.select_attachments_by_msg_time(msg_time)
+    async def select_image_attachments_by_msg_time(
+        self, msg_time: int, *, message_id: int | None = None,
+    ) -> list[MessageAttachment]:
+        attachments = await self.select_attachments_by_msg_time(msg_time, message_id=message_id)
         return [attachment for attachment in attachments if attachment.kind == "image"]
 
-    async def select_attachments_by_msg_time(self, msg_time: int) -> list[MessageAttachment]:
+    async def select_attachments_by_msg_time(
+        self, msg_time: int, *, message_id: int | None = None,
+    ) -> list[MessageAttachment]:
         self._attachments.engine = self.engine
-        return await self._attachments.select_by_msg_time(msg_time)
+        return await self._attachments.select_by_msg_time(msg_time, message_id=message_id)
 
     def load_attachment_files(self, records: list[MessageAttachment]) -> tuple[list[bytes], int]:
         return self._attachments.load_files(records)
@@ -1846,7 +1985,7 @@ class MessageDatabase:
                     .where(Message.group_id == group_id)
                     .where(Message.role == role)
                     .where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
-                    .order_by(desc(Message.time))
+                    .order_by(desc(Message.time), desc(Message.id))
                     .limit(1)
                 )
                 return session.exec(statement).first()
@@ -1914,9 +2053,9 @@ class MessageDatabase:
         if sort == "relevance":
             query = text(
                 """
-            SELECT m.time
+            SELECT m.id
             FROM message_fts
-            JOIN message AS m ON m.time = message_fts.rowid
+            JOIN message AS m ON m.id = message_fts.rowid
             WHERE message_fts MATCH :fts_query
               AND (
                 (:scope = 'group' AND m.group_id = :group_id)
@@ -1929,7 +2068,7 @@ class MessageDatabase:
               AND (:start_time IS NULL OR m.time >= :start_time)
               AND (:end_time IS NULL OR m.time <= :end_time)
               AND (:role IS NULL OR m.role = :role)
-            ORDER BY bm25(message_fts), m.time DESC
+            ORDER BY bm25(message_fts), m.time DESC, m.id DESC
             LIMIT :limit
             OFFSET :offset
                 """
@@ -1937,9 +2076,9 @@ class MessageDatabase:
         else:
             query = text(
                 """
-            SELECT m.time
+            SELECT m.id
             FROM message_fts
-            JOIN message AS m ON m.time = message_fts.rowid
+            JOIN message AS m ON m.id = message_fts.rowid
             WHERE message_fts MATCH :fts_query
               AND (
                 (:scope = 'group' AND m.group_id = :group_id)
@@ -1952,7 +2091,7 @@ class MessageDatabase:
               AND (:start_time IS NULL OR m.time >= :start_time)
               AND (:end_time IS NULL OR m.time <= :end_time)
               AND (:role IS NULL OR m.role = :role)
-            ORDER BY m.time DESC
+            ORDER BY m.time DESC, m.id DESC
             LIMIT :limit
             OFFSET :offset
                 """
@@ -1963,8 +2102,8 @@ class MessageDatabase:
         if not ids:
             return []
 
-        messages = session.exec(select(Message).where(col(Message.time).in_(ids))).all()
-        messages_by_id = {message.time: message for message in messages}
+        messages = session.exec(select(Message).where(col(Message.id).in_(ids))).all()
+        messages_by_id = {message.id: message for message in messages}
         return [messages_by_id[message_id] for message_id in ids if message_id in messages_by_id]
 
     async def search_messages(  # noqa: C901
@@ -2032,7 +2171,7 @@ class MessageDatabase:
                     statement = statement.where(Message.role == role)
 
                 statement = (
-                    statement.order_by(desc(Message.time))
+                    statement.order_by(desc(Message.time), desc(Message.id))
                     .limit(max(1, min(limit, 500)))
                     .offset(max(0, min(offset, 5000)))
                 )

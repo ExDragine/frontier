@@ -70,7 +70,7 @@ async def test_geospace(load_tool_module):
     mod = load_tool_module("space_weather")
     text, artifact = await mod.geospace()
     assert "地磁场" in text
-    assert len(artifact.content) == 3
+    assert len(artifact) == 3
 
 
 @pytest.mark.asyncio
@@ -96,7 +96,9 @@ async def test_noaa_enlil_predict(load_tool_module, monkeypatch):
 
     text, artifact = await mod.noaa_enlil_predict()
     assert "NOAA Enlil模型" in text
-    assert hasattr(artifact.content, "url")
+    assert artifact[0].type == "image"
+    assert artifact[0].url.startswith("https://services.swpc.noaa.gov/images/animations/enlil/")
+    assert artifact[0].url.endswith(".jpg")
 
 
 @pytest.mark.asyncio
@@ -105,7 +107,7 @@ async def test_solar_image_and_goes_suvi(load_tool_module):
 
     text, artifact = await mod.solar_image("SN")
     assert text.startswith("获取成功")
-    assert artifact.content["type"] == "image"
+    assert artifact[0].type == "image"
 
     text2, artifact2 = await mod.solar_image("BAD")
     assert "查无此图" in text2
@@ -113,7 +115,7 @@ async def test_solar_image_and_goes_suvi(load_tool_module):
 
     text3, artifact3 = await mod.goes_suvi("304")
     assert text3.startswith("获取成功")
-    assert artifact3.content["type"] == "image"
+    assert artifact3[0].type == "image"
 
     text4, artifact4 = await mod.goes_suvi("094")
     assert "查无此图" in text4
@@ -145,11 +147,11 @@ async def test_sunspot(load_tool_module, monkeypatch):
 
     text, artifact = await mod.sunspot("SOHO")
     assert text.startswith("获取成功")
-    assert artifact.content["raw"] == b"soho"
+    assert artifact[0].raw == b"soho"
 
     text2, artifact2 = await mod.sunspot("ASO-S")
     assert text2.startswith("获取成功")
-    assert artifact2.content["raw"] == b"aso"
+    assert artifact2[0].raw == b"aso"
 
 
 @pytest.mark.asyncio
@@ -195,7 +197,7 @@ async def test_swpc_page(load_tool_module, monkeypatch):
 
     text, artifact = await mod.swpc_page()
     assert text.startswith("获取成功")
-    assert artifact.content["raw"] == b"swpc"
+    assert artifact[0].raw == b"swpc"
 
 
 @pytest.mark.asyncio

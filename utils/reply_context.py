@@ -122,6 +122,7 @@ async def _cache_complete_reply_images(
     images: list[bytes],
     missing_images: int,
     reply_seq: int,
+    message_id: int | None = None,
 ) -> bool:
     """Persist only complete image sets so attachment ordinals cannot drift."""
     if not images or missing_images or not EnvConfig.IMAGE_ENABLED:
@@ -132,6 +133,7 @@ async def _cache_complete_reply_images(
             user_id=user_id,
             group_id=group_id,
             images=images,
+            **({"message_id": message_id} if message_id is not None else {}),
         )
     except Exception as exc:
         logger.warning(
@@ -212,11 +214,14 @@ def _file_attachment_ref(record) -> dict[str, object]:
     )
 
 
-async def _select_quoted_file_records(messages_db: MessageDatabase, msg_time: int) -> list:
+async def _select_quoted_file_records(
+    messages_db: MessageDatabase, msg_time: int, *, message_id: int | None = None,
+) -> list:
     select_all = getattr(messages_db, "select_attachments_by_msg_time", None)
     if not callable(select_all):
         return []
-    return [record for record in await select_all(msg_time) if getattr(record, "kind", None) == "file"]
+    records = await select_all(msg_time, **({"message_id": message_id} if message_id is not None else {}))
+    return [record for record in records if getattr(record, "kind", None) == "file"]
 
 
 def _refreshable_quoted_file_item(item, group_id: int | None):
@@ -245,7 +250,7 @@ async def _quoted_file_context(  # noqa: C901
 ) -> tuple[list[dict[str, object]], int]:
     """Return readable quoted-file refs, refreshing missing files from Milky."""
     workspace_key = workspace_key or conversation_workspace_key(quoted.user_id, quoted.group_id)
-    records = await _select_quoted_file_records(messages_db, quoted.time)
+    records = await _select_quoted_file_records(messages_db, quoted.time, message_id=getattr(quoted, "id", None))
     now_ms = int(time.time() * 1000)
     available_records = [
         record
@@ -282,6 +287,7 @@ async def _quoted_file_context(  # noqa: C901
             memory_dir=resolved_memory_dir,
             workspace_key=workspace_key,
             message_time=quoted.time,
+            **({"message_id": quoted.id} if getattr(quoted, "id", None) is not None else {}),
             user_id=quoted.user_id,
             group_id=quoted.group_id,
         )
@@ -294,6 +300,7 @@ async def _quoted_file_context(  # noqa: C901
             try:
                 await insert_attachment(
                     msg_time=quoted.time,
+                    **({"message_id": quoted.id} if getattr(quoted, "id", None) is not None else {}),
                     msg_id=quoted.msg_id,
                     user_id=quoted.user_id,
                     group_id=quoted.group_id,
@@ -512,6 +519,7 @@ async def _rebuild_quoted_normalization(
     normalized = await normalize_segments(bot, segments)
     await messages_db.update_message_normalization(
         time=quoted.time,
+        **({"message_id": quoted.id} if getattr(quoted, "id", None) is not None else {}),
         content=normalized.content,
         raw_segments_json=raw_segments_json,
         normalized_version=normalized.normalized_version,
@@ -519,6 +527,7 @@ async def _rebuild_quoted_normalization(
     )
     await messages_db.replace_derived_messages(
         parent_msg_time=quoted.time,
+        **({"parent_message_id": quoted.id} if getattr(quoted, "id", None) is not None else {}),
         parent_msg_id=quoted.msg_id,
         user_id=quoted.user_id,
         group_id=quoted.group_id,
@@ -572,7 +581,9 @@ async def build_reply_context(  # noqa: C901
                 [],
             )
 
-        image_records = await messages_db.select_image_attachments_by_msg_time(quoted.time)
+        image_records = await messages_db.select_image_attachments_by_msg_time(
+            quoted.time, **({"message_id": quoted.id} if getattr(quoted, "id", None) is not None else {}),
+        )
         local_images, missing_images = messages_db.load_attachment_files(image_records)
         durable_image_count = len(local_images)
         durable_missing_images = missing_images
@@ -610,6 +621,7 @@ async def build_reply_context(  # noqa: C901
                     cached = await _cache_complete_reply_images(
                         messages_db,
                         msg_time=quoted.time,
+                        message_id=getattr(quoted, "id", None),
                         user_id=quoted.user_id,
                         group_id=quoted.group_id,
                         images=fetched_images,
@@ -672,8 +684,9 @@ async def build_reply_context(  # noqa: C901
     quoted_time = milky_message.time * 1000 if milky_message.time < 10_000_000_000 else milky_message.time
     scope_user_id = private_peer_user_id if private_peer_user_id is not None else sender_user_id
     quoted_record_persisted = False
+    stored_message_id = None
     try:
-        await messages_db.insert(
+        inserted = await messages_db.insert(
             time=quoted_time,
             msg_id=milky_message.message_seq,
             user_id=scope_user_id,
@@ -690,9 +703,13 @@ async def build_reply_context(  # noqa: C901
             normalized_version=normalized.normalized_version,
             normalized_status=normalized.status,
         )
+        if inserted is not None:
+            stored_message_id = inserted.message_id
+            quoted_time = inserted.time
         if normalized.derived_messages:
             await messages_db.replace_derived_messages(
                 parent_msg_time=quoted_time,
+                **({"parent_message_id": stored_message_id} if stored_message_id is not None else {}),
                 parent_msg_id=milky_message.message_seq,
                 user_id=scope_user_id,
                 group_id=group_id,
@@ -706,6 +723,7 @@ async def build_reply_context(  # noqa: C901
     images_cached = quoted_record_persisted and await _cache_complete_reply_images(
         messages_db,
         msg_time=quoted_time,
+        message_id=stored_message_id,
         user_id=scope_user_id,
         group_id=group_id,
         images=images if load_images else [],
@@ -716,6 +734,7 @@ async def build_reply_context(  # noqa: C901
     missing_files = 0
     if load_images and quoted_record_persisted:
         quoted_source = SimpleNamespace(
+            id=stored_message_id,
             time=quoted_time,
             msg_id=milky_message.message_seq,
             user_id=scope_user_id,

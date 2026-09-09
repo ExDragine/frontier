@@ -61,7 +61,7 @@ class TaskExecutionHistory(SQLModel, table=True):
 
     # 执行信息
     execution_time: int = Field(index=True)  # 执行时间戳
-    status: str  # "success" | "failed" | "missed" | "skipped"
+    status: str  # "success" | "failed" | "timeout" | "cancelled" | "missed" | "skipped"
 
     # 执行结果
     duration_ms: int | None = Field(default=None)  # 执行耗时（毫秒）

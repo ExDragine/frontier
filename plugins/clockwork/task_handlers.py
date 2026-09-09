@@ -448,6 +448,30 @@ async def happy_new_year(**kwargs):
         await message.send(target=Target.group(str(group.group_id)))
 
 
+async def _send_merchant_alert(image: bytes, hit_names: str) -> list[int]:
+    groups_sent: list[int] = []
+    for group in EnvConfig.NRC_MERCHANT_GROUP_ID:
+        try:
+            if hit_names:
+                await UniMessage.text(f"⚠️ 远行商人上架提醒：{hit_names} 已上架！").send(
+                    target=Target.group(str(group))
+                )
+            await UniMessage.image(raw=image).send(target=Target.group(str(group)))
+            groups_sent.append(int(group))
+        except Exception as e:
+            logger.error(f"NRC 商人提醒推送到群 {group} 失败: {e}")
+
+    return groups_sent
+
+
+def _merchant_period_end(now: datetime.datetime) -> datetime.datetime | None:
+    for hour in (8, 12, 16, 20):
+        if hour <= now.hour < hour + 4:
+            start = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+            return start + datetime.timedelta(hours=4)
+    return None
+
+
 async def nrc_merchant_alert(**kwargs):
     """远行商人商品提醒推送 - 每天8:10、12:10、16:10、20:10触发首次访问。
 
@@ -464,22 +488,10 @@ async def nrc_merchant_alert(**kwargs):
     tz = zoneinfo.ZoneInfo("Asia/Shanghai")
     now = datetime.datetime.now(tz)
 
-    period_starts = [8, 12, 16, 20]
-    current_hour = now.hour
-    period_end_hour = None
-    for h in period_starts:
-        if h <= current_hour < h + 4:
-            period_end_hour = h + 4
-            break
-
-    if period_end_hour is None:
+    period_end = _merchant_period_end(now)
+    if period_end is None:
         logger.debug(f"NRC 商人提醒：当前时间 {now.strftime('%H:%M')} 不在任何推送时段内")
         return None
-
-    if period_end_hour == 24:
-        period_end = now.replace(hour=0, minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
-    else:
-        period_end = now.replace(hour=period_end_hour, minute=0, second=0, microsecond=0)
 
     first_failure_notified = False
 
@@ -500,17 +512,7 @@ async def nrc_merchant_alert(**kwargs):
             css = _load_css()
             image = await html_to_image(html, css=css, width=480)
 
-            groups_sent: list[int] = []
-            for group in EnvConfig.NRC_MERCHANT_GROUP_ID:
-                try:
-                    if hits:
-                        await UniMessage.text(f"⚠️ 远行商人上架提醒：{hit_names} 已上架！").send(
-                            target=Target.group(str(group))
-                        )
-                    await UniMessage.image(raw=image).send(target=Target.group(str(group)))
-                    groups_sent.append(int(group))
-                except Exception as e:
-                    logger.error(f"NRC 商人提醒推送到群 {group} 失败: {e}")
+            groups_sent = await _send_merchant_alert(image, hit_names)
 
             msg_count = len(groups_sent) * (2 if hits else 1)
             return TaskRunResult(

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from utils.agents.progress import ProgressReporter
 from utils.media import detect_mime_type, resolve_media, standard_media_block
+
+if TYPE_CHECKING:
+    from .execution import AgentResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,10 +22,22 @@ class AgentRuntimeMedia:
 
 @dataclass(frozen=True, slots=True)
 class AgentRuntimeRequest:
-    session_id: str
-    prompt: str
+    session_id: str = ""
+    prompt: str = ""
     images: tuple[AgentRuntimeMedia, ...] = ()
     audio: tuple[AgentRuntimeMedia, ...] = ()
+    messages: tuple[dict[str, Any], ...] = ()
+    user_id: str | None = None
+    user_name: str = "ACP client"
+    group_id: int | None = None
+    group_member_role: str | None = None
+    capability: str | None = None
+    access_profile: Literal["frontier", "acp"] = "acp"
+    enable_acp_subagents: bool = False
+    allow_silent_reply: bool = False
+    image_inputs: tuple[bytes, ...] = ()
+    audio_inputs: tuple[bytes, ...] = ()
+    video_inputs: tuple[bytes, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +45,8 @@ class AgentRuntimeResult:
     text: str
     artifacts: tuple[AgentRuntimeMedia, ...] = ()
     error: str | None = None
+    status: str = "success"
+    run_id: str | None = None
 
 
 class AgentRuntime(Protocol):
@@ -56,10 +74,7 @@ def _message_text(value: object) -> str:
 def _runtime_artifacts(messages: list[object]) -> tuple[AgentRuntimeMedia, ...]:
     artifacts: list[AgentRuntimeMedia] = []
     for message in messages:
-        try:
-            segments = list(message)  # type: ignore[arg-type]
-        except TypeError:
-            segments = [message]
+        segments = list(message) if isinstance(message, Iterable) else [message]
         for segment in segments:
             kind = str(getattr(segment, "type", "") or "")
             if kind not in {"image", "audio"}:
@@ -96,12 +111,14 @@ class FrontierAgentRuntime:
             self._cognitive = FrontierCognitive()
         return self._cognitive
 
-    async def prompt(
+    async def run(
         self,
         request: AgentRuntimeRequest,
         *,
         progress_reporter: ProgressReporter | None = None,
-    ) -> AgentRuntimeResult:
+    ) -> AgentResult:
+        from utils.configs import EnvConfig
+
         content: list[dict] = [{"type": "text", "text": request.prompt}]
         content.extend(
             (
@@ -115,20 +132,31 @@ class FrontierAgentRuntime:
             )
             for item in (*request.images, *request.audio)
         )
-        result = await self._get_cognitive().chat_agent(
-            [{"role": "user", "content": content}],
-            user_id=f"acp-{request.session_id}",
-            user_name="ACP client",
-            group_id=None,
-            image_inputs=[item.data for item in request.images],
-            audio_inputs=[item.data for item in request.audio],
-            video_inputs=[],
-            thread_id_override=request.session_id,
+        return await self._get_cognitive().chat_agent(
+            list(request.messages) or [{"role": "user", "content": content}],
+            user_id=request.user_id or f"acp-{request.session_id}",
+            user_name=request.user_name,
+            capability=request.capability if request.capability is not None else EnvConfig.AGENT_CAPABILITY,
+            group_id=request.group_id,
+            group_member_role=request.group_member_role,
+            image_inputs=[*request.image_inputs, *(item.data for item in request.images)],
+            audio_inputs=[*request.audio_inputs, *(item.data for item in request.audio)],
+            video_inputs=list(request.video_inputs),
+            thread_id_override=request.session_id or None,
             progress_reporter=progress_reporter,
             user_text=request.prompt,
-            access_profile="acp",
-            enable_acp_subagents=False,
+            access_profile=request.access_profile,
+            enable_acp_subagents=request.enable_acp_subagents,
+            allow_silent_reply=request.allow_silent_reply,
         )
+
+    async def prompt(
+        self,
+        request: AgentRuntimeRequest,
+        *,
+        progress_reporter: ProgressReporter | None = None,
+    ) -> AgentRuntimeResult:
+        result = await self.run(request, progress_reporter=progress_reporter)
         response = result.get("response", {}) if isinstance(result, dict) else {}
         response_messages = response.get("messages", []) if isinstance(response, dict) else []
         final_message = response_messages[-1] if response_messages else ""
@@ -138,6 +166,8 @@ class FrontierAgentRuntime:
             if isinstance(result, dict)
             else (),
             error=str(result["error"]) if isinstance(result, dict) and result.get("error") else None,
+            status=result.get("status", "failed" if result.get("error") else "success"),
+            run_id=result.get("run_id"),
         )
 
 

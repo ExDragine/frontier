@@ -5,6 +5,7 @@ from typing import cast
 
 import pytest
 from fastapi import HTTPException
+from sqlmodel import Session, create_engine
 from starlette.requests import Request
 
 from plugins.dashboard.api import auth_routes, messages_routes, settings_routes, status_routes, tasks_routes
@@ -85,7 +86,10 @@ async def test_messages_list_filters(monkeypatch):
 
     monkeypatch.setattr(messages_routes, "Session", lambda _engine: DummySession())
     monkeypatch.setattr(
-        messages_routes, "Message", types.SimpleNamespace(time=types.SimpleNamespace(desc=lambda: None))
+        messages_routes, "Message", types.SimpleNamespace(
+            time=types.SimpleNamespace(desc=lambda: None),
+            id=types.SimpleNamespace(desc=lambda: None),
+        )
     )
 
     def fake_select(*_args, **_kwargs):
@@ -107,10 +111,37 @@ async def test_messages_list_filters(monkeypatch):
         )
 
     monkeypatch.setattr(messages_routes, "select", fake_select)
+    monkeypatch.setattr(messages_routes, "col", lambda value: value)
     monkeypatch.setattr(messages_routes, "func", types.SimpleNamespace(count=lambda: None))
 
     result = await messages_routes.list_messages(user={}, page=1, page_size=50)
     assert result["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_messages_pagination_keeps_equal_timestamps_distinct(tmp_path, monkeypatch):
+    from utils.database import Message
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-messages.db'}")
+    Message.__table__.create(engine)
+    with Session(engine) as session:
+        session.add_all([
+            Message(time=1000, msg_id=sequence, user_id=sequence, group_id=123,
+                    user_name=f"Member {sequence}", role="user", content=f"message {sequence}")
+            for sequence in (7, 8, 9)
+        ])
+        session.commit()
+    monkeypatch.setattr(messages_routes, "engine", engine)
+
+    pages = [
+        await messages_routes.list_messages(group_id=123, page=page, page_size=1, user={})
+        for page in (1, 2, 3)
+    ]
+    messages = [page["messages"][0] for page in pages]
+    assert [message["msg_id"] for message in messages] == [9, 8, 7]
+    assert len({message["id"] for message in messages}) == 3
+    assert all(message["time"] == 1000 for message in messages)
+    assert all(page["total"] == 3 for page in pages)
 
 
 @pytest.mark.asyncio

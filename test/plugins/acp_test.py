@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from plugins import acp
+from utils.delivery import DeliveryResult
 
 
 def _event():
@@ -76,6 +77,7 @@ async def test_acp_command_runs_prompt_with_media(monkeypatch):
 
     async def fake_send_messages(group_id, event_id, response):
         sent_responses.append((group_id, event_id, response))
+        return DeliveryResult(attempted=1, sent=1)
 
     async def fake_sanitize(text):
         return text
@@ -93,3 +95,68 @@ async def test_acp_command_runs_prompt_with_media(monkeypatch):
     assert captured["agent_name"] == "demo"
     assert [item.kind for item in captured["media"]] == ["image", "audio"]
     assert sent_responses[0][:2] == (None, 9)
+
+
+@pytest.mark.asyncio
+async def test_acp_artifact_failure_is_reported_without_final_text(monkeypatch):
+    sent = []
+
+    async def artifacts(_items):
+        return DeliveryResult(attempted=1, errors=("transport",))
+
+    async def send(_group_id, _message_seq, response):
+        sent.append(acp.outgoing_message_content(response["messages"][-1]))
+        return DeliveryResult(attempted=1, sent=1)
+
+    monkeypatch.setattr(acp, "send_artifacts", artifacts)
+    monkeypatch.setattr(acp, "send_messages", send)
+    monkeypatch.setattr(acp.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    result = await acp._send_result({"uni_messages": ["artifact"]}, group_id=None, message_seq=1)
+
+    assert sent == ["🔌 ACP 附件未完整送达，请稍后重试。"]
+    assert result.errors == ("transport",)
+    assert not result.successful
+
+
+@pytest.mark.asyncio
+async def test_acp_delivery_failure_sends_notice_and_keeps_failure_result(monkeypatch):
+    notices = []
+
+    async def send(_group_id, _message_seq, _response):
+        return DeliveryResult(attempted=1, errors=("transport",))
+
+    async def notify(self):
+        notices.append(str(self))
+
+    monkeypatch.setattr(acp, "send_messages", send)
+    monkeypatch.setattr(acp.UniMessage, "send", notify)
+    monkeypatch.setattr(acp.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    result = await acp._send_result({"response": {"messages": ["answer"]}}, group_id=None, message_seq=1)
+
+    assert notices == ["🔌 ACP 回复发送失败，请稍后重试。"]
+    assert result.sent == 0
+    assert result.errors == ("transport",)
+
+
+@pytest.mark.asyncio
+async def test_acp_sanitizing_does_not_mutate_original_response(monkeypatch):
+    sent = []
+    original = {"response": {"messages": [SimpleNamespace(content="unsafe")]}}
+
+    async def sanitize(_text):
+        return "safe"
+
+    async def send(_group_id, _message_seq, response):
+        sent.append(acp.outgoing_message_content(response["messages"][-1]))
+        return DeliveryResult(attempted=1, sent=1)
+
+    monkeypatch.setattr(acp, "sanitize_outgoing_text", sanitize)
+    monkeypatch.setattr(acp, "send_messages", send)
+
+    result = await acp._send_result(original, group_id=None, message_seq=1)
+
+    assert result.successful
+    assert sent == ["safe"]
+    assert original["response"]["messages"][0].content == "unsafe"

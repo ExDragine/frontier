@@ -405,6 +405,75 @@ def _find_typhoon_by_name(data: list[dict], name: str) -> dict | None:
     return None
 
 
+def _build_land_summary(typhoon_dict):
+    land = typhoon_dict.get("land") or []
+    if not land:
+        return ""
+    parts = []
+    for lp in land:
+        pos = lp.get("position", "未知")
+        lt = lp.get("land_time", "")
+        try:
+            dt = datetime.strptime(lt, "%Y-%m-%dT%H:%M:%S")
+            lt_fmt = dt.strftime("%m月%d日 %H:%M")
+        except ValueError:
+            lt_fmt = lt
+        parts.append(f"{lt_fmt}在{pos}登陆")
+    return "，".join(parts)
+
+
+def _build_typhoon_summary(active: list[dict], targets: list[dict], overlay_data: dict | None) -> str:
+    # 拼接文字摘要
+    overlay_hint = ""
+    if overlay_data:
+        overlay_hint = f"（已叠加{overlay_data['label']} {overlay_data['time']}）"
+
+    land_parts = []
+    for t in targets:
+        ls = _build_land_summary(t)
+        if ls:
+            land_parts.append(f"「{t.get('name', '?')}」{ls}")
+    land_text = "；".join(land_parts)
+    if land_text:
+        land_text = f"（{land_text}）"
+
+    if len(active) == 1:
+        summary = f"当前活跃台风「{active[0]['name']}」{land_text}{overlay_hint}，路径情况如下："
+    else:
+        names_str = "、".join(t.get("name", "?") for t in active)
+        summary = f"当前活跃台风有 {names_str}，{land_text}{overlay_hint}路径情况如下："
+
+    return summary
+
+
+async def _render_typhoon_images(targets: list[dict], overlay: str | None) -> tuple[list[UniMessage], dict | None]:
+    # 获取图层叠加数据（如果需要）
+    overlay_data = None
+    if overlay:
+        overlay_data = await _fetch_latest_overlay(overlay)
+        if overlay_data:
+            logger.info("叠加图层 {} 已就绪，传入模板渲染", overlay)
+        else:
+            logger.warning("叠加图层 {} 获取失败，将不叠加", overlay)
+
+    # 并发渲染
+    import asyncio
+
+    results = await asyncio.gather(
+        *[_render_single_typhoon(t, overlay_data) for t in targets], return_exceptions=True
+    )
+
+    images: list[UniMessage] = []
+    for t, r in zip(targets, results, strict=True):
+        if isinstance(r, BaseException):
+            logger.error("台风「%s」渲染失败: %s", t.get("name", "?"), r)
+            continue
+        if r is not None:
+            images.append(UniMessage.image(raw=r))
+
+    return images, overlay_data
+
+
 @tool(response_format="content_and_artifact")
 async def get_typhoon_info(
     typhoon_name: str | None = None, overlay: str | None = None
@@ -457,68 +526,12 @@ async def get_typhoon_info(
     else:
         targets = active
 
-    # 获取图层叠加数据（如果需要）
-    overlay_data = None
-    if overlay:
-        overlay_data = await _fetch_latest_overlay(overlay)
-        if overlay_data:
-            logger.info("叠加图层 {} 已就绪，传入模板渲染", overlay)
-        else:
-            logger.warning("叠加图层 {} 获取失败，将不叠加", overlay)
-
-    # 并发渲染
-    import asyncio
-
-    results = await asyncio.gather(
-        *[_render_single_typhoon(t, overlay_data) for t in targets], return_exceptions=True
-    )
-
-    images: list[UniMessage] = []
-    for t, r in zip(targets, results, strict=True):
-        if isinstance(r, BaseException):
-            logger.error("台风「%s」渲染失败: %s", t.get("name", "?"), r)
-            continue
-        if r is not None:
-            images.append(UniMessage.image(raw=r))
+    images, overlay_data = await _render_typhoon_images(targets, overlay)
 
     if not images:
         return "台风信息渲染失败，请稍后再试", None
 
-    # 拼接文字摘要
-    overlay_hint = ""
-    if overlay_data:
-        overlay_hint = f"（已叠加{overlay_data['label']} {overlay_data['time']}）"
-
-    def _build_land_summary(typhoon_dict):
-        land = typhoon_dict.get("land") or []
-        if not land:
-            return ""
-        parts = []
-        for lp in land:
-            pos = lp.get("position", "未知")
-            lt = lp.get("land_time", "")
-            try:
-                dt = datetime.strptime(lt, "%Y-%m-%dT%H:%M:%S")
-                lt_fmt = dt.strftime("%m月%d日 %H:%M")
-            except ValueError:
-                lt_fmt = lt
-            parts.append(f"{lt_fmt}在{pos}登陆")
-        return "，".join(parts)
-
-    land_parts = []
-    for t in targets:
-        ls = _build_land_summary(t)
-        if ls:
-            land_parts.append(f"「{t.get('name', '?')}」{ls}")
-    land_text = "；".join(land_parts)
-    if land_text:
-        land_text = f"（{land_text}）"
-
-    if len(active) == 1:
-        summary = f"当前活跃台风「{active[0]['name']}」{land_text}{overlay_hint}，路径情况如下："
-    else:
-        names_str = "、".join(t.get("name", "?") for t in active)
-        summary = f"当前活跃台风有 {names_str}，{land_text}{overlay_hint}路径情况如下："
+    summary = _build_typhoon_summary(active, targets, overlay_data)
 
     # 拼接所有图片
     result_msg = images[0]

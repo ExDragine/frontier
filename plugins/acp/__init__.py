@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
+from langchain.messages import AIMessage
 from nonebot import get_driver, logger, on_command
 from nonebot.adapters.milky.event import MessageEvent
 
@@ -11,6 +13,7 @@ from utils.agents import ProgressEvent, ProgressReporter
 from utils.agents.acp import AcpAgent, AcpConfigurationError, AcpInputMedia, acp_service
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
+from utils.delivery import DeliveryResult
 from utils.media import resolve_media
 from utils.message import (
     download_media,
@@ -142,30 +145,39 @@ async def _handle_control(parsed: _ParsedCommand, workspace_key: str) -> bool:
     return False
 
 
-async def _send_result(result: dict, *, group_id: int | None, message_seq: int) -> None:
+async def _send_result(result: dict, *, group_id: int | None, message_seq: int) -> DeliveryResult:
     artifacts = result.get("uni_messages", [])
-    if artifacts:
-        await send_artifacts(artifacts)
+    delivery = await send_artifacts(artifacts) if artifacts else DeliveryResult()
     response = result.get("response")
-    if not isinstance(response, dict):
-        if not artifacts:
-            await UniMessage.text("🔌 ACP Agent 没有返回可发送的内容。").send()
-        return
-    messages = response.get("messages")
-    if not messages:
-        if not artifacts:
-            await UniMessage.text("🔌 ACP Agent 没有返回可发送的内容。").send()
-        return
-    content = outgoing_message_content(messages[-1])
-    sanitized = await sanitize_outgoing_text(content)
-    if sanitized != content:
-        from langchain.messages import AIMessage
+    messages = response.get("messages", []) if isinstance(response, dict) else []
+    content = outgoing_message_content(messages[-1]) if isinstance(messages, list) and messages else ""
+    if delivery.errors:
+        content = f"🔌 ACP 附件未完整送达，请稍后重试。\n\n{content}".strip()
+    elif not content and not delivery.sent:
+        content = "🔌 ACP Agent 没有返回可发送的内容。"
+        delivery = delivery.combine(DeliveryResult(errors=("empty_response",)))
+    if not content:
+        return delivery
 
-        messages[-1] = AIMessage(content=sanitized or "")
+    sanitized = await sanitize_outgoing_text(content)
     if result.get("error"):
         logger.warning("ACP command returned an error response")
-    if sanitized:
-        await send_messages(group_id, message_seq, response)
+    if not sanitized:
+        return delivery
+    text_delivery = await send_messages(group_id, message_seq, {"messages": [AIMessage(content=sanitized)]})
+    delivery = delivery.combine(text_delivery)
+    if text_delivery.errors:
+        logger.warning("ACP 回复未送达: %s", text_delivery.errors)
+        try:
+            # A short plain-text notification avoids recursively retrying rendering.
+            async with asyncio.timeout(15):
+                notice = UniMessage.text("🔌 ACP 回复发送失败，请稍后重试。")
+                if group_id is not None:
+                    notice = UniMessage.reply(str(message_seq)) + notice
+                await notice.send()
+        except Exception as exc:
+            logger.warning("ACP 发送失败提示也未送达: %s", type(exc).__name__)
+    return delivery
 
 
 @acp_command.handle()
@@ -199,7 +211,9 @@ async def handle_acp(event: MessageEvent) -> None:
         media=_input_media(images, audios),
         progress_reporter=_progress_reporter(group_id),
     )
-    await _send_result(result, group_id=group_id, message_seq=event.data.message_seq)
+    delivery = await _send_result(result, group_id=group_id, message_seq=event.data.message_seq)
+    if delivery.errors:
+        logger.warning("ACP 请求投递未完整成功: %s", delivery.errors)
 
 
 @driver.on_shutdown

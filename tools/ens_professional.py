@@ -98,17 +98,6 @@ _BIO_ANNOT = {0: None, 1: "fires"}
 
 _ZOOM_DEFAULT = {"wind": 5000, "ocean": 4000, "chem": 5000, "particulates": 5000, "space": 1000, "bio": 4000}
 
-# 测试环境无法跨文件导入 _CITY_COORDS 时的 fallback
-_CITY_COORDS_FALLBACK: dict[str, tuple[float, float]] = {
-    "北京": (116.40, 39.90),
-    "上海": (121.47, 31.23),
-    "广州": (113.26, 23.13),
-    "深圳": (114.07, 22.62),
-    "成都": (104.07, 30.67),
-    "杭州": (120.15, 30.28),
-}
-
-
 def _build_professional_url(
     mode: str,
     animation: str,
@@ -185,6 +174,57 @@ def _build_return_text(location_text: str, time_text: str, mode_name: str, page_
     )
 
 
+class _ProfessionalInputError(ValueError):
+    """可以直接展示给用户的参数校验错误。"""
+
+
+def _resolve_professional_options(p1: int, p2: int, p3: int, p4: int, p5: int, bio_annot: int) -> dict:
+    mode = _MODE.get(p1)
+    if mode is None:
+        raise _ProfessionalInputError(f"无效模式编号: {p1}（1-6）")
+    animation = _ANIM.get(p3)
+    if animation is None:
+        raise _ProfessionalInputError(f"无效动画编号: {p3}（1-3）")
+    projection = _PROJ.get(p5)
+    if projection is None:
+        raise _ProfessionalInputError(f"无效投影编号: {p5}（1-8）")
+    overlay_table = _OVERLAY.get(mode, {})
+    if p4 != 0 and p4 not in overlay_table:
+        raise _ProfessionalInputError(f"无效叠加层编号: {p4}（该模式下无此选项）")
+    annot = None
+    if mode == "bio" and bio_annot:
+        annot = _BIO_ANNOT.get(bio_annot)
+        if annot is None:
+            raise _ProfessionalInputError(f"无效生物注释编号: {bio_annot}（0-1）")
+    return {
+        "mode": mode, "height": _HEIGHT.get(p2, "surface"), "animation": animation,
+        "projection": projection, "overlay": overlay_table.get(p4), "annot": annot,
+    }
+
+
+def _resolve_professional_location(p6: str, p7: str) -> tuple[float, float, str]:
+    try:
+        lon, lat = float(p6), float(p7)
+    except ValueError:
+        from .ens_normal import _CITY_COORDS
+
+        location = p6.strip()
+        if not location:
+            raise _ProfessionalInputError("请提供有效的经纬度坐标或城市名") from None
+        if location in _CITY_COORDS:
+            lon, lat = _CITY_COORDS[location]
+            return lon, lat, location
+        for city, coords in sorted(_CITY_COORDS.items(), key=lambda item: -len(item[0])):
+            if city in location or location in city:
+                return coords[0], coords[1], city
+        raise _ProfessionalInputError(
+            f"未找到「{location}」的坐标，国内城市请用标准名，国外请让 LLM 搜经纬度后直接输入数字"
+        ) from None
+    if lon == 0 and lat == 0:
+        raise _ProfessionalInputError("请提供有效的经纬度坐标或城市名（如：北京、广州）")
+    return lon, lat, f"({lon}, {lat})"
+
+
 async def run_ens_professional(
     p1: int = 1,
     p2: int = 0,
@@ -209,64 +249,9 @@ async def run_ens_professional(
         )
 
     try:
-        mode = _MODE.get(p1)
-        if mode is None:
-            return f"无效模式编号: {p1}（1-6）", None
-
-        height = _HEIGHT.get(p2, "surface")
-        animation = _ANIM.get(p3)
-        if animation is None:
-            return f"无效动画编号: {p3}（1-3）", None
-
-        projection = _PROJ.get(p5)
-        if projection is None:
-            return f"无效投影编号: {p5}（1-8）", None
-
-        overlay_table = _OVERLAY.get(mode, {})
-        overlay = overlay_table.get(p4)
-        if p4 != 0 and overlay is None and p4 not in overlay_table:
-            return f"无效叠加层编号: {p4}（该模式下无此选项）", None
-
-        annot = None
-        if mode == "bio" and bio_annot:
-            annot = _BIO_ANNOT.get(bio_annot)
-            if annot is None:
-                return f"无效生物注释编号: {bio_annot}（0-1）", None
-
-        # 坐标解析：支持数字经纬度或城市名
-        location_text: str  # 用于返回消息
-        try:
-            lon = float(p6)
-            lat = float(p7)
-            if lon == 0 and lat == 0:
-                return "请提供有效的经纬度坐标或城市名（如：北京、广州）", None
-            location_text = f"({lon}, {lat})"
-        except ValueError:
-            # 非数字 → 作为城市名查找。优先用 ens_normal 字典，测试环境 fallback 小字典
-            try:
-                from .ens_normal import _CITY_COORDS as _coords
-            except ImportError:
-                try:
-                    from tools.ens_normal import _CITY_COORDS as _coords  # type: ignore[no-redef]
-                except ImportError:
-                    _coords = _CITY_COORDS_FALLBACK
-            location = p6.strip()
-            if not location:
-                return "请提供有效的经纬度坐标或城市名", None
-            location_text = location
-            if location in _coords:
-                lon, lat = _coords[location]
-            else:
-                matched = None
-                for city, coords in sorted(_coords.items(), key=lambda x: -len(x[0])):
-                    if city in location or location in city:
-                        matched = coords
-                        location_text = city
-                        break
-                if matched:
-                    lon, lat = matched
-                else:
-                    return f"未找到「{location}」的坐标，国内城市请用标准名，国外请让 LLM 搜经纬度后直接输入数字", None
+        options = _resolve_professional_options(p1, p2, p3, p4, p5, bio_annot)
+        mode = options["mode"]
+        lon, lat, location_text = _resolve_professional_location(p6, p7)
 
         zoom = p8 if p8 > 0 else _ZOOM_DEFAULT.get(mode, 1850)
         time = _parse_time(p9)
@@ -274,15 +259,15 @@ async def run_ens_professional(
 
         url = _build_professional_url(
             mode=mode,
-            animation=animation,
-            projection=projection,
+            animation=options["animation"],
+            projection=options["projection"],
             lon=lon,
             lat=lat,
             zoom=zoom,
             time=time,
-            height=height,
-            overlay=overlay,
-            annot=annot,
+            height=options["height"],
+            overlay=options["overlay"],
+            annot=options["annot"],
             paused=paused,
         )
 
@@ -333,6 +318,8 @@ async def run_ens_professional(
         artifact = UniMessage.video(raw=video_bytes)
         _ens_cache[url] = (text, artifact, _time.time())
         return text, artifact
+    except _ProfessionalInputError as e:
+        return str(e), None
     except Exception as e:
         logger.error(f"ens_professional 失败: {e}")
         return f"获取失败: {e}", None

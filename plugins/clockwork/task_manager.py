@@ -1,8 +1,6 @@
 import asyncio
-import importlib
 import json
 import time
-import traceback
 from typing import Any
 
 from apscheduler.events import EVENT_JOB_MISSED
@@ -14,7 +12,8 @@ from sqlmodel import Session, col, select
 
 from utils.database import ensure_database_performance_indexes
 
-from .task_models import ScheduledTaskMetadata, TaskConfig, TaskExecutionHistory, TaskGroupMapping, TaskRunResult
+from .task_execution import TaskExecutor as TaskExecutor
+from .task_models import ScheduledTaskMetadata, TaskConfig, TaskExecutionHistory, TaskGroupMapping
 
 
 class TaskManager:
@@ -98,60 +97,10 @@ class TaskManager:
             existing_task = session.exec(statement).first()
 
             if existing_task:
-                updated = False
-                new_trigger_args_str = json.dumps(trigger_args, sort_keys=True)
-                old_trigger_args_str = json.dumps(
-                    json.loads(existing_task.trigger_args)
-                    if isinstance(existing_task.trigger_args, str)
-                    else existing_task.trigger_args,
-                    sort_keys=True,
+                return self._update_registered_task(
+                    session, existing_task, job_id, trigger_type, trigger_args,
+                    handler_module, handler_function, group_ids,
                 )
-
-                if existing_task.trigger_type != trigger_type or old_trigger_args_str != new_trigger_args_str:
-                    self.logger.info(
-                        f"任务 {job_id} 触发器变更: {existing_task.trigger_type}/{old_trigger_args_str} → {trigger_type}/{new_trigger_args_str}"
-                    )
-                    try:
-                        self.scheduler.reschedule_job(job_id, trigger=trigger_type, **trigger_args)
-                    except Exception as e:
-                        self.logger.error(f"更新调度器任务 {job_id} 失败: {e}")
-                        return existing_task
-                    existing_task.trigger_type = trigger_type
-                    existing_task.trigger_args = new_trigger_args_str
-                    existing_task.updated_at = int(time.time())
-                    updated = True
-
-                if (
-                    existing_task.handler_module != handler_module
-                    or existing_task.handler_function != handler_function
-                ):
-                    existing_task.handler_module = handler_module
-                    existing_task.handler_function = handler_function
-                    existing_task.updated_at = int(time.time())
-                    updated = True
-
-                # 同步群组
-                old_groups = [
-                    m.group_id
-                    for m in session.exec(select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)).all()
-                ]
-                new_groups = sorted(set(group_ids))
-                if old_groups != new_groups:
-                    for m in session.exec(select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)).all():
-                        session.delete(m)
-                    for gid in new_groups:
-                        session.add(TaskGroupMapping(job_id=job_id, group_id=gid))
-                    updated = True
-
-                if updated:
-                    session.add(existing_task)
-                    session.commit()
-                    session.refresh(existing_task)
-                    self._sync_group_config(job_id, group_ids)
-                    self.logger.info(f"任务 {job_id} 已更新")
-                else:
-                    self.logger.info(f"任务 {job_id} 已存在且配置未变，跳过")
-                return existing_task
 
             # 创建任务配置
             task = TaskConfig(
@@ -203,6 +152,66 @@ class TaskManager:
 
             self.logger.info(f"任务 {job_id} 注册成功")
             return task
+
+    def _update_registered_task(
+        self, session, existing_task, job_id, trigger_type, trigger_args,
+        handler_module, handler_function, group_ids,
+    ) -> TaskConfig:
+        updated = False
+        new_trigger_args_str = json.dumps(trigger_args, sort_keys=True)
+        old_trigger_args_str = json.dumps(
+            json.loads(existing_task.trigger_args)
+            if isinstance(existing_task.trigger_args, str)
+            else existing_task.trigger_args,
+            sort_keys=True,
+        )
+
+        if existing_task.trigger_type != trigger_type or old_trigger_args_str != new_trigger_args_str:
+            self.logger.info(
+                f"任务 {job_id} 触发器变更: {existing_task.trigger_type}/{old_trigger_args_str} → {trigger_type}/{new_trigger_args_str}"
+            )
+            try:
+                self.scheduler.reschedule_job(job_id, trigger=trigger_type, **trigger_args)
+            except Exception as e:
+                self.logger.error(f"更新调度器任务 {job_id} 失败: {e}")
+                return existing_task
+            existing_task.trigger_type = trigger_type
+            existing_task.trigger_args = new_trigger_args_str
+            existing_task.updated_at = int(time.time())
+            updated = True
+
+        if (
+            existing_task.handler_module != handler_module
+            or existing_task.handler_function != handler_function
+        ):
+            existing_task.handler_module = handler_module
+            existing_task.handler_function = handler_function
+            existing_task.updated_at = int(time.time())
+            updated = True
+
+        # 同步群组
+        old_groups = [
+            m.group_id
+            for m in session.exec(select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)).all()
+        ]
+        new_groups = sorted(set(group_ids))
+        if old_groups != new_groups:
+            for m in session.exec(select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)).all():
+                session.delete(m)
+            for gid in new_groups:
+                session.add(TaskGroupMapping(job_id=job_id, group_id=gid))
+            updated = True
+
+        if updated:
+            session.add(existing_task)
+            session.commit()
+            session.refresh(existing_task)
+            self._sync_group_config(job_id, group_ids)
+            self.logger.info(f"任务 {job_id} 已更新")
+        else:
+            self.logger.info(f"任务 {job_id} 已存在且配置未变，跳过")
+        return existing_task
+
 
     async def register_scheduled_task(
         self,
@@ -561,7 +570,7 @@ class TaskManager:
                 task.total_runs += 1
                 if status == "success":
                     task.success_runs += 1
-                elif status == "failed":
+                elif status in {"failed", "timeout", "cancelled"}:
                     task.failed_runs += 1
 
                 # 从 APScheduler 同步 next_run_time
@@ -732,75 +741,3 @@ class TaskManager:
         if config_key:
             setattr(EnvConfig, config_key, group_ids)
             self.logger.info(f"同步群组配置: {config_key} = {group_ids}")
-
-
-class TaskExecutor:
-    """任务执行器 - 包装原始任务函数，添加监控和群组管理"""
-
-    def __init__(self, task_manager: TaskManager):
-        self.task_manager = task_manager
-
-    async def execute(self, job_id: str) -> None:
-        """
-        执行任务的统一入口
-        1. 检查任务是否启用
-        2. 获取任务配置和群组列表
-        3. 执行原始任务函数
-        4. 记录执行结果
-        """
-        start_time = time.time()
-        execution_time = int(start_time)
-
-        try:
-            # 获取任务配置
-            task = await self.task_manager.get_task(job_id)
-            if not task or not task.enabled:
-                await self.task_manager.log_execution(job_id, "skipped", execution_time)
-                return
-            metadata = await self.task_manager.get_task_metadata(job_id)
-            if metadata and metadata.archived:
-                await self.task_manager.log_execution(job_id, "skipped", execution_time)
-                return
-
-            # 动态导入任务处理函数
-            handler = self._load_handler(task.handler_module, task.handler_function)
-
-            # 获取推送群组
-            group_ids = await self.task_manager.get_task_groups(job_id)
-
-            # 执行任务
-            result = await handler(job_id=job_id)
-            if not isinstance(result, TaskRunResult):
-                result = TaskRunResult(groups_sent=group_ids, messages_sent=len(group_ids))
-
-            # 记录成功
-            duration = int((time.time() - start_time) * 1000)
-            await self.task_manager.log_execution(
-                job_id=job_id,
-                status="success",
-                execution_time=execution_time,
-                duration_ms=duration,
-                output_summary=result.output_summary,
-                groups_sent=result.groups_sent if result.groups_sent is not None else group_ids,
-                messages_sent=result.messages_sent,
-            )
-            if task.trigger_type == "date":
-                await self.task_manager.archive_task(job_id)
-
-        except Exception as e:
-            duration = int((time.time() - start_time) * 1000)
-            error_traceback = traceback.format_exc()
-            await self.task_manager.log_execution(
-                job_id=job_id,
-                status="failed",
-                execution_time=execution_time,
-                duration_ms=duration,
-                error_message=str(e),
-                error_traceback=error_traceback,
-            )
-            self.task_manager.logger.error(f"任务 {job_id} 执行失败: {e}\n{error_traceback}")
-
-    def _load_handler(self, module_name: str, function_name: str):
-        """动态加载任务处理函数"""
-        module = importlib.import_module(module_name)
-        return getattr(module, function_name)

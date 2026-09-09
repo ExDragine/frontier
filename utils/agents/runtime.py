@@ -2,7 +2,11 @@
 
 import asyncio
 import hashlib
+import inspect
 import uuid
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any, cast
 
 
 def conversation_workspace_key(user_id: str | int, group_id: int | None) -> str:
@@ -21,14 +25,39 @@ def agent_thread_id(user_id: str, group_id: int | None) -> uuid.UUID:
     return uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=scope)
 
 
-_agent_locks: dict[str, asyncio.Lock] = {}
+@dataclass
+class _LockEntry:
+    lock: asyncio.Lock
+    users: int = 0
 
 
-async def run_serialized(thread_id: str, coro, *, timeout: float | None = None):
-    """同一 conversation 内序列化 Agent 执行：同 key 互斥，不同 key 并发。"""
-    key = str(thread_id)
-    lock = _agent_locks.setdefault(key, asyncio.Lock())
-    async with lock:
-        if timeout is not None:
-            return await asyncio.wait_for(coro, timeout=timeout)
-        return await coro
+_agent_locks: dict[tuple[asyncio.AbstractEventLoop, str], _LockEntry] = {}
+
+
+async def run_serialized(
+    thread_id: str,
+    operation: Awaitable | Callable[[], Awaitable],
+    *,
+    timeout: float | None = None,
+):
+    """Serialize a scope, counting queue time in the optional deadline.
+
+    A factory avoids creating work that might be cancelled while still queued.
+    Idle entries are released, and locks are never reused across event loops.
+    """
+    key = (asyncio.get_running_loop(), str(thread_id))
+    entry = _agent_locks.setdefault(key, _LockEntry(asyncio.Lock()))
+    entry.users += 1
+    started = False
+    try:
+        async with asyncio.timeout(timeout):
+            async with entry.lock:
+                started = True
+                awaitable = operation() if callable(operation) else operation
+                return await cast(Awaitable[Any], awaitable)
+    finally:
+        if not started and inspect.iscoroutine(operation):
+            operation.close()
+        entry.users -= 1
+        if not entry.users:
+            _agent_locks.pop(key, None)

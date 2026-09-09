@@ -10,9 +10,6 @@ import types
 import zoneinfo
 from pathlib import Path
 
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_mcp_adapters.sessions import Connection
-
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
@@ -41,9 +38,10 @@ from plugins.clockwork.task_handlers import (  # noqa: E402
     load_daily_news_css,
 )
 from utils.markdown_render import html_to_image  # noqa: E402
+from utils.mcp import build_mcp_adapter
 
 
-EXA_MCP_CONFIG: dict[str, Connection] = {
+EXA_MCP_CONFIG: dict[str, dict] = {
     "exa": {
         "command": "npx",
         "args": [
@@ -74,9 +72,9 @@ async def _preview_search_tools(backend: str) -> list:
     selected_tools = []
 
     if backend in {"exa", "both"}:
-        mcp_client = MultiServerMCPClient(EXA_MCP_CONFIG)
+        mcp_client = build_mcp_adapter(EXA_MCP_CONFIG["exa"])
         selected_tools.extend(
-            tool for tool in await mcp_client.get_tools() if str(getattr(tool, "name", "")) in SEARCH_TOOL_NAMES
+            tool for tool in await mcp_client.list_tools() if str(getattr(tool, "name", "")) in SEARCH_TOOL_NAMES
         )
 
     if not selected_tools:

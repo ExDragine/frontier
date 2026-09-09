@@ -13,7 +13,7 @@ dependencies = [
   "nb-cli",
   "langchain-core",
   "langchain-openai",
-  "langchain-mcp-adapters",
+  "langchain[mcp]>=1.4.0,<1.5",
   "langchain-google-genai",
   "langchain-anthropic",
   "langchain-deepseek",

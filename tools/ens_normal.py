@@ -793,6 +793,14 @@ def _get_sea_coords_all() -> list[tuple[str, float, float]]:
     return _SEA_COORDS_ALL
 
 
+def _match_location(location: str, coords_table: dict[str, tuple[float, float]]) -> tuple[float, float] | None:
+    """按最长名称优先查找模糊匹配，精确匹配由调用方先处理。"""
+    for name, coords in sorted(coords_table.items(), key=lambda item: -len(item[0])):
+        if name in location or location in name:
+            return coords
+    return None
+
+
 def _resolve_sea_coords(location: str) -> tuple[float, float]:
     """解析海域坐标。
 
@@ -813,22 +821,14 @@ def _resolve_sea_coords(location: str) -> tuple[float, float]:
     if location in _GLOBAL_SEA_COORDS:
         return _GLOBAL_SEA_COORDS[location]
 
-    # 3) 模糊匹配近海（最长优先）
-    for city, coords in sorted(_COASTAL_SEA_COORDS.items(), key=lambda x: -len(x[0])):
-        if city in location or location in city:
-            return coords
-    # 4) 模糊匹配全球海域（最长优先）
-    for sea, coords in sorted(_GLOBAL_SEA_COORDS.items(), key=lambda x: -len(x[0])):
-        if sea in location or location in sea:
-            return coords
+    # 保持近海优先、名称最长优先的模糊匹配顺序。
+    for coords_table in (_COASTAL_SEA_COORDS, _GLOBAL_SEA_COORDS):
+        match = _match_location(location, coords_table)
+        if match is not None:
+            return match
 
     # 5) 兜底：城市坐标 → 最近海域
-    city = _CITY_COORDS.get(location)
-    if city is None:
-        for k, v in sorted(_CITY_COORDS.items(), key=lambda x: -len(x[0])):
-            if k in location or location in k:
-                city = v
-                break
+    city = _CITY_COORDS.get(location) or _match_location(location, _CITY_COORDS)
     if city:
         name, lon, lat = _nearest_sea_coords(city[0], city[1])
         logger.info(f"「{location}」→ 最近海域「{name}」({lon}, {lat})")
@@ -941,6 +941,26 @@ def _build_return_text(location: str, time_text: str, scenario: str, page_data: 
     )
 
 
+async def _capture_query_result(url: str, params: dict, no_video: bool) -> tuple[dict, bytes, bool]:
+    """按输出模式获取数据或媒体，统一浏览器等待条件。"""
+    if no_video:
+        page_data = await fetch_data_only(
+            url=url, wait_selector="canvas", wait_function=_EARTH_LOADING_WAIT,
+        )
+        return page_data, b"", False
+
+    page_data: dict = {}
+    capture_options = {
+        "url": url, "width": 1920, "height": 1080, "wait_until": "networkidle",
+        "timeout": 60000, "wait_selector": "canvas", "wait_function": _EARTH_LOADING_WAIT,
+        "post_wait_ms": 5000, "hard_wait": True, "ready_timeout": 30000,
+        "page_data_out": page_data,
+    }
+    if params.get("anim_state") == "off":
+        return page_data, await screenshot(**capture_options), False
+    return page_data, await record_video(duration=3, **capture_options), True
+
+
 async def _execute_single_query(
     scenario: str,
     location: str,
@@ -980,46 +1000,59 @@ async def _execute_single_query(
 
     url = _build_earth_url(params, resolved_lon, resolved_lat, time)
 
-    if no_video:
-        page_data = await fetch_data_only(
-            url=url, wait_selector="canvas",
-            wait_function=_EARTH_LOADING_WAIT,
-        )
-        time_text = _format_time_text(time)
-        text = _build_return_text(location, time_text, scenario, page_data)
-        if from_global_sea:
-            text += f"（此为{location.strip()}监测点数据）"
-        return text, b"", False
-
-    page_data: dict = {}
-    vw, vh = 1920, 1080
-
-    if params.get("anim_state") == "off":
-        image_bytes = await screenshot(
-            url=url, width=vw, height=vh, wait_until="networkidle",
-            timeout=60000, wait_selector="canvas",
-            wait_function=_EARTH_LOADING_WAIT,
-            post_wait_ms=5000, hard_wait=True, ready_timeout=30000,
-            page_data_out=page_data,
-        )
-        time_text = _format_time_text(time)
-        text = _build_return_text(location, time_text, scenario, page_data)
-        if from_global_sea:
-            text += f"（此为{location.strip()}监测点数据）"
-        return text, image_bytes, False
-    video_bytes = await record_video(
-        url=url, duration=3, width=vw, height=vh,
-        wait_until="networkidle", timeout=60000,
-        wait_selector="canvas",
-        wait_function=_EARTH_LOADING_WAIT,
-        post_wait_ms=5000, hard_wait=True, ready_timeout=30000,
-        page_data_out=page_data,
-    )
-    time_text = _format_time_text(time)
-    text = _build_return_text(location, time_text, scenario, page_data)
+    page_data, media, is_video = await _capture_query_result(url, params, no_video)
+    text = _build_return_text(location, _format_time_text(time), scenario, page_data)
     if from_global_sea:
         text += f"（此为{location.strip()}监测点数据）"
-    return text, video_bytes, True
+    return text, media, is_video
+
+
+def _build_batch_artifact(raw_parts: list[tuple[bytes, bool]]) -> UniMessage | None:
+    artifact: UniMessage | None = None
+    if raw_parts:
+        first_bytes, first_is_video = raw_parts[0]
+        artifact = (
+            UniMessage.video(raw=first_bytes) if first_is_video
+            else UniMessage.image(raw=first_bytes)
+        )
+        for raw, is_video in raw_parts[1:]:
+            if is_video:
+                artifact.video(raw=raw)
+            else:
+                artifact.image(raw=raw)
+
+    return artifact
+
+
+async def _execute_query_batch(queries: list[dict], time: str, no_video: bool) -> tuple[str, UniMessage | None]:
+    if len(queries) > 3:
+        return f"最多支持同时查询 3 个地点，当前传入了 {len(queries)} 个。请精简后重试。", None
+    if len(queries) == 0:
+        return "查询列表为空，请提供至少一个地点。", None
+
+    texts: list[str] = []
+    raw_parts: list[tuple[bytes, bool]] = []
+
+    for q in queries:
+        q_scenario = q.get("scenario", "")
+        q_location = q.get("location", "")
+        try:
+            t, raw, is_video = await _execute_single_query(
+                q_scenario, q_location, time, no_video=no_video,
+            )
+            texts.append(t)
+            if raw:
+                raw_parts.append((raw, is_video))
+        except Exception as e:
+            logger.error(f"ens_normal 多地点失败 [{q_location}{q_scenario}]: {e}")
+            texts.append(f"[{q_location}{q_scenario}获取失败: {e}]")
+
+    artifact = _build_batch_artifact(raw_parts)
+
+    summary = "\n\n".join(texts)
+    summary += "\n\n——以上为本次多地点查询的全部结果。"
+    return summary, artifact
+
 
 
 async def run_ens_normal(
@@ -1034,53 +1067,15 @@ async def run_ens_normal(
 ) -> tuple[str, UniMessage | None]:
     """普通模式核心逻辑。"""
 
-    # ── 多地点分支 ──
     if queries is not None:
-        if len(queries) > 3:
-            return f"最多支持同时查询 3 个地点，当前传入了 {len(queries)} 个。请精简后重试。", None
-        if len(queries) == 0:
-            return "查询列表为空，请提供至少一个地点。", None
-
-        texts: list[str] = []
-        raw_parts: list[tuple[bytes, bool]] = []
-
-        for q in queries:
-            q_scenario = q.get("scenario", "")
-            q_location = q.get("location", "")
-            try:
-                t, raw, is_video = await _execute_single_query(
-                    q_scenario, q_location, time, no_video=no_video,
-                )
-                texts.append(t)
-                if not no_video:
-                    raw_parts.append((raw, is_video))
-            except Exception as e:
-                logger.error(f"ens_normal 多地点失败 [{q_location}{q_scenario}]: {e}")
-                texts.append(f"[{q_location}{q_scenario}获取失败: {e}]")
-
-        artifact: UniMessage | None = None
-        if not no_video and raw_parts:
-            first_bytes, first_is_video = raw_parts[0]
-            artifact = (
-                UniMessage.video(raw=first_bytes) if first_is_video
-                else UniMessage.image(raw=first_bytes)
-            )
-            for raw, is_video in raw_parts[1:]:
-                if is_video:
-                    artifact.video(raw=raw)
-                else:
-                    artifact.image(raw=raw)
-
-        summary = "\n\n".join(texts)
-        summary += "\n\n——以上为本次多地点查询的全部结果。"
-        return summary, artifact
+        return await _execute_query_batch(queries, time, no_video)
 
     # ── 单地点分支 ──
     try:
         text, raw_bytes, is_video = await _execute_single_query(
             scenario, location, time, lon, lat, zoom, no_video=no_video,
         )
-        if no_video:
+        if no_video and not raw_bytes:
             return text, None
         artifact = UniMessage.video(raw=raw_bytes) if is_video else UniMessage.image(raw=raw_bytes)
         return text, artifact

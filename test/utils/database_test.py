@@ -559,7 +559,7 @@ async def test_insert_images_records_memory_file_attachment(monkeypatch, memory_
 
     paths = await database.insert_images(1000, 7, 123, [b"image-bytes"])
 
-    expected_path = Path("cache/sandbox/memory/group-123/images/1000_0.jpg")
+    expected_path = Path("cache/sandbox/memory/group-123/images/1000-m1_0.jpg")
     assert paths == [str(expected_path)]
     assert (tmp_path / expected_path).read_bytes() == b"image-bytes"
 
@@ -568,7 +568,7 @@ async def test_insert_images_records_memory_file_attachment(monkeypatch, memory_
     attachment = attachments[0]
     assert attachment.kind == "image"
     assert attachment.physical_path == str(expected_path)
-    assert attachment.virtual_path == "/memory/group-123/images/1000_0.jpg"
+    assert attachment.virtual_path == "/memory/group-123/images/1000-m1_0.jpg"
     assert attachment.file_size == len(b"image-bytes")
     refreshed = (await _select_scope_messages(database, user_id=7, group_id=123))[0]
     assert refreshed.model_content == ""
@@ -593,7 +593,7 @@ async def test_concurrent_image_cache_writes_share_one_attachment_row(monkeypatc
     with Session(engine) as session:
         rows = session.exec(select(MessageAttachment)).all()
     assert len(rows) == 1
-    assert rows[0].physical_path == "cache/sandbox/memory/group-123/images/1000_0.jpg"
+    assert rows[0].physical_path == "cache/sandbox/memory/group-123/images/1000-m1_0.jpg"
 
 
 @pytest.mark.asyncio

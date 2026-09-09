@@ -8,6 +8,7 @@ from nonebot_plugin_alconna import Target, UniMessage
 
 from utils.agents import FrontierCognitive
 from utils.agents.message_envelope import build_agent_message_payload, serialize_agent_payload
+from utils.agents.runtime_gateway import AgentRuntimeRequest, FrontierAgentRuntime
 from utils.configs import EnvConfig
 from utils.message import outgoing_message_content, sanitize_outgoing_text
 
@@ -33,6 +34,19 @@ async def _send_final_text(metadata, target: Target, final_text: str, mention_us
         )
         return
     await UniMessage.text(final_text).send(target=target)
+
+
+def _require_agent_success(result) -> None:
+    if not isinstance(result, dict) or "response" not in result:
+        raise RuntimeError("Agent 自动任务没有返回有效响应")
+    if result.get("error") or result.get("status") in {"failed", "timeout", "cancelled"}:
+        message = (
+            f"Agent 自动任务执行失败: {result.get('error_code') or result.get('error') or result['status']}"
+            f" (run_id={result.get('run_id', 'unknown')})"
+        )
+        if result.get("status") == "timeout":
+            raise TimeoutError(message)
+        raise RuntimeError(message)
 
 
 async def run_agent_task(job_id: str = "", **kwargs) -> TaskRunResult:
@@ -67,16 +81,20 @@ async def run_agent_task(job_id: str = "", **kwargs) -> TaskRunResult:
     ]
 
     cognitive = FrontierCognitive()
-    result = await cognitive.chat_agent(
-        messages,
-        owner_user_id,
-        f"ScheduledTask:{job_id}",
-        EnvConfig.AGENT_CAPABILITY,
+    result = await FrontierAgentRuntime(cognitive).run(AgentRuntimeRequest(
+        session_id=f"scheduled-task:{job_id}",
+        prompt=metadata.prompt,
+        messages=tuple(messages),
+        user_id=owner_user_id,
+        user_name=f"ScheduledTask:{job_id}",
+        capability=EnvConfig.AGENT_CAPABILITY,
         group_id=group_id,
-        thread_id_override=f"scheduled-task:{job_id}",
-    )
-    if not isinstance(result, dict) or "response" not in result:
-        raise RuntimeError("Agent 自动任务没有返回有效响应")
+        access_profile="frontier",
+        enable_acp_subagents=True,
+    ))
+    _require_agent_success(result)
+    if result.get("should_reply") is False:
+        return TaskRunResult(output_summary="Agent chose not to reply")
 
     messages_sent = 0
     if metadata.delivery_mode != "none":

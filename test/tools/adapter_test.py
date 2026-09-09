@@ -13,8 +13,8 @@ async def test_send_image_url(load_tool_module):
     adapter = load_tool_module("adapter")
     text, artifact = await adapter.send_image("https://example.com/a.png")
     assert text == "构建了一个图片消息"
-    assert artifact.content["type"] == "image"
-    assert artifact.content["url"] == "https://example.com/a.png"
+    assert artifact[0].type == "image"
+    assert artifact[0].url == "https://example.com/a.png"
 
 
 @pytest.mark.asyncio
@@ -25,9 +25,9 @@ async def test_send_image_local(load_tool_module):
         tmp = f.name
     try:
         _, artifact = await adapter.send_image(tmp)
-        assert artifact.content["type"] == "image"
-        assert artifact.content["path"] == tmp
-        assert artifact.content["url"] is None
+        assert artifact[0].type == "image"
+        assert str(artifact[0].path) == tmp
+        assert artifact[0].url is None
     finally:
         Path(tmp).unlink(missing_ok=True)
 
@@ -40,8 +40,8 @@ async def test_send_audio_url(load_tool_module):
     adapter = load_tool_module("adapter")
     text, artifact = await adapter.send_audio("https://example.com/a.mp3")
     assert text == "构建了一个音频消息"
-    assert artifact.content["type"] == "audio"
-    assert artifact.content["url"] == "https://example.com/a.mp3"
+    assert artifact[0].type == "audio"
+    assert artifact[0].url == "https://example.com/a.mp3"
 
 
 @pytest.mark.asyncio
@@ -51,8 +51,8 @@ async def test_send_audio_local(load_tool_module):
         tmp = f.name
     try:
         _, artifact = await adapter.send_audio(tmp)
-        assert artifact.content["type"] == "audio"
-        assert artifact.content["path"] == tmp
+        assert artifact[0].type == "audio"
+        assert str(artifact[0].path) == tmp
     finally:
         Path(tmp).unlink(missing_ok=True)
 
@@ -65,8 +65,8 @@ async def test_send_voice_url(load_tool_module):
     adapter = load_tool_module("adapter")
     text, artifact = await adapter.send_voice("https://example.com/a.wav")
     assert text == "构建了一个语音消息"
-    assert artifact.content["type"] == "voice"
-    assert artifact.content["url"] == "https://example.com/a.wav"
+    assert artifact[0].type == "voice"
+    assert artifact[0].url == "https://example.com/a.wav"
 
 
 @pytest.mark.asyncio
@@ -76,8 +76,8 @@ async def test_send_voice_local(load_tool_module):
         tmp = f.name
     try:
         _, artifact = await adapter.send_voice(tmp)
-        assert artifact.content["type"] == "voice"
-        assert artifact.content["path"] == tmp
+        assert artifact[0].type == "voice"
+        assert str(artifact[0].path) == tmp
     finally:
         Path(tmp).unlink(missing_ok=True)
 
@@ -90,8 +90,8 @@ async def test_send_video_url(load_tool_module):
     adapter = load_tool_module("adapter")
     text, artifact = await adapter.send_video("https://example.com/a.mp4")
     assert text == "构建了一个视频消息"
-    assert artifact.content["type"] == "video"
-    assert artifact.content["url"] == "https://example.com/a.mp4"
+    assert artifact[0].type == "video"
+    assert artifact[0].url == "https://example.com/a.mp4"
 
 
 @pytest.mark.asyncio
@@ -101,8 +101,8 @@ async def test_send_video_local(load_tool_module):
         tmp = f.name
     try:
         _, artifact = await adapter.send_video(tmp)
-        assert artifact.content["type"] == "video"
-        assert artifact.content["path"] == tmp
+        assert artifact[0].type == "video"
+        assert str(artifact[0].path) == tmp
     finally:
         Path(tmp).unlink(missing_ok=True)
 
@@ -115,8 +115,8 @@ async def test_send_emoji(load_tool_module):
     adapter = load_tool_module("adapter")
     text, artifact = await adapter.send_emoji("123")
     assert text == "构建了一个表情消息"
-    assert artifact.content["type"] == "emoji"
-    assert artifact.content["id"] == "123"
+    assert artifact[0].type == "emoji"
+    assert artifact[0].id == "123"
 
 
 # ── 文件 ──────────────────────────────────────────────────────────────────────
@@ -275,8 +275,8 @@ async def test_send_image_resolves_workspace_path(load_tool_module, tmp_path):
 
     _, artifact = await adapter.send_image("/photo.png", config=_ws_config(str(tmp_path)))
 
-    assert artifact.content["type"] == "image"
-    assert artifact.content["path"] == str(img)
+    assert artifact[0].type == "image"
+    assert artifact[0].path == img
 
 
 @pytest.mark.asyncio

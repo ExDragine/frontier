@@ -120,31 +120,28 @@ def test_mcp_get_tools_skips_failed_server(load_tool_module, monkeypatch, caplog
         encoding="utf-8",
     )
 
-    class FakeMultiServerMCPClient:
-        def __init__(self, _config):
-            pass
-
-    client_module = types.ModuleType("langchain_mcp_adapters.client")
-    client_module.__dict__["MultiServerMCPClient"] = FakeMultiServerMCPClient
-    monkeypatch.setitem(sys.modules, "langchain_mcp_adapters.client", client_module)
-    mod = load_tool_module("mcp_client")
+    calls = []
 
     class DummyClient:
-        def __init__(self):
-            self.calls = []
+        def __init__(self, entry):
+            self.url = entry["url"]
 
-        async def get_tools(self, *, server_name):
-            self.calls.append(server_name)
-            if server_name == "broken":
+        async def list_tools(self):
+            calls.append(self.url)
+            if "broken" in self.url:
                 raise RuntimeError("connection closed")
             return ["a", "b"]
 
-    client = DummyClient()
-    monkeypatch.setattr(mod, "client", client)
+    adapter_module = types.ModuleType("utils.mcp")
+    adapter_module.__dict__["build_mcp_adapter"] = DummyClient
+    monkeypatch.setitem(sys.modules, "utils.mcp", adapter_module)
+    mod = load_tool_module("mcp_client")
     tools = mod.mcp_get_tools()
 
     assert tools == ["a", "b"]
-    assert client.calls == ["healthy", "broken"]
+    assert calls == ["https://healthy.example/mcp", "https://broken.example/mcp"]
+    assert mod.mcp_get_tools() is tools
+    assert len(calls) == 2
     assert "MCP 服务 'broken' 加载失败，已跳过: RuntimeError: connection closed" in caplog.text
 
 
@@ -164,7 +161,7 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
     langchain_core_tools = sys.modules.get("langchain_core.tools")
     if langchain_core_tools is None:
         langchain_core_tools = types.ModuleType("langchain_core.tools")
-        sys.modules["langchain_core.tools"] = langchain_core_tools
+        monkeypatch.setitem(sys.modules, "langchain_core.tools", langchain_core_tools)
     monkeypatch.setattr(langchain_core_tools, "BaseTool", FakeBaseTool, raising=False)
 
     package_name = "test_tools_grouping_pkg"

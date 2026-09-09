@@ -10,7 +10,7 @@ def test_run_sh_sets_default_hf_endpoint_before_startup_work():
     export_line = 'export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"'
 
     assert export_line in content
-    assert content.index(export_line) < content.index("uv sync")
+    assert content.index(export_line) < content.index("uv run nb run")
 
 
 def test_run_ps1_sets_default_hf_endpoint_without_overwriting_existing_value():
@@ -22,4 +22,4 @@ def test_run_ps1_sets_default_hf_endpoint_without_overwriting_existing_value():
 
     assert guard_line in content
     assert assignment_line in content
-    assert content.index(guard_line) < content.index("uv sync")
+    assert content.index(guard_line) < content.index("uv run nb run")

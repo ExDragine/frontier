@@ -26,7 +26,7 @@ from langchain_quickjs import CodeInterpreterMiddleware
 from langgraph.types import Command
 from nonebot import logger
 
-from tools import agent_tools
+import tools as _tool_registry
 from utils.agent_context import FrontierRuntimeContext
 from utils.configs import EnvConfig
 from utils.harness_profiles import register_frontier_harness_profiles
@@ -41,6 +41,7 @@ from utils.llm_factory import (
 from utils.media import inline_media_bytes, media_block_kind
 
 from .capture import detect_browser_capture_intent
+from .execution import current_run_id, managed_agent_turn
 from .inputs import filter_messages_for_model_capabilities
 from .progress import (
     ProgressEvent,
@@ -243,13 +244,41 @@ class SilentReplyMiddleware(AgentMiddleware):
         return None
 
 
+class _LazyToolRegistry:
+    def __getattr__(self, name):
+        return getattr(_tool_registry.agent_tools, name)
+
+
+agent_tools = _LazyToolRegistry()
+
+
 class FrontierCognitive:
     def __init__(self):
+        self._component_revision = None
+
+    def __getattr__(self, name):
+        if name in {"tools", "ptc_tools", "research_subagent", "document_subagent"} and "_component_revision" in self.__dict__:
+            self._build_components()
+            return self.__dict__[name]
+        raise AttributeError(name)
+
+    def _build_components(self):
         self.tools = _stable_named_items(agent_tools.direct_tools)
         self.ptc_tools = _stable_named_items(agent_tools.ptc_tools)
         research_tools = _stable_named_items(agent_tools.research_tools)
         self.research_subagent = build_research_subagent(research_tools) if research_tools else None
         self.document_subagent = build_document_subagent()
+        self._component_revision = EnvConfig.REVISION
+
+    async def _prepare_components(self):
+        if "_component_revision" not in self.__dict__:
+            return  # Explicitly injected components, used by isolated callers/tests.
+        if self._component_revision == EnvConfig.REVISION:
+            return
+        initialize = getattr(agent_tools, "initialize", None)
+        if initialize is not None:
+            await initialize()
+        self._build_components()
 
     @staticmethod
     def load_system_prompt(
@@ -269,6 +298,10 @@ class FrontierCognitive:
         for message in response_messages:
             if getattr(message, "type", None) == "tool" and getattr(message, "artifact", None) is not None:
                 tool_name = getattr(message, "name", "unknown")
+                from utils.alconna import UniMessage
+
+                if not isinstance(message.artifact, UniMessage):
+                    continue
                 uni_messages.append(message.artifact)
                 logger.info(f"📤 提取 UniMessage: {tool_name} - 类型: {type(message.artifact)}")
 
@@ -288,6 +321,7 @@ class FrontierCognitive:
         logger.info(f"📨 总共提取到 {len(uni_messages)} 个 UniMessage")
         return uni_messages
 
+    @managed_agent_turn
     async def chat_agent(  # noqa: C901
         self,
         messages,
@@ -306,6 +340,14 @@ class FrontierCognitive:
         enable_acp_subagents: bool = True,
         allow_silent_reply: bool = False,
     ):
+        allowed_capture_tools = (
+            await detect_browser_capture_intent(user_text)
+            if access_profile == "frontier"
+            else set()
+        )
+        await self._prepare_components()
+        # Keep construction synchronous until the graph is ready: a Dashboard reload
+        # may run during the awaits above, but cannot split model/capability selection.
         workspace_key = conversation_workspace_key(user_id, group_id)
         uses_responses_api = provider_uses_responses_api(
             EnvConfig.ADVAN_MODEL,
@@ -314,7 +356,7 @@ class FrontierCognitive:
         model_kwargs: dict = {
             "model": EnvConfig.ADVAN_MODEL,
             "streaming": False,
-            "max_retries": 2,
+            "max_retries": 0,
             "timeout": EnvConfig.AGENT_LLM_TIMEOUT_SECONDS,
             "provider": EnvConfig.ADVAN_MODEL_PROVIDER,
         }
@@ -353,11 +395,6 @@ class FrontierCognitive:
             effective_tools = _stable_named_items([*self.tools, *always_available])
             if allow_silent_reply:
                 effective_tools = _stable_named_items([*effective_tools, skip_reply])
-        allowed_capture_tools = (
-            await detect_browser_capture_intent(user_text)
-            if access_profile == "frontier"
-            else set()
-        )
         if allowed_capture_tools:
             for restricted_tool in restricted_tools:
                 if (
@@ -406,8 +443,9 @@ class FrontierCognitive:
                 detector=r"sk-[a-zA-Z0-9]{32}",
                 strategy="mask",
             ),
-            ToolRetryMiddleware(),
-            ModelRetryMiddleware(),
+            # Platform writes must never be automatically repeated after an ambiguous failure.
+            ToolRetryMiddleware(tools=ptc_tools, max_retries=1),
+            ModelRetryMiddleware(on_failure="error"),
             FilesystemFileSearchMiddleware(root_path=workspace_dir),
             CodeInterpreterMiddleware(ptc=ptc_tools),
             MemoryMiddleware(
@@ -451,6 +489,7 @@ class FrontierCognitive:
         start_time = time.time()
         logger.info(f"Agent烧烤中~🍖 思考等级: {capability} 用户: {user_name} (ID: {user_id})")
         config: RunnableConfig = {
+            "metadata": {"frontier_run_id": current_run_id.get()},
             "configurable": {
                 "thread_id": thread_id,
                 "user_id": user_id,
@@ -469,41 +508,26 @@ class FrontierCognitive:
             group_member_role=group_member_role,
             workspace_dir=workspace_dir,
         )
+        input_data: Any = {
+            "messages": messages,
+            "user_id": user_id,
+            "group_id": group_id,
+            "image_inputs": image_inputs or [],
+            "audio_inputs": audio_inputs or [],
+            "video_inputs": video_inputs or [],
+            "suppress_reply": False,
+        }
+        stream = await agent.astream_events(
+            input_data,
+            config=config,
+            context=runtime_context,
+            version="v3",
+        )
+        progress_task = asyncio.create_task(collect_progress(stream, progress_reporter))
         try:
-            input_data: Any = {
-                "messages": messages,
-                "user_id": user_id,
-                "group_id": group_id,
-                "image_inputs": image_inputs or [],
-                "audio_inputs": audio_inputs or [],
-                "video_inputs": video_inputs or [],
-                "suppress_reply": False,
-            }
-            stream = await agent.astream_events(
-                input_data,
-                config=config,
-                context=runtime_context,
-                version="v3",
-            )
-            progress_task = asyncio.create_task(collect_progress(stream, progress_reporter))
-            try:
-                response = await stream.output()
-            finally:
-                await finish_progress_collection(progress_task)
-        except Exception as exc:
-            logger.error(f"❌ Agent执行出现意外错误 用户{user_id}: {type(exc).__name__}")
-            logger.exception("完整错误堆栈:")
-            await emit_progress(
-                progress_reporter,
-                ProgressEvent(type="done", message="Agent 执行失败", detail={"success": False}),
-            )
-            return {
-                "response": {"messages": [AIMessage("💥 服务暂时不可用，请稍后重试。")]},
-                "total_time": time.time() - start_time,
-                "uni_messages": [],
-                "error": str(exc),
-                "should_reply": True,
-            }
+            response = await stream.output()
+        finally:
+            await finish_progress_collection(progress_task)
 
         if response is None:
             response = {}

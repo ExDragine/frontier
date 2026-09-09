@@ -20,21 +20,23 @@ from utils.agents import (
     FrontierCognitive,
     ProgressEvent,
     ProgressReporter,
-    agent_thread_id,
     conversation_workspace_key,
     run_serialized,
 )
 from utils.agents.acp import acp_service
+from utils.agents.chat_context import build_chat_context
 from utils.agents.message_envelope import (
     build_agent_attachment_payload,
     build_agent_message_payload,
     serialize_agent_payload,
 )
 from utils.agents.message_envelope import content_for_persisted_images as _remove_attached_image_placeholders
+from utils.agents.runtime_gateway import AgentRuntimeRequest, FrontierAgentRuntime
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
-from utils.media import resolve_media, standard_media_block
+from utils.delivery import DeliveryResult
+from utils.media import resolve_media
 from utils.message import (
     cleanup_staged_message_files,
     download_media,
@@ -87,6 +89,7 @@ class AgentRequestContext:
     user_card: str | None = None
     reply_to: dict[str, object] | None = None
     direct_mention: bool = False
+    message_id: int | None = None
 
 
 def _agent_workspace_key(user_id: str, group_id: int | None) -> str:
@@ -106,7 +109,17 @@ async def _collect_incoming_assets(
     coroutines = [media_coro, files_coro]
     if quote_coro is not None:
         coroutines.append(quote_coro)
-    results = await asyncio.gather(*coroutines, return_exceptions=True)
+    tasks = [asyncio.ensure_future(coroutine) for coroutine in coroutines]
+    try:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    except BaseException:
+        # A completed files task can outlive cancellation of the other downloads.
+        # Settle every task, including any in-flight disk write, before cleanup.
+        for task in tasks:
+            task.cancel()
+        settled = await asyncio.gather(*tasks, return_exceptions=True)
+        cleanup_staged_message_files(settled[1] if isinstance(settled[1], list) else [])
+        raise
     staged_files = results[1] if isinstance(results[1], list) else []
     if phase_error := next((result for result in results if isinstance(result, BaseException)), None):
         cleanup_staged_message_files(staged_files)
@@ -180,103 +193,50 @@ async def _process_agent_request(  # noqa: C901
     context: AgentRequestContext,
     history_messages: list[dict[str, Any]] | None = None,
 ) -> bool:
-    messages = list(history_messages or [])
-    combined_text = context.text.strip()
-    remaining_bytes = EnvConfig.MAX_INLINE_MEDIA_BYTES
-    remaining_images = EnvConfig.MAX_INLINE_IMAGES
-
-    def take_inline(items: list[bytes], kind: str) -> tuple[list[bytes], int]:
-        nonlocal remaining_bytes, remaining_images
-        selected: list[bytes] = []
-        for item in items:
-            if kind == "image" and remaining_images <= 0:
-                continue
-            if len(item) > remaining_bytes:
-                continue
-            selected.append(item)
-            remaining_bytes -= len(item)
-            if kind == "image":
-                remaining_images -= 1
-        return selected, len(items) - len(selected)
-
-    inline_quoted_images, omitted_quoted_images = take_inline(context.quoted_images, "image")
-    inline_recent_images, omitted_recent_images = take_inline(context.recent_images, "image")
-    inline_images, omitted_images = take_inline(context.images, "image")
-    inline_audio, omitted_audio = take_inline(context.audio, "audio")
-    inline_videos, omitted_videos = take_inline(context.videos, "video")
-    current_content: list[dict[str, Any]] = [
-        {
-            "type": "text",
-            "text": serialize_agent_payload(
-                build_agent_message_payload(
-                    timestamp_ms=context.msg_time,
-                    msg_id=context.event_id,
-                    user_id=context.user_id,
-                    group_id=context.group_id,
-                    user_name=context.user_name,
-                    user_nickname=context.user_nickname,
-                    user_card=context.user_card,
-                    role="user",
-                    content=combined_text,
-                    attachments=context.attachments,
-                    reply_to=context.reply_to,
-                    bot_user_id=getattr(context.event, "self_id", None),
-                    directly_mentions_bot=context.direct_mention,
-                )
-            ),
-        }
-    ]
-    if inline_quoted_images:
-        current_content.append({"type": "text", "text": "以下图片来自上面的引用消息："})
-        current_content.extend(standard_media_block(resolve_media(image, "image")) for image in inline_quoted_images)
-    if inline_recent_images:
-        current_content.append({"type": "text", "text": "以下图片来自用户刚才发送的历史消息："})
-        current_content.extend(standard_media_block(resolve_media(image, "image")) for image in inline_recent_images)
-    if inline_images:
-        current_content.append({"type": "text", "text": "以下图片来自当前消息："})
-        current_content.extend(standard_media_block(resolve_media(image, "image")) for image in inline_images)
-    if inline_audio:
-        current_content.append({"type": "text", "text": "以下语音来自当前消息："})
-        current_content.extend(standard_media_block(resolve_media(audio, "audio")) for audio in inline_audio)
-    if inline_videos:
-        current_content.append({"type": "text", "text": "以下视频来自当前消息："})
-        current_content.extend(standard_media_block(resolve_media(video, "video")) for video in inline_videos)
-    omitted_labels = [
-        f"引用图片 {omitted_quoted_images} 张" if omitted_quoted_images else "",
-        f"近期图片 {omitted_recent_images} 张" if omitted_recent_images else "",
-        f"当前图片 {omitted_images} 张" if omitted_images else "",
-        f"语音 {omitted_audio} 条" if omitted_audio else "",
-        f"视频 {omitted_videos} 条" if omitted_videos else "",
-    ]
-    omitted_labels = [label for label in omitted_labels if label]
-    if omitted_labels:
-        current_content.append(
-            {
-                "type": "text",
-                "text": f"[以下媒体因上下文预算未直接内联：{'、'.join(omitted_labels)}；可使用上方工作区路径读取]",
-            }
-        )
-    messages.append(
-        {
-            "role": "user",
-            "content": current_content[0]["text"] if len(current_content) == 1 else current_content,
-        }
+    messages = build_chat_context(
+        payload=build_agent_message_payload(
+            timestamp_ms=context.msg_time,
+            msg_id=context.event_id,
+            user_id=context.user_id,
+            group_id=context.group_id,
+            user_name=context.user_name,
+            user_nickname=context.user_nickname,
+            user_card=context.user_card,
+            role="user",
+            content=context.text.strip(),
+            attachments=context.attachments,
+            reply_to=context.reply_to,
+            bot_user_id=getattr(context.event, "self_id", None),
+            directly_mentions_bot=context.direct_mention,
+        ),
+        history=list(history_messages or []),
+        images=context.images,
+        audio=context.audio,
+        videos=context.videos,
+        quoted_images=context.quoted_images,
+        recent_images=context.recent_images,
+        max_bytes=EnvConfig.MAX_INLINE_MEDIA_BYTES,
+        max_images=EnvConfig.MAX_INLINE_IMAGES,
     )
     capability = EnvConfig.AGENT_CAPABILITY
 
-    result = await f_cognitive.chat_agent(
-        messages,
-        context.user_id,
-        context.user_name,
-        capability,
-        group_id=context.group_id,
-        image_inputs=context.quoted_images + context.recent_images + context.images,
-        audio_inputs=context.audio,
-        video_inputs=context.videos,
-        group_member_role=_group_member_role(context.event),
+    result = await FrontierAgentRuntime(cognitive=f_cognitive).run(
+        AgentRuntimeRequest(
+            messages=tuple(messages),
+            prompt=context.text,
+            user_id=context.user_id,
+            user_name=context.user_name,
+            capability=capability,
+            group_id=context.group_id,
+            image_inputs=tuple(context.images + context.quoted_images + context.recent_images),
+            audio_inputs=tuple(context.audio),
+            video_inputs=tuple(context.videos),
+            group_member_role=_group_member_role(context.event),
+            allow_silent_reply=_allows_silent_reply(context),
+            access_profile="frontier",
+            enable_acp_subagents=True,
+        ),
         progress_reporter=_chat_progress_reporter(context.group_id),
-        user_text=context.text,
-        allow_silent_reply=_allows_silent_reply(context),
     )
 
     if not isinstance(result, dict) or "response" not in result:
@@ -295,32 +255,78 @@ async def _process_agent_request(  # noqa: C901
     if result.get("error"):
         logger.warning("Agent returned error response: %s", result["error"])
 
-    artifacts: list[UniMessage] | None = result.get("uni_messages", [])
+    artifacts = result.get("uni_messages", [])
+    artifact_delivery = DeliveryResult()
     if artifacts:
-        logger.info(f"📤 发送 {len(artifacts)} 个媒体工件")
-        await send_artifacts(artifacts)
+        logger.info("📤 发送 %s 个媒体工件", len(artifacts))
+        artifact_delivery = await send_artifacts(artifacts)
+        if artifact_delivery.errors:
+            logger.warning("媒体工件未完整送达: %s", artifact_delivery.errors)
 
-    if response["messages"] and isinstance(response["messages"], list):
-        response_content = outgoing_message_content(response["messages"][-1])
-        sanitized_response = await sanitize_outgoing_text(response_content)
-        if sanitized_response != response_content:
-            response["messages"][-1] = AIMessage(content=sanitized_response)
-        await messages_db.insert(
-            time=int(time.time() * 1000),
-            msg_id=None,
-            # 私聊按对端 user_id 建立会话范围；群聊仍保留真实机器人发送者 ID。
-            user_id=int(context.user_id) if context.group_id is None else int(context.event.self_id),
-            sender_user_id=int(context.event.self_id),
-            group_id=context.group_id,
-            user_name="Assistant",
-            role="assistant",
-            content=outgoing_message_content(response["messages"][-1]),
-            bot_user_id=int(context.event.self_id),
+    response_messages = response.get("messages", [])
+    if not isinstance(response_messages, list) or not response_messages:
+        if not artifact_delivery.errors:
+            return artifact_delivery.sent > 0
+        response_messages = [AIMessage(content="")]
+    original_content = outgoing_message_content(response_messages[-1])
+    response_content = original_content
+    if artifact_delivery.errors:
+        response_content = f"部分附件发送失败，请稍后重试。\n\n{response_content}".strip()
+    sanitized_response = await sanitize_outgoing_text(response_content)
+    if sanitized_response != original_content:
+        response = {**response, "messages": [*response_messages[:-1], AIMessage(content=sanitized_response or "")]}
+    delivery = await send_messages(context.group_id, context.event_id, response)
+    if delivery.successful:
+        try:
+            await messages_db.insert(
+                time=int(time.time() * 1000),
+                msg_id=None,
+                # 私聊按对端 user_id 建立会话范围；群聊保留真实机器人发送者 ID。
+                user_id=int(context.user_id) if context.group_id is None else int(context.event.self_id),
+                sender_user_id=int(context.event.self_id),
+                group_id=context.group_id,
+                user_name="Assistant",
+                role="assistant",
+                content=outgoing_message_content(response["messages"][-1]),
+                bot_user_id=int(context.event.self_id),
+            )
+        except Exception as exc:
+            # Delivery has happened: never retry the send because persistence failed.
+            logger.exception("回复已送达但历史记录写入失败: %s", type(exc).__name__)
+    elif delivery.errors:
+        logger.warning("回复未送达，未记入已回复历史: %s", delivery.errors)
+    return delivery.sent > 0 or artifact_delivery.sent > 0
+
+
+async def _process_queued_agent_request(context: AgentRequestContext, history_messages: list[dict[str, Any]]) -> None:
+    started = False
+
+    async def process() -> bool:
+        nonlocal started
+        started = True
+        return await _process_agent_request(context, history_messages)
+
+    try:
+        # Delivery includes history persistence; cognitive has a separate workspace
+        # execution lock shared with scheduled tasks and other entry points.
+        delivery_key = f"delivery:{_agent_workspace_key(context.user_id, context.group_id)}"
+        await run_serialized(
+            delivery_key,
+            process(),
+            timeout=EnvConfig.AGENT_JOB_TIMEOUT_SECONDS,
         )
-        await send_messages(context.group_id, context.event_id, response)
-    else:
-        await UniMessage.text(response["messages"]).send()
-    return True
+    except TimeoutError:
+        logger.warning("会话回复超时: group_id=%s user_id=%s started=%s", context.group_id, context.user_id, started)
+        notice = "本轮处理超时，请稍后重试。" if started else "等待处理超时，本轮请求尚未开始，请稍后重试。"
+        try:
+            async with asyncio.timeout(15):
+                delivery = await send_messages(
+                    context.group_id, context.event_id, {"messages": [AIMessage(content=notice)]}
+                )
+                if delivery.errors:
+                    logger.warning("会话超时提示未送达: %s", delivery.errors)
+        except Exception as exc:
+            logger.warning("会话超时提示发送失败: %s", type(exc).__name__)
 
 
 async def _run_agent_turn(
@@ -337,9 +343,8 @@ async def _run_agent_turn(
         try:
             await finalize_message_context(
                 time=context.msg_time,
-                reply_context_json=(
-                    serialize_agent_payload(context.reply_to) if context.reply_to else None
-                ),
+                **({"message_id": context.message_id} if context.message_id is not None else {}),
+                reply_context_json=(serialize_agent_payload(context.reply_to) if context.reply_to else None),
             )
         except Exception as exc:
             logger.warning("消息上下文定稿失败（不影响回复）: %s: %s", type(exc).__name__, exc)
@@ -380,11 +385,7 @@ async def _run_agent_turn(
         _ens_prefix.set("")
 
     try:
-        thread_id = agent_thread_id(context.user_id, context.group_id)
-        await run_serialized(
-            str(thread_id),
-            _process_agent_request(context, history_messages),
-        )
+        await _process_queued_agent_request(context, history_messages)
     finally:
         if context.group_id is not None and reaction_added:
             try:
@@ -516,7 +517,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     text = current_text.strip()
 
     # ── Phase 2: 存储消息文本与结构化元数据 + 快速网关检查 ──
-    await messages_db.insert(
+    inserted = await messages_db.insert(
         time=msg_time,
         msg_id=event_id,
         user_id=int(user_id),
@@ -534,8 +535,14 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         normalized_version=normalized_message.normalized_version,
         normalized_status=normalized_message.status,
     )
+    if inserted is not None and not inserted.inserted:
+        logger.info("忽略已处理的平台消息: group_id=%s message_seq=%s", group_id, event_id)
+        await common.finish()
+    message_id = inserted.message_id if inserted is not None else None
+    message_identity = {"message_id": message_id} if message_id is not None else {}
     if normalized_message.derived_messages:
         await messages_db.replace_derived_messages(
+            **({"parent_message_id": message_id} if message_id is not None else {}),
             parent_msg_time=msg_time,
             parent_msg_id=event_id,
             user_id=int(user_id),
@@ -563,6 +570,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         memory_dir=_agent_memory_dir(user_id, group_id),
         workspace_key=_agent_workspace_key(user_id, group_id),
         message_time=msg_time,
+        **message_identity,
         user_id=user_id,
         group_id=group_id,
     )
@@ -624,6 +632,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         try:
             persisted_attachments = await messages_db.insert_media(
                 msg_time=msg_time,
+                **message_identity,
                 msg_id=event_id,
                 user_id=int(user_id),
                 group_id=group_id,
@@ -635,6 +644,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         try:
             await messages_db.insert_images(
                 msg_time=msg_time,
+                **message_identity,
                 user_id=int(user_id),
                 group_id=group_id,
                 images=images,
@@ -654,6 +664,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             try:
                 await messages_db.insert_attachment(
                     msg_time=msg_time,
+                    **message_identity,
                     msg_id=event_id,
                     user_id=int(user_id),
                     group_id=group_id,
@@ -671,9 +682,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             else:
                 indexed_staged_paths.add(Path(staged_file.local_path))
     unindexed_staged_files = [
-        staged_file
-        for staged_file in staged_files
-        if Path(staged_file.local_path) not in indexed_staged_paths
+        staged_file for staged_file in staged_files if Path(staged_file.local_path) not in indexed_staged_paths
     ]
 
     try:
@@ -728,6 +737,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             # semantics stay identical when this event becomes history.
             reply_to=resolved_reply_payload,
             direct_mention=direct_mention,
+            message_id=message_id,
         )
         await _run_agent_turn(
             bot=bot,

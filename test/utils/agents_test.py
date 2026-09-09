@@ -10,6 +10,7 @@ from io import BytesIO
 from typing import Any, Literal, cast
 
 import pytest
+from langchain_core import exceptions as model_errors
 from PIL import Image
 
 from utils.agents import assistant as assistant_mod
@@ -197,14 +198,19 @@ def test_group_system_prompt_uses_durable_group_name(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_extract_uni_messages():
+    from utils.alconna import UniMessage
+
+    media = UniMessage.image(url="https://example.com/image.png")
     response = {
         "messages": [
             types.SimpleNamespace(type="tool", name="tool", artifact="payload"),
+            types.SimpleNamespace(type="tool", name="mcp", artifact={"structured_content": {"ok": True}}),
+            types.SimpleNamespace(type="tool", name="image", artifact=media),
             types.SimpleNamespace(type="ai", content="ok"),
         ]
     }
     result = await cognitive_mod.FrontierCognitive.extract_uni_messages(response)
-    assert result == ["payload"]
+    assert result == [media]
 
 
 @pytest.mark.asyncio
@@ -1135,7 +1141,8 @@ async def test_chat_agent_stabilizes_tool_order_and_keeps_gated_tools_at_tail(mo
 
 
 @pytest.mark.asyncio
-async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
+@pytest.mark.parametrize("reload_during_gate", [False, True])
+async def test_chat_agent_uses_consistent_model_config_and_timeout(monkeypatch, reload_during_gate):
 
     class DummyAgent:
         async def astream_events(self, payload, config=None, context=None, version=None):
@@ -1150,14 +1157,24 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
 
     captured = {}
 
+    async def capture_intent(_text):
+        await asyncio.sleep(0)
+        if reload_during_gate:
+            monkeypatch.setattr(cognitive_mod.EnvConfig, "ADVAN_MODEL", "updated-model")
+        return set()
+
+    def filter_messages(messages, model, **_kwargs):
+        captured["input_model"] = model
+        return messages
+
     def capturing_create_llm(**kwargs):
         captured.update(kwargs)
         return object()
 
     monkeypatch.setattr(cognitive_mod, "create_llm", capturing_create_llm)
-    monkeypatch.setattr(
-        cognitive_mod, "filter_messages_for_model_capabilities", lambda messages, *_args, **_kwargs: messages
-    )
+    monkeypatch.setattr(cognitive_mod, "filter_messages_for_model_capabilities", filter_messages)
+    monkeypatch.setattr(cognitive_mod, "detect_browser_capture_intent", capture_intent)
+    monkeypatch.setattr(cognitive_mod.EnvConfig, "ADVAN_MODEL", "initial-model")
     monkeypatch.setattr(cognitive_mod.EnvConfig, "AGENT_LLM_TIMEOUT_SECONDS", 1234, raising=False)
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
@@ -1171,6 +1188,8 @@ async def test_chat_agent_uses_configured_agent_llm_timeout(monkeypatch):
     )
 
     assert captured["timeout"] == 1234
+    assert captured["model"] == captured["input_model"]
+    assert captured["model"] == ("updated-model" if reload_during_gate else "initial-model")
 
 
 async def _run_chat_agent_with_web_search(
@@ -1823,14 +1842,28 @@ class TestChatAgentStreaming:
         assert collector_called[0][1] is reporter
 
     @pytest.mark.asyncio
-    async def test_error_path_returns_fallback_and_cancels_progress(self, monkeypatch):
+    @pytest.mark.parametrize(
+        ("exception_type", "expected"),
+        [
+            (RuntimeError, "服务暂时不可用"),
+            (model_errors.ModelTimeoutError, "请求超时"),
+            (model_errors.ModelRateLimitError, "请求过于频繁"),
+            (model_errors.ModelConnectionError, "无法连接"),
+            (model_errors.ModelAuthenticationError, "配置或访问权限异常"),
+            (model_errors.ModelPermissionDeniedError, "配置或访问权限异常"),
+            (model_errors.ModelNotFoundError, "配置或访问权限异常"),
+            (model_errors.ModelInvalidRequestError, "检查请求参数"),
+            (model_errors.ContextOverflowError, "拆分任务"),
+        ],
+    )
+    async def test_error_path_returns_fallback_and_cancels_progress(self, monkeypatch, exception_type, expected):
         """stream.output 抛出异常时，返回 fallback 响应并取消 progress_task。"""
         from unittest.mock import AsyncMock, MagicMock
 
         from utils.agents import cognitive as agents_mod
 
         mock_stream = MagicMock()
-        mock_stream.output = AsyncMock(side_effect=RuntimeError("agent failed"))
+        mock_stream.output = AsyncMock(side_effect=exception_type("private provider details"))
 
         mock_agent = MagicMock()
         mock_agent.astream_events = AsyncMock(return_value=mock_stream)
@@ -1855,4 +1888,6 @@ class TestChatAgentStreaming:
         assert "response" in result
         assert "uni_messages" in result
         assert "error" in result
-        assert "服务暂时不可用" in result["response"]["messages"][0].content
+        content = result["response"]["messages"][0].content
+        assert expected in content
+        assert "private provider details" not in content

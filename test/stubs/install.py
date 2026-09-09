@@ -4,6 +4,9 @@ import sys
 import types
 from typing import TypedDict
 
+# Keep the real, lightweight exception hierarchy for model failure tests.
+import langchain_core.exceptions  # noqa: F401
+
 from .dummies import (
     DummyCompositeBackend,
     DummyContext,
