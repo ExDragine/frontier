@@ -10,6 +10,7 @@ class DeliveryResult:
     attempted: int = 0
     sent: int = 0
     errors: tuple[str, ...] = ()
+    message_ids: tuple[int, ...] = ()
 
     @property
     def successful(self) -> bool:
@@ -20,4 +21,5 @@ class DeliveryResult:
             attempted=self.attempted + other.attempted,
             sent=self.sent + other.sent,
             errors=self.errors + other.errors,
+            message_ids=self.message_ids + other.message_ids,
         )

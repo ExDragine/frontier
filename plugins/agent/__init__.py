@@ -349,7 +349,8 @@ async def _execute_agent_request(  # noqa: C901
         try:
             inserted = await messages_db.insert(
                 time=delivered_at,
-                msg_id=None,
+                # A final Milky text/image send produces one platform message.
+                msg_id=delivery.message_ids[0] if delivery.message_ids else None,
                 # 私聊按对端 user_id 建立会话范围；群聊保留真实机器人发送者 ID。
                 user_id=int(context.user_id) if context.group_id is None else int(context.event.self_id),
                 sender_user_id=int(context.event.self_id),
@@ -358,6 +359,8 @@ async def _execute_agent_request(  # noqa: C901
                 role="assistant",
                 content=outgoing_message_content(response["messages"][-1]),
                 bot_user_id=int(context.event.self_id),
+                normalized_version=NORMALIZED_VERSION,
+                normalized_status="complete",
             )
         except Exception as exc:
             # Delivery has happened: never retry the send because persistence failed.

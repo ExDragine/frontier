@@ -27,7 +27,9 @@ QQ 消息先归一化、存储并判断回复网关，再下载当前图片、�
 
 `send_artifacts()` 只接收可发送的 `UniMessage`，结构化 MCP 字典不会进入发送路径。多媒体工件拆分后保留所有文本说明和原有顺序，串行发送，遇到失败停止剩余工件。
 
-`send_messages()` 和 `send_artifacts()` 返回 `DeliveryResult(attempted, sent, errors)`。文本失败可回退为图片；错误提示本身送达不代表原内容送达。只有最终回复成功送达才记入 assistant 历史，数据库写入失败不会重发已送达的内容。部分附件失败会出现在用户最终消息里；ACP 命令同样检查投递结果，并报告发送失败。
+`send_messages()` 和 `send_artifacts()` 返回 `DeliveryResult(attempted, sent, errors, message_ids)`；最终回复的 `message_ids` 从 Milky 发送回执提取。文本失败可回退为图片；错误提示本身送达不代表原内容送达。只有最终回复成功送达才记入 assistant 历史，数据库写入失败不会重发已送达的内容。部分附件失败会出现在用户最终消息里；ACP 命令同样检查投递结果，并报告发送失败。
+
+最终文本或 Markdown 渲染图的历史记录保存发送回执中的平台消息 ID，以及经过输出安全检查的原始文本。引用这类本地 assistant 记录时直接使用原文，不回源下载渲染图片；普通图片和回源引用仍由现有模型输入转换层校验、转换图片格式。旧记录若缺少发送回执 ID，无法可靠匹配到原文，保留平台回源行为。
 
 `asyncio.CancelledError` 始终向上传播，不被当作普通失败吞掉。
 

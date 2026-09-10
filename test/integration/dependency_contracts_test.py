@@ -6,6 +6,111 @@ import sys
 from pathlib import Path
 
 
+def test_quoted_images_reach_deepseek_as_supported_encoded_images(tmp_path):
+    script = r'''
+import asyncio
+import base64
+import sys
+from io import BytesIO
+from types import SimpleNamespace
+sys.path.insert(0, sys.argv[1])
+
+import nonebot
+nonebot.init(driver="nonebot.drivers.fastapi:Driver", log_level="WARNING")
+nonebot.require("nonebot_plugin_alconna")
+from PIL import Image
+from langchain_deepseek import ChatDeepSeek
+from langchain_openai import ChatOpenAI
+from utils import reply_context
+from utils.agents.chat_context import build_chat_context
+from utils.agents.inputs import filter_messages_for_model_capabilities
+from utils.configs import EnvConfig
+from utils.database import MessageDatabase
+from utils.message_normalizer import NORMALIZED_VERSION, segments_to_raw_json
+
+model_name = "deepseek-v4-flash-vision-exp"
+EnvConfig.ADVAN_MODEL = model_name
+EnvConfig.ADVAN_MODEL_CAPABILITIES = ["vision"]
+models = [
+    ChatDeepSeek(model=model_name, api_key="contract-key"),
+    ChatOpenAI(model=model_name, api_key="contract-key", base_url="https://api.deepseek.com",
+               use_responses_api=True),
+]
+database = MessageDatabase()
+event = SimpleNamespace(self_id="999", data=SimpleNamespace(message_scene="group", peer_id=123))
+
+async def run():
+    sequence = 0
+    for image_format in ("BMP", "TIFF", "AVIF", "PNG", "JPEG", "GIF", "WEBP"):
+        data = BytesIO()
+        Image.new("RGB", (4, 4), "red").save(data, format=image_format)
+        original = data.getvalue()
+        for source in ("cache", "remote", "forward"):
+            sequence += 1
+            segment = {"type": "image", "data": {"temp_url": "https://example.test/quoted"}}
+            segments = [segment] if source != "forward" else [
+                {"type": "forward", "data": {"forward_id": "forward-1"}}
+            ]
+            fetched = []
+            async def get(url):
+                fetched.append(url)
+                return SimpleNamespace(content=original)
+            async def get_message(**kwargs):
+                return SimpleNamespace(segments=segments)
+            async def get_forwarded_messages(**kwargs):
+                return [SimpleNamespace(segments=[segment], sender_name="Alice")]
+            reply_context._httpx_client = SimpleNamespace(get=get)
+            bot = SimpleNamespace(get_message=get_message, get_forwarded_messages=get_forwarded_messages)
+            stored = await database.insert(
+                time=sequence, msg_id=sequence, user_id=111, group_id=123, user_name="Alice",
+                role="user", content="[图片]", normalized_version=NORMALIZED_VERSION,
+                normalized_status="complete",
+                raw_segments_json=segments_to_raw_json(segments) if source != "forward" else None,
+            )
+            if source == "cache":
+                await database.insert_images(sequence, 111, 123, [original], message_id=stored.message_id)
+            payload, images = await reply_context.build_reply_context(bot, event, sequence, 123, database)
+            assert images == [original], (image_format, source)
+            assert bool(fetched) == (source != "cache")
+            messages = build_chat_context(
+                payload={"content": "解释引用图片", "reply_to": payload}, history=[],
+                images=[], audio=[], videos=[], quoted_images=images, recent_images=[],
+                max_bytes=1024 * 1024, max_images=4,
+            )
+            filtered = filter_messages_for_model_capabilities(messages, model_name, role="advanced")
+            for model in models:
+                request = model._get_request_payload(filtered)
+                outgoing = request.get("messages", request.get("input"))[-1]
+                assert outgoing["role"] == "user"
+                parts = outgoing["content"]
+                image = next(part for part in parts if part["type"] in {"image_url", "input_image"})
+                url = image["image_url"]
+                if isinstance(url, dict):
+                    url = url["url"]
+                header, encoded = url.split(",", 1)
+                assert header in {
+                    "data:image/jpeg;base64", "data:image/png;base64",
+                    "data:image/gif;base64", "data:image/webp;base64",
+                }, (image_format, source, header)
+                decoded = base64.b64decode(encoded)
+                with Image.open(BytesIO(decoded)) as actual:
+                    assert actual.format in {"JPEG", "PNG", "GIF", "WEBP"}
+                    actual.load()
+                if image_format in {"PNG", "JPEG", "GIF", "WEBP"}:
+                    assert decoded == original
+
+asyncio.run(run())
+'''
+    result = subprocess.run(  # noqa: S603 - fixed script and repository path
+        [sys.executable, "-c", script, str(Path(__file__).resolve().parents[2])],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_real_deep_agent_stream_and_media_artifact(tmp_path):
     script = r'''
 import asyncio

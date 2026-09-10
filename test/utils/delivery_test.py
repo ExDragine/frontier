@@ -1,11 +1,44 @@
 # ruff: noqa: S101
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
 from utils import message
 from utils.alconna import Image, Text, UniMessage
+from utils.delivery import DeliveryResult
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["text", "image", "fallback"])
+async def test_final_delivery_retains_milky_message_sequence(monkeypatch, mode):
+    async def render(_content):
+        return b"image"
+
+    async def text(content):
+        return content
+
+    async def send(self):
+        if mode == "fallback" and isinstance(self[-1], Text):
+            raise RuntimeError("text rejected")
+        return SimpleNamespace(msg_ids=[SimpleNamespace(message_seq=900, time=123)])
+
+    monkeypatch.setattr(UniMessage, "send", send)
+    monkeypatch.setattr(message, "markdown_to_text", text)
+    monkeypatch.setattr(message, "_markdown_to_image_with_retry", render)
+    monkeypatch.setattr(message, "_message_should_render_as_image", lambda _: mode == "image")
+
+    result = await message.send_messages(123, 899, {"messages": ["answer"]})
+
+    assert result.successful
+    assert result.message_ids == (900,)
+
+
+def test_combined_deliveries_preserve_message_sequences():
+    first = DeliveryResult(attempted=1, sent=1, message_ids=(900,))
+    second = DeliveryResult(attempted=1, sent=1, message_ids=(901,))
+    assert first.combine(second).message_ids == (900, 901)
 
 
 @pytest.mark.asyncio

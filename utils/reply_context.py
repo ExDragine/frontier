@@ -567,9 +567,17 @@ async def build_reply_context(  # noqa: C901
         select_kwargs["peer_user_id"] = private_peer_user_id
     quoted = await messages_db.select_by_msg_id(**select_kwargs)
     if quoted:
+        # Locally delivered replies store the source text, with no platform
+        # segments. A rendered Markdown image must not replace or accompany it.
+        stored_assistant_text = (
+            quoted.role == "assistant"
+            and str(resolve_message_sender_user_id(quoted)) == str(event.self_id)
+            and getattr(quoted, "raw_segments_json", None) is None
+            and getattr(quoted, "normalized_status", "legacy") == "complete"
+        )
         if _quoted_needs_normalization_rebuild(quoted):
             quoted = await _rebuild_quoted_normalization(bot, event, quoted, reply_seq, messages_db)
-        if not load_images:
+        if not load_images or stored_assistant_text:
             return (
                 _format_quote(
                     message_id=quoted.msg_id or reply_seq,

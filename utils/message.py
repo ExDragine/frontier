@@ -785,6 +785,16 @@ async def _markdown_to_image_with_retry(content: str) -> bytes | None:
     return None
 
 
+def _receipt_message_ids(receipt: object) -> tuple[int, ...]:
+    """Read Milky message sequences without letting an absent receipt retry a send."""
+    sequences = []
+    for result in getattr(receipt, "msg_ids", None) or []:
+        sequence = getattr(result, "message_seq", None)
+        if isinstance(sequence, int) and not isinstance(sequence, bool):
+            sequences.append(sequence)
+    return tuple(sequences)
+
+
 async def send_messages(group_id: int | None, message_id, response: dict[str, list]) -> DeliveryResult:
     """Deliver final text or its rendered image and report only actual content delivery."""
     raw_messages = response.get("messages", [])
@@ -800,8 +810,8 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
     if not _message_should_render_as_image(content):
         try:
             text_content = (await markdown_to_text(content)).rstrip("\r\n").strip()
-            await with_reply(UniMessage.text(text_content)).send()
-            return DeliveryResult(attempted=1, sent=1)
+            receipt = await with_reply(UniMessage.text(text_content)).send()
+            return DeliveryResult(attempted=1, sent=1, message_ids=_receipt_message_ids(receipt))
         except Exception as exc:
             logger.warning("文本消息发送失败，尝试图片回退: %s", type(exc).__name__)
 
@@ -816,11 +826,11 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
             errors += (type(exc).__name__,)
         return DeliveryResult(attempted=1, errors=errors)
     try:
-        await with_reply(UniMessage.image(raw=result)).send()
+        receipt = await with_reply(UniMessage.image(raw=result)).send()
     except Exception as exc:
         logger.error("图片消息发送失败: %s", type(exc).__name__)
         return DeliveryResult(attempted=1, errors=(type(exc).__name__,))
-    return DeliveryResult(attempted=1, sent=1)
+    return DeliveryResult(attempted=1, sent=1, message_ids=_receipt_message_ids(receipt))
 
 
 async def message_gateway(event: MessageEvent, messages: list) -> bool:

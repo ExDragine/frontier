@@ -27,6 +27,51 @@ def _context(agent):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", [4, None])
+async def test_delivered_reply_can_be_quoted_as_original_text(monkeypatch, group_id):
+    import nonebot
+
+    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
+    from plugins import agent
+    from utils import database as db_module
+    from utils.database import MessageDatabase
+    from utils.reply_context import build_reply_context
+
+    monkeypatch.setattr(db_module, "DATABASE_FILE", "sqlite://")
+    database = MessageDatabase()
+    original = "| 原始 Markdown | 数值 |\n| --- | --- |\n| [图片] 是说明文字 | 42 |"
+
+    class Cognitive:
+        async def chat_agent(self, *_args, **_kwargs):
+            return {"response": {"messages": [original]}, "uni_messages": []}
+
+    async def send(*_args):
+        return DeliveryResult(attempted=1, sent=1, message_ids=(900,))
+
+    async def reject(*_args, **_kwargs):
+        raise AssertionError("stored assistant source must not fetch or read rendered media")
+
+    monkeypatch.setattr(agent, "f_cognitive", Cognitive())
+    monkeypatch.setattr(agent, "messages_db", database)
+    monkeypatch.setattr(agent, "send_messages", send)
+    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+    event = SimpleNamespace(self_id="1", data=SimpleNamespace(peer_id=2))
+    context = replace(_context(agent), group_id=group_id, event=cast(Any, event))
+    assert await agent._process_agent_request(context)
+    monkeypatch.setattr(database, "select_image_attachments_by_msg_time", reject)
+    for load_images in (False, True):
+        payload, images = await build_reply_context(
+            SimpleNamespace(get_message=reject), cast(Any, event), 900, group_id, database,
+            load_images=load_images,
+        )
+        assert payload is not None
+        assert payload["content"] == original
+        assert payload["sender"]["role"] == "assistant"
+        assert payload["sender"]["user_id"] == "1"
+        assert images == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("delivered", [True, False])
 async def test_history_only_records_delivered_response_after_send(monkeypatch, delivered):
     import nonebot
