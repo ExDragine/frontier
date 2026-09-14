@@ -18,7 +18,9 @@ from utils.agents.runtime import conversation_workspace_key
 from utils.configs import EnvConfig
 from utils.database import MESSAGE_SOURCE_TYPE_NORMAL, MessageDatabase, resolve_message_sender_user_id
 from utils.http_client import get_http_client
-from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments, segments_to_raw_json
+
+from . import attachments
+from .message_normalizer import NORMALIZED_VERSION, normalize_segments, segments_to_raw_json
 
 _httpx_client = get_http_client("reply_context")
 FORWARD_CONTEXT_MAX_DEPTH = 3
@@ -228,7 +230,7 @@ def _refreshable_quoted_file_item(item, group_id: int | None):
     can_refresh = bool(item.file_id) and (group_id is not None or item.file_hash is not None)
     if not can_refresh:
         return item
-    return _message_utils().MessageFileItem(
+    return attachments.MessageFileItem(
         file_id=item.file_id,
         file_name=item.file_name,
         file_size=item.file_size,
@@ -266,7 +268,7 @@ async def _quoted_file_context(  # noqa: C901
     if segments is None and (len(available_records) < len(records) or marker_count > len(refs)):
         milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
         segments = list(getattr(milky_message, "segments", [])) if milky_message else None
-    file_items = _message_utils().extract_message_files(segments or [])
+    file_items = attachments.extract_message_files(segments or [])
     expected_count = len(file_items) if file_items else max(marker_count, len(records))
     available_names = Counter(str(record.file_name) for record in available_records)
     pending_items = []
@@ -281,7 +283,7 @@ async def _quoted_file_context(  # noqa: C901
         resolved_memory_dir = (
             Path(memory_dir) if memory_dir is not None else Path.cwd() / "cache" / "sandbox" / "memory" / workspace_key
         )
-        staged_files = await _message_utils().stage_message_files(
+        staged_files = await attachments.stage_message_files(
             bot,
             pending_items,
             memory_dir=resolved_memory_dir,
@@ -299,7 +301,7 @@ async def _quoted_file_context(  # noqa: C901
         expires_at = now_ms + EnvConfig.MEDIA_TTL_DAYS * 86400 * 1000
         for staged_file in staged_files:
             if not callable(insert_attachment):
-                _message_utils().cleanup_staged_message_files([staged_file])
+                attachments.cleanup_staged_message_files([staged_file])
                 continue
             try:
                 await insert_attachment(
@@ -325,7 +327,7 @@ async def _quoted_file_context(  # noqa: C901
                     type(exc).__name__,
                     exc,
                 )
-                _message_utils().cleanup_staged_message_files([staged_file])
+                attachments.cleanup_staged_message_files([staged_file])
             else:
                 refs.append(
                     dict(
@@ -558,14 +560,14 @@ async def build_reply_context(  # noqa: C901
     workspace_key: str | None = None,
     memory_dir: str | Path | None = None,
 ) -> tuple[dict[str, object] | None, list[bytes]]:
-    select_kwargs: dict[str, object] = {"msg_id": reply_seq, "group_id": group_id}
+    select_kwargs: dict[str, int] = {}
     private_peer_user_id = _private_peer_user_id(event) if group_id is None else None
     if group_id is None and private_peer_user_id is None:
         logger.warning("忽略无法确定 peer_user_id 的私聊引用 message_seq=%s", reply_seq)
         return None, []
     if private_peer_user_id is not None:
         select_kwargs["peer_user_id"] = private_peer_user_id
-    quoted = await messages_db.select_by_msg_id(**select_kwargs)
+    quoted = await messages_db.select_by_msg_id(msg_id=reply_seq, group_id=group_id, **select_kwargs)
     if quoted:
         # Locally delivered replies store the source text, with no platform
         # segments. A rendered Markdown image must not replace or accompany it.

@@ -4,7 +4,7 @@ import types
 
 import pytest
 
-from utils.message_normalizer import NORMALIZED_VERSION, normalize_segments, segments_to_raw_json
+from plugins.agent.message_normalizer import NORMALIZED_VERSION, normalize_segments, segments_to_raw_json
 
 
 @pytest.mark.asyncio

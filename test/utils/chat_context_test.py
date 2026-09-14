@@ -3,7 +3,7 @@
 import copy
 import json
 
-from utils.agents.chat_context import build_chat_context
+from plugins.agent.chat_context import build_chat_context
 from utils.media import inline_media_bytes, resolve_media, standard_media_block
 
 

@@ -7,8 +7,9 @@ import pytest
 from nonebot.adapters.milky.event import GroupDisbandEvent
 from nonebot.adapters.milky.message import Message
 
+from plugins.agent import gateway as gateway_module
+from plugins.agent.message_normalizer import normalize_segments
 from utils import message as message_module
-from utils.message_normalizer import normalize_segments
 from utils.milky_tools import format_forwarded_messages, format_message
 
 
@@ -39,16 +40,16 @@ async def test_markdown_wake_word_works_when_adapter_plaintext_is_empty(monkeypa
         seen.append(text)
         return True
 
-    monkeypatch.setattr(message_module, "_message_gateway_blocked_by_access_policy", lambda *_: False)
-    monkeypatch.setattr(message_module, "_get_wake_words", lambda *_: ["Frontier"])
-    monkeypatch.setattr(message_module, "_active_trigger_should_reply", active_check)
+    monkeypatch.setattr(gateway_module, "_message_gateway_blocked_by_access_policy", lambda *_: False)
+    monkeypatch.setattr(gateway_module, "_get_wake_words", lambda *_: ["Frontier"])
+    monkeypatch.setattr(gateway_module, "_active_trigger_should_reply", active_check)
     event = SimpleNamespace(
         data=SimpleNamespace(group=SimpleNamespace(group_id=123), segments=[
             {"type": "markdown", "data": {"content": "Frontier 请解释这张表"}},
         ]),
         get_user_id=lambda: "456", get_plaintext=lambda: "", is_tome=lambda: False, to_me=False,
     )
-    assert await message_module.message_gateway(event, [])
+    assert await gateway_module.message_gateway(event, [])
     assert seen == ["Frontier 请解释这张表"]
 
 
@@ -57,7 +58,8 @@ async def test_group_disband_passes_nudge_matcher_and_is_handled_without_reply(m
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent, playground
+    from plugins import playground
+    from plugins.agent import handlers as agent
 
     event = GroupDisbandEvent(time=123, self_id=999, data={"group_id": 123, "operator_id": 456})
     assert not await playground._is_nudge(event)

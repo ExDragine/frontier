@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import inspect
 from sqlmodel import Session, create_engine, select
 
+from plugins.agent.message_normalizer import NORMALIZED_VERSION, DerivedMessage
 from utils import database as db_module
 from utils.agents.message_envelope import (
     build_agent_attachment_payload,
@@ -25,7 +26,6 @@ from utils.database import (
     TimeStamp,
 )
 from utils.media import resolve_media
-from utils.message_normalizer import NORMALIZED_VERSION, DerivedMessage
 
 
 @pytest.fixture

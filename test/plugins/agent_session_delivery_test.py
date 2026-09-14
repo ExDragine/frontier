@@ -17,7 +17,7 @@ async def test_session_lease_covers_qq_delivery_and_failure_cleanup(monkeypatch,
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     manager = SessionManager()
     monkeypatch.setattr(agent, "session_manager", manager)
@@ -106,7 +106,7 @@ async def test_session_lease_covers_qq_delivery_and_failure_cleanup(monkeypatch,
 async def test_history_failure_releases_running_lease(monkeypatch):
     import nonebot
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     manager = SessionManager()
     monkeypatch.setattr(agent, "session_manager", manager)
@@ -127,7 +127,7 @@ async def test_history_failure_releases_running_lease(monkeypatch):
 async def test_cache_initialization_failure_uses_scoped_history_without_reexecution(monkeypatch):
     import nonebot
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     manager = SessionManager()
     monkeypatch.setattr(agent, "session_manager", manager)

@@ -2,6 +2,7 @@
 
 
 import types
+from pathlib import Path
 
 import pytest
 from nonebot.adapters.milky.event import MessageEvent
@@ -10,8 +11,9 @@ from nonebot.adapters.milky.model.common import Group, Member
 from nonebot.adapters.milky.model.message import IncomingMessage
 from nonebug import App
 
-from plugins import toolbox
-from plugins.toolbox import on_startup
+from plugins.toolbox import settings as toolbox
+from plugins.toolbox import update as toolbox_update
+from plugins.toolbox.update import on_startup
 
 
 def _group_message_event(text: str, *, role: str = "member", sender_id: int = 456) -> MessageEvent:
@@ -368,7 +370,7 @@ def test_model_display_name_uses_model_bank_and_falls_back(monkeypatch):
 
 
 def test_collect_update_commits_returns_empty_for_same_head():
-    assert toolbox.collect_update_commits("abc", "abc") == []
+    assert toolbox_update.collect_update_commits("abc", "abc") == []
 
 
 def test_collect_update_commits_reads_git_range(monkeypatch):
@@ -383,9 +385,9 @@ def test_collect_update_commits_reads_git_range(monkeypatch):
             assert max_count == 20
             return commits
 
-    monkeypatch.setattr(toolbox, "Repo", lambda *_args, **_kwargs: DummyRepo())
+    monkeypatch.setattr(toolbox_update, "Repo", lambda *_args, **_kwargs: DummyRepo())
 
-    result = toolbox.collect_update_commits("old", "new")
+    result = toolbox_update.collect_update_commits("old", "new")
 
     assert [commit.short_hash for commit in result] == ["1234567", "abcdef1"]
     assert [commit.subject for commit in result] == ["add changelog", "fix update"]
@@ -397,9 +399,9 @@ def test_collect_update_commits_returns_empty_on_git_error(monkeypatch):
         def iter_commits(self, *_args, **_kwargs):
             raise RuntimeError("git failed")
 
-    monkeypatch.setattr(toolbox, "Repo", lambda *_args, **_kwargs: BrokenRepo())
+    monkeypatch.setattr(toolbox_update, "Repo", lambda *_args, **_kwargs: BrokenRepo())
 
-    assert toolbox.collect_update_commits("old", "new") == []
+    assert toolbox_update.collect_update_commits("old", "new") == []
 
 
 @pytest.mark.asyncio
@@ -412,12 +414,12 @@ async def test_summarize_update_commits_calls_llm(monkeypatch):
         captured["kwargs"] = kwargs
         return "- 新增更新日志"
 
-    monkeypatch.setattr(toolbox, "_call_assistant_agent", fake_assistant_agent)
+    monkeypatch.setattr(toolbox_update, "_call_assistant_agent", fake_assistant_agent)
 
-    result = await toolbox.summarize_update_commits(
+    result = await toolbox_update.summarize_update_commits(
         [
-            toolbox.CommitInfo(short_hash="1234567", subject="add changelog", body="body"),
-            toolbox.CommitInfo(short_hash="abcdef1", subject="fix update", body=""),
+            toolbox_update.CommitInfo(short_hash="1234567", subject="add changelog", body="body"),
+            toolbox_update.CommitInfo(short_hash="abcdef1", subject="fix update", body=""),
         ]
     )
 
@@ -433,10 +435,10 @@ async def test_summarize_update_commits_returns_none_on_llm_failure(monkeypatch)
     async def broken_assistant_agent(*_args, **_kwargs):
         raise RuntimeError("llm failed")
 
-    monkeypatch.setattr(toolbox, "_call_assistant_agent", broken_assistant_agent)
+    monkeypatch.setattr(toolbox_update, "_call_assistant_agent", broken_assistant_agent)
 
-    result = await toolbox.summarize_update_commits(
-        [toolbox.CommitInfo(short_hash="1234567", subject="add changelog", body="")]
+    result = await toolbox_update.summarize_update_commits(
+        [toolbox_update.CommitInfo(short_hash="1234567", subject="add changelog", body="")]
     )
 
     assert result is None
@@ -477,16 +479,16 @@ async def test_handle_updater_persists_update_context_for_startup_changelog(monk
 
     event = types.SimpleNamespace(data=types.SimpleNamespace(group=types.SimpleNamespace(group_id=123)))
 
-    monkeypatch.setattr(toolbox, "Repo", DummyRepo)
-    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
-    monkeypatch.setattr(toolbox.os, "kill", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(toolbox, "exit", lambda code: (_ for _ in ()).throw(SystemExit(code)), raising=False)
+    monkeypatch.setattr(toolbox_update, "Repo", DummyRepo)
+    monkeypatch.setattr(toolbox_update, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(toolbox_update.os, "kill", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(toolbox_update, "exit", lambda code: (_ for _ in ()).throw(SystemExit(code)), raising=False)
 
     with pytest.raises(SystemExit):
-        await toolbox.handle_updater(event)
+        await toolbox_update.handle_updater(event)
 
     assert "🔄 开始更新..." in sent_texts
-    lock_info = toolbox.read_update_lock(open(".lock", encoding="utf-8").read())
+    lock_info = toolbox_update.read_update_lock(open(".lock", encoding="utf-8").read())
     assert lock_info.old_head == "old"
     assert lock_info.trigger_group_id == 123
 
@@ -508,7 +510,7 @@ async def test_on_bot_connect_sends_pending_changelog_to_trigger_group(monkeypat
         def text(cls, text):
             return DummyMessage(text)
 
-    commits = [toolbox.CommitInfo(short_hash="1234567", subject="add changelog", body="")]
+    commits = [toolbox_update.CommitInfo(short_hash="1234567", subject="add changelog", body="")]
 
     async def fake_summarize_update_commits(received_commits):
         assert received_commits == commits
@@ -517,22 +519,22 @@ async def test_on_bot_connect_sends_pending_changelog_to_trigger_group(monkeypat
     async def fake_send_update_changelog(group_id, changelog):
         changelog_targets.append((group_id, changelog))
 
-    (toolbox.Path(".") / ".lock").write_text(
+    (Path(".") / ".lock").write_text(
         '{"start_time": 100, "old_head": "old", "trigger_group_id": 123}',
         encoding="utf-8",
     )
-    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
-    monkeypatch.setattr(toolbox.EnvConfig, "ANNOUNCE_GROUP_ID", [456])
-    monkeypatch.setattr(toolbox.time, "time", lambda: 110)
-    monkeypatch.setattr(toolbox, "Repo", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr(toolbox, "_current_head", lambda _repo: "new")
-    monkeypatch.setattr(toolbox, "collect_update_commits", lambda old, new: commits)
-    monkeypatch.setattr(toolbox, "summarize_update_commits", fake_summarize_update_commits)
-    monkeypatch.setattr(toolbox, "send_update_changelog", fake_send_update_changelog)
+    monkeypatch.setattr(toolbox_update, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(toolbox_update.EnvConfig, "ANNOUNCE_GROUP_ID", [456])
+    monkeypatch.setattr(toolbox_update.time, "time", lambda: 110)
+    monkeypatch.setattr(toolbox_update, "Repo", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(toolbox_update, "_current_head", lambda _repo: "new")
+    monkeypatch.setattr(toolbox_update, "collect_update_commits", lambda old, new: commits)
+    monkeypatch.setattr(toolbox_update, "summarize_update_commits", fake_summarize_update_commits)
+    monkeypatch.setattr(toolbox_update, "send_update_changelog", fake_send_update_changelog)
 
-    await toolbox.on_bot_connect()
+    await toolbox_update.on_bot_connect()
 
-    assert not (toolbox.Path(".") / ".lock").exists()
+    assert not (Path(".") / ".lock").exists()
     assert completion_targets
     assert changelog_targets == [(123, "- 新增更新日志")]
 
@@ -550,7 +552,7 @@ async def test_on_bot_connect_sends_changelog_when_announce_group_send_fails(mon
         def text(cls, _text):
             return DummyMessage()
 
-    commits = [toolbox.CommitInfo(short_hash="1234567", subject="add changelog", body="")]
+    commits = [toolbox_update.CommitInfo(short_hash="1234567", subject="add changelog", body="")]
 
     async def fake_summarize_update_commits(received_commits):
         assert received_commits == commits
@@ -559,20 +561,20 @@ async def test_on_bot_connect_sends_changelog_when_announce_group_send_fails(mon
     async def fake_send_update_changelog(group_id, changelog):
         changelog_targets.append((group_id, changelog))
 
-    (toolbox.Path(".") / ".lock").write_text(
+    (Path(".") / ".lock").write_text(
         '{"start_time": 100, "old_head": "old", "trigger_group_id": 123}',
         encoding="utf-8",
     )
-    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
-    monkeypatch.setattr(toolbox.EnvConfig, "ANNOUNCE_GROUP_ID", [456])
-    monkeypatch.setattr(toolbox.time, "time", lambda: 110)
-    monkeypatch.setattr(toolbox, "Repo", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr(toolbox, "_current_head", lambda _repo: "new")
-    monkeypatch.setattr(toolbox, "collect_update_commits", lambda old, new: commits)
-    monkeypatch.setattr(toolbox, "summarize_update_commits", fake_summarize_update_commits)
-    monkeypatch.setattr(toolbox, "send_update_changelog", fake_send_update_changelog)
+    monkeypatch.setattr(toolbox_update, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(toolbox_update.EnvConfig, "ANNOUNCE_GROUP_ID", [456])
+    monkeypatch.setattr(toolbox_update.time, "time", lambda: 110)
+    monkeypatch.setattr(toolbox_update, "Repo", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(toolbox_update, "_current_head", lambda _repo: "new")
+    monkeypatch.setattr(toolbox_update, "collect_update_commits", lambda old, new: commits)
+    monkeypatch.setattr(toolbox_update, "summarize_update_commits", fake_summarize_update_commits)
+    monkeypatch.setattr(toolbox_update, "send_update_changelog", fake_send_update_changelog)
 
-    await toolbox.on_bot_connect()
+    await toolbox_update.on_bot_connect()
 
     assert changelog_targets == [(123, "- 新增更新日志")]
 
@@ -605,15 +607,15 @@ async def test_handle_updater_skips_changelog_without_group(monkeypatch):
 
     event = types.SimpleNamespace(data=types.SimpleNamespace(group=None))
 
-    monkeypatch.setattr(toolbox, "Repo", DummyRepo)
-    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
-    monkeypatch.setattr(toolbox, "collect_update_commits", lambda old, new: [])
-    monkeypatch.setattr(toolbox, "send_update_changelog", fail_send_update_changelog)
-    monkeypatch.setattr(toolbox.os, "kill", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(toolbox, "exit", lambda code: (_ for _ in ()).throw(SystemExit(code)), raising=False)
+    monkeypatch.setattr(toolbox_update, "Repo", DummyRepo)
+    monkeypatch.setattr(toolbox_update, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(toolbox_update, "collect_update_commits", lambda old, new: [])
+    monkeypatch.setattr(toolbox_update, "send_update_changelog", fail_send_update_changelog)
+    monkeypatch.setattr(toolbox_update.os, "kill", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(toolbox_update, "exit", lambda code: (_ for _ in ()).throw(SystemExit(code)), raising=False)
 
     with pytest.raises(SystemExit):
-        await toolbox.handle_updater(event)
+        await toolbox_update.handle_updater(event)
 
 
 @pytest.mark.asyncio
@@ -647,15 +649,15 @@ async def test_handle_updater_skips_changelog_when_no_new_commits(monkeypatch):
 
     event = types.SimpleNamespace(data=types.SimpleNamespace(group=types.SimpleNamespace(group_id=123)))
 
-    monkeypatch.setattr(toolbox, "Repo", DummyRepo)
-    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
-    monkeypatch.setattr(toolbox, "summarize_update_commits", fail_summarize_update_commits)
-    monkeypatch.setattr(toolbox, "send_update_changelog", fail_send_update_changelog)
-    monkeypatch.setattr(toolbox.os, "kill", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(toolbox, "exit", lambda code: (_ for _ in ()).throw(SystemExit(code)), raising=False)
+    monkeypatch.setattr(toolbox_update, "Repo", DummyRepo)
+    monkeypatch.setattr(toolbox_update, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(toolbox_update, "summarize_update_commits", fail_summarize_update_commits)
+    monkeypatch.setattr(toolbox_update, "send_update_changelog", fail_send_update_changelog)
+    monkeypatch.setattr(toolbox_update.os, "kill", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(toolbox_update, "exit", lambda code: (_ for _ in ()).throw(SystemExit(code)), raising=False)
 
     with pytest.raises(SystemExit):
-        await toolbox.handle_updater(event)
+        await toolbox_update.handle_updater(event)
 
 
 @pytest.mark.asyncio
@@ -691,11 +693,11 @@ async def test_handle_updater_skips_changelog_when_update_fails(monkeypatch):
 
     event = types.SimpleNamespace(data=types.SimpleNamespace(group=types.SimpleNamespace(group_id=123)))
 
-    monkeypatch.setattr(toolbox, "Repo", DummyRepo)
-    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
-    monkeypatch.setattr(toolbox, "send_update_changelog", fail_send_update_changelog)
+    monkeypatch.setattr(toolbox_update, "Repo", DummyRepo)
+    monkeypatch.setattr(toolbox_update, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(toolbox_update, "send_update_changelog", fail_send_update_changelog)
 
-    await toolbox.handle_updater(event)
+    await toolbox_update.handle_updater(event)
 
-    assert not (toolbox.Path(".") / ".lock").exists()
+    assert not (Path(".") / ".lock").exists()
     assert "❌ 更新失败: pull failed" in sent_texts

@@ -14,7 +14,7 @@ Frontier 是一个基于 NoneBot2 + Milky 适配器的 AI QQ 聊天机器人。�
 
 ## Request Lifecycle
 
-一条普通 QQ 消息的主要路径在 `plugins/agent/__init__.py`：
+一条普通 QQ 消息的主要路径在 `plugins/agent/handlers.py`：
 
 ```
 Milky MessageEvent → NoneBot on_message(priority=10)
@@ -65,6 +65,12 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `plugins/playground` | `/paint`、`/video` 命令和戳一戳响应；直接调用共享图片/视频服务 |
 | `plugins/toolbox` | 管理命令：`/update`、`/restart`、`/model`、`/set wake`、`/vehelp`，以及技能沙箱初始化 |
 
+`plugins/agent` 的 `handlers.py` 负责事件编排；`message_normalizer.py`、`reply_context.py`、
+`chat_context.py`、`gateway.py`、`attachments.py` 分别负责归一化、引用、媒体预算、回复门控和附件暂存。
+`plugins/toolbox` 分为 `settings.py`、`update.py`、`menu.py`，专属菜单位于其 `templates/`。
+`plugins/clockwork` 的日报模板和提示词位于插件自己的 `templates/`、`prompts/`。
+插件包入口只在 NoneBot 加载时注册事件；引用纯组件不应触发注册。
+
 ### `utils/` — 共享基础设施
 
 | 文件 | 职责 |
@@ -72,14 +78,12 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `agents/` | Agent 包：主 Deep Agent 编排、轻量 Agent、输入适配、进度流、Prompt、workspace、运行时与 Subagent |
 | `database.py` | SQLite/SQLModel、消息/附件/群设置模型、WAL/FTS/索引、历史上下文构造、检索和维护 |
 | `agents/execution.py` / `agents/runtime_gateway.py` | 内置 Agent 的统一请求/结果、运行 ID、超时和取消边界 |
-| `agents/chat_context.py` / `delivery.py` | 当前消息与历史预算、不可变投递结果 |
+| `delivery.py` | 不可变投递结果 |
 | `agents/sessions.py` / `agents/checkpoints.py` / `agents/session_context.py` | QQ 进程级有界会话、投递租约、官方 saver 适配与跨轮历史预算，默认关闭 |
-| `message.py` | 消息段提取、文件暂存、媒体下载、回复网关、内容安全、Markdown/图片回复渲染 |
+| `message.py` | 共享消息段提取、媒体下载、内容安全、Markdown/图片回复渲染和投递 |
 | `configs.py` | `EnvConfig`：从 `env.toml` 读取模型、端点、密钥、功能开关、Dashboard、内容安全配置 |
 | `llm_factory.py` | OpenAI-compatible / Google / Anthropic / DeepSeek 模型路由，供应商 profile，能力判断 |
 | `signal_llm.py` | 轻量结构化 LLM 调用，用于回复门控、浏览器捕获意图等判断 |
-| `reply_context.py` | 引用消息解析、Milky 原消息获取、引用图片下载、转发消息重建 |
-| `message_normalizer.py` | 消息段归一化，展开合并转发 derived messages |
 | `markdown_render.py` | Markdown → 图片，使用本地 Mermaid/ECharts/KaTeX/Prism 渲染增强内容，适配 QQ 文本/图片发送 |
 | `browser_capture.py` | Playwright 截图/录屏/页面数据提取，带浏览器重启和超时处理 |
 | `paint_service.py` / `video_service.py` | 共享图片和视频生成服务，供命令和 Agent 工具复用 |
@@ -139,8 +143,8 @@ Prompt 加载链：
 - `FrontierCognitive.load_system_prompt()` 组合 `env.toml` 的 `[bot].system_prompt` 与 `prompts/AGENTS.md` 始终适用的全局操作规范；基础人设中的 `{name}` 会按当前唤醒词注入。
 - 自定义 `MemoryMiddleware` 从当前 workspace 的 `/memory/{workspace_key}/SOUL.md` 注入动态人设，并同时提供 SOUL 的写入边界与优先级约束。
 - 完整的图表、指标卡和时间线渲染契约位于只读内置 Skill `/skills/rich-markdown/SKILL.md`，仅在需要增强 Markdown 时按需加载。
-- `prompts/reply_check.md` 用于群聊是否应主动回复的 Signal LLM 判断。
-- `prompts/daily_news.md` 用于每日新闻任务。
+- `plugins/agent/prompts/reply_check.md` 用于群聊是否应主动回复的 Signal LLM 判断。
+- `plugins/clockwork/prompts/daily_news.md` 用于每日新闻任务。
 - ENS 详细工作流位于只读内置 Skill `/skills/ens-weather/SKILL.md`；主提示词只保留加载入口。
 
 ---
@@ -240,7 +244,7 @@ Milky 群管理工具会读取 `RunnableConfig.configurable.group_member_role` �
 
 5. 提示词分为常驻层和按需层：`env.toml` 基本人设与 `prompts/AGENTS.md` 全局规范常驻，workspace `SOUL.md` 由 Memory middleware 注入，详细工作流与渲染契约保存在 Skills 中按需加载。修改前先确认目标层级。
 
-6. 测试依赖 monkeypatch 和第三方 stub。插件测试通常先 patch `nonebot.require`，再延迟 import `plugins.agent`。
+6. 测试依赖 monkeypatch 和第三方 stub。插件测试通常先 patch `nonebot.require`，再延迟 import `plugins.agent.handlers`。
 
 7. 本地可能存在真实 `env.toml`、`.env`、`frontier.db`、`cache/`。做文档或代码变更时不要读取或泄露其中的密钥和私聊数据，除非用户明确要求。
 

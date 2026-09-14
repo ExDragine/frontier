@@ -8,9 +8,9 @@ import pytest
 from sqlalchemy import inspect
 from sqlmodel import Session, select
 
+from plugins.agent.message_normalizer import DerivedMessage
 from utils import database as db_module
 from utils.database import Message, MessageAttachment, MessageDatabase
-from utils.message_normalizer import DerivedMessage
 
 
 @pytest.mark.parametrize("table,definition", [

@@ -33,7 +33,7 @@ def test_attached_image_placeholders_are_removed_only_when_all_images_persist(mo
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     text = "查看图片\n[图片]\n[图片:动画表情]"
 
@@ -43,7 +43,7 @@ def test_attached_image_placeholders_are_removed_only_when_all_images_persist(mo
 
 
 def test_direct_bot_mention_requires_explicit_matching_mention_segment():
-    from utils.reply_context import segments_directly_mention_user
+    from plugins.agent.reply_context import segments_directly_mention_user
 
     assert segments_directly_mention_user(
         [{"type": "mention", "data": {"user_id": 1}}, {"type": "text", "data": {"text": "你好"}}],
@@ -64,7 +64,7 @@ async def test_group_progress_reporter_blocks_all_intermediate_messages(monkeypa
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     sent: list[str] = []
 
@@ -100,7 +100,7 @@ async def test_private_progress_reporter_keeps_templates_and_two_preambles(monke
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     sent: list[str] = []
 
@@ -146,7 +146,7 @@ async def test_agent_image_placeholders_follow_persistence(  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     calls = {"insert_media": 0, "schedule_summary": 0}
     captured = {}
@@ -279,7 +279,7 @@ async def test_agent_lazily_hydrates_recent_media_followup(monkeypatch):  # noqa
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {"prepare_calls": 0}
 
@@ -392,7 +392,7 @@ async def test_agent_injects_staged_file_memory_path_even_if_indexing_fails(  # 
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {}
 
@@ -527,7 +527,7 @@ async def test_parallel_quote_failure_cleans_successfully_staged_files(monkeypat
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     staged_path = tmp_path / "memory/group-123/files/report.txt"
     staged_path.parent.mkdir(parents=True)
@@ -558,7 +558,7 @@ async def test_rejected_group_file_message_does_not_stage_file_before_gateway(mo
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured: dict[str, Any] = {"agent_calls": 0}
 
@@ -655,7 +655,7 @@ async def test_agent_stores_expanded_forward_message_and_derived_nodes(monkeypat
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {}
 
@@ -776,7 +776,7 @@ async def test_agent_does_not_duplicate_normalized_video_marker(monkeypatch):  #
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {}
 
@@ -870,7 +870,7 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {}
 
@@ -976,7 +976,7 @@ async def test_rejected_reply_does_not_resolve_quoted_images(monkeypatch):  # no
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     calls = {"agent": 0, "image_lookup": 0}
 
@@ -1066,7 +1066,7 @@ async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # 
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {"restored_images": []}
 
@@ -1226,7 +1226,7 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {}
 
@@ -1309,7 +1309,7 @@ async def test_process_agent_request_honors_silent_group_result(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {}
 
@@ -1364,7 +1364,7 @@ async def test_process_agent_request_inlines_recent_history_image(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {}
 
@@ -1411,7 +1411,7 @@ async def test_process_agent_request_interprets_empty_text_as_user_calling_bot(m
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {}
 
@@ -1450,7 +1450,7 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
     from utils.agents import run_serialized
 
     calls = []
@@ -1527,7 +1527,7 @@ def test_system_prompt_describes_message_envelope_and_tool_scope(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     prompt = (agent.PROJECT_ROOT / "prompts" / "AGENTS.md").read_text(encoding="utf-8")
 
@@ -1546,7 +1546,7 @@ async def test_gateway_approved_message_routes_directly_to_agent(monkeypatch):  
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     sent_messages = []
     stored_messages = []
@@ -1651,7 +1651,7 @@ async def test_gateway_approved_weather_request_routes_directly_to_agent(monkeyp
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     calls = {"queue": 0}
     sent_messages = []
@@ -1742,7 +1742,7 @@ async def test_process_agent_request_passes_configured_capability_directly(monke
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {}
 
@@ -1787,7 +1787,7 @@ async def test_process_agent_request_sanitizes_final_response(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     captured = {"sent": None, "stored": None, "checked": None}
 
@@ -1843,7 +1843,7 @@ async def test_gateway_approved_greeting_runs_agent(monkeypatch):  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     calls = {"queue": 0}
     assistant_messages = []
@@ -1937,7 +1937,7 @@ async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # n
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     calls = {"queue": 0}
 
@@ -2029,7 +2029,7 @@ async def test_gateway_approved_closing_message_runs_agent(monkeypatch):  # noqa
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     calls = {"queue": 0}
 
@@ -2107,7 +2107,7 @@ async def test_gateway_approved_private_chat_routes_to_agent_without_group_react
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     calls: dict[str, Any] = {"queue": 0, "reactions": []}
 
@@ -2181,7 +2181,7 @@ async def test_agent_startup_cleans_cached_files_and_schedules_daily_job(monkeyp
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     calls = []
 
@@ -2214,7 +2214,7 @@ async def test_daily_cache_cleanup_cleans_attachments(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     calls = []
 

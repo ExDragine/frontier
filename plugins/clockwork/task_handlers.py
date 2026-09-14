@@ -28,8 +28,8 @@ from .task_models import TaskRunResult
 # 共享的资源
 event_database = EventDatabase()
 httpx_client = get_http_client("task_handlers")
-PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
-TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates"
+PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 DAILY_NEWS_NATIVE_WEB_SEARCH_TOOL = {"type": "web_search"}
 
 NEWS_HISTORY_KEY = "daily_news_recent_titles"

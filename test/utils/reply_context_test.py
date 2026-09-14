@@ -7,17 +7,17 @@ from typing import Any, cast
 import pytest
 from sqlmodel import create_engine
 
-from utils import database as db_module
-from utils import message as message_module
-from utils.configs import EnvConfig
-from utils.database import Message, MessageAttachment, MessageDatabase
-from utils.message_normalizer import NORMALIZED_VERSION, segments_to_raw_json
-from utils.reply_context import (
+from plugins.agent import attachments as attachments_module
+from plugins.agent.message_normalizer import NORMALIZED_VERSION, segments_to_raw_json
+from plugins.agent.reply_context import (
     _format_quote,
     build_reply_context,
     hydrate_recent_media_context,
     requests_recent_media,
 )
+from utils import database as db_module
+from utils.configs import EnvConfig
+from utils.database import Message, MessageAttachment, MessageDatabase
 
 
 async def _async_result(value):
@@ -79,7 +79,7 @@ def test_requests_recent_media_is_deterministic(text, expected):
 
 @pytest.mark.asyncio
 async def test_hydrate_recent_media_context_reuses_reply_hydrator(monkeypatch, tmp_path):
-    from utils import reply_context
+    from plugins.agent import reply_context
 
     calls = {}
 
@@ -475,7 +475,7 @@ async def test_build_reply_context_downloads_and_indexes_quoted_group_file(monke
         calls.append(("download", url))
         return types.SimpleNamespace(content=b"quoted-file")
 
-    monkeypatch.setattr(message_module.httpx_client, "get", fake_get)
+    monkeypatch.setattr(attachments_module.httpx_client, "get", fake_get)
     event = types.SimpleNamespace(
         self_id="999",
         reply=None,
@@ -568,7 +568,7 @@ async def test_build_reply_context_refreshes_private_quoted_file_with_peer_hash(
         assert url == "https://fresh.example/private.txt"
         return types.SimpleNamespace(content=b"private-file")
 
-    monkeypatch.setattr(message_module.httpx_client, "get", fake_get)
+    monkeypatch.setattr(attachments_module.httpx_client, "get", fake_get)
     event = types.SimpleNamespace(
         self_id="999",
         reply=None,
@@ -637,7 +637,7 @@ async def test_build_reply_context_marks_unavailable_unindexed_image():
 
 @pytest.mark.asyncio
 async def test_build_reply_context_restores_image_directly_from_raw_milky_segments(monkeypatch):
-    from utils import reply_context
+    from plugins.agent import reply_context
 
     cached = {}
 
@@ -712,7 +712,7 @@ async def test_build_reply_context_restores_image_directly_from_raw_milky_segmen
 
 @pytest.mark.asyncio
 async def test_reply_image_cache_failure_keeps_markers_and_still_uses_fetched_image(monkeypatch):
-    from utils import reply_context
+    from plugins.agent import reply_context
 
     class DummyMessagesDb:
         async def select_by_msg_id(self, *, msg_id, group_id):
@@ -769,7 +769,7 @@ async def test_reply_image_cache_failure_keeps_markers_and_still_uses_fetched_im
 
 @pytest.mark.asyncio
 async def test_partial_reply_image_cache_is_not_overwritten_by_remote_subset(monkeypatch):
-    from utils import reply_context
+    from plugins.agent import reply_context
 
     insert_called = False
 

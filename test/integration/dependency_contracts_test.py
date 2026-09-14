@@ -21,12 +21,12 @@ nonebot.require("nonebot_plugin_alconna")
 from PIL import Image
 from langchain_deepseek import ChatDeepSeek
 from langchain_openai import ChatOpenAI
-from utils import reply_context
-from utils.agents.chat_context import build_chat_context
+from plugins.agent import reply_context
+from plugins.agent.chat_context import build_chat_context
 from utils.agents.inputs import filter_messages_for_model_capabilities
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
-from utils.message_normalizer import NORMALIZED_VERSION, segments_to_raw_json
+from plugins.agent.message_normalizer import NORMALIZED_VERSION, segments_to_raw_json
 
 model_name = "deepseek-v4-flash-vision-exp"
 EnvConfig.ADVAN_MODEL = model_name

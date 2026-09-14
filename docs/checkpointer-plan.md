@@ -8,7 +8,7 @@
 
 - [cognitive.py](../utils/agents/cognitive.py) 每轮创建图，尚未传入 `checkpointer`；已有 `thread_id` 不会自动产生跨轮记忆。
 - [runtime.py](../utils/agents/runtime.py) 的 thread ID 按“群＋用户”划分，workspace 和 QQ 投递锁按群共享。接入状态前须明确这两种身份的关系。
-- [chat_context.py](../utils/agents/chat_context.py) 每轮拼接历史与当前请求。启用 checkpointer 后不能继续无条件追加整段历史。
+- [chat_context.py](../plugins/agent/chat_context.py) 每轮拼接历史与当前请求。启用 checkpointer 后不能继续无条件追加整段历史。
 - [message_flow.md](message_flow.md) 规定历史是消息到达时的快照。排队后的新问题、以及用户发送请求时尚未看到的助手回复，不得混入该请求。
 - QQ 最终回复在审核、发送成功后才写入数据库；图生成完成不等于用户已经收到。
 - `extract_uni_messages()` 当前扫描全部返回消息。跨轮保留状态后，必须增加当前轮边界，避免再次发送旧媒体。

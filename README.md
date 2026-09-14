@@ -316,7 +316,7 @@ API 前缀：
 ```
 frontier/
 ├── plugins/
-│   ├── agent/          # 核心消息入口和 Agent 调度
+│   ├── agent/          # QQ 事件、引用、归一化、门控、附件和上下文
 │   ├── acp/            # ACP 客户端、v1/v2 服务端、QQ 命令与子代理桥接
 │   ├── clockwork/      # 定时任务系统
 │   ├── dashboard/      # FastAPI Dashboard
@@ -324,9 +324,9 @@ frontier/
 │   └── toolbox/        # 管理命令
 ├── tools/              # LangChain Agent 工具
 ├── utils/              # agents/ 包、消息、DB、LLM、渲染、HTTP、Milky helper
-├── prompts/            # 全局操作、渲染和任务 prompt
+├── prompts/            # 共享 Agent 提示词；插件专属提示词随插件保存
 ├── renderer/           # Markdown 本地图表/公式/代码高亮前端源码
-├── templates/          # HTML/CSS 渲染模板
+├── templates/          # 共享渲染模板；插件专属模板随插件保存
 ├── data/               # 易经、塔罗等静态数据
 ├── scripts/            # 维护脚本
 ├── test/               # pytest / nonebug 测试
@@ -345,7 +345,7 @@ uv sync --locked --group dev
 uv run --locked pytest --collect-only -q
 uv run --locked pytest test/ -q
 uv run --locked ruff check .
-uv run --locked ty check utils/agent_context.py utils/harness_profiles.py utils/mcp.py utils/agents/inputs.py utils/agents/execution.py utils/agents/runtime.py utils/agents/runtime_gateway.py utils/agents/chat_context.py utils/delivery.py plugins/dashboard/api/settings_routes.py
+uv run --locked ty check utils/agent_context.py utils/harness_profiles.py utils/mcp.py utils/agents/inputs.py utils/agents/execution.py utils/agents/runtime.py utils/agents/runtime_gateway.py plugins/agent/chat_context.py utils/delivery.py plugins/dashboard/api/settings_routes.py
 ```
 
 数据库维护脚本：

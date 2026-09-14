@@ -1,33 +1,22 @@
 import ast
 import asyncio
-import hashlib
-import os
 import re
 import time
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
-from dataclasses import dataclass
 from io import BytesIO
-from pathlib import Path
 from typing import Any, Literal
 
 from nonebot import logger
-from nonebot.adapters.milky.event import MessageEvent
 from PIL import Image as PILImage
-from pydantic import BaseModel, Field
 
 from utils.alconna import Image, UniMessage, Video
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
-from utils.database import GroupSettingsManager, MessageDatabase, get_engine
 from utils.delivery import DeliveryResult
 from utils.http_client import get_http_client
 from utils.markdown_render import markdown_to_image, markdown_to_text
-from utils.media import detect_mime_type
-from utils.signal_llm import signal_structured
 
 httpx_client = get_http_client("message")
-messages_db = MessageDatabase()
 text_det: TextCheck | None = None
 image_det: ImageCheck | None = None
 _text_det_lock = asyncio.Lock()
@@ -40,80 +29,6 @@ MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
 MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
 MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD = 500
 _RICH_MARKDOWN_FENCE_RE = re.compile(r"(?im)^\s*```+\s*(?:chart|stats|timeline)\b")
-REPLY_CHECK_MIN_TEXT_LENGTH = 8
-REPLY_CHECK_GROUP_COOLDOWN_SECONDS = 120
-REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS = 20 * 60
-REPLY_CHECK_ACTIVE_GROUP_WINDOW_SECONDS = 60
-REPLY_CHECK_ACTIVE_GROUP_MESSAGE_LIMIT = 20
-REPLY_CHECK_STRONG_KEYWORDS = (
-    "求助",
-    "救命",
-    "帮忙",
-    "帮我",
-    "谁知道",
-    "有没有人知道",
-    "报错",
-    "失败",
-    "崩了",
-    "卡住",
-    "不会",
-    "不懂",
-    "问一下ai",
-    "问一下 ai",
-    "机器人看看",
-    "有没有bot",
-    "有没有 bot",
-)
-REPLY_CHECK_QUESTION_KEYWORDS = (
-    "?",
-    "？",
-    "怎么",
-    "为什么",
-    "为啥",
-    "哪里",
-    "如何",
-    "能不能",
-    "有没有",
-    "什么",
-    "哪个",
-    "咋",
-)
-ACTIVE_TRIGGER_STOP_KEYWORDS = (
-    "别回",
-    "不要回",
-    "不用回",
-    "无需回复",
-    "别说话",
-    "不要说话",
-    "别理",
-    "闭嘴",
-    "停止回复",
-    "别回复",
-)
-ACTIVE_TRIGGER_LOW_INFO_PHRASES = {
-    "h",
-    "hh",
-    "hhh",
-    "哈哈",
-    "哈哈哈",
-    "哈哈哈哈",
-    "笑死",
-    "草",
-    "乐",
-    "好",
-    "好的",
-    "收到",
-    "嗯",
-    "嗯嗯",
-    "哦",
-    "噢",
-    "啊",
-    "诶",
-    "在吗",
-    "在不在",
-}
-ACTIVE_TRIGGER_STRIP_CHARS = " \t\r\n:：,，.。!！?？~～…、/\\|[]()（）【】"
-_reply_check_last_checked_at: dict[int, float] = {}
 _BLOCK_MATH_RE = re.compile(r"(?<!\\)\$\$(?!\$).+?(?<!\\)\$\$", re.DOTALL)
 _INLINE_MATH_RE = re.compile(r"(?<!\\)\$(?![\s\d$])[^$\n]+?(?<!\\)\$(?!\w)")
 _LATEX_DELIMITED_MATH_RE = re.compile(r"\\\[(.|\n)+?\\\]|\\\((.|\n)+?\\\)")
@@ -134,13 +49,6 @@ _MERMAID_DIAGRAM_RE = re.compile(
 
 
 _TEXT_CONTENT_BLOCK_TYPES = {"text", "output_text"}
-
-
-class ReplyCheck(BaseModel):
-    should_reply: str = Field(
-        description="Should or not reply message. If should, reply with true, either reply with false"
-    )
-    confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
 
 
 def extract_message_text(content: Any) -> str:
@@ -170,32 +78,6 @@ def extract_message_text(content: Any) -> str:
     return str(content or "")
 
 
-def _reply_check_content_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return str(content or "")
-
-    parts = []
-    for item in content:
-        if not isinstance(item, dict):
-            parts.append(str(item))
-            continue
-        item_type = item.get("type")
-        if item_type == "text":
-            parts.append(str(item.get("text", "")))
-        elif item_type:
-            labels = {
-                "image": "图片",
-                "image_url": "图片",
-                "audio": "语音",
-                "video": "视频",
-                "file": "文件",
-            }
-            parts.append(f"[{labels.get(item_type, item_type)}]")
-    return "\n".join(part for part in parts if part)
-
-
 def _message_has_hard_to_text_content(content: str) -> bool:
     return any(
         pattern.search(content)
@@ -218,119 +100,7 @@ def _message_should_render_as_image(content: str) -> bool:
     return len(content) >= MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD
 
 
-def _looks_like_reply_check_candidate(text: str, *, active_group: bool) -> bool:
-    compact_text = "".join(text.lower().split())
-    if not compact_text:
-        return False
-
-    has_strong_signal = any(keyword in compact_text for keyword in REPLY_CHECK_STRONG_KEYWORDS)
-    if active_group:
-        return has_strong_signal
-
-    if has_strong_signal:
-        return True
-    if len(compact_text) < REPLY_CHECK_MIN_TEXT_LENGTH:
-        return False
-    return any(keyword in compact_text for keyword in REPLY_CHECK_QUESTION_KEYWORDS)
-
-
-def _active_trigger_content(plaintext: str, wake_words: list[str]) -> str:
-    text = plaintext.strip()
-    for wake_word in sorted((word for word in wake_words if word), key=len, reverse=True):
-        if text.startswith(wake_word):
-            return text[len(wake_word) :].strip(ACTIVE_TRIGGER_STRIP_CHARS)
-    return text.strip(ACTIVE_TRIGGER_STRIP_CHARS)
-
-
-def _message_gateway_user_id(event: MessageEvent) -> int | str:
-    user_id_raw = event.get_user_id()
-    try:
-        return int(user_id_raw)
-    except ValueError:
-        return user_id_raw
-
-
-def _message_gateway_blocked_by_access_policy(group_id: int, user_id: int | str) -> bool:
-    if group_id != 0 and EnvConfig.AGENT_WHITELIST_MODE and group_id not in EnvConfig.AGENT_WHITELIST_GROUP_LIST:
-        return True
-    if group_id in EnvConfig.AGENT_BLACKLIST_GROUP_LIST:
-        return True
-    if EnvConfig.AGENT_WHITELIST_MODE and user_id not in EnvConfig.AGENT_WHITELIST_PERSON_LIST:
-        return True
-    return user_id in EnvConfig.AGENT_BLACKLIST_PERSON_LIST
-
-
-async def _reply_check_group_is_active(group_id: int, now_ms: int) -> bool:
-    since_time = now_ms - REPLY_CHECK_ACTIVE_GROUP_WINDOW_SECONDS * 1000
-    message_count = await messages_db.count_group_messages_since(group_id=group_id, since_time=since_time)
-    return message_count > REPLY_CHECK_ACTIVE_GROUP_MESSAGE_LIMIT
-
-
-async def _reply_check_assistant_recently_replied(group_id: int, now_ms: int) -> bool:
-    latest_time = await messages_db.latest_group_role_message_time(group_id=group_id, role="assistant")
-    if latest_time is None:
-        return False
-    return now_ms - latest_time < REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS * 1000
-
-
-async def _reply_check_should_reply(group_id: int, plaintext: str, messages: list) -> bool:
-    now_ms = int(time.time() * 1000)
-    now = time.monotonic()
-    active_group = await _reply_check_group_is_active(group_id, now_ms)
-    if not _looks_like_reply_check_candidate(plaintext, active_group=active_group):
-        return False
-    if await _reply_check_assistant_recently_replied(group_id, now_ms):
-        return False
-    last_checked_at = _reply_check_last_checked_at.get(group_id)
-    if last_checked_at is not None and now - last_checked_at < REPLY_CHECK_GROUP_COOLDOWN_SECONDS:
-        return False
-    _reply_check_last_checked_at[group_id] = now
-
-    reply_check_messages = [
-        *messages,
-        {"role": "user", "content": str({"metadata": {}, "content": plaintext})},
-    ]
-    temp_conv: list[dict] = reply_check_messages[-5:]
-    plain_conv = "\n".join(_reply_check_content_text(conv.get("content", "")) for conv in temp_conv)
-    with open("prompts/reply_check.md", encoding="utf-8") as f:
-        system_prompt = f.read().format(name=EnvConfig.BOT_NAME)
-    reply_check: ReplyCheck = await signal_structured(system_prompt, plain_conv, ReplyCheck)
-    return reply_check.should_reply == "true" and reply_check.confidence > 0.5
-
-
-async def _active_trigger_should_reply(plaintext: str, wake_words: list[str]) -> bool:
-    trigger_text = _active_trigger_content(plaintext, wake_words)
-    compact_text = re.sub(r"[\W_]+", "", trigger_text.lower())
-    if not compact_text:
-        # 仅发送唤醒词或只 @ Bot 时，NoneBot 可能已经把可见文本剥离为空。
-        # 这仍然是一次明确的呼唤，应交给 Agent 自然回应。
-        return True
-    if any(keyword in compact_text for keyword in ACTIVE_TRIGGER_STOP_KEYWORDS):
-        return False
-    return compact_text not in ACTIVE_TRIGGER_LOW_INFO_PHRASES
-
-
 MediaItem = bytes | bytearray | Callable[[], Awaitable[bytes | None]]
-FILE_URL_FIELDS = ("temp_url", "url", "download_url", "download_uri")
-
-
-@dataclass(frozen=True, slots=True)
-class MessageFileItem:
-    file_id: str | None
-    file_name: str
-    file_size: int
-    file_hash: str | None = None
-    url: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class StagedMessageFile:
-    file_name: str
-    file_size: int
-    virtual_path: str
-    local_path: Path
-    mime_type: str = "application/octet-stream"
-    sha256: str | None = None
 
 
 def _media_downloader(url: str, label: str) -> Callable[[], Awaitable[bytes | None]]:
@@ -342,201 +112,6 @@ def _media_downloader(url: str, label: str) -> Callable[[], Awaitable[bytes | No
             return None
 
     return _download
-
-
-def _first_file_url(data: dict) -> str | None:
-    for field in FILE_URL_FIELDS:
-        value = data.get(field)
-        if value:
-            return str(value)
-    return None
-
-
-def _int_or_zero(value: Any) -> int:
-    try:
-        return int(value or 0)
-    except TypeError, ValueError:
-        return 0
-
-
-def extract_message_files(messages: list[dict]) -> list[MessageFileItem]:
-    files: list[MessageFileItem] = []
-    for message in messages:
-        if message.get("type") != "file":
-            continue
-        msg_data = message.get("data", {})
-        file_hash = msg_data.get("file_hash")
-        files.append(
-            MessageFileItem(
-                file_id=str(file_id) if (file_id := msg_data.get("file_id")) else None,
-                file_name=str(msg_data.get("file_name") or "file"),
-                file_size=_int_or_zero(msg_data.get("file_size")),
-                file_hash=str(file_hash) if file_hash is not None else None,
-                url=_first_file_url(msg_data),
-            )
-        )
-    return files
-
-
-async def _message_file_download_url(
-    bot,
-    file_item: MessageFileItem,
-    *,
-    user_id: str | int,
-    group_id: int | None,
-    is_self_send: bool = False,
-) -> str | None:
-    if file_item.url:
-        return file_item.url
-    if not file_item.file_id:
-        return None
-    try:
-        if group_id is not None:
-            return await bot.get_group_file_download_url(group_id=int(group_id), file_id=file_item.file_id)
-        if file_item.file_hash is None:
-            logger.warning(f"私聊文件缺少 file_hash 字段，无法获取下载链接: {file_item.file_name}")
-            return None
-        return await bot.get_private_file_download_url(
-            user_id=int(user_id),
-            file_id=file_item.file_id,
-            file_hash=file_item.file_hash,
-            is_self_send=is_self_send,
-        )
-    except Exception as exc:
-        logger.warning(f"获取文件下载链接失败 {file_item.file_name}: {type(exc).__name__}: {exc}")
-        return None
-
-
-async def _download_file_bytes(url: str, file_name: str) -> bytes | None:
-    try:
-        response = await httpx_client.get(url)
-        raise_for_status = getattr(response, "raise_for_status", None)
-        if callable(raise_for_status):
-            raise_for_status()
-        return response.content
-    except Exception as exc:
-        logger.warning(f"下载文件失败 {file_name}: {type(exc).__name__}: {exc}")
-        return None
-
-
-def _safe_attachment_file_name(file_name: str) -> str:
-    safe_name = Path(str(file_name).replace("\\", "/")).name.strip()
-    return safe_name or "file"
-
-
-def _reserve_attachment_path(directory: Path, file_name: str) -> Path:
-    """Atomically reserve a fresh path before another download can select it."""
-    original = Path(file_name)
-    stem = original.stem or "file"
-    suffix = original.suffix
-    candidate = directory / file_name
-    counter = 2
-    while True:
-        try:
-            candidate.open("xb").close()
-            return candidate
-        except FileExistsError:
-            candidate = directory / f"{stem}-{counter}{suffix}"
-            counter += 1
-
-
-def cleanup_staged_message_files(staged_files: list[StagedMessageFile]) -> None:
-    """Remove files that did not reach a TTL-managed attachment row."""
-    for staged_file in staged_files:
-        path = Path(staged_file.local_path)
-        try:
-            path.unlink(missing_ok=True)
-        except OSError as exc:
-            logger.warning("清理未索引消息文件失败 %s: %s", path, exc)
-            continue
-        with suppress(OSError):
-            path.parent.rmdir()
-
-
-def _write_staged_file(target_path: Path, data: bytes) -> None:
-    temp_path = target_path.with_name(f".{target_path.name}.frontier-pending-{os.getpid()}-{time.time_ns()}")
-    try:
-        with temp_path.open("xb") as file:
-            file.write(data)
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temp_path, target_path)
-    finally:
-        try:
-            temp_path.unlink(missing_ok=True)
-        except OSError as exc:
-            logger.warning("清理消息文件临时写入失败 %s: %s", temp_path, exc)
-
-
-async def _complete_staged_write(target_path: Path, data: bytes) -> None:
-    # Cancellation cannot stop a worker thread. Let it finish before caller cleanup
-    # so the thread cannot recreate an unindexed file after it was removed.
-    write = asyncio.create_task(asyncio.to_thread(_write_staged_file, target_path, data))
-    try:
-        await asyncio.shield(write)
-    except asyncio.CancelledError:
-        with suppress(Exception):
-            await write
-        raise
-
-
-async def stage_message_files(
-    bot,
-    file_items: list[MessageFileItem],
-    *,
-    memory_dir: str | Path,
-    workspace_key: str,
-    message_time: int | None = None,
-    message_id: int | None = None,
-    user_id: str | int,
-    group_id: int | None,
-    is_self_send: bool = False,
-) -> list[StagedMessageFile]:
-    """Download incoming file segments into the agent memory files directory."""
-    if not file_items:
-        return []
-
-    memory_path = Path(memory_dir)
-    files_dir = memory_path / "files"
-    if message_id is not None:
-        prefix = f"{int(message_time)}-" if message_time is not None else ""
-        files_dir /= f"{prefix}m{int(message_id)}"
-    elif message_time is not None:
-        files_dir /= str(int(message_time))
-    files_dir.mkdir(parents=True, exist_ok=True)
-    staged_files: list[StagedMessageFile] = []
-
-    try:
-        for file_item in file_items:
-            url = await _message_file_download_url(
-                bot, file_item, user_id=user_id, group_id=group_id, is_self_send=is_self_send,
-            )
-            if not url:
-                logger.warning(f"文件缺少可下载链接，无法注入工作区: {file_item.file_name}")
-                continue
-            file_bytes = await _download_file_bytes(url, file_item.file_name)
-            if file_bytes is None:
-                continue
-
-            safe_name = _safe_attachment_file_name(file_item.file_name)
-            target_path = _reserve_attachment_path(files_dir, safe_name)
-            virtual_path = f"/memory/{workspace_key}/{target_path.relative_to(memory_path).as_posix()}"
-            staged_files.append(
-                StagedMessageFile(
-                    file_name=target_path.name,
-                    file_size=len(file_bytes),
-                    virtual_path=virtual_path,
-                    local_path=target_path,
-                    mime_type=detect_mime_type(file_bytes, kind="file", file_name=target_path.name),
-                    sha256=hashlib.sha256(file_bytes).hexdigest(),
-                )
-            )
-            await _complete_staged_write(target_path, file_bytes)
-    except BaseException:
-        cleanup_staged_message_files(staged_files)
-        raise
-
-    return staged_files
 
 
 async def _resolve_media_item(item: MediaItem) -> bytes | None:
@@ -831,43 +406,6 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
         logger.error("图片消息发送失败: %s", type(exc).__name__)
         return DeliveryResult(attempted=1, errors=(type(exc).__name__,))
     return DeliveryResult(attempted=1, sent=1, message_ids=_receipt_message_ids(receipt))
-
-
-async def message_gateway(event: MessageEvent, messages: list) -> bool:
-    group_id = event.data.group.group_id if event.data.group else 0
-    user_id = _message_gateway_user_id(event)
-    if _message_gateway_blocked_by_access_policy(group_id, user_id):
-        return False
-    if group_id == 0 and (event.is_tome() or event.to_me):
-        return True
-    segments = getattr(event.data, "segments", [])
-    # The adapter's get_plaintext() only includes text segments, not Markdown.
-    plaintext = (
-        "".join(
-            str(segment.get("data", {}).get("content" if segment.get("type") == "markdown" else "text", ""))
-            for segment in segments if segment.get("type") in {"text", "markdown"}
-        ) if any(segment.get("type") == "markdown" for segment in segments) else event.get_plaintext()
-    ).strip()
-    wake_words = _get_wake_words(group_id)
-    active_triggered = event.is_tome() or event.to_me or any(plaintext.startswith(w) for w in wake_words)
-    if active_triggered:
-        if group_id != 0:
-            return await _active_trigger_should_reply(plaintext, wake_words)
-        return True
-    auto_reply_allowed = group_id not in EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST and (
-        not EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE or group_id in EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST
-    )
-    if group_id != 0 and auto_reply_allowed:
-        return await _reply_check_should_reply(group_id, plaintext, messages)
-    return False
-
-
-def _get_wake_words(group_id: int) -> list[str]:
-    """获取群级唤醒词；数据库有自定义值时覆盖 .env 的 NICKNAME。"""
-    if group_id == 0:
-        return list(EnvConfig.BOT_NICKNAMES)
-    words = GroupSettingsManager(get_engine()).get(group_id, "wake_word")
-    return words or list(EnvConfig.BOT_NICKNAMES)
 
 
 async def _get_text_detector() -> TextCheck | None:

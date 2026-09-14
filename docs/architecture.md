@@ -1,5 +1,25 @@
 # Frontier 运行与维护边界
 
+## 插件组件归属
+
+插件拥有自己的事件处理、专属业务组件和静态资源。供多个入口使用的执行、存储、媒体、
+渲染和投递能力继续放在 `utils`。
+
+| 目录 | 组件 |
+|------|------|
+| `plugins/agent` | `handlers.py` 编排 QQ 事件；`message_normalizer.py` 展开消息段和转发；`reply_context.py` 处理引用；`chat_context.py` 分配上下文媒体预算；`gateway.py` 判断是否回复；`attachments.py` 暂存入站文件 |
+| `plugins/toolbox` | `settings.py` 管理模型展示和群唤醒词；`update.py` 管理更新、重启与启动通知；`menu.py` 加载插件内 `templates/vep_menu.*` |
+| `plugins/clockwork` | 定时任务实现、`templates/daily_news.*` 和 `prompts/daily_news.md` |
+| `plugins/acp` | ACP 客户端、服务端、QQ 命令、子代理桥接、进程维护和协议文档 |
+| `utils` | Agent 执行引擎、DB、模型路由、媒体服务、消息提取、内容检查、渲染和发送 |
+
+`agent`、`toolbox` 和 `acp` 的包入口只在 NoneBot 插件加载上下文中注册命令和生命周期钩子。
+普通导入 `plugins.agent.chat_context` 等组件不会注册 QQ 事件；NoneBot 应通过插件加载器加载
+包入口，测试事件逻辑时则显式引用对应 handler/command 模块。
+
+插件资源路径相对于模块文件解析，切换进程工作目录后仍可读取。
+部署配置、数据库和运行缓存沿用现有位置；数据库结构及任务处理函数的持久化路径保持不变。
+
 ## 请求生命周期
 
 QQ、用户定时任务和内置 Agent 的 ACP 服务使用
@@ -7,7 +27,7 @@ QQ、用户定时任务和内置 Agent 的 ACP 服务使用
 `FrontierCognitive.chat_agent()` 保留为兼容入口，执行同样的生命周期管理。
 
 1. 入口构造请求、可信用户/群身份及投递目标。
-2. `utils/agents/chat_context.py` 分配当前消息、引用和历史的媒体预算。
+2. `plugins/agent/chat_context.py` 分配当前消息、引用和历史的媒体预算。
 3. `utils/agents/execution.py` 从构建模型开始管理整轮执行，应用总超时和 workspace 锁。
 4. `cognitive.py` 组合模型、工具、middleware 和 subagent，消费进度流并提取结果。
 5. 入口使用 `utils/delivery.py` 的投递结果决定是否记录已发送回复。

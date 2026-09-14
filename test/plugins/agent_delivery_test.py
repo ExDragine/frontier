@@ -7,8 +7,8 @@ from typing import Any, cast
 
 import pytest
 
+from plugins.agent.attachments import StagedMessageFile
 from utils.delivery import DeliveryResult
-from utils.message import StagedMessageFile
 
 
 def _context(agent):
@@ -32,10 +32,10 @@ async def test_delivered_reply_can_be_quoted_as_original_text(monkeypatch, group
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
+    from plugins.agent.reply_context import build_reply_context
     from utils import database as db_module
     from utils.database import MessageDatabase
-    from utils.reply_context import build_reply_context
 
     monkeypatch.setattr(db_module, "DATABASE_FILE", "sqlite://")
     database = MessageDatabase()
@@ -77,7 +77,7 @@ async def test_history_only_records_delivered_response_after_send(monkeypatch, d
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     calls = []
 
@@ -108,7 +108,7 @@ async def test_artifact_failure_reaches_user_even_without_final_text(monkeypatch
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     sent = []
 
@@ -142,7 +142,7 @@ async def test_duplicate_event_stops_before_gateway_and_media_download(monkeypat
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     class Finished(Exception):
         pass
@@ -188,7 +188,7 @@ async def test_same_group_members_share_generation_and_delivery_queue(monkeypatc
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     entered = asyncio.Event()
     release = asyncio.Event()
@@ -234,7 +234,7 @@ async def test_delivery_queue_timeout_never_starts_expired_request(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     locked = asyncio.Event()
     release = asyncio.Event()
@@ -270,7 +270,7 @@ async def test_processing_deadline_cancels_work_and_releases_delivery_lock(monke
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     cancelled = asyncio.Event()
     notices = []
@@ -303,7 +303,7 @@ async def test_asset_collection_cancellation_cleans_completed_files(monkeypatch,
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import agent
+    from plugins.agent import handlers as agent
 
     downloaded = asyncio.Event()
     media_cancelled = asyncio.Event()

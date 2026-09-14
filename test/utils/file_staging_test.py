@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from utils import message
+from plugins.agent import attachments as message
 
 
 async def _stage(tmp_path, *, message_id, value):
