@@ -28,6 +28,7 @@ from langgraph.types import Command
 from nonebot import logger
 
 import tools as _tool_registry
+from plugins.acp.subagent import build_acp_subagents
 from utils.agent_context import FrontierRuntimeContext
 from utils.configs import EnvConfig
 from utils.harness_profiles import register_frontier_harness_profiles
@@ -59,7 +60,6 @@ from .session_context import SessionHistoryMiddleware, history_budget, messages_
 from .session_errors import SessionInterruptedError
 from .sessions import TurnLease
 from .subagents import (
-    build_acp_subagents,
     build_document_subagent,
     build_research_subagent,
 )

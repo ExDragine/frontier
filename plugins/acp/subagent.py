@@ -15,7 +15,7 @@ from nonebot import logger
 from utils.media import extension_for_mime
 from utils.message import extract_message_text
 
-from ..acp.service import (
+from .service import (
     AcpAgentService,
     AcpConfigurationError,
     AcpRunResult,

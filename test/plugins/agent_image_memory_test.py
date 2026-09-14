@@ -2210,7 +2210,7 @@ async def test_agent_startup_cleans_cached_files_and_schedules_daily_job(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_daily_cache_cleanup_cleans_attachments_and_acp(monkeypatch):
+async def test_daily_cache_cleanup_cleans_attachments(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -2223,15 +2223,9 @@ async def test_daily_cache_cleanup_cleans_attachments_and_acp(monkeypatch):
             calls.append("attachments")
             return 2
 
-    class DummyAcpService:
-        async def cleanup_cache(self):
-            calls.append("acp")
-            return 1
-
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(agent, "acp_service", DummyAcpService())
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_AUTO_CLEANUP", True)
 
     await agent.run_daily_cache_cleanup()
 
-    assert calls == ["attachments", "acp"]
+    assert calls == ["attachments"]

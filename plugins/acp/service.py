@@ -15,11 +15,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot import logger
 
 from utils.agents.progress import ProgressEvent, ProgressReporter, emit_progress
+
+if TYPE_CHECKING:
+    from .client_v2 import FrontierAcpV2Client
 
 PermissionPolicy = Literal["deny", "allow_once", "allow_always"]
 MediaKind = Literal["image", "audio"]
@@ -71,6 +74,7 @@ class AcpAgentConfig:
     auth_method: str | None = None
     permission_policy: PermissionPolicy = "deny"
     timeout_seconds: float = 600.0
+    protocol_version: Literal[1, 2] = 1
 
     @property
     def fingerprint(self) -> tuple[Any, ...]:
@@ -87,6 +91,7 @@ class AcpAgentConfig:
             self.auth_method,
             self.permission_policy,
             self.timeout_seconds,
+            self.protocol_version,
         )
 
     @property
@@ -124,7 +129,7 @@ class _AcpRuntime:
     manager: Any
     connection: Any
     process: Any
-    client: _FrontierAcpClient
+    client: _FrontierAcpClient | FrontierAcpV2Client
     session_id: str
     capabilities: Any
     fingerprint: tuple[Any, ...]
@@ -180,6 +185,7 @@ def _agent_config(name: str, value: Any) -> AcpAgentConfig:  # noqa: C901
         "auth_method",
         "permission_policy",
         "timeout_seconds",
+        "protocol_version",
     }
     if unknown:
         raise AcpConfigurationError(f"agents.{name} 包含未知字段: {', '.join(sorted(unknown))}")
@@ -234,6 +240,10 @@ def _agent_config(name: str, value: Any) -> AcpAgentConfig:  # noqa: C901
     if isinstance(timeout, bool) or not isinstance(timeout, int | float) or not 1 <= float(timeout) <= 3600:
         raise AcpConfigurationError(f"agents.{name}.timeout_seconds 必须在 1 到 3600 秒之间")
 
+    protocol_version = value.get("protocol_version", 1)
+    if type(protocol_version) is not int or protocol_version not in (1, 2):
+        raise AcpConfigurationError(f"agents.{name}.protocol_version 必须是 1 或 2")
+
     return AcpAgentConfig(
         command=command.strip(),
         args=tuple(args),
@@ -244,13 +254,14 @@ def _agent_config(name: str, value: Any) -> AcpAgentConfig:  # noqa: C901
         auth_method=auth_method.strip() if isinstance(auth_method, str) else None,
         permission_policy=permission_policy,
         timeout_seconds=float(timeout),
+        protocol_version=protocol_version,
     )
 
 
 def load_acp_config(path: str | Path = "acp.json") -> AcpConfig:
     config_path = Path(path)
     if not config_path.is_file():
-        raise AcpConfigurationError("acp.json 不存在；请从 acp.json.example 复制并配置 ACP Agent")
+        raise AcpConfigurationError("acp.json 不存在；请从 plugins/acp/acp.json.example 复制并配置 ACP Agent")
     if os.name != "nt":
         mode = config_path.stat().st_mode
         if mode & (stat.S_IWGRP | stat.S_IWOTH):
@@ -564,19 +575,24 @@ class AcpAgentService:
         sdk = self._sdk_loader()
         workspace = (self._root() / "workspaces" / scope_id).resolve()
         workspace.mkdir(parents=True, exist_ok=True)
-        client = _FrontierAcpClient(sdk, config.permission_policy)
-        manager = sdk.spawn_agent_process(
-            client,
-            config.command,
-            *config.args,
-            env=config.environment,
-            cwd=workspace,
-        )
+        client: _FrontierAcpClient | FrontierAcpV2Client
+        if config.protocol_version == 2:
+            from .client_v2 import FrontierAcpV2Client, spawn_v2_agent_process
+
+            client = FrontierAcpV2Client(sdk, config.permission_policy)
+            manager = spawn_v2_agent_process(
+                client, config.command, *config.args, env=config.environment, cwd=workspace,
+            )
+        else:
+            client = _FrontierAcpClient(sdk, config.permission_policy)
+            manager = sdk.spawn_agent_process(
+                client, config.command, *config.args, env=config.environment, cwd=workspace,
+            )
         try:
             connection, process = await manager.__aenter__()
             initialize = await asyncio.wait_for(
                 connection.initialize(
-                    protocol_version=sdk.PROTOCOL_VERSION,
+                    protocol_version=config.protocol_version,
                     client_capabilities=sdk.schema.ClientCapabilities(
                         fs=sdk.schema.FileSystemCapabilities(
                             read_text_file=False,
@@ -592,9 +608,9 @@ class AcpAgentService:
                 ),
                 timeout=min(config.timeout_seconds, 30),
             )
-            if initialize.protocol_version != sdk.PROTOCOL_VERSION:
+            if initialize.protocol_version != config.protocol_version:
                 raise AcpUnavailableError(
-                    f"ACP 协议版本不兼容：客户端 v{sdk.PROTOCOL_VERSION}，Agent v{initialize.protocol_version}"
+                    f"ACP 协议版本不兼容：客户端 v{config.protocol_version}，Agent v{initialize.protocol_version}"
                 )
             if config.auth_method:
                 auth_methods = getattr(initialize, "auth_methods", None) or []
@@ -685,9 +701,9 @@ class AcpAgentService:
                 continue
             encoded = base64.b64encode(item.data).decode("ascii")
             if item.kind == "image":
-                blocks.append(sdk.image_block(encoded, item.mime_type))
+                blocks.append(sdk.schema.ImageContentBlock(data=encoded, mime_type=item.mime_type))
             else:
-                blocks.append(sdk.audio_block(encoded, item.mime_type))
+                blocks.append(sdk.schema.AudioContentBlock(data=encoded, mime_type=item.mime_type))
         notices = []
         if omitted["image"]:
             notices.append(f"{omitted['image']} 张图片")
@@ -695,7 +711,7 @@ class AcpAgentService:
             notices.append(f"{omitted['audio']} 段音频")
         if notices:
             prompt = f"{prompt}\n\n[ACP Agent 不支持相应输入，已省略：{', '.join(notices)}]"
-        return [sdk.text_block(prompt), *blocks]
+        return [sdk.schema.TextContentBlock(text=prompt), *blocks]
 
     async def _run_in_scope(
         self,

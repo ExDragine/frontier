@@ -2,6 +2,7 @@
   "default": "dsh",
   "agents": {
     "dsh": {
+      "protocol_version": 1,
       "command": "pnpm",
       "args": [
         "--dir",

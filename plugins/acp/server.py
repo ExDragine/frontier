@@ -10,11 +10,11 @@ import datetime as dt
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-import acp
 from nonebot import logger
 
+import acp
 from utils.agents.progress import ProgressEvent
 from utils.agents.runtime_gateway import (
     AgentRuntime,
@@ -62,17 +62,17 @@ class _AcpProgressBridge:
     async def __call__(self, event: ProgressEvent) -> None:
         detail = event.detail or {}
         if event.type == "assistant_preamble" and event.message.strip():
-            await self._send(acp.update_agent_message_text(event.message.strip()))
+            await self._send(acp.schema.AgentMessageChunk(content=acp.schema.TextContentBlock(text=event.message.strip())))
             return
         if event.type == "thinking":
-            await self._send(acp.update_agent_thought_text("Frontier 正在处理请求…"))
+            await self._send(acp.schema.AgentThoughtChunk(content=acp.schema.TextContentBlock(text="Frontier 正在处理请求…")))
             return
         if event.type in {"tool_call", "subagent_start"}:
             key = str(detail.get("tool_name") or detail.get("name") or event.message)
             await self._send(
-                acp.start_tool_call(
-                    self._tool_id(key),
-                    event.message,
+                acp.schema.ToolCallStart(
+                    tool_call_id=self._tool_id(key),
+                    title=event.message,
                     kind="other",
                     status="in_progress",
                 )
@@ -85,8 +85,8 @@ class _AcpProgressBridge:
                 "error",
             }
             await self._send(
-                acp.update_tool_call(
-                    self._tool_id(key),
+                acp.schema.ToolCallProgress(
+                    tool_call_id=self._tool_id(key),
                     title=event.message,
                     status="completed" if success else "failed",
                 )
@@ -179,7 +179,7 @@ class FrontierAcpServer:
         )
 
     @staticmethod
-    def _decode_media(block: Any, kind: str) -> AgentRuntimeMedia:
+    def _decode_media(block: Any, kind: Literal["image", "audio"]) -> AgentRuntimeMedia:
         try:
             data = base64.b64decode(str(getattr(block, "data", "") or ""), validate=True)
         except (binascii.Error, ValueError) as exc:
@@ -249,29 +249,31 @@ class FrontierAcpServer:
                 if result.text:
                     await self._connection.session_update(
                         session_id=session_id,
-                        update=acp.update_agent_message_text(result.text),
+                        update=acp.schema.AgentMessageChunk(content=acp.schema.TextContentBlock(text=result.text)),
                     )
                 for artifact in result.artifacts:
                     if artifact.kind == "image":
-                        content = acp.image_block(
-                            base64.b64encode(artifact.data).decode("ascii"),
-                            artifact.mime_type,
+                        content = acp.schema.ImageContentBlock(
+                            data=base64.b64encode(artifact.data).decode("ascii"),
+                            mime_type=artifact.mime_type,
                         )
                     elif artifact.kind == "audio":
-                        content = acp.audio_block(
-                            base64.b64encode(artifact.data).decode("ascii"),
-                            artifact.mime_type,
+                        content = acp.schema.AudioContentBlock(
+                            data=base64.b64encode(artifact.data).decode("ascii"),
+                            mime_type=artifact.mime_type,
                         )
                     else:
                         continue
                     await self._connection.session_update(
                         session_id=session_id,
-                        update=acp.update_agent_message(content),
+                        update=acp.schema.AgentMessageChunk(content=content),
                     )
                 if not result.text and not result.artifacts:
                     await self._connection.session_update(
                         session_id=session_id,
-                        update=acp.update_agent_message_text("Frontier 已完成，但没有生成响应。"),
+                        update=acp.schema.AgentMessageChunk(
+                            content=acp.schema.TextContentBlock(text="Frontier 已完成，但没有生成响应。"),
+                        ),
                     )
                 return acp.PromptResponse(stop_reason="end_turn")
             except asyncio.CancelledError:
@@ -331,8 +333,21 @@ class FrontierAcpServer:
         raise acp.RequestError.method_not_found(method)
 
 
-async def run_frontier_acp_server() -> None:
-    await acp.run_agent(FrontierAcpServer())
+async def run_frontier_acp_server(protocol_version: int = 1) -> None:
+    if protocol_version == 1:
+        await acp.run_agent(FrontierAcpServer())
+    elif protocol_version == 2:
+        from acp.experimental import v2
+
+        from .server_v2 import FrontierAcpV2Server
+
+        server = FrontierAcpV2Server()
+        try:
+            await v2.run_agent(server)
+        finally:
+            await server.aclose()
+    else:
+        raise ValueError("protocol_version must be 1 or 2")
 
 
 def main() -> None:

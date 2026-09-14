@@ -6,7 +6,7 @@ import base64
 import acp
 import pytest
 
-from utils.agents.acp.server import FrontierAcpServer
+from plugins.acp.server import FrontierAcpServer
 from utils.agents.progress import ProgressEvent
 from utils.agents.runtime_gateway import (
     AgentRuntimeMedia,
@@ -63,8 +63,8 @@ async def test_frontier_acp_server_runs_runtime_and_streams_safe_updates(tmp_pat
     response = await server.prompt(
         created.session_id,
         [
-            acp.text_block("inspect this"),
-            acp.image_block(base64.b64encode(b"input").decode(), "image/png"),
+            acp.schema.TextContentBlock(text="inspect this"),
+            acp.schema.ImageContentBlock(data=base64.b64encode(b"input").decode(), mime_type="image/png"),
         ],
     )
 
@@ -103,7 +103,7 @@ async def test_frontier_acp_server_cancels_active_prompt(tmp_path):
     server = FrontierAcpServer(BlockingRuntime())
     server.on_connect(_Connection())
     created = await server.new_session(str(tmp_path))
-    task = asyncio.create_task(server.prompt(created.session_id, [acp.text_block("wait")]))
+    task = asyncio.create_task(server.prompt(created.session_id, [acp.schema.TextContentBlock(text="wait")]))
     await started.wait()
 
     await server.cancel(created.session_id)

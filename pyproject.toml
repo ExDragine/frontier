@@ -5,7 +5,7 @@ description = "A bot"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-  "agent-client-protocol>=0.12.1,<0.13",
+  "agent-client-protocol==1.0.0rc1",
   "nonebot2[fastapi]",
   "nonebot-plugin-alconna",
   "nonebot-plugin-apscheduler",

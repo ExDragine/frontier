@@ -6,7 +6,6 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
-    "AcpAgent": (".acp", "AcpAgent"),
     "FrontierAgentState": (".cognitive", "FrontierAgentState"),
     "FrontierCognitive": (".cognitive", "FrontierCognitive"),
     "ProgressEvent": (".progress", "ProgressEvent"),

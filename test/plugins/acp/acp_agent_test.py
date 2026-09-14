@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from utils.agents.acp import AcpAgent, AcpAgentService, AcpInputMedia, load_acp_config
-from utils.agents.acp.service import AcpConfigurationError
+from plugins.acp import AcpAgent, AcpAgentService, AcpInputMedia, load_acp_config
+from plugins.acp.service import AcpConfigurationError
 
 
 class _Model:
@@ -143,6 +143,9 @@ def _fake_sdk(created, *, image=True, audio=False, auth_methods=()):
         ClientCapabilities=_Model,
         FileSystemCapabilities=_Model,
         Implementation=_Model,
+        TextContentBlock=lambda **kwargs: SimpleNamespace(type="text", **kwargs),
+        ImageContentBlock=lambda **kwargs: SimpleNamespace(type="image", **kwargs),
+        AudioContentBlock=lambda **kwargs: SimpleNamespace(type="audio", **kwargs),
     )
     sdk.text_block = lambda text: SimpleNamespace(type="text", text=text)
     sdk.image_block = lambda data, mime_type: SimpleNamespace(type="image", data=data, mime_type=mime_type)
@@ -192,11 +195,23 @@ def test_load_acp_config_validates_default_and_policy(tmp_path):
     assert config.agents["demo"].description == "Demo ACP agent"
     assert config.agents["demo"].expose_as_subagent is True
     assert config.agents["demo"].permission_policy == "allow_once"
+    assert config.agents["demo"].protocol_version == 1
 
     raw = json.loads(path.read_text(encoding="utf-8"))
     raw["agents"]["demo"]["permission_policy"] = "ask"
     path.write_text(json.dumps(raw), encoding="utf-8")
     with pytest.raises(AcpConfigurationError, match="permission_policy"):
+        load_acp_config(path)
+
+
+@pytest.mark.parametrize("version", [True, False, 0, 3, "2", 2.0, None])
+def test_acp_config_rejects_invalid_protocol_version(tmp_path, version):
+    path = tmp_path / "acp.json"
+    _write_config(path)
+    raw = json.loads(path.read_text())
+    raw["agents"]["demo"]["protocol_version"] = version
+    path.write_text(json.dumps(raw))
+    with pytest.raises(AcpConfigurationError, match="protocol_version"):
         load_acp_config(path)
 
 

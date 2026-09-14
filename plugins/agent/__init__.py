@@ -13,6 +13,7 @@ from nonebot.adapters.milky.event import GroupDisbandEvent, MessageEvent
 
 require("nonebot_plugin_alconna")
 require("nonebot_plugin_apscheduler")
+require("plugins.acp")
 
 from nonebot_plugin_apscheduler import scheduler
 
@@ -23,7 +24,6 @@ from utils.agents import (
     conversation_workspace_key,
     run_serialized,
 )
-from utils.agents.acp import acp_service
 from utils.agents.chat_context import build_chat_context
 from utils.agents.message_envelope import (
     build_agent_attachment_payload,
@@ -529,13 +529,6 @@ async def run_daily_cache_cleanup() -> None:
                 logger.info("每日清理过期消息附件: %s", cleaned_attachments)
         except Exception as exc:
             logger.warning("每日消息附件清理失败: %s: %s", type(exc).__name__, exc)
-
-    try:
-        cleaned_scopes = await acp_service.cleanup_cache()
-        if cleaned_scopes:
-            logger.info("每日清理 ACP 缓存 scope: %s", cleaned_scopes)
-    except Exception as exc:
-        logger.warning("每日 ACP 缓存清理失败: %s: %s", type(exc).__name__, exc)
 
 
 @common.handle()

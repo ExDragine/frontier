@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from plugins import acp
+from plugins.acp import commands as acp
 from utils.delivery import DeliveryResult
 
 

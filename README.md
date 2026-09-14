@@ -37,7 +37,7 @@ UniMessage 文本、图片、视频或文件回复
 | 插件 | 功能 |
 |------|------|
 | `plugins/agent` | 核心对话引擎：消息处理、回复门控、内容安全、Deep Agent 调度、回复渲染 |
-| `plugins/acp` | `/acp` 外部 ACP Agent 桥接 |
+| `plugins/acp` | ACP v1/v2 客户端与服务端、`/acp` 命令、子代理桥接及进程维护 |
 | `plugins/clockwork` | APScheduler 定时任务：提醒、用户自动任务、每日新闻、APOD、地震/NRC 等推送 |
 | `plugins/dashboard` | Web 管理面板：JWT 登录、状态、消息浏览、配置管理、任务管理 |
 | `plugins/playground` | `/paint` 图片生成、`/video` 视频生成、戳一戳响应 |
@@ -114,10 +114,10 @@ uv sync --extra content-check
 复制配置后即可接入一个或多个外部 ACP Agent：
 
 ```bash
-cp acp.json.example acp.json
+cp plugins/acp/acp.json.example acp.json
 ```
 
-在 `acp.json` 中配置一个或多个通过 stdio 提供 ACP v1 的 Agent 后，可使用
+在 `acp.json` 中配置一个或多个通过 stdio 提供 ACP v1 或 v2 Draft 的 Agent 后，可使用
 `/acp <任务>`，或通过 `/acp --agent <名称> <任务>` 选择 Agent。`/acp --list`、
 `/acp --cancel` 和 `/acp --reset` 分别用于查看、取消当前 turn 和重建会话；命令访问
 沿用 `env.toml` 的 `[agent_policy]`。
@@ -134,11 +134,16 @@ DeepAgents 子代理，主 Agent 可以按 `description` 将任务委托给它�
 当前 Frontier workspace 的 `/acp-artifacts/`，不会把大段 base64 直接塞回模型上下文。
 该开关默认关闭，避免仅用于 `/acp` 的进程被模型意外调用。
 
-Frontier 自身也提供 ACP v1 stdio server，可供 ACP 客户端（包括日后的独立前端或其他
+每个 Agent 的 `protocol_version` 可设为 `1` 或 `2`，省略时保持 v1；修改后下次调用自动
+重建连接。可同时配置两版 Agent，通过 `--agent` 选择。版本不匹配时明确报错，不自动降级。
+
+Frontier 自身也提供 ACP v1 / v2 Draft stdio server，可供 ACP 客户端（包括日后的独立前端或其他
 Agent）启动：
 
 ```bash
-uv run python scripts/frontier_acp.py
+uv run python -m plugins.acp
+# v2 Draft
+uv run python -m plugins.acp --protocol-version 2
 ```
 
 这个入口复用同一个 `FrontierCognitive` 执行链，支持文本、图片和音频输入，并把已清洗的
@@ -147,12 +152,13 @@ uv run python scripts/frontier_acp.py
 访问授权。为防止权限继承和 Agent 环路，ACP 入站会话不暴露 QQ 平台工具、聊天记忆和
 ACP 子代理，只保留隔离 workspace、文档分析及模型原生能力。
 
-当前 Python SDK 的稳定协议是 ACP v1，因此 server 与 client 以 v1 为兼容基线；ACP v2
-仍处于草案阶段，后续会在 SDK 提供稳定协商支持后并行增加 v2 turn/state 生命周期，而不
-破坏现有 v1 配置。
+SDK 锁定为 `agent-client-protocol==1.0.0rc1`：v1 使用标准接口，v2 使用官方
+`acp.experimental.v2`（schema v2.0.0-alpha.3）。SDK 是预发布版，v2 是草案协议。
+v2 prompt 立即确认接收，完成与取消通过 `state_update` 表达，并支持进程内会话恢复和回放。
+目录说明见 [ACP 插件](plugins/acp/README.md)；接入规范、字段差异与支持范围见 [ACP v1](plugins/acp/docs/acp-v1.md) 和 [ACP v2](plugins/acp/docs/acp-v2.md)。
 
 DeepSeek Harness 不再使用 Frontier 内置的 SDK/JSON-RPC 适配层，而是作为普通 ACP Agent
-接入。官方仓库提供 `pnpm run demo:acp` 的 JSON-RPC stdio server；`acp.json.example`
+接入。官方仓库提供 `pnpm run demo:acp` 的 JSON-RPC stdio server；`plugins/acp/acp.json.example`
 已包含对应配置。使用前克隆并构建
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，将示例中的绝对路径替换为
 本机 checkout，并在 Frontier 进程环境中设置 `DEEPSEEK_API_KEY`，然后使用
@@ -311,7 +317,7 @@ API 前缀：
 frontier/
 ├── plugins/
 │   ├── agent/          # 核心消息入口和 Agent 调度
-│   ├── acp/            # /acp 外部 Agent 桥接
+│   ├── acp/            # ACP 客户端、v1/v2 服务端、QQ 命令与子代理桥接
 │   ├── clockwork/      # 定时任务系统
 │   ├── dashboard/      # FastAPI Dashboard
 │   ├── playground/     # /paint 和 /video
@@ -327,7 +333,6 @@ frontier/
 ├── docs/               # 设计文档和实现计划
 ├── cache/              # 运行时缓存和 sandbox
 ├── frontier.db         # 默认 SQLite 数据库
-├── acp.json.example
 ├── env.toml.example
 ├── mcp.json.example
 └── pyproject.toml
