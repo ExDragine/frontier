@@ -2,15 +2,17 @@
   "provider": "qwen",
   "models": [
     {
-      "id": "qwen3.7-max",
-      "display_name": "Qwen3.7 Max",
+      "id": "qwen3.8-max",
+      "display_name": "Qwen3.8 Max",
       "description": {
-        "en": "Qwen's highest-capability general model for demanding reasoning, agent, and coding tasks.",
-        "zh-CN": "千问面向高难度推理、智能体与编程任务的最高能力通用模型。"
+        "en": "Alibaba's current flagship Qwen model for frontier reasoning, coding, and agent work, with native image and video understanding and a 1M-token context window.",
+        "zh-CN": "阿里云当前旗舰千问模型，面向前沿推理、编程与智能体任务，原生支持图像、视频理解，上下文窗口 100 万 Token。"
       },
       "capabilities": {
         "input": [
-          "text"
+          "text",
+          "image",
+          "video"
         ],
         "output": [
           "text"
@@ -18,26 +20,72 @@
         "features": [
           "reasoning",
           "tool_calling",
+          "structured_output",
           "web_search"
         ],
         "api_modes": [
           "chat_completions",
-          "responses"
+          "responses",
+          "messages"
         ]
       },
       "context_window": 1000000,
-      "max_output_tokens": null,
+      "max_output_tokens": 131072,
       "knowledge_cutoff": null,
-      "released_at": null,
+      "released_at": "2026-08-02",
       "status": "active",
       "sources": [
         {
-          "url": "https://help.aliyun.com/zh/model-studio/text-generation-model",
-          "verified_at": "2026-07-15"
+          "url": "https://help.aliyun.com/zh/model-studio/qwen3-8-max",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://help.aliyun.com/zh/model-studio/token-plan-tool",
-          "verified_at": "2026-07-15"
+          "url": "https://help.aliyun.com/zh/model-studio/models",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "qwen3.8-flash",
+      "display_name": "Qwen3.8 Flash",
+      "description": {
+        "en": "The current cost-efficient Qwen multimodal model for high-volume chat and agent applications, with a 1M-token context window and full tool support.",
+        "zh-CN": "当前高性价比的千问多模态模型，面向高并发对话与智能体应用，100 万 Token 上下文并具备完整工具能力。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "responses",
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": "2026-08-26",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/qwen3-8-flash",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/models",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -65,35 +113,32 @@
         ],
         "api_modes": [
           "chat_completions",
-          "responses"
+          "responses",
+          "messages"
         ]
       },
       "context_window": 1000000,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 131072,
       "knowledge_cutoff": null,
       "released_at": null,
       "status": "active",
       "sources": [
         {
-          "url": "https://help.aliyun.com/zh/model-studio/text-generation-model",
-          "verified_at": "2026-07-15"
+          "url": "https://help.aliyun.com/zh/model-studio/qwen3-7-plus",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://help.aliyun.com/en/model-studio/vision-model/",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://help.aliyun.com/zh/model-studio/token-plan-tool",
-          "verified_at": "2026-07-15"
+          "url": "https://help.aliyun.com/zh/model-studio/models",
+          "verified_at": "2026-09-17"
         }
       ]
     },
     {
-      "id": "qwen3.6-flash",
-      "display_name": "Qwen3.6 Flash",
+      "id": "qwen3.7-flash",
+      "display_name": "Qwen3.7 Flash",
       "description": {
-        "en": "A fast, cost-efficient multimodal Qwen model for high-volume chat and agent applications.",
-        "zh-CN": "面向高并发对话与智能体应用的快速高效多模态千问模型。"
+        "en": "A fast multimodal Qwen model for high-throughput chat and agent applications, with image and video input and a 1M-token context window.",
+        "zh-CN": "面向高吞吐对话与智能体应用的快速多模态千问模型，支持图像、视频输入与 100 万 Token 上下文。"
       },
       "capabilities": {
         "input": [
@@ -112,26 +157,109 @@
         ],
         "api_modes": [
           "chat_completions",
-          "responses"
+          "responses",
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": "2026-07-21",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/qwen3-7-flash",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/models",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "qwen3.7-max",
+      "display_name": "Qwen3.7 Max",
+      "description": {
+        "en": "Superseded flagship Qwen model, still served and documented but no longer listed as a recommended model; use qwen3.8-max for new work.",
+        "zh-CN": "已被取代的千问旗舰模型，仍在服务且有官方文档，但已不再列入推荐模型；新项目请使用 qwen3.8-max。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "responses",
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "legacy",
+      "sources": [
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/qwen3-7-max",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/models",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "qwen3.6-flash",
+      "display_name": "Qwen3.6 Flash",
+      "description": {
+        "en": "Superseded fast multimodal Qwen model, still served for existing integrations; use qwen3.7-flash or qwen3.8-flash instead.",
+        "zh-CN": "已被取代的快速多模态千问模型，仍为既有集成提供服务；请改用 qwen3.7-flash 或 qwen3.8-flash。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "responses",
+          "messages"
         ]
       },
       "context_window": 1000000,
       "max_output_tokens": 65536,
       "knowledge_cutoff": null,
       "released_at": null,
-      "status": "active",
+      "status": "legacy",
       "sources": [
         {
-          "url": "https://help.aliyun.com/zh/model-studio/text-generation-model",
-          "verified_at": "2026-07-15"
+          "url": "https://help.aliyun.com/zh/model-studio/qwen3-6-flash",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://help.aliyun.com/en/model-studio/vision-model/",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://help.aliyun.com/zh/model-studio/token-plan-tool",
-          "verified_at": "2026-07-15"
+          "url": "https://help.aliyun.com/zh/model-studio/models",
+          "verified_at": "2026-09-17"
         }
       ]
     }

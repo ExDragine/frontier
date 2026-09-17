@@ -2,11 +2,11 @@
   "provider": "anthropic",
   "models": [
     {
-      "id": "claude-fable-5",
-      "display_name": "Claude Fable 5",
+      "id": "claude-fable-5-1",
+      "display_name": "Claude Fable 5.1",
       "description": {
-        "en": "Anthropic's most capable broadly available model for demanding reasoning and long-running agent tasks.",
-        "zh-CN": "Anthropic 能力最强的广泛可用模型，面向高难度推理与长时间运行的智能体任务。"
+        "en": "Anthropic's most capable generally available model for demanding reasoning and long-horizon agentic work, with always-on adaptive thinking.",
+        "zh-CN": "Anthropic 能力最强的通用模型，面向高难度推理与长时间运行的智能体任务，自适应思考始终开启。"
       },
       "capabilities": {
         "input": [
@@ -29,34 +29,34 @@
       },
       "context_window": 1000000,
       "max_output_tokens": 128000,
-      "knowledge_cutoff": "2026-01",
-      "released_at": "2026-06-09",
+      "knowledge_cutoff": "2026-06",
+      "released_at": "2026-09-01",
       "status": "active",
       "sources": [
         {
           "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/models/fable-5-1/overview",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://platform.claude.com/docs/en/release-notes/overview",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     },
     {
-      "id": "claude-opus-4-8",
-      "display_name": "Claude Opus 4.8",
+      "id": "claude-opus-5",
+      "display_name": "Claude Opus 5",
       "description": {
-        "en": "Anthropic's model for complex agentic coding and enterprise work.",
-        "zh-CN": "Anthropic 面向复杂智能体编程与企业任务的模型。"
+        "en": "Anthropic's model for complex agentic coding and enterprise work, a step-change improvement over Claude Opus 4.8.",
+        "zh-CN": "Anthropic 面向复杂智能体编程与企业任务的模型，相较 Claude Opus 4.8 有跨越式提升。"
       },
       "capabilities": {
         "input": [
@@ -79,25 +79,25 @@
       },
       "context_window": 1000000,
       "max_output_tokens": 128000,
-      "knowledge_cutoff": "2026-01",
-      "released_at": "2026-05-28",
+      "knowledge_cutoff": "2026-05",
+      "released_at": "2026-07-24",
       "status": "active",
       "sources": [
         {
           "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/models/opus-5/overview",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://platform.claude.com/docs/en/release-notes/overview",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -135,19 +135,19 @@
       "sources": [
         {
           "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://platform.claude.com/docs/en/release-notes/overview",
-          "verified_at": "2026-07-15"
+          "url": "https://platform.claude.com/docs/en/models/sonnet-5/overview",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
-          "verified_at": "2026-07-15"
+          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -185,19 +185,111 @@
       "sources": [
         {
           "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://platform.claude.com/docs/en/release-notes/overview",
-          "verified_at": "2026-07-15"
+          "url": "https://platform.claude.com/docs/en/models/haiku-4-5/overview",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
-          "verified_at": "2026-07-15"
+          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "claude-fable-5",
+      "display_name": "Claude Fable 5",
+      "description": {
+        "en": "Previous-generation flagship for demanding reasoning and long-horizon agentic work; superseded by Claude Fable 5.1 but still served.",
+        "zh-CN": "上一代旗舰模型，面向高难度推理与长时间运行的智能体任务；已被 Claude Fable 5.1 取代，但仍在服务。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-01",
+      "released_at": "2026-06-09",
+      "status": "legacy",
+      "sources": [
+        {
+          "url": "https://platform.claude.com/docs/en/models/fable-5/overview",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-4-8",
+      "display_name": "Claude Opus 4.8",
+      "description": {
+        "en": "Previous-generation model for complex agentic coding and enterprise work; superseded by Claude Opus 5 but still served.",
+        "zh-CN": "上一代模型，面向复杂智能体编程与企业任务；已被 Claude Opus 5 取代，但仍在服务。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-01",
+      "released_at": "2026-05-28",
+      "status": "legacy",
+      "sources": [
+        {
+          "url": "https://platform.claude.com/docs/en/models/opus-4-8/overview",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+          "verified_at": "2026-09-17"
         }
       ]
     }

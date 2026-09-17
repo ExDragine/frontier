@@ -22,15 +22,15 @@
       "sources": [
         {
           "url": "https://cloud.baidu.com/doc/qianfan/s/rmh4stp0j",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://cloud.baidu.com/doc/qianfan-docs/s/xm95lyys5",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://cloud.baidu.com/doc/qianfan-docs/s/Wm8r4sw29",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -44,7 +44,7 @@
       "capabilities": {
         "input": ["text", "image", "audio", "video"],
         "output": ["text"],
-        "features": ["reasoning"],
+        "features": ["reasoning", "tool_calling", "web_search"],
         "api_modes": ["chat_completions"]
       },
       "context_window": 131072,
@@ -55,11 +55,15 @@
       "sources": [
         {
           "url": "https://cloud.baidu.com/doc/qianfan/s/rmh4stp0j",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://cloud.baidu.com/doc/qianfan-api/s/Dmba8k71y",
-          "verified_at": "2026-07-15"
+          "url": "https://cloud.baidu.com/doc/qianfan-docs/s/xm95lyys5",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://cloud.baidu.com/doc/qianfan-docs/s/Wm8r4sw29",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -67,28 +71,32 @@
       "id": "ernie-x1.1",
       "display_name": "ERNIE X1.1",
       "description": {
-        "en": "Baidu's dedicated reasoning model for logic, mathematics, coding, and complex instruction following.",
-        "zh-CN": "百度面向逻辑、数学、编程和复杂指令遵循的专用推理模型。"
+        "en": "Baidu's dedicated reasoning model for logic, mathematics, coding, and complex instruction following; superseded by ERNIE 5.x and marked for retirement on Qianfan.",
+        "zh-CN": "百度面向逻辑、数学、编程和复杂指令遵循的专用推理模型，已被 ERNIE 5.x 取代，千帆平台已标记为即将下线。"
       },
       "capabilities": {
         "input": ["text"],
         "output": ["text"],
-        "features": ["reasoning", "web_search"],
+        "features": ["reasoning", "tool_calling", "web_search"],
         "api_modes": ["chat_completions"]
       },
       "context_window": 65536,
       "max_output_tokens": 65536,
       "knowledge_cutoff": null,
       "released_at": null,
-      "status": "active",
+      "status": "legacy",
       "sources": [
         {
           "url": "https://cloud.baidu.com/doc/qianfan/s/rmh4stp0j",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://cloud.baidu.com/doc/qianfan-api/s/Dmba8k71y",
-          "verified_at": "2026-07-15"
+          "url": "https://cloud.baidu.com/doc/qianfan-docs/s/xm95lyys5",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://cloud.baidu.com/doc/qianfan-docs/s/Wm8r4sw29",
+          "verified_at": "2026-09-17"
         }
       ]
     }

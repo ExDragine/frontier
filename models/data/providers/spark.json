@@ -2,31 +2,31 @@
   "provider": "spark",
   "models": [
     {
-      "id": "xSparkX2",
-      "display_name": "Spark X2",
+      "id": "spark-x2.5",
+      "display_name": "Spark X2.5",
       "description": {
-        "en": "iFLYTEK's flagship deep-reasoning model for mathematics, language understanding, coding, and agent tasks.",
-        "zh-CN": "科大讯飞面向数学、语言理解、编程与智能体任务的旗舰深度推理模型。"
+        "en": "iFLYTEK's flagship 293B-A30B MoE Spark model with a 256K-token context window, deep thinking, function calling, server-side web search, and an Anthropic-compatible endpoint.",
+        "zh-CN": "科大讯飞旗舰星火模型（293B-A30B MoE），上下文窗口 256K token，支持深度思考、函数调用与服务端联网搜索，并提供 Anthropic 兼容接口。"
       },
       "capabilities": {
         "input": ["text"],
         "output": ["text"],
-        "features": ["reasoning", "tool_calling"],
-        "api_modes": ["chat_completions", "messages"]
+        "features": ["reasoning", "tool_calling", "web_search"],
+        "api_modes": ["chat_completions", "responses", "messages"]
       },
-      "context_window": null,
-      "max_output_tokens": 131072,
+      "context_window": 262144,
+      "max_output_tokens": null,
       "knowledge_cutoff": null,
       "released_at": null,
       "status": "active",
       "sources": [
         {
-          "url": "https://www.xfyun.cn/doc/spark/X1http.html",
-          "verified_at": "2026-07-15"
+          "url": "https://www.xfyun.cn/doc/spark/Spark-X2.5.html",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://www.xfyun.cn/doc/spark/TokenPlan.html",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -34,8 +34,8 @@
       "id": "xSparkX2Flash",
       "display_name": "Spark X2 Flash",
       "description": {
-        "en": "A fast, cost-efficient Spark reasoning model with agent, coding, function-calling, and web-search support.",
-        "zh-CN": "兼顾速度与成本的星火推理模型，支持智能体、编程、函数调用和联网搜索。"
+        "en": "A fast, cost-efficient Spark deep-reasoning model served as spark-x with a 256K-token window, function calling, and server-side web search.",
+        "zh-CN": "兼顾速度与成本的星火深度推理模型（服务端 model 为 spark-x），窗口 256K token，支持函数调用与服务端联网搜索。"
       },
       "capabilities": {
         "input": ["text"],
@@ -51,11 +51,40 @@
       "sources": [
         {
           "url": "https://www.xfyun.cn/doc/spark/X2-Flash.html",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://www.xfyun.cn/doc/spark/TokenPlan.html",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "xSparkX2",
+      "display_name": "Spark X2",
+      "description": {
+        "en": "The earlier Spark X2 deep-reasoning tier, superseded by Spark X2.5 and listed as offline in the Spark Token Plan lineup; kept for compatibility.",
+        "zh-CN": "较早的星火 X2 深度推理档位，已被星火 X2.5 取代，并在星辰 Token Plan 模型列表中标注为已下线，仅为兼容保留。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": null,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "deprecated",
+      "sources": [
+        {
+          "url": "https://www.xfyun.cn/doc/spark/TokenPlan.html",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://www.xfyun.cn/doc/spark/X1http.html",
+          "verified_at": "2026-09-17"
         }
       ]
     }

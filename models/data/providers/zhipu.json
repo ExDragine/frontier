@@ -2,11 +2,73 @@
   "provider": "zhipu",
   "models": [
     {
+      "id": "glm-5.3",
+      "display_name": "GLM-5.3",
+      "description": {
+        "en": "Zhipu's current flagship text model for complex software engineering, terminal operation, and long-horizon agent tasks, with a 1M-token context window and mandatory thinking.",
+        "zh-CN": "智谱当前旗舰文本模型，面向复杂软件工程、终端操作与长程智能体任务，100 万 Token 上下文且始终开启思考。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions", "responses", "messages"]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": "2026-08-19",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.bigmodel.cn/cn/update/new-releases",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "glm-5.3-flash",
+      "display_name": "GLM-5.3-Flash",
+      "description": {
+        "en": "The first natively multimodal model in the GLM-5 line, taking image, video, and file input on a 1M-token context window at a fraction of GLM-5.3's price.",
+        "zh-CN": "GLM-5 系列首个原生多模态模型，支持图像、视频、文件输入，100 万 Token 上下文，价格远低于 GLM-5.3。"
+      },
+      "capabilities": {
+        "input": ["text", "image", "video", "file"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions"]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": "2026-08-26",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.bigmodel.cn/cn/update/new-releases",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.bigmodel.cn/cn/guide/start/pricing",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
       "id": "glm-5.2",
       "display_name": "GLM-5.2",
       "description": {
-        "en": "Zhipu's flagship long-context model for project-scale engineering, reasoning, and sustained agent work.",
-        "zh-CN": "智谱面向项目级工程、复杂推理与持续智能体任务的旗舰长上下文模型。"
+        "en": "Superseded GLM flagship for project-scale engineering and long-running agent work, kept in service alongside GLM-5.3.",
+        "zh-CN": "已被取代的 GLM 旗舰模型，面向项目级工程与长程智能体任务，目前与 GLM-5.3 并行提供服务。"
       },
       "capabilities": {
         "input": ["text"],
@@ -17,12 +79,20 @@
       "context_window": 1000000,
       "max_output_tokens": 131072,
       "knowledge_cutoff": null,
-      "released_at": null,
-      "status": "active",
+      "released_at": "2026-06-16",
+      "status": "legacy",
       "sources": [
         {
           "url": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.2",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.bigmodel.cn/cn/guide/capabilities/struct-output",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.bigmodel.cn/cn/update/new-releases",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -42,12 +112,20 @@
       "context_window": 200000,
       "max_output_tokens": 131072,
       "knowledge_cutoff": null,
-      "released_at": null,
-      "status": "active",
+      "released_at": "2026-04-07",
+      "status": "legacy",
       "sources": [
         {
           "url": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.1",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.bigmodel.cn/cn/guide/start/pricing",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.bigmodel.cn/cn/update/new-releases",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -67,12 +145,20 @@
       "context_window": 200000,
       "max_output_tokens": 131072,
       "knowledge_cutoff": null,
-      "released_at": null,
-      "status": "active",
+      "released_at": "2026-03-15",
+      "status": "legacy",
       "sources": [
         {
           "url": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5-turbo",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.bigmodel.cn/cn/guide/start/pricing",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.bigmodel.cn/cn/update/new-releases",
+          "verified_at": "2026-09-17"
         }
       ]
     }

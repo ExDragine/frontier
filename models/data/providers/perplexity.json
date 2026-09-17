@@ -2,11 +2,61 @@
   "provider": "perplexity",
   "models": [
     {
+      "id": "perplexity/sonar",
+      "display_name": "Sonar (Agent API)",
+      "description": {
+        "en": "Perplexity's grounded Sonar search model as served by the Agent API, the successor to the Sonar Chat Completions API.",
+        "zh-CN": "Perplexity 在 Agent API 中提供的 Sonar 联网搜索模型，是 Sonar Chat Completions API 的继任形态。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "responses"
+        ]
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.perplexity.ai/docs/agent-api/models",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/how-to",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/agent-api/quickstart",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/agent-api/building-agents/shape-output",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
       "id": "sonar-pro",
       "display_name": "Sonar Pro",
       "description": {
-        "en": "Perplexity's advanced search model for complex, source-grounded questions requiring deeper web research.",
-        "zh-CN": "Perplexity 面向复杂、需要更深入网络研究且以来源为依据的问题的高级搜索模型。"
+        "en": "Advanced Sonar search model with 200K context and enhanced search results, kept for existing Sonar Chat Completions use until support ends on September 27, 2026; superseded by the Agent API.",
+        "zh-CN": "具备 200K 上下文与增强搜索结果的高级 Sonar 搜索模型，供现有 Sonar Chat Completions 使用至 2026 年 9 月 27 日，已被 Agent API 取代。"
       },
       "capabilities": {
         "input": [
@@ -28,19 +78,31 @@
       "max_output_tokens": null,
       "knowledge_cutoff": null,
       "released_at": "2025-01-21",
-      "status": "active",
+      "status": "legacy",
       "sources": [
         {
           "url": "https://docs.perplexity.ai/docs/sonar/models/sonar-pro",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://docs.perplexity.ai/docs/sonar/features/structured-outputs",
-          "verified_at": "2026-07-15"
+          "url": "https://docs.perplexity.ai/api-reference/sonar-post",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://www.perplexity.ai/hub/blog/introducing-the-sonar-pro-api",
-          "verified_at": "2026-07-15"
+          "url": "https://docs.perplexity.ai/docs/sonar/features",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/media",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/resources/changelog",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -48,8 +110,8 @@
       "id": "sonar",
       "display_name": "Sonar",
       "description": {
-        "en": "Perplexity's fast search model for factual, citation-backed answers grounded in current web results.",
-        "zh-CN": "Perplexity 的快速搜索模型，基于实时网络结果生成有引用依据的事实型回答。"
+        "en": "Lightweight, cost-effective grounded search model with 128K context, kept for existing Sonar Chat Completions use until support ends on September 27, 2026; superseded by the Agent API.",
+        "zh-CN": "轻量、经济的联网搜索模型，128K 上下文，供现有 Sonar Chat Completions 使用至 2026 年 9 月 27 日，已被 Agent API 取代。"
       },
       "capabilities": {
         "input": [
@@ -71,19 +133,31 @@
       "max_output_tokens": null,
       "knowledge_cutoff": null,
       "released_at": "2025-01-21",
-      "status": "active",
+      "status": "legacy",
       "sources": [
         {
           "url": "https://docs.perplexity.ai/docs/sonar/models/sonar",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://docs.perplexity.ai/docs/sonar/features/structured-outputs",
-          "verified_at": "2026-07-15"
+          "url": "https://docs.perplexity.ai/api-reference/sonar-post",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://www.perplexity.ai/hub/blog/introducing-the-sonar-pro-api",
-          "verified_at": "2026-07-15"
+          "url": "https://docs.perplexity.ai/docs/sonar/features",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/media",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/resources/changelog",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -91,8 +165,8 @@
       "id": "sonar-reasoning-pro",
       "display_name": "Sonar Reasoning Pro",
       "description": {
-        "en": "Perplexity's search-grounded reasoning model for multi-step questions that benefit from deliberate analysis.",
-        "zh-CN": "Perplexity 以搜索为依据的推理模型，适合需要审慎分析的多步骤问题。"
+        "en": "Search-grounded reasoning model with Chain-of-Thought and 128K context, kept for existing Sonar Chat Completions use until support ends on September 27, 2026; superseded by the Agent API.",
+        "zh-CN": "以联网搜索为依据的思维链推理模型，128K 上下文，供现有 Sonar Chat Completions 使用至 2026 年 9 月 27 日，已被 Agent API 取代。"
       },
       "capabilities": {
         "input": [
@@ -115,15 +189,31 @@
       "max_output_tokens": null,
       "knowledge_cutoff": null,
       "released_at": null,
-      "status": "active",
+      "status": "legacy",
       "sources": [
         {
           "url": "https://docs.perplexity.ai/docs/sonar/models/sonar-reasoning-pro",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://docs.perplexity.ai/docs/sonar/features/structured-outputs",
-          "verified_at": "2026-07-15"
+          "url": "https://docs.perplexity.ai/api-reference/sonar-post",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/features",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/media",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/resources/changelog",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -131,8 +221,8 @@
       "id": "sonar-deep-research",
       "display_name": "Sonar Deep Research",
       "description": {
-        "en": "Perplexity's research agent for exhaustive web investigation, iterative reasoning, and source-backed synthesis.",
-        "zh-CN": "Perplexity 的研究智能体，用于全面网络调查、迭代推理与有来源依据的综合分析。"
+        "en": "Exhaustive research and reasoning model with 128K context and reasoning-effort control, kept for existing Sonar Chat Completions use until support ends on September 27, 2026; superseded by the Agent API.",
+        "zh-CN": "面向详尽调研与推理的模型，128K 上下文并支持推理力度控制，供现有 Sonar Chat Completions 使用至 2026 年 9 月 27 日，已被 Agent API 取代。"
       },
       "capabilities": {
         "input": [
@@ -154,15 +244,27 @@
       "max_output_tokens": null,
       "knowledge_cutoff": null,
       "released_at": null,
-      "status": "active",
+      "status": "legacy",
       "sources": [
         {
           "url": "https://docs.perplexity.ai/docs/sonar/models/sonar-deep-research",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://docs.perplexity.ai/docs/sonar/features/structured-outputs",
-          "verified_at": "2026-07-15"
+          "url": "https://docs.perplexity.ai/api-reference/sonar-post",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/sonar/features",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.perplexity.ai/docs/resources/changelog",
+          "verified_at": "2026-09-17"
         }
       ]
     }

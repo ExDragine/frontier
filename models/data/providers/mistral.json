@@ -34,15 +34,19 @@
       "sources": [
         {
           "url": "https://docs.mistral.ai/models/model-cards/mistral-medium-3-5-26-04",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://docs.mistral.ai/studio-api/conversations/reasoning",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://docs.mistral.ai/resources/known-limitations",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.mistral.ai/studio-api/conversations/reasoning",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.mistral.ai/getting-started/changelog",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -79,11 +83,19 @@
       "sources": [
         {
           "url": "https://docs.mistral.ai/models/model-cards/mistral-small-4-0-26-03",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://docs.mistral.ai/resources/known-limitations",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.mistral.ai/getting-started/changelog",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.mistral.ai/studio-api/conversations/function-calling",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -119,11 +131,19 @@
       "sources": [
         {
           "url": "https://docs.mistral.ai/models/model-cards/mistral-large-3-25-12",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://docs.mistral.ai/resources/known-limitations",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.mistral.ai/studio-api/conversations/vision",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.mistral.ai/studio-api/conversations/function-calling",
+          "verified_at": "2026-09-17"
         }
       ]
     }

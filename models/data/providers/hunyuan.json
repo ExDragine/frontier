@@ -2,31 +2,60 @@
   "provider": "hunyuan",
   "models": [
     {
-      "id": "hy3",
-      "display_name": "Hy3",
+      "id": "hy4-preview",
+      "display_name": "Hy4 Preview",
       "description": {
-        "en": "Tencent Hunyuan's production model for coding agents, long documents, and multi-step business workflows.",
-        "zh-CN": "腾讯混元面向编程智能体、长文档与多步骤业务工作流的正式版模型。"
+        "en": "Tencent Hunyuan's preview flagship (770B MoE, open-sourced) for agent and productivity workloads, with a 1M-token context window, preserved thinking, structured output, and function calling.",
+        "zh-CN": "腾讯混元预览版旗舰模型（770B MoE，已开源），面向智能体与生产力场景，上下文窗口 1M token，支持保留式思考、结构化输出与函数调用。"
       },
       "capabilities": {
         "input": ["text"],
         "output": ["text"],
         "features": ["reasoning", "tool_calling", "structured_output"],
-        "api_modes": ["chat_completions", "messages"]
+        "api_modes": ["chat_completions", "responses", "messages"]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "knowledge_cutoff": null,
+      "released_at": "2026-08-28",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://cloud.tencent.com/document/product/1823/130051",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://cloud.tencent.com/document/product/1823/130079",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "hy3",
+      "display_name": "Hy3",
+      "description": {
+        "en": "Tencent Hunyuan's production model for coding agents, long documents, and multi-step business workflows, with a 256k-token context window and 128k-token maximum output.",
+        "zh-CN": "腾讯混元面向编程智能体、长文档与多步骤业务工作流的正式版模型，上下文窗口 256k token，最大输出 128k token。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions", "responses", "messages"]
       },
       "context_window": 262144,
       "max_output_tokens": 131072,
       "knowledge_cutoff": null,
-      "released_at": "2026-07-07",
+      "released_at": null,
       "status": "active",
       "sources": [
         {
           "url": "https://cloud.tencent.com/document/product/1823/130051",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://cloud.tencent.com/document/product/1823/130079",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -34,28 +63,28 @@
       "id": "hy3-preview",
       "display_name": "Hy3 Preview",
       "description": {
-        "en": "Tencent Hunyuan's preview reasoning model designed for coding, complex dialogue, and agent workloads.",
-        "zh-CN": "腾讯混元面向编程、复杂对话与智能体负载的预览推理模型。"
+        "en": "Retired Hy3 preview identifier kept for compatibility; TokenHub took it offline on 2026-08-31 and automatically routes these calls to Hy3, so use hy3 instead.",
+        "zh-CN": "已退役的 Hy3 预览版标识，仅为兼容保留；TokenHub 已于 2026-08-31 下线该模型并自动切换到 Hy3，请改用 hy3。"
       },
       "capabilities": {
         "input": ["text"],
         "output": ["text"],
         "features": ["reasoning", "tool_calling", "structured_output"],
-        "api_modes": ["chat_completions", "messages"]
+        "api_modes": ["chat_completions", "responses", "messages"]
       },
       "context_window": 262144,
       "max_output_tokens": 131072,
       "knowledge_cutoff": null,
-      "released_at": "2026-04-23",
-      "status": "preview",
+      "released_at": null,
+      "status": "deprecated",
       "sources": [
         {
-          "url": "https://cloud.tencent.com/document/product/1823/130051",
-          "verified_at": "2026-07-15"
+          "url": "https://cloud.tencent.com/announce/detail/2391",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://cloud.tencent.com/document/product/1823/130079",
-          "verified_at": "2026-07-15"
+          "url": "https://cloud.tencent.com/document/product/1823/130051",
+          "verified_at": "2026-09-17"
         }
       ]
     }

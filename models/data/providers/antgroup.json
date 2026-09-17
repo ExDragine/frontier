@@ -5,8 +5,8 @@
       "id": "Ling-2.6-1T",
       "display_name": "Ling 2.6 1T",
       "description": {
-        "en": "Ant Group's flagship general-purpose model for long-context coding, tool use, and multi-step agent workflows.",
-        "zh-CN": "蚂蚁集团面向长上下文编程、工具调用与多步骤智能体工作流的通用旗舰模型。"
+        "en": "Ant Group's trillion-parameter Ling flagship for ultra-long documents, complex multi-hop reasoning, and agent task chains; 1M context natively, 256K exposed by the official API.",
+        "zh-CN": "蚂蚁集团万亿参数 Ling 旗舰模型，面向超长文档、复杂多跳推理与智能体任务链；原生支持 1M 上下文，官方 API 当前开放 256K。"
       },
       "capabilities": {
         "input": ["text"],
@@ -17,16 +17,119 @@
       "context_window": 262144,
       "max_output_tokens": null,
       "knowledge_cutoff": null,
-      "released_at": null,
+      "released_at": "2026-04-29",
       "status": "active",
       "sources": [
         {
           "url": "https://developer.ant-ling.com/en/docs/models/ling/",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/models/price/",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://developer.ant-ling.com/en/docs/api-reference/openai/",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "Ling-3.0-flash",
+      "display_name": "Ling 3.0 Flash",
+      "description": {
+        "en": "Ant Group's current cost-effective hybrid reasoning model (124B MoE, 5.1B active) for high-throughput agent, coding, and office automation workloads.",
+        "zh-CN": "蚂蚁集团当前高性价比混合推理模型（124B MoE，激活 5.1B），面向高吞吐智能体、编程与办公自动化负载。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2026-07-23",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developer.ant-ling.com/en/docs/models/ling/",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/getting-started/changelog/",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/api-reference/openai/",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "Ling-3.0-flash-VL",
+      "display_name": "Ling 3.0 Flash VL",
+      "description": {
+        "en": "Ant Group's first native multimodal Ling model, taking text, images, and video with a visual observe-act-verify-correct loop for GUI and frontend automation.",
+        "zh-CN": "蚂蚁集团首个原生多模态 Ling 模型，支持文本、图像与视频输入，并通过“观察—行动—验证—修正”视觉闭环服务 GUI 与前端自动化。"
+      },
+      "capabilities": {
+        "input": ["text", "image", "video"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2026-09-04",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developer.ant-ling.com/en/docs/models/ling/",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/tutorials/multimodal-understanding/",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/getting-started/changelog/",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "Ling-3.0-tiny",
+      "display_name": "Ling 3.0 Tiny",
+      "description": {
+        "en": "Ant Group's lightweight hybrid reasoning model (7.9B total, 1.3B active) for on-device deployment, local offline execution, and lightweight tool use.",
+        "zh-CN": "蚂蚁集团轻量级混合推理模型（总参数 7.9B，激活 1.3B），面向端侧部署、本地离线运行与轻量工具调用。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2026-08-07",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://developer.ant-ling.com/en/docs/models/ling/",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/getting-started/changelog/",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/api-reference/openai/",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -34,8 +137,8 @@
       "id": "Ling-2.6-flash",
       "display_name": "Ling 2.6 Flash",
       "description": {
-        "en": "Ant Group's efficient general model for high-throughput dialogue, content generation, and agent collaboration.",
-        "zh-CN": "蚂蚁集团面向高吞吐对话、内容生成与智能体协作的高效通用模型。"
+        "en": "Ant Group's previous-generation efficient general model, still listed and served, with Ling-3.0-flash as the recommended successor.",
+        "zh-CN": "蚂蚁集团上一代高效通用模型，目前仍在售并在文档中可用，官方建议迁移到 Ling-3.0-flash。"
       },
       "capabilities": {
         "input": ["text"],
@@ -43,19 +146,23 @@
         "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
         "api_modes": ["chat_completions", "messages"]
       },
-      "context_window": 262144,
+      "context_window": null,
       "max_output_tokens": null,
       "knowledge_cutoff": null,
-      "released_at": null,
-      "status": "active",
+      "released_at": "2026-04-22",
+      "status": "legacy",
       "sources": [
         {
-          "url": "https://developer.ant-ling.com/en/docs/models/ling/",
-          "verified_at": "2026-07-15"
+          "url": "https://developer.ant-ling.com/en/docs/models/price/",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://developer.ant-ling.com/en/docs/api-reference/openai/",
-          "verified_at": "2026-07-15"
+          "url": "https://developer.ant-ling.com/en/docs/models/deprecation/",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/getting-started/changelog/",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -63,8 +170,8 @@
       "id": "Ring-2.6-1T",
       "display_name": "Ring 2.6 1T",
       "description": {
-        "en": "Ant Group's reasoning model for coding agents, tool orchestration, research, and long-horizon execution.",
-        "zh-CN": "蚂蚁集团面向编程智能体、工具编排、研究分析与长周期执行的推理模型。"
+        "en": "Ant Group's current flagship trillion-parameter reasoning model for coding agents, tool orchestration, and long-horizon execution, with adjustable high/xhigh reasoning effort.",
+        "zh-CN": "蚂蚁集团当前旗舰万亿参数推理模型，面向编程智能体、工具编排与长周期执行，支持 high/xhigh 可调推理强度。"
       },
       "capabilities": {
         "input": ["text"],
@@ -75,16 +182,20 @@
       "context_window": 262144,
       "max_output_tokens": null,
       "knowledge_cutoff": null,
-      "released_at": null,
+      "released_at": "2026-05-15",
       "status": "active",
       "sources": [
         {
           "url": "https://developer.ant-ling.com/en/docs/models/ring/",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://developer.ant-ling.com/en/docs/api-reference/openai/",
-          "verified_at": "2026-07-15"
+          "url": "https://developer.ant-ling.com/en/docs/tutorials/effort/",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developer.ant-ling.com/en/docs/models/deprecation/",
+          "verified_at": "2026-09-17"
         }
       ]
     }

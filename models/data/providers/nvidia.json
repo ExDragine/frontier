@@ -31,11 +31,11 @@
       "sources": [
         {
           "url": "https://build.nvidia.com/nvidia/nemotron-3-ultra-550b-a55b",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://build.nvidia.com/nvidia/nemotron-3-ultra-550b-a55b/modelcard",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -69,11 +69,50 @@
       "sources": [
         {
           "url": "https://build.nvidia.com/nvidia/nemotron-3-super-120b-a12b",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://build.nvidia.com/nvidia/nemotron-3-super-120b-a12b/modelcard",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "display_name": "Nemotron 3.5 Lightning 30B A3B",
+      "description": {
+        "en": "NVIDIA's fastest 30B A3B Nemotron MoE model for long-running autonomous agents and sub-agent workhorse deployments, with a 1M-token context window.",
+        "zh-CN": "NVIDIA 最快的 30B A3B Nemotron MoE 模型，面向长时运行的自主智能体与子智能体工作负载，具备 100 万 token 上下文窗口。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": "2026-05",
+      "released_at": "2026-08-11",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/modelcard",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -81,8 +120,8 @@
       "id": "nvidia/nemotron-3-nano-30b-a3b",
       "display_name": "Nemotron 3 Nano 30B A3B",
       "description": {
-        "en": "NVIDIA's compact Nemotron model unifying reasoning and general chat for efficient agents, coding, and RAG systems.",
-        "zh-CN": "NVIDIA 的紧凑型 Nemotron 模型，融合推理与通用对话，面向高效智能体、编程与 RAG 系统。"
+        "en": "NVIDIA's compact Nemotron 3 Nano reasoning and chat model; its free NIM endpoint was deprecated on 2026-08-31, so new work should move to newer Nemotron models.",
+        "zh-CN": "NVIDIA 的紧凑型 Nemotron 3 Nano 推理与对话模型；其免费 NIM 端点已于 2026-08-31 弃用，新任务应迁移到更新的 Nemotron 模型。"
       },
       "capabilities": {
         "input": [
@@ -99,19 +138,15 @@
           "chat_completions"
         ]
       },
-      "context_window": 1000000,
+      "context_window": 262144,
       "max_output_tokens": 128000,
       "knowledge_cutoff": "2025-11",
       "released_at": "2025-12-15",
-      "status": "active",
+      "status": "deprecated",
       "sources": [
         {
           "url": "https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b/modelcard",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     }

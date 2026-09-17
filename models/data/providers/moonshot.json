@@ -2,31 +2,109 @@
   "provider": "moonshot",
   "models": [
     {
-      "id": "kimi-k2.7-code",
-      "display_name": "Kimi K2.7 Code",
+      "id": "kimi-k3",
+      "display_name": "Kimi K3",
       "description": {
-        "en": "Moonshot AI's latest Kimi model for coding and agentic work, with native visual and video understanding and a 256K context window.",
-        "zh-CN": "月之暗面最新的 Kimi 编程与智能体模型，原生支持图像、视频理解及 256K 上下文。"
+        "en": "Moonshot AI's most capable flagship model, with native visual understanding, a 1M-token context window, and always-on thinking for long-horizon coding, knowledge work, and reasoning.",
+        "zh-CN": "月之暗面能力最强的旗舰模型，原生支持视觉理解，100 万 Token 上下文并始终开启思考，面向长程编程、知识工作与推理任务。"
       },
       "capabilities": {
         "input": ["text", "image", "video"],
         "output": ["text"],
         "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
-        "api_modes": ["chat_completions"]
+        "api_modes": ["chat_completions", "responses", "messages"]
       },
-      "context_window": 262144,
-      "max_output_tokens": null,
-      "released_at": null,
+      "context_window": 1048576,
+      "max_output_tokens": 1048576,
       "knowledge_cutoff": null,
+      "released_at": null,
       "status": "active",
       "sources": [
         {
           "url": "https://platform.kimi.ai/docs/models",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://www.kimi.com/resources/kimi-k2-7-code",
-          "verified_at": "2026-07-15"
+          "url": "https://platform.kimi.ai/docs/guide/kimi-k3-quickstart",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.kimi.ai/docs/api/models-overview",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.kimi.ai/docs/api/overview",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.kimi.ai/docs/pricing/chat",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "display_name": "Kimi K2.7 Code",
+      "description": {
+        "en": "Moonshot AI's dedicated coding model with native visual and video understanding, always-on thinking, and a 256K context window.",
+        "zh-CN": "月之暗面专用编程模型，原生支持图像、视频理解，思考始终开启，上下文窗口 256K。"
+      },
+      "capabilities": {
+        "input": ["text", "image", "video"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "responses", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.kimi.ai/docs/models",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.kimi.ai/docs/guide/response_format",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.kimi.ai/docs/api/overview",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "kimi-k2.7-code-highspeed",
+      "display_name": "Kimi K2.7 Code HighSpeed",
+      "description": {
+        "en": "The high-speed variant of Kimi K2.7 Code — the same model and thinking behaviour with roughly 5-6x faster output for interactive coding.",
+        "zh-CN": "Kimi K2.7 Code 的高速版本，模型与思考行为一致，输出速度约为普通版的 5-6 倍，适合交互式编程。"
+      },
+      "capabilities": {
+        "input": ["text", "image", "video"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "responses", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.kimi.ai/docs/models",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.kimi.ai/docs/guide/use-kimi-vision-model",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -34,28 +112,32 @@
       "id": "kimi-k2.6",
       "display_name": "Kimi K2.6",
       "description": {
-        "en": "A current Kimi multimodal reasoning model for general chat and agentic tasks, with native image and video understanding and a 256K context window.",
-        "zh-CN": "Kimi 当前的多模态推理模型，适用于通用对话与智能体任务，原生支持图像、视频理解及 256K 上下文。"
+        "en": "A Kimi multimodal reasoning model for general agentic work, still served for existing integrations alongside Kimi K3.",
+        "zh-CN": "Kimi 多模态推理模型，适用于通用智能体任务，目前与 Kimi K3 并行服务既有集成。"
       },
       "capabilities": {
         "input": ["text", "image", "video"],
         "output": ["text"],
         "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
-        "api_modes": ["chat_completions"]
+        "api_modes": ["chat_completions", "responses", "messages"]
       },
       "context_window": 262144,
       "max_output_tokens": null,
-      "released_at": null,
       "knowledge_cutoff": null,
-      "status": "active",
+      "released_at": null,
+      "status": "legacy",
       "sources": [
         {
           "url": "https://platform.kimi.ai/docs/models",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://platform.kimi.ai/docs/introduction",
-          "verified_at": "2026-07-15"
+          "url": "https://platform.kimi.ai/docs/guide/kimi-k2-6-quickstart",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.kimi.ai/docs/api/models-overview",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -63,8 +145,8 @@
       "id": "kimi-k2.5",
       "display_name": "Kimi K2.5",
       "description": {
-        "en": "A current Kimi multimodal reasoning model for general chat and agentic tasks, with native image and video understanding and a 256K context window.",
-        "zh-CN": "Kimi 当前的多模态推理模型，适用于通用对话与智能体任务，原生支持图像、视频理解及 256K 上下文。"
+        "en": "Discontinued on 2026-08-31; the card is kept so older configurations still resolve metadata. Use kimi-k3 instead.",
+        "zh-CN": "已于 2026-08-31 正式下线；保留卡片以便旧配置仍能解析到元数据，请改用 kimi-k3。"
       },
       "capabilities": {
         "input": ["text", "image", "video"],
@@ -74,17 +156,13 @@
       },
       "context_window": 262144,
       "max_output_tokens": null,
-      "released_at": "2026-01-27",
       "knowledge_cutoff": null,
-      "status": "active",
+      "released_at": "2026-01-27",
+      "status": "deprecated",
       "sources": [
         {
           "url": "https://platform.kimi.ai/docs/models",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://www.kimi.com/resources/kimi-k2-5",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     }

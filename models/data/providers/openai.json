@@ -2,6 +2,53 @@
   "provider": "openai",
   "models": [
     {
+      "id": "gpt-6-astra",
+      "display_name": "GPT-6 Astra",
+      "description": {
+        "en": "The most capable GPT-6 model, built for the hardest end-to-end reasoning, coding, research, and computer-use work.",
+        "zh-CN": "能力最强的 GPT-6 模型，面向最困难的端到端推理、编程、研究与计算机操作任务。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-04",
+      "released_at": "2026-09-03",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/deprecations",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
       "id": "gpt-5.6-sol",
       "display_name": "GPT-5.6 Sol",
       "description": {
@@ -31,16 +78,20 @@
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "knowledge_cutoff": "2026-02",
-      "released_at": null,
+      "released_at": "2026-07-09",
       "status": "active",
       "sources": [
         {
           "url": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://developers.openai.com/api/docs/changelog",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/deprecations",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -74,16 +125,20 @@
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "knowledge_cutoff": "2026-02",
-      "released_at": null,
+      "released_at": "2026-07-09",
       "status": "active",
       "sources": [
         {
           "url": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://developers.openai.com/api/docs/changelog",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/deprecations",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -117,16 +172,20 @@
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "knowledge_cutoff": "2026-02",
-      "released_at": null,
+      "released_at": "2026-07-09",
       "status": "active",
       "sources": [
         {
           "url": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://developers.openai.com/api/docs/changelog",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/deprecations",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -165,11 +224,15 @@
       "sources": [
         {
           "url": "https://developers.openai.com/api/docs/models/gpt-5.5",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://developers.openai.com/api/docs/changelog",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/deprecations",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -207,11 +270,15 @@
       "sources": [
         {
           "url": "https://developers.openai.com/api/docs/models/gpt-5.5-pro",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://developers.openai.com/api/docs/changelog",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/deprecations",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -250,11 +317,15 @@
       "sources": [
         {
           "url": "https://developers.openai.com/api/docs/models/gpt-5.4",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://developers.openai.com/api/docs/changelog",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/deprecations",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -291,11 +362,15 @@
       "sources": [
         {
           "url": "https://developers.openai.com/api/docs/models/gpt-5.4-pro",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://developers.openai.com/api/docs/changelog",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/deprecations",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -334,11 +409,15 @@
       "sources": [
         {
           "url": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://developers.openai.com/api/docs/changelog",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/deprecations",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -377,11 +456,15 @@
       "sources": [
         {
           "url": "https://developers.openai.com/api/docs/models/gpt-5.4-nano",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://developers.openai.com/api/docs/changelog",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/deprecations",
+          "verified_at": "2026-09-17"
         }
       ]
     }

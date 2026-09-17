@@ -2,11 +2,11 @@
   "provider": "upstage",
   "models": [
     {
-      "id": "solar-pro3",
-      "display_name": "Solar Pro 3",
+      "id": "solar-pro4",
+      "display_name": "Solar Pro 4",
       "description": {
-        "en": "Upstage's current flagship language model for reasoning-heavy, agentic, and multilingual enterprise workflows, with particular strength in Korean.",
-        "zh-CN": "Upstage 当前旗舰语言模型，面向推理密集型、智能体与多语言企业工作流，尤其擅长韩语。"
+        "en": "Upstage's current flagship agentic model for document-heavy work, coding, and business tasks, with a 512K context, 128K output, and a reasoning-effort dial.",
+        "zh-CN": "Upstage 当前旗舰智能体模型，面向文档密集型工作、编程与业务任务，支持 512K 上下文、128K 输出与可调推理强度。"
       },
       "capabilities": {
         "input": [
@@ -16,25 +16,67 @@
           "text"
         ],
         "features": [
-          "reasoning"
+          "reasoning",
+          "tool_calling",
+          "structured_output"
         ],
         "api_modes": [
           "chat_completions"
         ]
       },
-      "context_window": null,
-      "max_output_tokens": null,
-      "knowledge_cutoff": null,
-      "released_at": "2026-03-24",
+      "context_window": 524288,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": "2026-02",
+      "released_at": "2026-08-06",
       "status": "active",
       "sources": [
         {
-          "url": "https://console.upstage.ai/api-keys?api=chat-reasoning",
-          "verified_at": "2026-07-15"
+          "url": "https://console.upstage.ai/docs/models/solar-pro-4",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://www.upstage.ai/blog/en/solar-pro-3-0323",
-          "verified_at": "2026-07-15"
+          "url": "https://www.upstage.ai/blog/en/solar-pro-4",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "solar-pro3",
+      "display_name": "Solar Pro 3",
+      "description": {
+        "en": "Upstage's previous-generation production reasoning model (102B MoE, 12B active), still served while Solar Pro 4 takes over flagship agentic workloads.",
+        "zh-CN": "Upstage 上一代生产级推理模型（102B MoE，激活 12B），在 Solar Pro 4 承接旗舰智能体负载后仍在服务。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 128000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": "2025-07",
+      "released_at": "2026-03-23",
+      "status": "legacy",
+      "sources": [
+        {
+          "url": "https://console.upstage.ai/docs/models/solar-pro-3",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://www.upstage.ai/blog/en/solar-pro-3-0127",
+          "verified_at": "2026-09-17"
         }
       ]
     }

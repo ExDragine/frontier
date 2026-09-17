@@ -12,21 +12,25 @@
         "input": ["text"],
         "output": ["text"],
         "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
-        "api_modes": ["chat_completions", "messages"]
+        "api_modes": ["chat_completions", "responses", "messages"]
       },
       "context_window": 1048576,
       "max_output_tokens": 131072,
-      "released_at": "2026-04-23",
       "knowledge_cutoff": null,
+      "released_at": "2026-04-23",
       "status": "active",
       "sources": [
         {
-          "url": "https://mimo.mi.com/docs/en-US/quick-start/model",
-          "verified_at": "2026-07-15"
+          "url": "https://mimo.mi.com/docs/en-US/quick-start/summary/model",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/api/chat/responses",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://mimo.mi.com/docs/en-US/updates/model",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -41,21 +45,25 @@
         "input": ["text", "image", "audio", "video"],
         "output": ["text"],
         "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
-        "api_modes": ["chat_completions", "messages"]
+        "api_modes": ["chat_completions", "responses", "messages"]
       },
       "context_window": 1048576,
       "max_output_tokens": 131072,
-      "released_at": "2026-04-23",
       "knowledge_cutoff": null,
+      "released_at": "2026-04-23",
       "status": "active",
       "sources": [
         {
-          "url": "https://mimo.mi.com/docs/en-US/quick-start/model",
-          "verified_at": "2026-07-15"
+          "url": "https://mimo.mi.com/docs/en-US/quick-start/summary/model",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/api/chat/responses",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://mimo.mi.com/docs/en-US/updates/model",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     }

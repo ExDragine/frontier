@@ -16,17 +16,21 @@
       },
       "context_window": 1048576,
       "max_output_tokens": 131072,
-      "released_at": "2026-06-30",
       "knowledge_cutoff": null,
+      "released_at": "2026-06-30",
       "status": "active",
       "sources": [
         {
           "url": "https://longcat.chat/platform/docs/",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://longcat.chat/platform/docs/ChangeLog.html",
-          "verified_at": "2026-07-15"
+          "url": "https://longcat.chat/platform/docs/change-log",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://longcat.chat/platform/docs/api/model",
+          "verified_at": "2026-09-17"
         }
       ]
     }

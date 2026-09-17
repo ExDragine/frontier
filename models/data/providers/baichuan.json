@@ -11,7 +11,7 @@
       "capabilities": {
         "input": ["text"],
         "output": ["text"],
-        "features": ["tool_calling", "web_search"],
+        "features": ["tool_calling", "structured_output", "web_search"],
         "api_modes": ["chat_completions"]
       },
       "context_window": 32768,
@@ -21,12 +21,12 @@
       "status": "active",
       "sources": [
         {
-          "url": "https://platform.baichuan-ai.com/",
-          "verified_at": "2026-07-15"
+          "url": "https://platform.baichuan-ai.com/docs/api",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://platform.baichuan-ai.com/prices",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -40,7 +40,7 @@
       "capabilities": {
         "input": ["text"],
         "output": ["text"],
-        "features": ["tool_calling", "web_search"],
+        "features": ["tool_calling", "structured_output", "web_search"],
         "api_modes": ["chat_completions"]
       },
       "context_window": 32768,
@@ -50,12 +50,12 @@
       "status": "active",
       "sources": [
         {
-          "url": "https://platform.baichuan-ai.com/",
-          "verified_at": "2026-07-15"
+          "url": "https://platform.baichuan-ai.com/docs/api",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://platform.baichuan-ai.com/prices",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -63,28 +63,28 @@
       "id": "Baichuan4",
       "display_name": "Baichuan4",
       "description": {
-        "en": "Baichuan's general flagship model for Chinese knowledge, long-form generation, and tool-assisted applications.",
-        "zh-CN": "百川智能面向中文知识、长文生成与工具增强应用的通用旗舰模型。"
+        "en": "Baichuan's first-generation general flagship for Chinese knowledge and long-form generation, still callable but superseded by Baichuan4-Turbo and Baichuan4-Air.",
+        "zh-CN": "百川智能第一代通用旗舰模型，面向中文知识与长文生成，目前仍可调用，但已被 Baichuan4-Turbo 与 Baichuan4-Air 取代。"
       },
       "capabilities": {
-        "input": ["text", "image"],
+        "input": ["text"],
         "output": ["text"],
-        "features": ["tool_calling", "web_search"],
+        "features": ["tool_calling", "structured_output", "web_search"],
         "api_modes": ["chat_completions"]
       },
       "context_window": 32768,
       "max_output_tokens": null,
       "knowledge_cutoff": null,
       "released_at": null,
-      "status": "active",
+      "status": "legacy",
       "sources": [
         {
-          "url": "https://www.baichuan-ai.com/",
-          "verified_at": "2026-07-15"
+          "url": "https://platform.baichuan-ai.com/docs/api",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://platform.baichuan-ai.com/prices",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     }

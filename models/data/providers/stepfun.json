@@ -22,11 +22,15 @@
       "sources": [
         {
           "url": "https://platform.stepfun.com/docs/zh/guides/models/step-3.7-flash",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://platform.stepfun.com/docs/zh/api-reference/responses/responses-create",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.stepfun.com/docs/zh/guides/pricing/details",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -51,7 +55,44 @@
       "sources": [
         {
           "url": "https://platform.stepfun.com/docs/zh/guides/models/step-3.5-flash",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.stepfun.com/docs/zh/guides/pricing/details",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "step-3.5-flash-2603",
+      "display_name": "Step 3.5 Flash 2603",
+      "description": {
+        "en": "StepFun's Agent-optimized variant of Step 3.5 Flash, keeping flagship reasoning and tool calling while improving token efficiency and speed, with a switchable low-reasoning mode.",
+        "zh-CN": "阶跃星辰基于 Step 3.5 Flash 面向高频智能体场景优化的版本，保留旗舰推理与工具调用能力，Token 效率与推理速度更佳，并可切换低推理模式。"
+      },
+      "capabilities": {
+        "input": ["text"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.stepfun.com/docs/zh/guides/models/overview",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.stepfun.com/docs/zh/guides/models/step-3.5-flash",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://platform.stepfun.com/docs/zh/guides/pricing/details",
+          "verified_at": "2026-09-17"
         }
       ]
     }

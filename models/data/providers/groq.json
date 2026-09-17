@@ -16,7 +16,6 @@
           "text"
         ],
         "features": [
-          "structured_output",
           "web_search"
         ],
         "api_modes": [
@@ -30,20 +29,20 @@
       "status": "active",
       "sources": [
         {
+          "url": "https://console.groq.com/docs/models",
+          "verified_at": "2026-09-17"
+        },
+        {
           "url": "https://console.groq.com/docs/compound",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://console.groq.com/docs/compound/systems",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://console.groq.com/docs/models",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://console.groq.com/docs/tool-use/overview",
-          "verified_at": "2026-07-15"
+          "url": "https://console.groq.com/docs/structured-outputs",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -62,7 +61,6 @@
           "text"
         ],
         "features": [
-          "structured_output",
           "web_search"
         ],
         "api_modes": [
@@ -76,20 +74,20 @@
       "status": "active",
       "sources": [
         {
+          "url": "https://console.groq.com/docs/models",
+          "verified_at": "2026-09-17"
+        },
+        {
           "url": "https://console.groq.com/docs/compound",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://console.groq.com/docs/compound/systems",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://console.groq.com/docs/models",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://console.groq.com/docs/tool-use/overview",
-          "verified_at": "2026-07-15"
+          "url": "https://console.groq.com/docs/structured-outputs",
+          "verified_at": "2026-09-17"
         }
       ]
     }

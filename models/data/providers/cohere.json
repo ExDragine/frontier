@@ -32,12 +32,20 @@
       "status": "active",
       "sources": [
         {
-          "url": "https://docs.cohere.com/docs/command-a-plus",
-          "verified_at": "2026-07-15"
+          "url": "https://docs.cohere.com/docs/models",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://docs.cohere.com/changelog/",
-          "verified_at": "2026-07-15"
+          "url": "https://docs.cohere.com/docs/command-a-plus",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.cohere.com/changelog/command-a-plus-05-2026",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.cohere.com/docs/structured-outputs",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -45,21 +53,19 @@
       "id": "command-a-reasoning-08-2025",
       "display_name": "Command A Reasoning",
       "description": {
-        "en": "Cohere's hybrid reasoning model for complex multilingual enterprise agents, retrieval, and tool-driven workflows.",
-        "zh-CN": "Cohere 面向复杂多语言企业智能体、检索与工具驱动工作流的混合推理模型。"
+        "en": "Cohere's hybrid reasoning model for complex multilingual enterprise agents, retrieval, and tool-driven workflows; text-only input.",
+        "zh-CN": "Cohere 面向复杂多语言企业智能体、检索与工具驱动工作流的混合推理模型，仅支持文本输入。"
       },
       "capabilities": {
         "input": [
-          "text",
-          "image"
+          "text"
         ],
         "output": [
           "text"
         ],
         "features": [
           "reasoning",
-          "tool_calling",
-          "structured_output"
+          "tool_calling"
         ],
         "api_modes": [
           "chat_completions"
@@ -72,12 +78,98 @@
       "status": "active",
       "sources": [
         {
+          "url": "https://docs.cohere.com/docs/models",
+          "verified_at": "2026-09-17"
+        },
+        {
           "url": "https://docs.cohere.com/docs/command-a-reasoning",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://docs.cohere.com/changelog/2025-08-21-command-a-reasoning",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.cohere.com/docs/structured-outputs",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "north-mini-code-1-0",
+      "display_name": "North Mini Code",
+      "description": {
+        "en": "Cohere's open-weights 30B/3B-active MoE model built for agentic coding and terminal-driven software engineering tasks.",
+        "zh-CN": "Cohere 的开源权重 30B/3B 激活 MoE 模型，面向智能体编程与终端驱动的软件工程任务。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 256000,
+      "max_output_tokens": 64000,
+      "knowledge_cutoff": null,
+      "released_at": "2026-06-09",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.cohere.com/docs/models",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.cohere.com/docs/north-mini-code-1.0",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.cohere.com/changelog/north-mini-code-1-0",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "north-small-translate-1-0",
+      "display_name": "North Small Translate",
+      "description": {
+        "en": "Cohere's open-weights 218B/25B-active MoE model purpose-built for machine translation across more than 50 languages.",
+        "zh-CN": "Cohere 的开源权重 218B/25B 激活 MoE 模型，专为 50 多种语言的机器翻译打造。"
+      },
+      "capabilities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 16000,
+      "max_output_tokens": 16000,
+      "knowledge_cutoff": null,
+      "released_at": "2026-09-09",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://docs.cohere.com/docs/models",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.cohere.com/docs/north-small-translate-1.0",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://docs.cohere.com/changelog/north-small-translate-1-0",
+          "verified_at": "2026-09-17"
         }
       ]
     }

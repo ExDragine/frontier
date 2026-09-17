@@ -31,16 +31,8 @@
       "status": "preview",
       "sources": [
         {
-          "url": "https://v0.dev/docs/v0-model-api",
-          "verified_at": "2026-07-15"
-        },
-        {
           "url": "https://vercel.com/changelog/models-api-v0-1.5-beta",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://vercel.com/blog/v0-composite-model-family",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         }
       ]
     }

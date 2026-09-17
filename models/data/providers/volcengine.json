@@ -5,86 +5,86 @@
       "id": "doubao-seed-evolving",
       "display_name": "Doubao Seed Evolving",
       "description": {
-        "en": "Volcengine's continuously optimized Doubao model for coding, agent workflows, and complex reasoning.",
-        "zh-CN": "火山引擎面向编程、智能体工作流和复杂推理持续优化的豆包模型。"
+        "en": "Volcengine Ark's fast-iterating Doubao Seed model that always points at the newest Seed release, with a 1M-token context window, image understanding, deep thinking, tool calling, and structured output.",
+        "zh-CN": "火山方舟的豆包 Seed 快速迭代模型，始终指向最新 Seed 版本，支持 1M token 上下文窗口、图片理解、深度思考、工具调用与结构化输出。"
       },
       "capabilities": {
-        "input": ["text"],
+        "input": ["text", "image"],
         "output": ["text"],
-        "features": ["reasoning"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
         "api_modes": ["chat_completions", "responses"]
       },
-      "context_window": null,
-      "max_output_tokens": null,
+      "context_window": 1048576,
+      "max_output_tokens": 262144,
       "knowledge_cutoff": null,
       "released_at": null,
       "status": "active",
       "sources": [
         {
-          "url": "https://www.volcengine.com/product/doubao",
-          "verified_at": "2026-07-15"
+          "url": "https://www.volcengine.com/docs/82379/1330310",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://www.volcengine.com/docs/82379/2123434",
-          "verified_at": "2026-07-15"
+          "url": "https://www.volcengine.com/product/doubao",
+          "verified_at": "2026-09-17"
         }
       ]
     },
     {
-      "id": "doubao-seed-2.1-pro",
+      "id": "doubao-seed-2-1-pro",
       "display_name": "Doubao Seed 2.1 Pro",
       "description": {
-        "en": "Volcengine's high-capability Doubao 2.1 model for demanding general, coding, and agent workloads.",
-        "zh-CN": "火山引擎面向高要求通用任务、编程和智能体负载的高能力豆包 2.1 模型。"
+        "en": "Volcengine's high-capability Doubao 2.1 model for demanding general, coding, and agent workloads, with a 1M-token context window, image understanding, and 256k-token maximum output.",
+        "zh-CN": "火山引擎面向高要求通用任务、编程与智能体负载的高能力豆包 2.1 模型，支持 1M token 上下文窗口、图片理解，最大输出 256k token。"
       },
       "capabilities": {
-        "input": ["text"],
+        "input": ["text", "image"],
         "output": ["text"],
-        "features": ["reasoning"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
         "api_modes": ["chat_completions", "responses"]
       },
-      "context_window": null,
-      "max_output_tokens": null,
+      "context_window": 1048576,
+      "max_output_tokens": 262144,
       "knowledge_cutoff": null,
       "released_at": null,
       "status": "active",
       "sources": [
         {
-          "url": "https://www.volcengine.com/product/doubao",
-          "verified_at": "2026-07-15"
+          "url": "https://www.volcengine.com/docs/82379/1330310",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://www.volcengine.com/docs/82379/2123434",
-          "verified_at": "2026-07-15"
+          "url": "https://www.volcengine.com/product/doubao",
+          "verified_at": "2026-09-17"
         }
       ]
     },
     {
-      "id": "doubao-seed-2.1-turbo",
+      "id": "doubao-seed-2-1-turbo",
       "display_name": "Doubao Seed 2.1 Turbo",
       "description": {
-        "en": "A cost-efficient Doubao 2.1 model designed for high-volume general and agent deployments.",
-        "zh-CN": "面向大规模通用与智能体部署、兼顾成本效率的豆包 2.1 模型。"
+        "en": "A cost-efficient Doubao 2.1 model for high-volume general and agent deployments, with a 256k-token context window, image understanding, and 256k-token maximum output.",
+        "zh-CN": "面向大规模通用与智能体部署、兼顾成本效率的豆包 2.1 模型，上下文窗口 256k token，支持图片理解，最大输出 256k token。"
       },
       "capabilities": {
-        "input": ["text"],
+        "input": ["text", "image"],
         "output": ["text"],
-        "features": ["reasoning"],
+        "features": ["reasoning", "tool_calling", "structured_output"],
         "api_modes": ["chat_completions", "responses"]
       },
-      "context_window": null,
-      "max_output_tokens": null,
+      "context_window": 262144,
+      "max_output_tokens": 262144,
       "knowledge_cutoff": null,
       "released_at": null,
       "status": "active",
       "sources": [
         {
-          "url": "https://www.volcengine.com/product/doubao",
-          "verified_at": "2026-07-15"
+          "url": "https://www.volcengine.com/docs/82379/1330310",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://www.volcengine.com/docs/82379/2123434",
-          "verified_at": "2026-07-15"
+          "url": "https://www.volcengine.com/product/doubao",
+          "verified_at": "2026-09-17"
         }
       ]
     }
