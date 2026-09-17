@@ -2,11 +2,11 @@
   "schema_version": "1.0",
   "source": {
     "package": "model-bank",
-    "version": "1.0.20260907091321",
+    "version": "1.0.20260910143138",
     "registry": "https://registry.npmjs.org/model-bank",
-    "tarball": "https://registry.npmjs.org/model-bank/-/model-bank-1.0.20260907091321.tgz",
-    "integrity": "sha512-dMb31pE7uNQM9L7y+IErydee2VAdKpUKomeoTBpDQ1lxk0/DI2us/6K/tC/e/TBkUdNTseFR6v/KE7VAKEnqVw==",
-    "git_commit": "fc48479dd4cb0d6de875851689795163b9803bda",
+    "tarball": "https://registry.npmjs.org/model-bank/-/model-bank-1.0.20260910143138.tgz",
+    "integrity": "sha512-PJ30yxZHYBT6MmD/xH3CYn1TqaHB6rMYHf932cmSuAaVIL3vRPwDsCB0IWakssqaNtV4FC7Iw3h7IAazsHFIqg==",
+    "git_commit": "aba9e8150cd338a66b5180828544b433315fb079",
     "license": "LobeHub Community License",
     "license_url": "https://github.com/lobehub/lobehub/blob/canary/LICENSE"
   },
