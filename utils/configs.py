@@ -100,7 +100,8 @@ class ProviderProfile(BaseModel):
     base_url: str = ""
     api_key: str = ""
     native_web_search: bool = False
-    structured_output_method: Literal["auto", "json_schema", "function_calling", "json_mode"] = "auto"
+    structured_output_method: Literal["auto", "json_schema", "function_calling", "json_mode", "text_json"] = "auto"
+    signal_extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
 class KeyConfig(_FrozenConfig):

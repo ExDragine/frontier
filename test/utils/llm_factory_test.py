@@ -573,6 +573,66 @@ assert "user_id" not in (model.metadata or {})
     )
 
 
+def test_provider_signal_extra_body_stays_out_of_main_agent_requests(monkeypatch):
+    mock_cls = MagicMock()
+    monkeypatch.setattr(factory, "ChatDeepSeek", mock_cls)
+    monkeypatch.setattr(factory.EnvConfig, "LLM_PROVIDERS", {
+        "configured": {
+            "type": "deepseek",
+            "api_mode": "chat_completions",
+            "signal_extra_body": {"thinking": {"type": "disabled"}},
+        },
+        "plain": {"type": "deepseek", "api_mode": "chat_completions"},
+    })
+
+    assert factory.provider_signal_extra_body("deepseek-v4-flash", "configured") == {"thinking": {"type": "disabled"}}
+    assert factory.provider_signal_extra_body("deepseek-v4-flash", "plain") == {}
+    assert factory.provider_signal_extra_body("deepseek-v4-flash", "missing") == {}
+
+    factory.create_llm(model="deepseek-v4-flash", provider="configured", streaming=False)
+    assert "extra_body" not in mock_cls.call_args.kwargs
+
+
+def test_deepseek_thinking_route_avoids_forced_tool_choice_in_signal_payload():
+    project_root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env.update(
+        {
+            "FRONTIER_CONFIG": str(project_root / "env.toml.example"),
+            "NICKNAME": '["Frontier"]',
+        }
+    )
+    script = """
+from langchain_core.messages import HumanMessage
+from utils.configs import EnvConfig
+from utils.llm_factory import create_llm, structured_output_options
+
+EnvConfig.LLM_PROVIDERS = {
+    "deepseek": {
+        "type": "deepseek",
+        "api_mode": "chat_completions",
+        "api_key": "sk-test",
+    }
+}
+model = create_llm(model="deepseek-v4-flash", provider="deepseek", streaming=False)
+assert model.profile["reasoning_output"] is True, model.profile
+options = structured_output_options("deepseek-v4-flash", "deepseek", model)
+assert options == {"method": "text_json"}, options
+payload = model._get_request_payload([HumanMessage(content="判断")])
+assert "tools" not in payload and "tool_choice" not in payload, payload
+assert "response_format" not in payload, payload
+"""
+
+    subprocess.run(  # noqa: S603
+        [sys.executable, "-c", script],
+        cwd=project_root,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def test_openai_extra_body_forwarded_as_explicit_kwarg(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)

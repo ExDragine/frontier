@@ -399,6 +399,37 @@ def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile 
     return profile
 
 
+def provider_signal_extra_body(model: str, provider: str | None = None) -> dict[str, Any]:
+    """Return the provider's Signal-only request payload.
+
+    只作用于 Signal 轻量调用，不进入主 Agent；用于传递供应商的推理开关等
+    ``extra_body`` 参数，例如 DeepSeek 的 ``{"thinking": {"type": "disabled"}}``。
+    """
+    try:
+        _, profile = _provider_profile(model, provider)
+    except ValueError:
+        # create_llm() 会对同一个 profile 先报错，这里只做尽力而为的读取。
+        return {}
+    payload = profile.get("signal_extra_body")
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _thinking_mode_needs_prompt_schema(
+    model: str, provider: str | None, provider_type: str, capabilities: dict
+) -> bool:
+    """Return whether schema enforcement must avoid forced tool_choice.
+
+    DeepSeek 思考模式只接受 ``tool_choice: auto``；``ChatDeepSeek`` 的
+    ``json_schema`` 也由 function calling 实现，官方 Responses 与 Anthropic
+    路由共用同一限制，因此这类路由只能把 schema 放进提示词。
+    """
+    if capabilities.get("reasoning_output") is not True:
+        return False
+    if provider_type == "deepseek":
+        return True
+    return provider_official_deepseek_api_mode(model, provider) is not None
+
+
 def structured_output_options(
     model: str,
     provider: str | None,
@@ -410,7 +441,7 @@ def structured_output_options(
     _, profile = _provider_profile(model, provider)
     provider_type, _ = _provider_protocol(model, profile)
     selected = method or profile.get("structured_output_method", "auto")
-    if selected not in {"auto", "json_schema", "function_calling", "json_mode"}:
+    if selected not in {"auto", "json_schema", "function_calling", "json_mode", "text_json"}:
         raise ValueError("不支持的 structured_output_method")
     if selected == "auto":
         capabilities = getattr(llm, "profile", None) or {}
@@ -420,6 +451,8 @@ def structured_output_options(
             provider_is_official_openai(model, provider) or provider_is_official_anthropic(model, provider)
         ):
             selected = "json_schema"
+        elif _thinking_mode_needs_prompt_schema(model, provider, provider_type, capabilities):
+            selected = "text_json"
         elif provider_type == "anthropic" or capabilities.get("tool_calling") is True or provider_type == "deepseek":
             selected = "function_calling"
         else:

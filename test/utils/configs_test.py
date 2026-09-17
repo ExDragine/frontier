@@ -195,6 +195,7 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
                     "api_mode": "chat_completions",
                     "base_url": "https://chat.example.com/v1",
                     "api_key": "sk-chat",
+                    "signal_extra_body": {"thinking": {"type": "disabled"}},
                 },
                 "google": {"type": "google", "base_url": "", "api_key": "google-v2"},
             },
@@ -223,6 +224,7 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
     assert EnvConfig.LLM_PROVIDERS["openai"]["api_mode"] == "responses"
     assert EnvConfig.LLM_PROVIDERS["openai"]["native_web_search"] is True
     assert EnvConfig.LLM_PROVIDERS["openai"]["api_key"] == "sk-v2"
+    assert EnvConfig.LLM_PROVIDERS["openai_chat"]["signal_extra_body"] == {"thinking": {"type": "disabled"}}
     assert EnvConfig.PAINT_MODEL_PROVIDER == "openai"
     assert EnvConfig.PAINT_SIZE == "1536x1024"
     assert EnvConfig.PAINT_QUALITY == "high"

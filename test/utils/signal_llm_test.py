@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
+from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field
 
 from utils import llm_factory, signal_llm
@@ -61,6 +62,36 @@ async def test_signal_structured_uses_function_calling_for_deepseek(monkeypatch)
     assert captured["messages"][1] == ("human", "Is this gateway safe?")
 
 
+@pytest.mark.parametrize("content", ['```json\n{"is_safe": true}\n```', '判断如下：{"is_safe": true}'])
+@pytest.mark.asyncio
+async def test_deepseek_thinking_route_keeps_schema_in_prompt_without_tools(monkeypatch, content):
+    captured = {}
+
+    class DummyModel:
+        profile = {"reasoning_output": True, "tool_calling": True}
+
+        def with_structured_output(self, *args, **kwargs):
+            raise AssertionError("思考模式不支持强制 tool_choice")
+
+        async def ainvoke(self, messages):
+            captured["messages"] = messages
+            return AIMessage(content=content)
+
+    monkeypatch.setattr(signal_llm, "create_llm", lambda **kwargs: DummyModel())
+    monkeypatch.setattr(llm_factory.EnvConfig, "LLM_PROVIDERS", {
+        "deepseek": {"type": "deepseek", "api_mode": "chat_completions"},
+    })
+
+    response = await signal_llm.SignalLLM(model="deepseek-v4-flash", provider="deepseek").structured(
+        "判断是否安全", "你好", Gateway
+    )
+
+    assert response.is_safe is True
+    assert "Return ONLY valid JSON" in captured["messages"][0][1]
+    assert '"is_safe"' in captured["messages"][0][1]
+    assert captured["messages"][1] == ("human", "你好")
+
+
 @pytest.mark.asyncio
 async def test_signal_llm_class_allows_explicit_model_override(monkeypatch):
     captured = {}
@@ -94,6 +125,38 @@ async def test_signal_llm_class_allows_explicit_model_override(monkeypatch):
     assert '"is_safe"' in captured["messages"][0][1]
 
 
+@pytest.mark.asyncio
+async def test_provider_signal_extra_body_merges_with_call_site_override(monkeypatch):
+    captured = {}
+
+    class DummyModel:
+        def with_structured_output(self, schema, *, method):
+            return self
+
+        async def ainvoke(self, messages):
+            return Gateway(is_safe=True)
+
+    def fake_create_llm(**kwargs):
+        captured["llm_kwargs"] = kwargs
+        return DummyModel()
+
+    monkeypatch.setattr(signal_llm, "create_llm", fake_create_llm)
+    monkeypatch.setattr(llm_factory.EnvConfig, "LLM_PROVIDERS", {
+        "deepseek": {
+            "type": "deepseek",
+            "api_mode": "chat_completions",
+            "signal_extra_body": {"thinking": {"type": "disabled"}, "top_p": 0.5},
+        },
+    })
+
+    llm = signal_llm.SignalLLM(model="deepseek-v4-flash", provider="deepseek")
+    await llm.structured("判断", "你好", Gateway, method="json_mode")
+    assert captured["llm_kwargs"]["extra_body"] == {"thinking": {"type": "disabled"}, "top_p": 0.5}
+
+    await llm.structured("判断", "你好", Gateway, method="json_mode", extra_body={"thinking": {"type": "enabled"}})
+    assert captured["llm_kwargs"]["extra_body"] == {"thinking": {"type": "enabled"}, "top_p": 0.5}
+
+
 @pytest.mark.parametrize("profile,capabilities,expected", [
     ({"type": "openai", "api_mode": "responses"}, {"structured_output": True}, {"method": "json_schema", "strict": True}),
     ({"type": "openai", "api_mode": "chat_completions", "base_url": "https://proxy.example/v1"},
@@ -104,6 +167,11 @@ async def test_signal_llm_class_allows_explicit_model_override(monkeypatch):
     ({"type": "anthropic", "api_mode": "messages"}, {"structured_output": True}, {"method": "json_schema"}),
     ({"type": "anthropic", "api_mode": "messages"}, {}, {"method": "function_calling"}),
     ({"type": "deepseek", "api_mode": "chat_completions"}, {"structured_output": True}, {"method": "function_calling"}),
+    ({"type": "deepseek", "api_mode": "chat_completions"},
+     {"reasoning_output": True, "tool_calling": True, "structured_output": True}, {"method": "text_json"}),
+    ({"type": "deepseek", "api_mode": "chat_completions"}, {"reasoning_output": False}, {"method": "function_calling"}),
+    ({"type": "openai", "api_mode": "chat_completions", "base_url": "https://proxy.example/v1"},
+     {"reasoning_output": True, "tool_calling": True}, {"method": "function_calling"}),
     ({"type": "openai", "api_mode": "responses", "structured_output_method": "json_mode"},
      {"structured_output": True}, {"method": "json_mode"}),
 ])
@@ -111,6 +179,16 @@ def test_structured_strategy_respects_adapter_and_endpoint(monkeypatch, profile,
     monkeypatch.setattr(llm_factory.EnvConfig, "LLM_PROVIDERS", {"configured": profile})
     options = llm_factory.structured_output_options("model", "configured", SimpleNamespace(profile=capabilities))
     assert options == expected
+
+
+def test_explicit_method_overrides_thinking_mode_default(monkeypatch):
+    monkeypatch.setattr(llm_factory.EnvConfig, "LLM_PROVIDERS", {
+        "configured": {"type": "deepseek", "api_mode": "chat_completions"},
+    })
+    options = llm_factory.structured_output_options(
+        "deepseek-v4-flash", "configured", SimpleNamespace(profile={"reasoning_output": True}), method="function_calling"
+    )
+    assert options == {"method": "function_calling"}
 
 
 @pytest.mark.asyncio

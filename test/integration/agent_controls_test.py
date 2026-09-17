@@ -159,6 +159,7 @@ def test_real_structured_output_bindings_keep_selected_endpoint(tmp_path):
 import sys
 sys.path.insert(0, sys.argv[1])
 from pydantic import BaseModel
+from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langchain_deepseek import ChatDeepSeek
 from langchain_anthropic import ChatAnthropic
@@ -183,12 +184,17 @@ models = [
 ]
 for provider, model in models:
     options = structured_output_options(model.model if provider != 'openai' else model.model_name, provider, model)
+    if provider == 'deepseek':
+        # V4 思考模式拒绝强制 tool_choice：Signal 只把 schema 放进提示词，
+        # 请求里既没有工具绑定，也没有 response_format。
+        assert options == {'method': 'text_json'}, options
+        payload = model._get_request_payload([HumanMessage(content='判断')])
+        assert 'tools' not in payload and 'tool_choice' not in payload, payload
+        assert 'response_format' not in payload, payload
+        continue
     runnable = model.with_structured_output(Decision, **options)
     assert runnable is not None
-    if provider == 'deepseek':
-        assert options == {'method': 'function_calling'}, options
-        assert '/beta' not in str(runnable.first.bound.api_base), runnable
-    elif provider == 'openai':
+    if provider == 'openai':
         assert options == {'method': 'json_schema', 'strict': True}, options
     else:
         assert options == {'method': 'json_schema'}, options
