@@ -45,13 +45,13 @@ Dashboard 总览显示累计数据，认证后的 `GET /api/dashboard/status/usa
 
 | 值 | 行为 |
 | --- | --- |
-| `auto` | Google 使用 JSON Schema；声明支持原生结构化输出的官方 OpenAI/Anthropic 路由使用 JSON Schema；DeepSeek、Anthropic 或声明支持工具调用的模型使用 function calling，但声明推理能力的 DeepSeek 思考模式路由改用 `text_json`；其他 OpenAI-compatible 路由回退 JSON 模式 |
+| `auto` | Google 使用 JSON Schema；声明支持原生结构化输出的官方 OpenAI/Anthropic 路由使用 JSON Schema；DeepSeek 路由（`type = "deepseek"` 或官方 Responses/Anthropic 端点）改用 `text_json`，因为思考模式默认开启、只接受 `tool_choice: auto`，且官方模型别名可能没有能力卡片；Anthropic 或声明支持工具调用的其他模型使用 function calling；其余 OpenAI-compatible 路由回退 JSON 模式 |
 | `json_schema` | 显式使用供应商 schema 能力，OpenAI 适配器同时设置 `strict=True` |
 | `function_calling` | 使用工具参数 schema |
 | `json_mode` | 提示词附完整 JSON Schema，并请求供应商的 JSON 模式；返回值由 Pydantic 校验 |
 | `text_json` | 提示词附完整 JSON Schema，不注册工具、也不设置 `response_format`，按普通文本解析后由 Pydantic 校验；用于思考模式等拒绝强制 `tool_choice` 的路由 |
 
-调用方显式指定 `method` 的优先级高于 provider 配置。兼容代理不会仅因模型名就自动启用原生 schema；可按实际协议支持显式指定。DeepSeek 自动选择不设置 strict，不切换到 beta endpoint；思考模式模型在 `auto` 下只把 schema 放进提示词，不再强制工具调用。
+调用方显式指定 `method` 的优先级高于 provider 配置。兼容代理不会仅因模型名就自动启用原生 schema；可按实际协议支持显式指定。DeepSeek 自动选择不设置 strict，不切换到 beta endpoint；DeepSeek 路由在 `auto` 下只把 schema 放进提示词，不再强制工具调用，需要强制工具 schema 时显式设置 `structured_output_method = "function_calling"`（思考模式关闭后可用）。
 
 每个 `[providers.<name>]` 还可设置 `signal_extra_body`（默认空表）：其中的键合并进 Signal 请求的 `extra_body`，用于传递供应商侧的推理开关等参数，例如 DeepSeek 的 `{"thinking": {"type": "disabled"}}`（思考模式默认开启，effort 默认 `high`）。它只作用于 Signal 轻量调用，不进入主 Agent；调用点显式传入的 `extra_body` 覆盖同名键。该字段经 OpenAI-compatible 与 DeepSeek 适配器透传，Messages 路由不接收此参数；关闭思考后如需回到强制工具 schema，可再显式设置 `structured_output_method = "function_calling"`。
 

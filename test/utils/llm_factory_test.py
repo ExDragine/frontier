@@ -593,7 +593,7 @@ def test_provider_signal_extra_body_stays_out_of_main_agent_requests(monkeypatch
     assert "extra_body" not in mock_cls.call_args.kwargs
 
 
-def test_deepseek_thinking_route_avoids_forced_tool_choice_in_signal_payload():
+def test_deepseek_route_without_model_card_avoids_forced_tool_choice_in_signal_payload():
     project_root = Path(__file__).resolve().parents[2]
     env = os.environ.copy()
     env.update(
@@ -614,9 +614,10 @@ EnvConfig.LLM_PROVIDERS = {
         "api_key": "sk-test",
     }
 }
-model = create_llm(model="deepseek-v4-flash", provider="deepseek", streaming=False)
-assert model.profile["reasoning_output"] is True, model.profile
-options = structured_output_options("deepseek-v4-flash", "deepseek", model)
+# 官方别名没有能力卡片，策略必须按路由判断。
+model = create_llm(model="deepseek-flash", provider="deepseek", streaming=False)
+assert model.profile is None, model.profile
+options = structured_output_options("deepseek-flash", "deepseek", model)
 assert options == {"method": "text_json"}, options
 payload = model._get_request_payload([HumanMessage(content="判断")])
 assert "tools" not in payload and "tool_choice" not in payload, payload

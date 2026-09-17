@@ -414,17 +414,14 @@ def provider_signal_extra_body(model: str, provider: str | None = None) -> dict[
     return dict(payload) if isinstance(payload, dict) else {}
 
 
-def _thinking_mode_needs_prompt_schema(
-    model: str, provider: str | None, provider_type: str, capabilities: dict
-) -> bool:
+def _needs_prompt_schema(model: str, provider: str | None, provider_type: str) -> bool:
     """Return whether schema enforcement must avoid forced tool_choice.
 
-    DeepSeek 思考模式只接受 ``tool_choice: auto``；``ChatDeepSeek`` 的
-    ``json_schema`` 也由 function calling 实现，官方 Responses 与 Anthropic
-    路由共用同一限制，因此这类路由只能把 schema 放进提示词。
+    DeepSeek 思考模式默认开启且只接受 ``tool_choice: auto``；``ChatDeepSeek`` 的
+    ``json_schema`` 也由 function calling 实现，官方 Responses 与 Anthropic 路由
+    共用同一限制。模型别名（例如 ``deepseek-flash``）可能没有能力卡片，因此按
+    路由判断而不是按模型卡判断。
     """
-    if capabilities.get("reasoning_output") is not True:
-        return False
     if provider_type == "deepseek":
         return True
     return provider_official_deepseek_api_mode(model, provider) is not None
@@ -451,7 +448,7 @@ def structured_output_options(
             provider_is_official_openai(model, provider) or provider_is_official_anthropic(model, provider)
         ):
             selected = "json_schema"
-        elif _thinking_mode_needs_prompt_schema(model, provider, provider_type, capabilities):
+        elif _needs_prompt_schema(model, provider, provider_type):
             selected = "text_json"
         elif provider_type == "anthropic" or capabilities.get("tool_calling") is True or provider_type == "deepseek":
             selected = "function_calling"

@@ -14,7 +14,7 @@ class Gateway(BaseModel):
 
 
 @pytest.mark.asyncio
-async def test_signal_structured_uses_function_calling_for_deepseek(monkeypatch):
+async def test_signal_explicit_function_calling_keeps_request_shape_for_deepseek(monkeypatch):
     captured = {}
 
     class DummyRunnable:
@@ -23,6 +23,8 @@ async def test_signal_structured_uses_function_calling_for_deepseek(monkeypatch)
             return Gateway(is_safe=True)
 
     class DummyModel:
+        profile = None
+
         def with_structured_output(self, schema, *, method):
             captured["schema"] = schema
             captured["method"] = method
@@ -35,6 +37,9 @@ async def test_signal_structured_uses_function_calling_for_deepseek(monkeypatch)
     monkeypatch.setattr(signal_llm, "create_llm", fake_create_llm)
     monkeypatch.setattr(signal_llm.EnvConfig, "SIGNAL_MODEL", "deepseek-v4-flash")
     monkeypatch.setattr(signal_llm.EnvConfig, "SIGNAL_MODEL_PROVIDER", "deepseek")
+    monkeypatch.setattr(llm_factory.EnvConfig, "LLM_PROVIDERS", {
+        "deepseek": {"type": "deepseek", "api_mode": "chat_completions"},
+    })
 
     response = await signal_llm.signal_structured(
         system_prompt="Classify the gateway.",
@@ -42,6 +47,7 @@ async def test_signal_structured_uses_function_calling_for_deepseek(monkeypatch)
         schema=Gateway,
         temperature=0,
         extra_body={"thinking": {"type": "disabled"}},
+        method="function_calling",
     )
 
     assert response.is_safe is True
@@ -64,14 +70,15 @@ async def test_signal_structured_uses_function_calling_for_deepseek(monkeypatch)
 
 @pytest.mark.parametrize("content", ['```json\n{"is_safe": true}\n```', '判断如下：{"is_safe": true}'])
 @pytest.mark.asyncio
-async def test_deepseek_thinking_route_keeps_schema_in_prompt_without_tools(monkeypatch, content):
+async def test_deepseek_route_without_model_card_keeps_schema_in_prompt(monkeypatch, content):
     captured = {}
 
     class DummyModel:
-        profile = {"reasoning_output": True, "tool_calling": True}
+        # 官方别名（如 deepseek-flash）没有能力卡片，策略不得依赖模型卡。
+        profile = None
 
         def with_structured_output(self, *args, **kwargs):
-            raise AssertionError("思考模式不支持强制 tool_choice")
+            raise AssertionError("DeepSeek 路由不应强制 tool_choice")
 
         async def ainvoke(self, messages):
             captured["messages"] = messages
@@ -82,7 +89,7 @@ async def test_deepseek_thinking_route_keeps_schema_in_prompt_without_tools(monk
         "deepseek": {"type": "deepseek", "api_mode": "chat_completions"},
     })
 
-    response = await signal_llm.SignalLLM(model="deepseek-v4-flash", provider="deepseek").structured(
+    response = await signal_llm.SignalLLM(model="deepseek-flash", provider="deepseek").structured(
         "判断是否安全", "你好", Gateway
     )
 
@@ -166,10 +173,10 @@ async def test_provider_signal_extra_body_merges_with_call_site_override(monkeyp
     ({"type": "google", "api_mode": "generate_content"}, {}, {"method": "json_schema"}),
     ({"type": "anthropic", "api_mode": "messages"}, {"structured_output": True}, {"method": "json_schema"}),
     ({"type": "anthropic", "api_mode": "messages"}, {}, {"method": "function_calling"}),
-    ({"type": "deepseek", "api_mode": "chat_completions"}, {"structured_output": True}, {"method": "function_calling"}),
+    ({"type": "deepseek", "api_mode": "chat_completions"}, {"structured_output": True}, {"method": "text_json"}),
     ({"type": "deepseek", "api_mode": "chat_completions"},
      {"reasoning_output": True, "tool_calling": True, "structured_output": True}, {"method": "text_json"}),
-    ({"type": "deepseek", "api_mode": "chat_completions"}, {"reasoning_output": False}, {"method": "function_calling"}),
+    ({"type": "deepseek", "api_mode": "chat_completions"}, {}, {"method": "text_json"}),
     ({"type": "openai", "api_mode": "chat_completions", "base_url": "https://proxy.example/v1"},
      {"reasoning_output": True, "tool_calling": True}, {"method": "function_calling"}),
     ({"type": "openai", "api_mode": "responses", "structured_output_method": "json_mode"},
@@ -179,6 +186,20 @@ def test_structured_strategy_respects_adapter_and_endpoint(monkeypatch, profile,
     monkeypatch.setattr(llm_factory.EnvConfig, "LLM_PROVIDERS", {"configured": profile})
     options = llm_factory.structured_output_options("model", "configured", SimpleNamespace(profile=capabilities))
     assert options == expected
+
+
+def test_official_deepseek_responses_route_uses_prompt_schema(monkeypatch):
+    monkeypatch.setattr(llm_factory.EnvConfig, "LLM_PROVIDERS", {
+        "deepseek_responses": {
+            "type": "openai",
+            "api_mode": "responses",
+            "base_url": "https://api.deepseek.com",
+        },
+    })
+    options = llm_factory.structured_output_options(
+        "deepseek-flash", "deepseek_responses", SimpleNamespace(profile=None)
+    )
+    assert options == {"method": "text_json"}
 
 
 def test_explicit_method_overrides_thinking_mode_default(monkeypatch):
