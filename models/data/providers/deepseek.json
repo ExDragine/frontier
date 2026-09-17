@@ -2,15 +2,16 @@
   "provider": "deepseek",
   "models": [
     {
-      "id": "deepseek-v4-flash",
-      "display_name": "DeepSeek V4 Flash",
+      "id": "deepseek-flash",
+      "display_name": "DeepSeek Flash",
       "description": {
-        "en": "A fast and efficient DeepSeek V4 preview model for reasoning, chat, and agent workflows.",
-        "zh-CN": "面向推理、对话与智能体工作流的快速高效 DeepSeek V4 预览模型。"
+        "en": "DeepSeek-V4.1-Flash: the current fast model for reasoning, chat, and agent workflows, with native visual understanding and thinking enabled by default.",
+        "zh-CN": "DeepSeek-V4.1-Flash：当前面向推理、对话与智能体工作流的快速模型，原生支持视觉理解，默认开启思考模式。"
       },
       "capabilities": {
         "input": [
-          "text"
+          "text",
+          "image"
         ],
         "output": [
           "text"
@@ -30,28 +31,20 @@
       "context_window": 1000000,
       "max_output_tokens": 384000,
       "knowledge_cutoff": null,
-      "released_at": "2026-04-24",
-      "status": "preview",
+      "released_at": "2026-09-10",
+      "status": "active",
       "sources": [
         {
-          "url": "https://api-docs.deepseek.com/api/list-models/",
-          "verified_at": "2026-07-15"
-        },
-        {
           "url": "https://api-docs.deepseek.com/quick_start/pricing/",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://api-docs.deepseek.com/news/news260424/",
-          "verified_at": "2026-07-15"
+          "url": "https://api-docs.deepseek.com/news/news260910/",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
-          "verified_at": "2026-07-15"
-        },
-        {
-          "url": "https://api-docs.deepseek.com/guides/responses_api/",
-          "verified_at": "2026-08-17"
+          "url": "https://api-docs.deepseek.com/guides/thinking_mode/",
+          "verified_at": "2026-09-17"
         }
       ]
     },
@@ -59,8 +52,8 @@
       "id": "deepseek-v4-pro",
       "display_name": "DeepSeek V4 Pro",
       "description": {
-        "en": "DeepSeek's more capable V4 preview model for complex reasoning, coding, and agent workflows.",
-        "zh-CN": "面向复杂推理、编程与智能体工作流的高能力 DeepSeek V4 预览模型。"
+        "en": "DeepSeek-V4-Pro-0813 for complex reasoning, coding, and agent workflows; text-only input.",
+        "zh-CN": "DeepSeek-V4-Pro-0813，面向复杂推理、编程与智能体工作流，仅支持文本输入。"
       },
       "capabilities": {
         "input": [
@@ -84,28 +77,114 @@
       "context_window": 1000000,
       "max_output_tokens": 384000,
       "knowledge_cutoff": null,
-      "released_at": "2026-04-24",
-      "status": "preview",
+      "released_at": "2026-08-13",
+      "status": "active",
       "sources": [
         {
-          "url": "https://api-docs.deepseek.com/api/list-models/",
-          "verified_at": "2026-07-15"
+          "url": "https://api-docs.deepseek.com/quick_start/pricing/",
+          "verified_at": "2026-09-17"
         },
         {
+          "url": "https://api-docs.deepseek.com/news/news260813/",
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/news/news260910/",
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "display_name": "DeepSeek V4 Flash",
+      "description": {
+        "en": "Retired V4-Flash name kept for compatibility; requests are served by DeepSeek-V4.1-Flash. Use deepseek-flash instead.",
+        "zh-CN": "已退役的 V4-Flash 名称，仅为兼容保留，请求由 DeepSeek-V4.1-Flash 承接；请改用 deepseek-flash。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "responses",
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 384000,
+      "knowledge_cutoff": null,
+      "released_at": "2026-04-24",
+      "status": "legacy",
+      "sources": [
+        {
           "url": "https://api-docs.deepseek.com/quick_start/pricing/",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/news/news260910/",
+          "verified_at": "2026-09-17"
         },
         {
           "url": "https://api-docs.deepseek.com/news/news260424/",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-09-17"
+        }
+      ]
+    },
+    {
+      "id": "deepseek-v4-flash-vision-exp",
+      "display_name": "DeepSeek V4 Flash Vision Exp",
+      "description": {
+        "en": "Retired V4-Flash-Vision-Exp name kept for compatibility; requests are served by DeepSeek-V4.1-Flash. Use deepseek-flash instead.",
+        "zh-CN": "已退役的 V4-Flash-Vision-Exp 名称，仅为兼容保留，请求由 DeepSeek-V4.1-Flash 承接；请改用 deepseek-flash。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "responses",
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 384000,
+      "knowledge_cutoff": null,
+      "released_at": "2026-08-21",
+      "status": "legacy",
+      "sources": [
+        {
+          "url": "https://api-docs.deepseek.com/quick_start/pricing/",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
-          "verified_at": "2026-07-15"
+          "url": "https://api-docs.deepseek.com/news/news260910/",
+          "verified_at": "2026-09-17"
         },
         {
-          "url": "https://api-docs.deepseek.com/guides/responses_api/",
-          "verified_at": "2026-08-17"
+          "url": "https://api-docs.deepseek.com/news/news260821/",
+          "verified_at": "2026-09-17"
         }
       ]
     }

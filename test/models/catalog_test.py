@@ -117,7 +117,7 @@ def test_load_catalog_returns_frozen_typed_data() -> None:
     expected_model_count = sum(len(_load_resource(entry["file"])["models"]) for entry in manifest["providers"])
 
     assert catalog.schema_version == "1.1"
-    assert catalog.catalog_version == "2026.8.17"
+    assert catalog.catalog_version == "2026.9.17"
     assert len(catalog.models) == expected_model_count
     with pytest.raises(AttributeError):
         catalog.__setattr__("updated_at", "2000-01-01")

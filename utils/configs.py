@@ -70,7 +70,7 @@ class ModelsConfig(_FrozenConfig):
     basic: ModelConfig = Field(default_factory=ModelConfig)
     signal: ModelConfig = Field(
         default_factory=lambda: ModelConfig(
-            model="deepseek-v4-flash",
+            model="deepseek-flash",
             provider="deepseek",
             capabilities=("text",),
         )
@@ -78,7 +78,7 @@ class ModelsConfig(_FrozenConfig):
     advanced: ModelConfig = Field(default_factory=ModelConfig)
     daily_news: ModelConfig = Field(
         default_factory=lambda: ModelConfig(
-            model="deepseek-v4-flash",
+            model="deepseek-flash",
             provider="deepseek_responses",
             capabilities=("text",),
         )

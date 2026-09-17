@@ -16,7 +16,7 @@ def test_env_config_defaults(monkeypatch):
     assert EnvConfig.BASIC_MODEL_PROVIDER == ""
     assert EnvConfig.BASIC_MODEL_CAPABILITIES == []
     assert EnvConfig.ADVAN_MODEL_PROVIDER == ""
-    assert EnvConfig.SIGNAL_MODEL == "deepseek-v4-flash"
+    assert EnvConfig.SIGNAL_MODEL == "deepseek-flash"
     assert EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
     assert EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
     assert EnvConfig.DAILY_NEWS_MODEL_PROVIDER == "deepseek_responses"
@@ -273,7 +273,7 @@ def test_env_toml_example_is_valid_v2_config():
     assert settings.providers["deepseek_anthropic"].type == "anthropic"
     assert settings.providers["deepseek_anthropic"].api_mode == "messages"
     assert settings.models.advanced.provider == "openai"
-    assert settings.models.daily_news.model == "deepseek-v4-flash"
+    assert settings.models.daily_news.model == "deepseek-flash"
     assert settings.models.daily_news.provider == "deepseek_responses"
     assert settings.models.paint.provider == "openai"
     assert settings.models.paint.size == "1024x1024"
