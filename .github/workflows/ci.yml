@@ -27,7 +27,7 @@ jobs:
           utils/agent_context.py utils/harness_profiles.py utils/mcp.py
           utils/agents/inputs.py utils/agents/execution.py
           utils/agents/runtime.py utils/agents/runtime_gateway.py
-          utils/agents/chat_context.py utils/delivery.py
+          utils/delivery.py
           plugins/dashboard/api/settings_routes.py
       - name: Test (including real dependency contracts)
         run: uv run --locked pytest test/ -q
