@@ -108,7 +108,7 @@ def _media_downloader(url: str, label: str) -> Callable[[], Awaitable[bytes | No
         try:
             return (await httpx_client.get(url)).content
         except Exception as exc:
-            logger.warning("下载%s失败: %s", label, exc)
+            logger.warning("下载{}失败: {}", label, exc)
             return None
 
     return _download
@@ -123,9 +123,9 @@ async def _resolve_media_item(item: MediaItem) -> bytes | None:
         try:
             return await item()
         except Exception as exc:
-            logger.warning("下载媒体失败: %s: %s", type(exc).__name__, exc)
+            logger.warning("下载媒体失败: {}: {}", type(exc).__name__, exc)
             return None
-    logger.debug("忽略未知媒体项类型: %s", type(item).__name__)
+    logger.debug("忽略未知媒体项类型: {}", type(item).__name__)
     return None
 
 
@@ -151,7 +151,7 @@ async def download_media(
     resolved = await asyncio.gather(*(task for _, task in tasks), return_exceptions=True)
     for (bucket_index, _task), value in zip(tasks, resolved, strict=True):
         if isinstance(value, Exception):
-            logger.warning("下载媒体失败: %s: %s", type(value).__name__, value)
+            logger.warning("下载媒体失败: {}: {}", type(value).__name__, value)
             continue
         if value and isinstance(value, bytes):
             results[bucket_index].append(value)
@@ -281,7 +281,7 @@ async def send_artifacts(artifacts: list[object]) -> DeliveryResult:
     result = DeliveryResult()
     for artifact in artifacts:
         if not isinstance(artifact, UniMessage):
-            logger.warning("忽略不可发送的工具工件类型: %s", type(artifact).__name__)
+            logger.warning("忽略不可发送的工具工件类型: {}", type(artifact).__name__)
             continue
         for message in _artifact_messages(artifact):
             if not message:
@@ -289,7 +289,7 @@ async def send_artifacts(artifacts: list[object]) -> DeliveryResult:
             try:
                 await message.send()
             except Exception as exc:
-                logger.exception("工件发送失败: %s", type(exc).__name__)
+                logger.exception("工件发送失败: {}", type(exc).__name__)
                 return result.combine(DeliveryResult(attempted=1, errors=(type(exc).__name__,)))
             result = result.combine(DeliveryResult(attempted=1, sent=1))
     return result
@@ -388,22 +388,22 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
             receipt = await with_reply(UniMessage.text(text_content)).send()
             return DeliveryResult(attempted=1, sent=1, message_ids=_receipt_message_ids(receipt))
         except Exception as exc:
-            logger.warning("文本消息发送失败，尝试图片回退: %s", type(exc).__name__)
+            logger.warning("文本消息发送失败，尝试图片回退: {}", type(exc).__name__)
 
     result = await _markdown_to_image_with_retry(content)
     if not result:
-        logger.error("图片生成失败 (内容长度: %s)", len(content))
+        logger.error("图片生成失败 (内容长度: {})", len(content))
         errors = ("render_failed",)
         try:
             await with_reply(UniMessage.text("❌ 消息生成失败，请稍后重试。")).send()
         except Exception as exc:
-            logger.error("错误消息发送失败: %s", type(exc).__name__)
+            logger.error("错误消息发送失败: {}", type(exc).__name__)
             errors += (type(exc).__name__,)
         return DeliveryResult(attempted=1, errors=errors)
     try:
         receipt = await with_reply(UniMessage.image(raw=result)).send()
     except Exception as exc:
-        logger.error("图片消息发送失败: %s", type(exc).__name__)
+        logger.error("图片消息发送失败: {}", type(exc).__name__)
         return DeliveryResult(attempted=1, errors=(type(exc).__name__,))
     return DeliveryResult(attempted=1, sent=1, message_ids=_receipt_message_ids(receipt))
 

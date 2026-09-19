@@ -139,7 +139,7 @@ async def _cache_complete_reply_images(
         )
     except Exception as exc:
         logger.warning(
-            "⚠️ 写入引用图片缓存失败 message_seq=%s: %s: %s",
+            "⚠️ 写入引用图片缓存失败 message_seq={}: {}: {}",
             reply_seq,
             type(exc).__name__,
             exc,
@@ -321,7 +321,7 @@ async def _quoted_file_context(  # noqa: C901
                 )
             except Exception as exc:
                 logger.warning(
-                    "⚠️ 写入引用文件缓存失败 message_seq=%s file=%s: %s: %s",
+                    "⚠️ 写入引用文件缓存失败 message_seq={} file={}: {}: {}",
                     reply_seq,
                     staged_file.file_name,
                     type(exc).__name__,
@@ -563,7 +563,7 @@ async def build_reply_context(  # noqa: C901
     select_kwargs: dict[str, int] = {}
     private_peer_user_id = _private_peer_user_id(event) if group_id is None else None
     if group_id is None and private_peer_user_id is None:
-        logger.warning("忽略无法确定 peer_user_id 的私聊引用 message_seq=%s", reply_seq)
+        logger.warning("忽略无法确定 peer_user_id 的私聊引用 message_seq={}", reply_seq)
         return None, []
     if private_peer_user_id is not None:
         select_kwargs["peer_user_id"] = private_peer_user_id

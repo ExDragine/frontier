@@ -168,7 +168,7 @@ async def _send_result(result: dict, *, group_id: int | None, message_seq: int) 
     text_delivery = await send_messages(group_id, message_seq, {"messages": [AIMessage(content=sanitized)]})
     delivery = delivery.combine(text_delivery)
     if text_delivery.errors:
-        logger.warning("ACP 回复未送达: %s", text_delivery.errors)
+        logger.warning("ACP 回复未送达: {}", text_delivery.errors)
         try:
             # A short plain-text notification avoids recursively retrying rendering.
             async with asyncio.timeout(15):
@@ -177,7 +177,7 @@ async def _send_result(result: dict, *, group_id: int | None, message_seq: int) 
                     notice = UniMessage.reply(str(message_seq)) + notice
                 await notice.send()
         except Exception as exc:
-            logger.warning("ACP 发送失败提示也未送达: %s", type(exc).__name__)
+            logger.warning("ACP 发送失败提示也未送达: {}", type(exc).__name__)
     return delivery
 
 
@@ -214,4 +214,4 @@ async def handle_acp(event: MessageEvent) -> None:
     )
     delivery = await _send_result(result, group_id=group_id, message_seq=event.data.message_seq)
     if delivery.errors:
-        logger.warning("ACP 请求投递未完整成功: %s", delivery.errors)
+        logger.warning("ACP 请求投递未完整成功: {}", delivery.errors)

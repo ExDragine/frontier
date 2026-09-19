@@ -281,7 +281,7 @@ class FrontierAcpServer:
             except acp.RequestError:
                 raise
             except Exception as exc:
-                logger.exception("Frontier ACP session failed: %s", type(exc).__name__)
+                logger.exception("Frontier ACP session failed: {}", type(exc).__name__)
                 raise acp.RequestError.internal_error({"type": type(exc).__name__}) from exc
             finally:
                 session.active_task = None

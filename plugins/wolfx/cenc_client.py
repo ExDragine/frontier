@@ -103,7 +103,7 @@ class CencWebSocketService:
                 raise
             except Exception as exc:
                 self._last_error = f"{type(exc).__name__}: {exc}"
-                logger.warning("Wolfx CENC WebSocket 连接中断: %s", self._last_error)
+                logger.warning("Wolfx CENC WebSocket 连接中断: {}", self._last_error)
             finally:
                 self._connected = False
 
@@ -111,7 +111,7 @@ class CencWebSocketService:
                 reconnect_delay = CENC_RECONNECT_INITIAL_SECONDS
 
             sleep_for = self._jitter(reconnect_delay * 0.75, reconnect_delay * 1.25)
-            logger.info("Wolfx CENC WebSocket 将在 %.1f 秒后重连", sleep_for)
+            logger.info("Wolfx CENC WebSocket 将在 {:.1f} 秒后重连", sleep_for)
             await self._sleep(sleep_for)
             reconnect_delay = min(reconnect_delay * 2, CENC_RECONNECT_MAX_SECONDS)
 
@@ -150,7 +150,7 @@ class CencWebSocketService:
         if message_type == "pong":
             return snapshot_pending
         if message_type != "cenc_eew":
-            logger.debug("忽略未知 Wolfx CENC WebSocket 消息类型: %s", message_type)
+            logger.debug("忽略未知 Wolfx CENC WebSocket 消息类型: {}", message_type)
             return snapshot_pending
 
         if self._handler is None:

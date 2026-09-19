@@ -152,7 +152,7 @@ async def send_file(
         )
         return f"已发送私聊文件 {file_name}，file_id={file_id}"
     except Exception as exc:
-        logger.warning("发送文件失败: %s", type(exc).__name__)
+        logger.warning("发送文件失败: {}", type(exc).__name__)
         return "文件发送失败：平台上传未成功，请检查文件是否仍存在以及机器人权限。"
 
 

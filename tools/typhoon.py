@@ -128,7 +128,7 @@ async def _fetch_typhoon_data() -> list[dict] | None:
         resp.raise_for_status()
         data = resp.json()
         if not isinstance(data, list):
-            logger.warning("台风 API 返回格式异常: %s", type(data))
+            logger.warning("台风 API 返回格式异常: {}", type(data))
             return None
         return data
     except Exception as e:
@@ -374,7 +374,7 @@ async def _screenshot_card(html: str) -> bytes:
         try:
             Path(cache_file).unlink(missing_ok=True)
         except Exception as e:
-            logger.warning("删除临时文件失败: %s", e)
+            logger.warning("删除临时文件失败: {}", e)
 
 
 async def _render_single_typhoon(target: dict, overlay_data: dict[str, Any] | None = None) -> bytes | None:
@@ -466,7 +466,7 @@ async def _render_typhoon_images(targets: list[dict], overlay: str | None) -> tu
     images: list[UniMessage] = []
     for t, r in zip(targets, results, strict=True):
         if isinstance(r, BaseException):
-            logger.error("台风「%s」渲染失败: %s", t.get("name", "?"), r)
+            logger.error("台风「{}」渲染失败: {}", t.get("name", "?"), r)
             continue
         if r is not None:
             images.append(UniMessage.image(raw=r))

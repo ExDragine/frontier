@@ -204,7 +204,7 @@ async def _settle_session(lease: TurnLease | None, **kwargs) -> None:
         await session_manager.finish(lease, **kwargs)
     except Exception as exc:
         # Transport success must never be retried because cache maintenance failed.
-        logger.warning("会话状态结算失败: %s", type(exc).__name__)
+        logger.warning("会话状态结算失败: {}", type(exc).__name__)
 
 
 async def _process_agent_request(
@@ -227,7 +227,7 @@ async def _process_agent_request(
             # No graph/tool has started: a cache maintenance failure can safely
             # fall back to the original execution with the same scoped history.
             session_manager.metrics["initialization_fallback"] += 1
-            logger.warning("会话缓存初始化失败，使用历史上下文: %s", type(exc).__name__)
+            logger.warning("会话缓存初始化失败，使用历史上下文: {}", type(exc).__name__)
     try:
         if use_session_history:
             started = time.monotonic()
@@ -304,7 +304,7 @@ async def _execute_agent_request(  # noqa: C901
         return True
 
     if result.get("should_reply") is False:
-        logger.info("Agent 选择本轮不回复: group_id=%s user_id=%s", context.group_id, context.user_id)
+        logger.info("Agent 选择本轮不回复: group_id={} user_id={}", context.group_id, context.user_id)
         await _settle_session(session_turn, silent=True)
         return False
 
@@ -314,15 +314,15 @@ async def _execute_agent_request(  # noqa: C901
         return True
 
     if result.get("error"):
-        logger.warning("Agent returned error response: %s", result["error"])
+        logger.warning("Agent returned error response: {}", result["error"])
 
     artifacts = result.get("uni_messages", [])
     artifact_delivery = DeliveryResult()
     if artifacts:
-        logger.info("📤 发送 %s 个媒体工件", len(artifacts))
+        logger.info("📤 发送 {} 个媒体工件", len(artifacts))
         artifact_delivery = await send_artifacts(artifacts)
         if artifact_delivery.errors:
-            logger.warning("媒体工件未完整送达: %s", artifact_delivery.errors)
+            logger.warning("媒体工件未完整送达: {}", artifact_delivery.errors)
 
     response_messages = response.get("messages", [])
     if not isinstance(response_messages, list) or not response_messages:
@@ -358,7 +358,7 @@ async def _execute_agent_request(  # noqa: C901
             )
         except Exception as exc:
             # Delivery has happened: never retry the send because persistence failed.
-            logger.exception("回复已送达但历史记录写入失败: %s", type(exc).__name__)
+            logger.exception("回复已送达但历史记录写入失败: {}", type(exc).__name__)
         if not artifact_delivery.errors and not result.get("error"):
             await _settle_session(
                 session_turn, delivered=True, delivered_at=delivered_at,
@@ -366,7 +366,7 @@ async def _execute_agent_request(  # noqa: C901
                 message_id=getattr(inserted, "message_id", None),
             )
     elif delivery.errors:
-        logger.warning("回复未送达，未记入已回复历史: %s", delivery.errors)
+        logger.warning("回复未送达，未记入已回复历史: {}", delivery.errors)
     return delivery.sent > 0 or artifact_delivery.sent > 0
 
 
@@ -388,7 +388,7 @@ async def _process_queued_agent_request(context: AgentRequestContext, history_me
             timeout=EnvConfig.AGENT_JOB_TIMEOUT_SECONDS,
         )
     except TimeoutError:
-        logger.warning("会话回复超时: group_id=%s user_id=%s started=%s", context.group_id, context.user_id, started)
+        logger.warning("会话回复超时: group_id={} user_id={} started={}", context.group_id, context.user_id, started)
         notice = "本轮处理超时，请稍后重试。" if started else "等待处理超时，本轮请求尚未开始，请稍后重试。"
         try:
             async with asyncio.timeout(15):
@@ -396,9 +396,9 @@ async def _process_queued_agent_request(context: AgentRequestContext, history_me
                     context.group_id, context.event_id, {"messages": [AIMessage(content=notice)]}
                 )
                 if delivery.errors:
-                    logger.warning("会话超时提示未送达: %s", delivery.errors)
+                    logger.warning("会话超时提示未送达: {}", delivery.errors)
         except Exception as exc:
-            logger.warning("会话超时提示发送失败: %s", type(exc).__name__)
+            logger.warning("会话超时提示发送失败: {}", type(exc).__name__)
 
 
 async def _run_agent_turn(
@@ -419,7 +419,7 @@ async def _run_agent_turn(
                 reply_context_json=(serialize_agent_payload(context.reply_to) if context.reply_to else None),
             )
         except Exception as exc:
-            logger.warning("消息上下文定稿失败（不影响回复）: %s: %s", type(exc).__name__, exc)
+            logger.warning("消息上下文定稿失败（不影响回复）: {}: {}", type(exc).__name__, exc)
 
     quoted_content = str((fetched_reply_payload or {}).get("content", ""))
     risk_check = (
@@ -442,7 +442,7 @@ async def _run_agent_turn(
             )
             reaction_added = True
         except Exception as exc:
-            logger.warning("发送群消息处理反应失败: %s: %s", type(exc).__name__, exc)
+            logger.warning("发送群消息处理反应失败: {}: {}", type(exc).__name__, exc)
 
     from utils.ens_gate import _ens_caller_allowed, _ens_prefix
 
@@ -469,7 +469,7 @@ async def _run_agent_turn(
                 )
             except Exception as exc:
                 logger.warning(
-                    "移除群消息处理反应失败 用户%s 群%s: %s",
+                    "移除群消息处理反应失败 用户{} 群{}: {}",
                     context.user_id,
                     context.group_id,
                     exc,
@@ -496,9 +496,9 @@ async def on_startup():
         try:
             cleaned_attachments = await messages_db.cleanup_expired_attachments()
             if cleaned_attachments:
-                logger.info("已清理过期消息附件: %s", cleaned_attachments)
+                logger.info("已清理过期消息附件: {}", cleaned_attachments)
         except Exception as exc:
-            logger.warning("消息附件维护失败: %s: %s", type(exc).__name__, exc)
+            logger.warning("消息附件维护失败: {}: {}", type(exc).__name__, exc)
 
     scheduler.add_job(
         run_daily_cache_cleanup,
@@ -520,9 +520,9 @@ async def run_daily_cache_cleanup() -> None:
         try:
             cleaned_attachments = await messages_db.cleanup_expired_attachments()
             if cleaned_attachments:
-                logger.info("每日清理过期消息附件: %s", cleaned_attachments)
+                logger.info("每日清理过期消息附件: {}", cleaned_attachments)
         except Exception as exc:
-            logger.warning("每日消息附件清理失败: %s: %s", type(exc).__name__, exc)
+            logger.warning("每日消息附件清理失败: {}: {}", type(exc).__name__, exc)
 
 
 @common.handle()
@@ -598,7 +598,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         normalized_status=normalized_message.status,
     )
     if inserted is not None and not inserted.inserted:
-        logger.info("忽略已处理的平台消息: group_id=%s message_seq=%s", group_id, event_id)
+        logger.info("忽略已处理的平台消息: group_id={} message_seq={}", group_id, event_id)
         await common.finish()
     message_id = inserted.message_id if inserted is not None else None
     message_identity = {"message_id": message_id} if message_id is not None else {}
@@ -682,7 +682,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                 memory_dir=_agent_memory_dir(user_id, group_id),
             )
         except Exception as exc:
-            logger.warning("按需恢复近期媒体失败（不影响回复）: %s: %s", type(exc).__name__, exc)
+            logger.warning("按需恢复近期媒体失败（不影响回复）: {}: {}", type(exc).__name__, exc)
 
     persisted_media = []
     if EnvConfig.IMAGE_ENABLED:

@@ -259,7 +259,7 @@ async def github_post_news(**kwargs):
         headers={"Authorization": f"Bearer {EnvConfig.GITHUB_PAT.get_secret_value()}"},
         json={"query": query},
     )
-    logger.debug("GitHub GraphQL response: %s", response.text)
+    logger.debug("GitHub GraphQL response: {}", response.text)
 
 
 async def apod_everyday(**kwargs):

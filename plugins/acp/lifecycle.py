@@ -13,9 +13,9 @@ async def run_daily_cache_cleanup() -> None:
     try:
         cleaned_scopes = await acp_service.cleanup_cache()
         if cleaned_scopes:
-            logger.info("每日清理 ACP 缓存 scope: %s", cleaned_scopes)
+            logger.info("每日清理 ACP 缓存 scope: {}", cleaned_scopes)
     except Exception as exc:
-        logger.warning("每日 ACP 缓存清理失败: %s: %s", type(exc).__name__, exc)
+        logger.warning("每日 ACP 缓存清理失败: {}: {}", type(exc).__name__, exc)
 
 
 @driver.on_startup

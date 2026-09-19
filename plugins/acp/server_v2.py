@@ -190,7 +190,7 @@ class FrontierAcpV2Server:
         except asyncio.CancelledError:
             stop_reason = "cancelled"
         except Exception as exc:
-            logger.warning("Frontier ACP v2 session failed: %s", type(exc).__name__)
+            logger.warning("Frontier ACP v2 session failed: {}", type(exc).__name__)
             stop_reason = "refusal"
             with suppress(Exception):
                 await self._send(session, schema.AgentMessageUpdate(
@@ -200,7 +200,7 @@ class FrontierAcpV2Server:
             try:
                 await self._send(session, schema.IdleSessionStateUpdate(stop_reason=stop_reason))
             except Exception as exc:
-                logger.warning("ACP v2 completion delivery failed: %s", type(exc).__name__)
+                logger.warning("ACP v2 completion delivery failed: {}", type(exc).__name__)
             finally:
                 session.updated_at = dt.datetime.now(dt.UTC)
                 session.task = None

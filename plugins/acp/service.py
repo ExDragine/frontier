@@ -266,7 +266,7 @@ def load_acp_config(path: str | Path = "acp.json") -> AcpConfig:
         mode = config_path.stat().st_mode
         if mode & (stat.S_IWGRP | stat.S_IWOTH):
             logger.warning(
-                "acp.json 文件权限不安全 (%s)，建议仅允许 owner 写入",
+                "acp.json 文件权限不安全 ({})，建议仅允许 owner 写入",
                 oct(mode & 0o777),
             )
 
@@ -387,7 +387,7 @@ class _FrontierAcpClient:
             try:
                 data = base64.b64decode(str(getattr(content, "data", "") or ""), validate=True)
             except (ValueError, TypeError):
-                logger.warning("ACP Agent 返回了无效的 %s base64 内容，已忽略", content_kind)
+                logger.warning("ACP Agent 返回了无效的 {} base64 内容，已忽略", content_kind)
                 return
             if data:
                 message.artifacts.append(
@@ -842,7 +842,7 @@ class AcpAgentService:
                     shutil.rmtree(path)
                 removed += 1
             except OSError as exc:
-                logger.warning("清理 ACP workspace 失败 %s: %s", path, exc)
+                logger.warning("清理 ACP workspace 失败 {}: {}", path, exc)
         return removed
 
     async def cleanup_cache(self) -> int:

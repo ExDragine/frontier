@@ -109,7 +109,7 @@ async def process_cenc_event(
     try:
         payload = CencEewPayload.model_validate(data)
     except ValidationError as exc:
-        logger.warning("忽略字段无效的 CENC 地震预警: %s", exc)
+        logger.warning("忽略字段无效的 CENC 地震预警: {}", exc)
         return CencEventResult([], 0, "cenc ignored: invalid payload")
 
     async with _cenc_event_lock:
@@ -117,7 +117,7 @@ async def process_cenc_event(
         processed_event_ids = _load_event_ids(stored_value)
         if payload.event_id in processed_event_ids:
             logger.debug(
-                "CENC 地震已推送过 (event_id=%s, report_num=%s)，跳过",
+                "CENC 地震已推送过 (event_id={}, report_num={})，跳过",
                 payload.event_id,
                 payload.report_num,
             )
@@ -125,7 +125,7 @@ async def process_cenc_event(
 
         if payload.magnitude < CENC_MINIMUM_MAGNITUDE:
             logger.debug(
-                "CENC 地震震级 %.1f 低于 %.1f，等待后续修订",
+                "CENC 地震震级 {:.1f} 低于 {:.1f}，等待后续修订",
                 payload.magnitude,
                 CENC_MINIMUM_MAGNITUDE,
             )
@@ -133,13 +133,13 @@ async def process_cenc_event(
 
         if is_snapshot and not _is_fresh_snapshot(payload, now_cn):
             await _store_event_id(payload.event_id, stored_value, processed_event_ids)
-            logger.info("CENC 快照已过期，仅建立去重基线 (event_id=%s)", payload.event_id)
+            logger.info("CENC 快照已过期，仅建立去重基线 (event_id={})", payload.event_id)
             return CencEventResult([], 0, "cenc snapshot baseline stored")
 
         # 先持久化 EventID，确保同一次地震的后续报次不会重复推送。
         await _store_event_id(payload.event_id, stored_value, processed_event_ids)
         logger.info(
-            "检测到%s发生%.1f级地震 (event_id=%s, report_num=%s)",
+            "检测到{}发生{:.1f}级地震 (event_id={}, report_num={})",
             payload.hypocenter,
             payload.magnitude,
             payload.event_id,
@@ -177,7 +177,7 @@ async def process_cenc_event(
                 groups_sent.append(int(group))
             except Exception as exc:
                 error_traceback = "".join(traceback.format_exception(exc))
-                logger.error("CENC 地震预警推送到群 %s 失败:\n%s", group, error_traceback)
+                logger.error("CENC 地震预警推送到群 {} 失败:\n{}", group, error_traceback)
 
         return CencEventResult(
             groups_sent=groups_sent,

@@ -85,7 +85,7 @@ class AcpAgent:
                 "uni_messages": _uni_messages(result.artifacts),
             }
         except (AcpUnavailableError, AcpConfigurationError) as exc:
-            logger.warning("ACP Agent 不可用: %s", type(exc).__name__)
+            logger.warning("ACP Agent 不可用: {}", type(exc).__name__)
             error = _safe_error_text(exc)
             message = f"🔌 ACP Agent 暂不可用：{error}"
         except TimeoutError as exc:
@@ -93,7 +93,7 @@ class AcpAgent:
             error = _safe_error_text(exc)
             message = "🔌 ACP Agent 执行超时，连接已关闭；下次调用会自动重建。"
         except Exception as exc:
-            logger.exception("ACP Agent 执行失败: %s", type(exc).__name__)
+            logger.exception("ACP Agent 执行失败: {}", type(exc).__name__)
             error = _safe_error_text(exc)
             message = "🔌 ACP Agent 执行失败，请稍后重试。"
 

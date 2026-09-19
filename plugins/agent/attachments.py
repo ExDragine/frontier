@@ -141,7 +141,7 @@ def cleanup_staged_message_files(staged_files: list[StagedMessageFile]) -> None:
         try:
             path.unlink(missing_ok=True)
         except OSError as exc:
-            logger.warning("清理未索引消息文件失败 %s: %s", path, exc)
+            logger.warning("清理未索引消息文件失败 {}: {}", path, exc)
             continue
         with suppress(OSError):
             path.parent.rmdir()
@@ -159,7 +159,7 @@ def _write_staged_file(target_path: Path, data: bytes) -> None:
         try:
             temp_path.unlink(missing_ok=True)
         except OSError as exc:
-            logger.warning("清理消息文件临时写入失败 %s: %s", temp_path, exc)
+            logger.warning("清理消息文件临时写入失败 {}: {}", temp_path, exc)
 
 
 async def _complete_staged_write(target_path: Path, data: bytes) -> None:

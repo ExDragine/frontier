@@ -70,7 +70,7 @@ def build_acp_subagents(
         configured = service.subagent_configs()
     except AcpConfigurationError as exc:
         if "acp.json 不存在" not in str(exc):
-            logger.warning("ACP 子代理配置无效，已跳过: %s", exc)
+            logger.warning("ACP 子代理配置无效，已跳过: {}", exc)
         return []
 
     subagents: list[CompiledSubAgent] = []

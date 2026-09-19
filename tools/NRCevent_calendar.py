@@ -32,7 +32,7 @@ async def get_nrc_event_calendar() -> tuple[str, UniMessage | None]:
 
     try:
         await page.goto(TARGET_URL, wait_until="networkidle", timeout=30000)
-        logger.info("NRC 活动日历：已打开 %s", TARGET_URL)
+        logger.info("NRC 活动日历：已打开 {}", TARGET_URL)
 
         nav_item = await page.wait_for_selector(NAV_SELECTOR, timeout=10000)
         if nav_item is None:
@@ -59,13 +59,13 @@ async def get_nrc_event_calendar() -> tuple[str, UniMessage | None]:
         if image_url.startswith("//"):
             image_url = "https:" + image_url
 
-        logger.info("NRC 活动日历图片链接: %s", image_url)
+        logger.info("NRC 活动日历图片链接: {}", image_url)
 
         resp = await httpx_client.get(image_url)
         resp.raise_for_status()
         image_bytes = resp.content
 
-        logger.info("NRC 活动日历图片已下载，大小: %.1f KB", len(image_bytes) / 1024)
+        logger.info("NRC 活动日历图片已下载，大小: {:.1f} KB", len(image_bytes) / 1024)
 
         return "NRC 活动日历", UniMessage.image(raw=image_bytes)
 
