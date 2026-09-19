@@ -590,6 +590,7 @@ class AcpAgentService:
             )
         try:
             connection, process = await manager.__aenter__()
+            startup_timeout = min(max(config.timeout_seconds, 5), 30)
             initialize = await asyncio.wait_for(
                 connection.initialize(
                     protocol_version=config.protocol_version,
@@ -606,7 +607,7 @@ class AcpAgentService:
                         version="0.1.3",
                     ),
                 ),
-                timeout=min(config.timeout_seconds, 30),
+                timeout=startup_timeout,
             )
             if initialize.protocol_version != config.protocol_version:
                 raise AcpUnavailableError(
@@ -623,11 +624,11 @@ class AcpAgentService:
                     )
                 await asyncio.wait_for(
                     connection.authenticate(method_id=config.auth_method),
-                    timeout=min(config.timeout_seconds, 30),
+                    timeout=startup_timeout,
                 )
             session = await asyncio.wait_for(
                 connection.new_session(cwd=str(workspace), mcp_servers=[]),
-                timeout=min(config.timeout_seconds, 30),
+                timeout=startup_timeout,
             )
         except BaseException as exc:
             with contextlib.suppress(Exception):
