@@ -62,8 +62,10 @@ QQ 入口另有 `delivery:` 队列保证生成、发送和落库顺序；锁顺�
 成功发现的服务保留缓存；失败服务按 30、60、120、240、300 秒退避，
 到期后的下一次 Agent 请求重新发现，不运行后台轮询。工具集合变化会递增注册表 revision，
 触发后续请求重建 Agent 组件，恢复的 Exa 工具也会重新进入 research-agent。
-`startup_timeout_seconds` 可为单个服务设置 5–300 秒发现超时；HTTP/SSE 支持字符串 `headers`，
-用于服务要求的认证头。`mcp.json` 配置修改仍需重启。
+MCP 接入统一为 Streamable HTTP：每项必须提供 HTTP(S) `url`，`transport` 默认 `http`，
+也接受 `streamable_http`；不再接受旧的 stdio/SSE 接入或 `command`、`args`、`env` 字段。
+`startup_timeout_seconds` 可为单个服务设置 5–300 秒发现超时；字符串 `headers` 用于认证头。
+`mcp.json` 配置修改仍需重启。
 
 FrontierCognitive 构造函数不再构建模型或子代理。首次执行才初始化；EnvConfig 成功 reload 后
 递增 REVISION，使下次执行重建依赖模型配置的组件。
@@ -94,7 +96,7 @@ uv run --locked pytest test/ -q
 ```
 
 CI 还对运行边界执行 ty 检查。真实依赖契约测试使用独立 Python 进程，覆盖真实
-LangChain / Deep Agents 工具调用与 MCP stdio，避免全局替身掩盖升级兼容性问题。
+LangChain / Deep Agents 工具调用与 MCP HTTP，避免全局替身掩盖升级兼容性问题。
 一般单元测试在应用边界注入替身，动态导入和 monkeypatch 必须在测试结束后恢复。
 
 依赖升级单独提交 pyproject.toml / uv.lock，并运行同一套契约测试；不要把自动升级放进机器人重启循环。

@@ -12,6 +12,8 @@
 
 合并修复后的全量回归为 **897 passed**（3 条既有第三方警告），ruff、CI 指定类型检查、`git diff --check` 均通过。使用合并后代码连接 Exa 官方 HTTP MCP，再次成功发现 `web_search_exa`、`web_fetch_exa`。没有执行真实 QQ 投递或付费搜索／模型生成。
 
+后续根据当前所有 MCP 服务均使用 HTTP 的部署情况，接入统一为 Streamable HTTP（`http` / `streamable_http`）。移除了 stdio、旧 SSE 和命令启动配置，示例与真实契约测试同步改为 HTTP；退避重发现和工具刷新保持不变。
+
 ## 结论
 
 新闻生产已经独立到 `plugins/news`，Clockwork 会将原任务处理器切换过去并保留既有时间、启停状态和目标群。检索使用 Exa/Tavily REST API，编辑与复核使用独立结构化模型调用，归档使用 `news.db`，不再通过主聊天 Agent 生成新闻。

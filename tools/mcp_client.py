@@ -2,75 +2,58 @@ import asyncio
 import json
 import logging
 import os
-import re
 import stat
 import time
+from urllib.parse import urlsplit
 
 from utils.mcp import build_mcp_adapter
 
 logger = logging.getLogger(__name__)
 
-# ── 安全白名单 ────────────────────────────────────────────────────────────────
-# 仅允许以下命令作为 MCP 服务器入口
-_ALLOWED_COMMANDS = frozenset({"npx", "uvx", "python", "python3", "node"})
 _MCP_STARTUP_TIMEOUT_SECONDS = 30
 _MCP_MAX_STARTUP_TIMEOUT_SECONDS = 300
-
-# 参数中禁止包含这些 shell 危险模式
-_FORBIDDEN_ARG_PATTERNS = (
-    re.compile(r"[;&|`$(){}!#~<>\\]", re.ASCII),
-    re.compile(r"\b(?:curl|wget|nc|bash|sh|zsh|perl|ruby)\b"),
-    re.compile(r"/bin/"),
-)
 
 _MCP_JSON_SCHEMA = {
     "type": "object",
     "additionalProperties": {
         "type": "object",
         "properties": {
-            "command": {"type": "string", "minLength": 1},
-            "args": {"type": "array", "items": {"type": "string"}},
-            "env": {"type": "object"},
             "headers": {"type": "object", "additionalProperties": {"type": "string"}},
-            "url": {"type": "string", "format": "uri"},
-            "transport": {"type": "string", "enum": ["stdio", "sse", "streamable_http", "http"]},
+            "url": {"type": "string", "minLength": 1},
+            "transport": {"type": "string", "enum": ["streamable_http", "http"]},
             "startup_timeout_seconds": {
                 "type": "number",
                 "minimum": 5,
                 "maximum": _MCP_MAX_STARTUP_TIMEOUT_SECONDS,
             },
         },
-        "required": ["transport"],
+        "required": ["url"],
         "additionalProperties": False,
     },
 }
 
 
 def _validate_mcp_config(description: dict) -> None:
-    """验证 mcp.json 结构和安全性，拒绝可疑配置。"""
+    """仅接受 HTTP(S) Streamable HTTP 端点，不支持启动本地进程。"""
     import jsonschema
 
-    jsonschema.validate(description, _MCP_JSON_SCHEMA)
+    try:
+        jsonschema.validate(description, _MCP_JSON_SCHEMA)
+    except jsonschema.ValidationError as exc:
+        # ValidationError's full text includes the config instance and credentials.
+        location = ".".join(str(part) for part in exc.absolute_path) or "root"
+        raise ValueError(f"MCP 配置字段无效: {location} ({exc.validator})") from None
 
     for name, entry in description.items():
-        command = entry.get("command", "")
-        args = entry.get("args", [])
-
-        # HTTP-based MCP servers use url instead of command — skip cmd validation
-        if not command:
-            if not entry.get("url"):
-                raise ValueError(f"MCP server '{name}': 必须提供 'command' (stdio/sse) 或 'url' (http)")
-            continue
-
-        if command not in _ALLOWED_COMMANDS:
-            raise ValueError(
-                f"MCP server '{name}': 不允许的命令 '{command}'。仅允许: {', '.join(sorted(_ALLOWED_COMMANDS))}"
-            )
-
-        for idx, arg in enumerate(args):
-            for pattern in _FORBIDDEN_ARG_PATTERNS:
-                if pattern.search(arg):
-                    raise ValueError(f"MCP server '{name}': 参数 '{arg}' (位置 {idx}) 包含禁止的 shell 模式。")
+        try:
+            parsed = urlsplit(entry["url"])
+            valid = parsed.scheme in {"http", "https"} and bool(parsed.hostname)
+            _ = parsed.port  # Reject malformed ports without logging the URL.
+            valid = valid and not any(char.isspace() for char in entry["url"])
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError(f"MCP server '{name}': url 必须是有效的 HTTP(S) 地址") from None
 
 
 def _check_mcp_json_file_permissions(path: str) -> None:
@@ -144,14 +127,12 @@ async def _load_mcp_tools() -> list:
             _retry_at.pop(name, None)
             return
         except TimeoutError:
-            transport = entry.get("transport", "unknown")
             logger.error(
-                "MCP 服务 '%s' 工具发现超时（%.0fs, transport=%s），已跳过。"
-                "远程 MCP 优先使用 streamable_http/http 直连；"
+                "HTTP MCP 服务 '%s' 工具发现超时（%.0fs），将退避重试。"
+                "请检查端点连接与认证配置；"
                 "如网络确实较慢，可为该服务设置 startup_timeout_seconds。",
                 name,
                 timeout,
-                transport,
             )
         except Exception as exc:
             logger.error("MCP 服务 '%s' 加载失败，已跳过: %s", name, _error_summary(exc))

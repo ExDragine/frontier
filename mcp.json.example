@@ -1,17 +1,7 @@
 {
   "exa": {
     "url": "https://mcp.exa.ai/mcp",
-    "transport": "streamable_http",
+    "transport": "http",
     "startup_timeout_seconds": 60
-  },
-  "time": {
-    "command": "uvx",
-    "args": [
-      "--with",
-      "mcp==1.29.0",
-      "mcp-server-time",
-      "--local-timezone=Asia/Shanghai"
-    ],
-    "transport": "stdio"
   }
 }

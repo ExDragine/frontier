@@ -2,7 +2,7 @@
 
 from fastmcp import Client
 from fastmcp.client.elicitation import ElicitResult
-from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
+from fastmcp.client.transports import StreamableHttpTransport
 from langchain.mcp import MCPAdapter
 
 
@@ -12,20 +12,9 @@ async def decline_elicitation(*_args) -> ElicitResult:
 
 
 def build_mcp_adapter(entry: dict) -> MCPAdapter:
-    """Preserve explicit transports and unprefixed server tool names."""
-    transport_name = entry["transport"]
-    if transport_name == "stdio":
-        # Discovery runs in a temporary event loop. Do not keep its process alive.
-        transport = StdioTransport(
-            command=entry["command"],
-            args=entry.get("args", []),
-            env=entry.get("env"),
-            keep_alive=False,
-        )
-    elif transport_name == "sse":
-        transport = SSETransport(entry["url"], headers=entry.get("headers"))
-    elif transport_name in {"http", "streamable_http"}:
-        transport = StreamableHttpTransport(entry["url"], headers=entry.get("headers"))
-    else:
+    """Connect HTTP MCP endpoints, preserving headers and unprefixed tool names."""
+    transport_name = entry.get("transport", "http")
+    if transport_name not in {"http", "streamable_http"}:
         raise ValueError(f"Unsupported MCP transport: {transport_name}")
+    transport = StreamableHttpTransport(entry["url"], headers=entry.get("headers"))
     return MCPAdapter(Client(transport, elicitation_handler=decline_elicitation))

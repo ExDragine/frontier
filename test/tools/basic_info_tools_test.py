@@ -145,11 +145,15 @@ def test_mcp_get_tools_skips_failed_server(load_tool_module, monkeypatch, caplog
     assert "MCP 服务 'broken' 加载失败，已跳过: RuntimeError: connection closed" in caplog.text
 
 
-def test_mcp_example_pins_v1_sdk_for_time_server():
+def test_mcp_example_only_uses_http_endpoints():
     example_path = Path(__file__).resolve().parents[2] / "mcp.json.example"
     config = json.loads(example_path.read_text(encoding="utf-8"))
 
-    assert config["time"]["args"][:3] == ["--with", "mcp==1.29.0", "mcp-server-time"]
+    assert config
+    for entry in config.values():
+        assert entry["transport"] in {"http", "streamable_http"}
+        assert entry["url"].startswith(("http://", "https://"))
+        assert not {"command", "args", "env"} & entry.keys()
 
 
 def test_module_tools_groups_tools_by_domain(monkeypatch):
@@ -383,3 +387,46 @@ def test_mcp_config_accepts_string_auth_headers(load_tool_module, monkeypatch):
         "transport": "http", "url": "https://example.com/mcp",
         "headers": {"Authorization": "Bearer test-only"},
     }})
+
+
+@pytest.mark.parametrize("entry,valid", [
+    ({"url": "http://127.0.0.1:8000/mcp"}, True),
+    ({"url": "https://example.com/mcp", "transport": "streamable_http"}, True),
+    ({"url": "https://example.com/mcp", "transport": "sse"}, False),
+    ({"transport": "stdio", "command": "uvx", "args": ["mcp-server-time"]}, False),
+    ({"url": "https://example.com/mcp", "command": "python"}, False),
+    ({"url": "https://example.com/mcp", "env": {}}, False),
+    ({"transport": "http"}, False),
+    ({"url": ""}, False),
+    ({"url": "file:///tmp/server"}, False),
+    ({"url": "https:///mcp"}, False),
+    ({"url": "https://bad host/mcp"}, False),
+    ({"url": "https://example.com:invalid/mcp"}, False),
+    ({"url": "https://example.com/mcp", "headers": {"Authorization": 123}}, False),
+    ({"url": "https://example.com/mcp", "startup_timeout_seconds": 301}, False),
+])
+def test_mcp_http_config_validation(load_tool_module, monkeypatch, entry, valid):
+    adapter_module = types.ModuleType("utils.mcp")
+    adapter_module.build_mcp_adapter = lambda entry: None
+    monkeypatch.setitem(sys.modules, "utils.mcp", adapter_module)
+    mod = load_tool_module("mcp_client")
+    if valid:
+        mod._validate_mcp_config({"server": entry})
+    else:
+        with pytest.raises(ValueError):
+            mod._validate_mcp_config({"server": entry})
+
+
+def test_mcp_config_errors_do_not_echo_credentials(load_tool_module, monkeypatch):
+    adapter_module = types.ModuleType("utils.mcp")
+    adapter_module.build_mcp_adapter = lambda entry: None
+    monkeypatch.setitem(sys.modules, "utils.mcp", adapter_module)
+    mod = load_tool_module("mcp_client")
+    Path("mcp.json").write_text(json.dumps({"server": {
+        "url": "https://example.com/mcp?key=secret-query",
+        "headers": {"Authorization": "secret-header"}, "command": "uvx",
+    }}))
+    with pytest.raises(RuntimeError) as error:
+        mod._load_and_validate()
+    assert "secret-query" not in str(error.value)
+    assert "secret-header" not in str(error.value)

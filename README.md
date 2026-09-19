@@ -356,7 +356,7 @@ uv run python scripts/database_maintenance.py
 
 测试使用 nonebug、pytest-asyncio 和第三方 stub；测试 fixture 会生成临时 `env.toml`，不依赖本地真实配置。
 工具媒体断言使用真实 `UniMessage` 消息段接口。独立子进程集成测试绕过全局 stub，覆盖真实 Deep Agents
-图构建、v3 事件流、工具媒体工件，以及本地 stdio MCP 服务的跨事件循环调用，不依赖外部模型密钥。
+图构建、v3 事件流、工具媒体工件，以及本地 HTTP MCP 服务的跨事件循环调用和认证头传递，不依赖外部模型密钥。
 CI 按 `uv.lock` 安装相同依赖组合，执行全量测试、Ruff 和以上运行边界的类型检查；其余旧模块的类型检查仍待逐步收紧。
 
 ## 开发提示
