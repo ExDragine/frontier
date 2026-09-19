@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 # 仅允许以下命令作为 MCP 服务器入口
 _ALLOWED_COMMANDS = frozenset({"npx", "uvx", "python", "python3", "node"})
 _MCP_STARTUP_TIMEOUT_SECONDS = 30
+_MCP_MAX_STARTUP_TIMEOUT_SECONDS = 300
 
 # 参数中禁止包含这些 shell 危险模式
 _FORBIDDEN_ARG_PATTERNS = (
@@ -31,6 +32,11 @@ _MCP_JSON_SCHEMA = {
             "env": {"type": "object"},
             "url": {"type": "string", "format": "uri"},
             "transport": {"type": "string", "enum": ["stdio", "sse", "streamable_http", "http"]},
+            "startup_timeout_seconds": {
+                "type": "number",
+                "minimum": 5,
+                "maximum": _MCP_MAX_STARTUP_TIMEOUT_SECONDS,
+            },
         },
         "required": ["transport"],
         "additionalProperties": False,
@@ -120,12 +126,25 @@ async def _load_mcp_tools() -> list:
         tools_description = _load_and_validate()
 
     async def load_server(name: str) -> list:
+        entry = tools_description[name]
+        timeout = float(entry.get("startup_timeout_seconds", _MCP_STARTUP_TIMEOUT_SECONDS))
         try:
-            adapter = build_mcp_adapter(tools_description[name])
+            adapter = build_mcp_adapter(entry)
             return await asyncio.wait_for(
                 adapter.list_tools(),
-                timeout=_MCP_STARTUP_TIMEOUT_SECONDS,
+                timeout=timeout,
             )
+        except TimeoutError:
+            transport = entry.get("transport", "unknown")
+            logger.error(
+                "MCP 服务 '%s' 工具发现超时（%.0fs, transport=%s），已跳过。"
+                "远程 MCP 优先使用 streamable_http/http 直连；"
+                "如网络确实较慢，可为该服务设置 startup_timeout_seconds。",
+                name,
+                timeout,
+                transport,
+            )
+            return []
         except Exception as exc:
             logger.error("MCP 服务 '%s' 加载失败，已跳过: %s", name, _error_summary(exc))
             return []
