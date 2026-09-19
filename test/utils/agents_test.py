@@ -1889,7 +1889,7 @@ class TestChatAgentStreaming:
 
 @pytest.mark.asyncio
 async def test_components_refresh_when_mcp_recovers_without_config_change(monkeypatch):
-    registry = types.SimpleNamespace(revision=0, direct_tools=[], ptc_tools=[])
+    registry = types.SimpleNamespace(direct_tools=[], ptc_tools=[])
     initialize_calls = []
 
     async def initialize():
@@ -1906,10 +1906,9 @@ async def test_components_refresh_when_mcp_recovers_without_config_change(monkey
     assert agent.document_subagent is document
     tool = types.SimpleNamespace(name="web_search_exa")
     registry.direct_tools = [tool]
-    registry.revision = 1
     await agent._prepare_components()
     assert agent.tools == [tool]
-    assert agent.document_subagent is not document
+    assert agent.document_subagent is document
     assert len(initialize_calls) == 3
 
 

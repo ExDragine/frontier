@@ -19,6 +19,7 @@ from fastmcp import FastMCP
 from fastmcp.client.transports import StreamableHttpTransport
 from fastmcp.server.dependencies import get_http_headers
 from utils.mcp import build_mcp_adapter, decline_elicitation
+from tools import mcp_client
 
 mcp = FastMCP("http-contract-test")
 @mcp.tool
@@ -43,8 +44,12 @@ try:
             entry["transport"] = name
         adapter = build_mcp_adapter(entry)
         assert isinstance(adapter.client.transport, StreamableHttpTransport)
-        tools = asyncio.run(adapter.list_tools())
+        mcp_client._servers = None
+        mcp_client._load_and_validate = lambda: {"local": entry}
+        tools = asyncio.run(mcp_client.mcp_get_tools_async())
         assert [tool.name for tool in tools] == ["echo"]
+        cached = asyncio.run(mcp_client.mcp_get_tools_async())
+        assert cached[0] is tools[0]
         # Discovery closes its loop; each invocation must reconnect with headers.
         for value in ["first", "second"]:
             result = asyncio.run(tools[0].ainvoke({

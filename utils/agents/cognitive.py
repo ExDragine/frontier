@@ -270,7 +270,6 @@ class FrontierCognitive:
         self.ptc_tools = _stable_named_items(agent_tools.ptc_tools)
         self.document_subagent = build_document_subagent()
         self._component_revision = EnvConfig.REVISION
-        self._component_tool_revision = getattr(agent_tools, "revision", 0)
 
     async def _prepare_components(self):
         if "_component_revision" not in self.__dict__:
@@ -278,10 +277,12 @@ class FrontierCognitive:
         initialize = getattr(agent_tools, "initialize", None)
         if initialize is not None:
             await initialize()
-        if (self._component_revision == EnvConfig.REVISION
-                and self.__dict__.get("_component_tool_revision") == getattr(agent_tools, "revision", 0)):
-            return
-        self._build_components()
+        if self._component_revision != EnvConfig.REVISION:
+            self._build_components()
+        else:
+            # Take the latest tool snapshot each turn; MCP recovery does not rebuild models.
+            self.tools = _stable_named_items(agent_tools.direct_tools)
+            self.ptc_tools = _stable_named_items(agent_tools.ptc_tools)
 
     @staticmethod
     def load_system_prompt(

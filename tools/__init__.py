@@ -4,7 +4,7 @@ from pathlib import Path
 
 from langchain_core.tools import BaseTool
 
-from .mcp_client import mcp_get_tools
+from .mcp_client import mcp_get_tools_async
 
 # 跳过不应暴露给 Agent 的模块
 _EXCLUDED_MODULES = {"__init__", "mcp_client"}
@@ -96,8 +96,6 @@ def _discover_tools() -> tuple[
 
 class ModuleTools:
     def __init__(self):
-        self._mcp_tools = None
-        self.revision = 0
         (
             self.subagent_tools,
             self.tool_metadata,
@@ -110,30 +108,10 @@ class ModuleTools:
 
     @property
     def mcp_tools(self):
-        if self._mcp_tools is None:
-            self._register_mcp_tools(mcp_get_tools())
-        return self._mcp_tools
-
-    def _register_mcp_tools(self, tools):
-        if self._mcp_tools is tools:
-            return
-        previous = {id(tool) for tool in self._mcp_tools or []}
-        for group in ("external", "main"):
-            self.subagent_tools[group] = [
-                tool for tool in self.subagent_tools[group] if id(tool) not in previous
-            ] + list(tools)
-        for tool in self._mcp_tools or []:
-            if self.tool_metadata.get(tool.name, {}).get("module") == "mcp":
-                self.tool_metadata.pop(tool.name)
-        self._mcp_tools = tools
-        self.revision += 1
-        for tool_obj in tools:
-            self.tool_metadata[tool_obj.name] = {"module": "mcp", "group": "external"}
+        return self.subagent_tools["external"]
 
     async def initialize(self):
-        from .mcp_client import mcp_get_tools_async
-
-        self._register_mcp_tools(await mcp_get_tools_async())
+        self.subagent_tools["external"] = await mcp_get_tools_async()
 
     @property
     def restricted_tools(self):
@@ -142,17 +120,16 @@ class ModuleTools:
     @property
     def ptc_tools(self):
         """Return one-shot, read-only tools exposed only through PTC."""
-        return [tool for tool in self.main_tools if self._uses_ptc(tool)]
+        return [tool for tool in self.subagent_tools["main"] if self._uses_ptc(tool)]
 
     @property
     def direct_tools(self):
         """Return regular Agent tools, including network search and page reading."""
-        return [tool for tool in self.main_tools if not self._uses_ptc(tool)]
+        return [tool for tool in self.subagent_tools["main"] if not self._uses_ptc(tool)] + self.mcp_tools
 
     @property
     def main_tools(self):
-        _ = self.mcp_tools  # 确保 MCP 工具已加载
-        return self.subagent_tools["main"]
+        return [*self.subagent_tools["main"], *self.mcp_tools]
 
     def _uses_ptc(self, tool: BaseTool) -> bool:
         if getattr(tool, "response_format", None) != "content":

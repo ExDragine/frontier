@@ -4,6 +4,7 @@ import logging
 import os
 import stat
 import time
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from utils.mcp import build_mcp_adapter
@@ -94,88 +95,46 @@ def _load_and_validate(config_path: str = "mcp.json") -> dict:
     return description
 
 
-tools_description = None
+@dataclass
+class _Server:
+    config: dict
+    tools: list | None = None
+    retry_at: float = 0
 
-_mcp_tools = None
-_server_tools: dict[str, list] = {}
-_server_failures: dict[str, int] = {}
-_retry_at: dict[str, float] = {}
+
+_servers: dict[str, _Server] | None = None
+_RETRY_SECONDS = 60
 
 
 def _error_summary(exc: BaseException) -> str:
     while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
         exc = exc.exceptions[0]
-    return f"{type(exc).__name__}: {exc}"
+    # Remote exception text can include the authenticated URL or headers.
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return f"{type(exc).__name__} (HTTP {status})" if status is not None else type(exc).__name__
 
 
-async def _load_mcp_tools() -> list:
-    global tools_description
-    if tools_description is None:
-        tools_description = _load_and_validate()
-
-    async def load_server(name: str) -> None:
-        entry = tools_description[name]
-        timeout = float(entry.get("startup_timeout_seconds", _MCP_STARTUP_TIMEOUT_SECONDS))
-        try:
-            adapter = build_mcp_adapter(entry)
-            discovered = await asyncio.wait_for(
-                adapter.list_tools(),
-                timeout=timeout,
-            )
-            _server_tools[name] = discovered
-            _server_failures.pop(name, None)
-            _retry_at.pop(name, None)
-            return
-        except TimeoutError:
-            logger.error(
-                "HTTP MCP 服务 '%s' 工具发现超时（%.0fs），将退避重试。"
-                "请检查端点连接与认证配置；"
-                "如网络确实较慢，可为该服务设置 startup_timeout_seconds。",
-                name,
-                timeout,
-            )
-        except Exception as exc:
-            logger.error("MCP 服务 '%s' 加载失败，已跳过: %s", name, _error_summary(exc))
-
-        failures = min(_server_failures.get(name, 0) + 1, 5)
-        _server_failures[name] = failures
-        _retry_at[name] = time.monotonic() + min(30 * 2 ** (failures - 1), 300)
-
-    await asyncio.gather(*(
-        load_server(name) for name in tools_description
-        if name not in _server_tools and time.monotonic() >= _retry_at.get(name, 0)
-    ))
-    combined = [tool for name in tools_description for tool in _server_tools.get(name, [])]
-    if _mcp_tools is not None and len(combined) == len(_mcp_tools) and all(
-        left is right for left, right in zip(combined, _mcp_tools, strict=True)
-    ):
-        return _mcp_tools
-    return combined
+async def _discover(name: str, server: _Server) -> None:
+    if server.tools is not None or time.monotonic() < server.retry_at:
+        return
+    try:
+        async with asyncio.timeout(server.config.get("startup_timeout_seconds", _MCP_STARTUP_TIMEOUT_SECONDS)):
+            server.tools = await build_mcp_adapter(server.config).list_tools()
+        logger.info("MCP 服务 '%s' 已加载 %d 个工具", name, len(server.tools))
+    except Exception as exc:
+        server.retry_at = time.monotonic() + _RETRY_SECONDS
+        logger.warning("MCP 服务 '%s' 发现失败: %s；%ds 后可重试", name, _error_summary(exc), _RETRY_SECONDS)
 
 
-async def mcp_get_tools_async():
-    """Cache healthy servers; retry failed discovery with a 30–300 second backoff."""
+async def mcp_get_tools_async() -> list:
+    """The only discovery entry point; successful servers are cached until restart."""
     from utils.agents.runtime import run_serialized
 
     async def load():
-        global _mcp_tools
-        _mcp_tools = await _load_mcp_tools()
-        return _mcp_tools
+        global _servers
+        if _servers is None:
+            _servers = {name: _Server(entry) for name, entry in _load_and_validate().items()}
+        await asyncio.gather(*(_discover(name, server) for name, server in _servers.items()))
+        return [tool for server in _servers.values() for tool in server.tools or []]
 
     return await run_serialized("mcp-discovery", load)
-
-
-def mcp_get_tools():
-    """在同步启动阶段加载 MCP 工具；单个服务失败时跳过该服务。"""
-    global _mcp_tools
-    if _mcp_tools is not None:
-        return _mcp_tools
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-    else:
-        raise RuntimeError("MCP tools are not initialized; await agent_tools.initialize() first")
-    _mcp_tools = asyncio.run(mcp_get_tools_async())
-    return _mcp_tools
