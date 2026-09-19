@@ -1,6 +1,7 @@
 # ruff: noqa: S101
 """Exercise the real MCP stack outside the suite's LangChain stubs."""
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -52,3 +53,13 @@ assert asyncio.run(decline_elicitation()).action == "decline"
         timeout=45,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_exa_example_uses_direct_streamable_http():
+    repo_root = Path(__file__).resolve().parents[2]
+    config = json.loads((repo_root / "mcp.json.example").read_text(encoding="utf-8"))
+
+    assert config["exa"]["transport"] == "streamable_http"
+    assert config["exa"]["url"] == "https://mcp.exa.ai/mcp"
+    assert config["exa"]["startup_timeout_seconds"] == 60
+    assert "command" not in config["exa"]

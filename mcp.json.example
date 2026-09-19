@@ -1,4 +1,9 @@
 {
+  "exa": {
+    "url": "https://mcp.exa.ai/mcp",
+    "transport": "streamable_http",
+    "startup_timeout_seconds": 60
+  },
   "time": {
     "command": "uvx",
     "args": [
