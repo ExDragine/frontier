@@ -1,0 +1,13 @@
+[news]
+enabled = true
+board = "general"
+timezone = "Asia/Shanghai"
+# model/provider 留空时复用 env.toml 的 daily_news_model / daily_news_model_provider。
+model = ""
+provider = ""
+sources = ["exa", "tavily"]
+queries = ["中国 今日 主要新闻", "全球 今日 主要新闻", "科技 最新消息", "经济 社会 最新消息"]
+window_hours = 24
+min_stories = 3
+target_stories = 14
+# 搜索密钥从环境变量 EXA_API_KEY / TAVILY_API_KEY 读取，不写入本文件。

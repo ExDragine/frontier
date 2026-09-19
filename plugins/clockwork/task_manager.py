@@ -494,6 +494,19 @@ class TaskManager:
                 filtered_tasks.append(task)
             return filtered_tasks
 
+    async def update_task_handler(self, job_id: str, handler_module: str, handler_function: str) -> bool:
+        """Migrate a built-in handler without changing schedule, enabled state or targets."""
+        with Session(self.engine) as session:
+            task = session.exec(select(TaskConfig).where(TaskConfig.job_id == job_id)).first()
+            if task is None:
+                return False
+            task.handler_module = handler_module
+            task.handler_function = handler_function
+            task.updated_at = int(time.time())
+            session.add(task)
+            session.commit()
+            return True
+
     async def get_task_metadata(self, job_id: str) -> ScheduledTaskMetadata | None:
         """获取统一自动任务元数据。"""
         with Session(self.engine) as session:

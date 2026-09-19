@@ -383,60 +383,10 @@ async def eq_usgs(**kwargs):
             await message.send(target=Target.group(str(group)))
 
 
-async def daily_news(**kwargs):  # noqa: C901
-    """每日新闻摘要 - 每天9:00、21:00推送"""
-    logger.info("开始获取每日新闻摘要")
-
-    recent_titles = await _load_recent_titles()
-    if "recent_titles" in inspect.signature(build_daily_news_artifacts).parameters:
-        artifacts = await build_daily_news_artifacts(recent_titles=recent_titles)
-    else:
-        artifacts = await build_daily_news_artifacts()
-    if not artifacts:
-        return TaskRunResult(
-            groups_sent=[],
-            messages_sent=0,
-            output_summary="daily_news skipped: no research material",
-        )
-
-    image = await html_to_image(artifacts.html, css=load_daily_news_css())
-    message = UniMessage().image(raw=image)
-    groups_sent: list[int] = []
-    send_errors: list[Exception] = []
-    for group in EnvConfig.NEWS_SUMMARY_GROUP_ID:
-        try:
-            await message.send(target=Target.group(str(group)))
-            groups_sent.append(int(group))
-        except Exception as e:
-            send_errors.append(e)
-            error_traceback = "".join(traceback.format_exception(e))
-            logger.error(f"每日新闻推送到群 {group} 失败:\n{error_traceback}")
-
-    if send_errors and not groups_sent:
-        raise send_errors[0]
-
-    # 保存本次推送的标题，供下次去重使用
-    payload = artifacts.payload
-    if isinstance(payload, BaseModel):
-        payload = payload.model_dump()
-    all_titles = [
-        title
-        for story in payload.get("top_stories", [])
-        if (title := story.get("title", "").strip())
-    ]
-    all_titles.extend(
-        title
-        for story in payload.get("worth_reading", [])
-        if (title := story.get("title", "").strip())
-    )
-    if all_titles:
-        await _save_recent_titles(all_titles)
-
-    return TaskRunResult(
-        groups_sent=groups_sent,
-        messages_sent=len(groups_sent),
-        output_summary=f"daily_news sent {len(groups_sent)} group(s)",
-    )
+async def daily_news(**kwargs):
+    """Compatibility wrapper for databases that still reference the legacy handler."""
+    from plugins.news.scheduler import daily_news as run_news
+    return await run_news(**kwargs)
 
 
 async def happy_new_year(**kwargs):

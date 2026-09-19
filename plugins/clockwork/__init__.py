@@ -86,6 +86,24 @@ async def init_task_system():
     except Exception as exc:
         logger.warning(f"注册 NRC 远行商人任务失败（可能已存在）: {exc}")
 
+    # 5. Ensure the standalone news job exists; migrate only its handler when it already exists.
+    try:
+        existing_news = await task_manager.get_task("daily_news")
+        if existing_news is None:
+            await task_manager.register_task(
+                job_id="daily_news", name="每日新闻", handler_module="plugins.news.scheduler",
+                handler_function="daily_news", trigger_type="cron",
+                trigger_args={"hour": "9,21", "minute": "0", "timezone": "Asia/Shanghai"},
+                group_ids=[int(group_id) for group_id in EnvConfig.NEWS_SUMMARY_GROUP_ID],
+                description="独立新闻插件：真实检索、证据校验、归档后逐目标投递",
+                misfire_grace_time=900,
+            )
+        elif (existing_news.handler_module, existing_news.handler_function) != ("plugins.news.scheduler", "daily_news"):
+            await task_manager.update_task_handler("daily_news", "plugins.news.scheduler", "daily_news")
+        logger.info("每日新闻任务已接入 plugins.news；已有时间、启停状态和群组保持不变")
+    except Exception as exc:
+        logger.warning(f"初始化每日新闻任务失败: {exc}")
+
     logger.info("定时任务管理系统初始化完成！")
 
 

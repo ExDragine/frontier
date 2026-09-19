@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 class NewsConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
-    enabled: bool = False
+    enabled: bool = True
     board: str = "general"
     timezone: str = "Asia/Shanghai"
     model: str = ""
