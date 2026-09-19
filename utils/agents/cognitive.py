@@ -34,6 +34,7 @@ from utils.configs import EnvConfig
 from utils.harness_profiles import register_frontier_harness_profiles
 from utils.llm_factory import (
     create_llm,
+    model_supports_native_web_search,
     native_web_search_support,
     provider_is_official_anthropic,
     provider_is_official_openai,
@@ -427,7 +428,11 @@ class FrontierCognitive:
             if access_profile == "frontier"
             else []
         )
-        native_web_search, native_web_search_reason = native_web_search_support(
+        native_web_search = model_supports_native_web_search(
+            EnvConfig.ADVAN_MODEL,
+            EnvConfig.ADVAN_MODEL_PROVIDER,
+        )
+        _supported, native_web_search_reason = native_web_search_support(
             EnvConfig.ADVAN_MODEL,
             EnvConfig.ADVAN_MODEL_PROVIDER,
         )
