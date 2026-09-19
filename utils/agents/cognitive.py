@@ -34,7 +34,7 @@ from utils.configs import EnvConfig
 from utils.harness_profiles import register_frontier_harness_profiles
 from utils.llm_factory import (
     create_llm,
-    model_supports_native_web_search,
+    native_web_search_support,
     provider_is_official_anthropic,
     provider_is_official_openai,
     provider_official_deepseek_api_mode,
@@ -427,15 +427,24 @@ class FrontierCognitive:
             if access_profile == "frontier"
             else []
         )
-        native_web_search = model_supports_native_web_search(
+        native_web_search, native_web_search_reason = native_web_search_support(
             EnvConfig.ADVAN_MODEL,
             EnvConfig.ADVAN_MODEL_PROVIDER,
         )
         if native_web_search:
-            logger.info("主 Agent 已挂载服务端原生 web_search 工具")
+            logger.info(
+                f"主 Agent 已挂载服务端原生 web_search 工具: {native_web_search_reason}"
+            )
             system_prompt += WEB_SEARCH_PROMPT_HINT
+        elif uses_responses_api:
+            logger.warning(
+                "主 Agent 使用 Responses API，但未挂载服务端原生 web_search: "
+                f"{native_web_search_reason}"
+            )
         else:
-            logger.debug("当前模型路由不支持服务端原生 web_search，跳过挂载")
+            logger.debug(
+                f"当前模型路由不支持服务端原生 web_search: {native_web_search_reason}"
+            )
         subagents = []
         if access_profile == "frontier" and (
             research_subagent := getattr(self, "research_subagent", None)
