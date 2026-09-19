@@ -35,15 +35,6 @@ _PTC_READ_PREFIXES = {
     "milky_system": ("get_",),
     "scheduled_task": ("list_",),
 }
-_RESEARCH_TOOL_NAMES = {
-    "tavily_crawl",
-    "tavily_extract",
-    "tavily_map",
-    "tavily_research",
-    "tavily_search",
-    "web_fetch_exa",
-    "web_search_exa",
-}
 
 _TOOL_MODULE_GROUPS = {
     "adapter": "main",
@@ -155,13 +146,8 @@ class ModuleTools:
 
     @property
     def direct_tools(self):
-        """Return artifact-producing, mutating, or unclassified tools."""
-        return [tool for tool in self.main_tools if not self._uses_ptc(tool) and tool.name not in _RESEARCH_TOOL_NAMES]
-
-    @property
-    def research_tools(self):
-        """Return bounded web research tools owned by the research subagent."""
-        return [tool for tool in self.mcp_tools if tool.name in _RESEARCH_TOOL_NAMES]
+        """Return regular Agent tools, including network search and page reading."""
+        return [tool for tool in self.main_tools if not self._uses_ptc(tool)]
 
     @property
     def main_tools(self):

@@ -14,6 +14,12 @@ from .session_errors import CheckpointCapacityExceeded, SessionInterruptedError
 logger = logging.getLogger(__name__)
 BUDGET_ERRORS = (ModelCallLimitExceededError, ToolCallLimitExceededError)
 CONTROL_ERRORS = (*BUDGET_ERRORS, CheckpointCapacityExceeded, SessionInterruptedError)
+# Known network queries are safe to report as errors without aborting the turn.
+# They remain direct tools and are not automatically retried by ToolRetry.
+WEB_SEARCH_TOOL_NAMES = frozenset({
+    "web_search_exa", "web_fetch_exa", "tavily_search", "tavily_extract",
+    "tavily_map", "tavily_crawl", "tavily_research",
+})
 
 
 class ToolExecutionUncertainError(RuntimeError):

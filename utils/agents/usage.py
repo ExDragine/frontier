@@ -11,7 +11,7 @@ from typing import Any
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.tracers.context import register_configure_hook
 
-_COMPONENTS = {"main", "research", "document", "assistant", "signal"}
+_COMPONENTS = {"main", "document", "assistant", "signal"}
 _TOKEN_FIELDS = ("input_tokens", "output_tokens", "total_tokens", "cache_read_tokens", "reasoning_tokens")
 
 

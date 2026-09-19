@@ -176,7 +176,6 @@ def install_all_third_party_stubs():
         main_tools=[],
         direct_tools=[],
         ptc_tools=[],
-        research_tools=[],
         mcp_tools=[],
         restricted_tools=[],
         tool_metadata={},

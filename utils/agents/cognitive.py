@@ -59,11 +59,8 @@ from .runtime import agent_thread_id, conversation_workspace_key
 from .session_context import SessionHistoryMiddleware, history_budget, messages_contain_media, recent_complete_turns
 from .session_errors import SessionInterruptedError
 from .sessions import TurnLease
-from .subagents import (
-    build_document_subagent,
-    build_research_subagent,
-)
-from .tool_errors import prepare_ptc_tools, tool_error_middleware
+from .subagents import build_document_subagent
+from .tool_errors import WEB_SEARCH_TOOL_NAMES, prepare_ptc_tools, tool_error_middleware
 from .workspace import SKILLS_BACKEND_PATH, build_agent_backend
 
 register_frontier_harness_profiles()
@@ -263,7 +260,7 @@ class FrontierCognitive:
         self._component_revision = None
 
     def __getattr__(self, name):
-        if name in {"tools", "ptc_tools", "research_subagent", "document_subagent"} and "_component_revision" in self.__dict__:
+        if name in {"tools", "ptc_tools", "document_subagent"} and "_component_revision" in self.__dict__:
             self._build_components()
             return self.__dict__[name]
         raise AttributeError(name)
@@ -271,8 +268,6 @@ class FrontierCognitive:
     def _build_components(self):
         self.tools = _stable_named_items(agent_tools.direct_tools)
         self.ptc_tools = _stable_named_items(agent_tools.ptc_tools)
-        research_tools = _stable_named_items(agent_tools.research_tools)
-        self.research_subagent = build_research_subagent(research_tools) if research_tools else None
         self.document_subagent = build_document_subagent()
         self._component_revision = EnvConfig.REVISION
         self._component_tool_revision = getattr(agent_tools, "revision", 0)
@@ -439,10 +434,6 @@ class FrontierCognitive:
         else:
             logger.debug("当前模型路由不支持服务端原生 web_search，跳过挂载")
         subagents = []
-        if access_profile == "frontier" and (
-            research_subagent := getattr(self, "research_subagent", None)
-        ):
-            subagents.append(research_subagent)
         if document_subagent := getattr(self, "document_subagent", None):
             subagents.append(document_subagent)
         if access_profile == "frontier" and enable_acp_subagents:
@@ -472,7 +463,7 @@ class FrontierCognitive:
             # Platform writes must never be automatically repeated after an ambiguous failure.
             ToolRetryMiddleware(tools=ptc_tools, max_retries=1, on_failure="error"),
             tool_error_middleware(read_only_tools=[
-                *ptc_tools, "ls", "glob", "grep", "read_file",
+                *ptc_tools, *WEB_SEARCH_TOOL_NAMES, "ls", "glob", "grep", "read_file",
                 "get_recent_conversation", "search_messages", "get_history_messages",
             ]),
             ModelCallLimitMiddleware(run_limit=EnvConfig.AGENT_MODEL_CALL_LIMIT, exit_behavior="error"),

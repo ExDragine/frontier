@@ -107,7 +107,8 @@ def test_frontier_load_system_prompt_keeps_only_always_on_rules(monkeypatch):
     assert "动态人设文件路径" not in prompt
     assert "memory-agent" not in prompt
     assert prompt.count("get_recent_conversation") == 1
-    assert prompt.count("research-agent") == 1
+    assert "联网搜索、网页读取和多来源核验由你直接调用" in prompt
+    assert "遇到 429、限流或配额耗尽后停止搜索" in prompt
     assert prompt.count("document-agent") == 1
     assert "earth-data-agent" not in prompt
     assert prompt.count("`/skills/ens-weather/SKILL.md`") == 1
@@ -373,10 +374,7 @@ def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
 def test_frontier_cognitive_separates_direct_and_ptc_tools(monkeypatch):
     monkeypatch.setattr(cognitive_mod.agent_tools, "direct_tools", ["direct-tool"], raising=False)
     monkeypatch.setattr(cognitive_mod.agent_tools, "ptc_tools", ["ptc-tool"], raising=False)
-    monkeypatch.setattr(cognitive_mod.agent_tools, "research_tools", ["research-tool"], raising=False)
-    research_subagent = {"name": "research-agent", "description": "research", "runnable": object()}
     document_subagent = {"name": "document-agent", "description": "document", "tools": []}
-    monkeypatch.setattr(cognitive_mod, "build_research_subagent", lambda _tools: research_subagent)
     monkeypatch.setattr(cognitive_mod, "build_document_subagent", lambda: document_subagent)
 
     frontier = cognitive_mod.FrontierCognitive()
@@ -384,13 +382,11 @@ def test_frontier_cognitive_separates_direct_and_ptc_tools(monkeypatch):
     assert frontier.tools == ["direct-tool"]
     assert frontier.ptc_tools == ["ptc-tool"]
     assert not hasattr(frontier, "memory_subagent")
-    assert frontier.research_subagent is research_subagent
     assert frontier.document_subagent is document_subagent
     assert not hasattr(frontier, "subagents")
 
 
 def test_bounded_subagents_use_dedicated_progress_messages():
-    assert progress_mod.subagent_message("research-agent") == "正在搜索并交叉核验资料…"
     assert progress_mod.subagent_message("document-agent") == "正在阅读并整理文档…"
 
 
@@ -618,9 +614,6 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = []
-    frontier.research_subagent = cast(
-        Any, {"name": "research-agent", "description": "research", "runnable": object()}
-    )
     frontier.document_subagent = cast(
         Any, {"name": "document-agent", "description": "document", "tools": []}
     )
@@ -659,7 +652,6 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
     assert "/memory/group-123/SOUL.md" in memory_middleware.system_prompt
     assert "稳定、跨会话仍有价值" in memory_middleware.system_prompt
     assert captured["subagents"] == [
-        frontier.research_subagent,
         frontier.document_subagent,
     ]
     assert captured["state_schema"] is cognitive_mod.FrontierAgentState
@@ -719,7 +711,6 @@ async def test_chat_agent_acp_profile_removes_platform_tools_and_delegation(
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = [types.SimpleNamespace(name="send_group_message")]
     frontier.ptc_tools = [types.SimpleNamespace(name="get_group_info")]
-    frontier.research_subagent = cast(Any, {"name": "research-agent"})
     frontier.document_subagent = cast(Any, {"name": "document-agent", "tools": []})
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
@@ -1118,7 +1109,6 @@ async def test_chat_agent_stabilizes_tool_order_and_keeps_gated_tools_at_tail(mo
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = [tool("zeta"), tool("alpha")]
     frontier.ptc_tools = [tool("query-z"), tool("query-a")]
-    frontier.research_subagent = None
     frontier.document_subagent = cast(Any, {"name": "document-agent", "tools": []})
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
@@ -1505,7 +1495,7 @@ class TestCollectProgress:
         from utils.agents.progress import collect_progress
 
         mock_sub = MagicMock()
-        mock_sub.name = "research"
+        mock_sub.name = "document-agent"
 
         stream = self._mock_stream(subagents=[mock_sub])
         reporter = MagicMock()
@@ -1514,7 +1504,7 @@ class TestCollectProgress:
 
         subagent_calls = [c for c in reporter.call_args_list if c[0][0].type == "subagent_start"]
         assert len(subagent_calls) == 1
-        assert subagent_calls[0][0][0].detail["name"] == "research"
+        assert subagent_calls[0][0][0].detail["name"] == "document-agent"
 
     @pytest.mark.asyncio
     async def test_emits_subagent_done_for_terminal_status(self):
@@ -1522,7 +1512,7 @@ class TestCollectProgress:
 
         from utils.agents.progress import collect_progress
 
-        subagent = types.SimpleNamespace(name="research-agent", status="completed")
+        subagent = types.SimpleNamespace(name="document-agent", status="completed")
         reporter = AsyncMock()
 
         await collect_progress(self._mock_stream(subagents=[subagent]), reporter)
@@ -1899,7 +1889,7 @@ class TestChatAgentStreaming:
 
 @pytest.mark.asyncio
 async def test_components_refresh_when_mcp_recovers_without_config_change(monkeypatch):
-    registry = types.SimpleNamespace(revision=0, direct_tools=[], ptc_tools=[], research_tools=[])
+    registry = types.SimpleNamespace(revision=0, direct_tools=[], ptc_tools=[])
     initialize_calls = []
 
     async def initialize():
@@ -1907,18 +1897,62 @@ async def test_components_refresh_when_mcp_recovers_without_config_change(monkey
 
     registry.initialize = initialize
     monkeypatch.setattr(cognitive_mod, "agent_tools", registry)
-    monkeypatch.setattr(cognitive_mod, "build_research_subagent", lambda tools: tuple(tools))
     monkeypatch.setattr(cognitive_mod, "build_document_subagent", lambda: object())
     agent = cognitive_mod.FrontierCognitive()
     await agent._prepare_components()
     document = agent.document_subagent
-    assert agent.research_subagent is None
+    assert agent.tools == []
     await agent._prepare_components()
     assert agent.document_subagent is document
     tool = types.SimpleNamespace(name="web_search_exa")
-    registry.research_tools = [tool]
+    registry.direct_tools = [tool]
     registry.revision = 1
     await agent._prepare_components()
-    assert agent.research_subagent == (tool,)
+    assert agent.tools == [tool]
     assert agent.document_subagent is not document
     assert len(initialize_calls) == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("access_profile", ["frontier", "acp"])
+async def test_main_agent_owns_network_tools_with_read_only_errors(monkeypatch, tmp_path, access_profile):
+    captured = {}
+    network_tools = [types.SimpleNamespace(name=name) for name in sorted(cognitive_mod.WEB_SEARCH_TOOL_NAMES)]
+
+    class DummyAgent:
+        async def astream_events(self, input=None, **kwargs):
+            return _FakeStream({"messages": [types.SimpleNamespace(type="ai", content="ok", artifact=None)]})
+
+    def create(**kwargs):
+        captured.update(kwargs)
+        return DummyAgent()
+
+    monkeypatch.setattr(cognitive_mod, "create_deep_agent", create)
+    monkeypatch.setattr(cognitive_mod, "create_llm", lambda **kwargs: object())
+    monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args: False)
+    monkeypatch.setattr(cognitive_mod, "agent_tools", types.SimpleNamespace(restricted_tools=[]))
+    agent = object.__new__(cognitive_mod.FrontierCognitive)
+    agent.tools, agent.ptc_tools = network_tools, []
+    agent.document_subagent = {"name": "document-agent", "tools": []}
+    agent.working_dir = str(tmp_path / "sandbox")
+    result = await agent.chat_agent(
+        messages=[{"role": "user", "content": "搜索最新消息"}], user_id="1", user_name="test",
+        access_profile=access_profile, enable_acp_subagents=False,
+    )
+    assert result["status"] == "success"
+    assert captured["tools"] == (network_tools if access_profile == "frontier" else [])
+    assert captured["subagents"] == [agent.document_subagent]
+    errors = next(item for item in captured["middleware"] if type(item).__name__ == "ToolErrorMiddleware")
+    attempts = []
+
+    async def limited(request):
+        attempts.append(request.tool_call["name"])
+        raise RuntimeError("429 private-credential")
+
+    for tool in network_tools:
+        request = types.SimpleNamespace(tool=tool, tool_call={"name": tool.name, "id": "search-1", "args": {}})
+        reply = await errors.awrap_tool_call(request, limited)
+        assert reply.status == "error"
+        assert "停止继续搜索" in reply.content
+        assert "private-credential" not in reply.content
+    assert attempts == [tool.name for tool in network_tools]

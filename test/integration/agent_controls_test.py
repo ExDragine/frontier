@@ -43,6 +43,12 @@ async def get_recent_conversation() -> str:
     raise RuntimeError('secret-api-key and private-user-content')
 
 @tool
+async def web_search_exa() -> str:
+    """Search synthetic web evidence."""
+    calls.append('search')
+    raise RuntimeError('429 secret-search-api-key')
+
+@tool
 async def change_file() -> str:
     """Change a synthetic file."""
     calls.append('write')
@@ -65,7 +71,7 @@ async def run(responses, tools):
     EnvConfig.AGENT_JOB_TIMEOUT_SECONDS = 20
     agent = object.__new__(cognitive.FrontierCognitive)
     agent.tools, agent.ptc_tools = tools, []
-    agent.research_subagent = agent.document_subagent = None
+    agent.document_subagent = None
     agent.working_dir = str(Path.cwd() / 'sandbox')
     agent.load_system_prompt = lambda group_id: 'Answer the current request.'
     return await agent.chat_agent([{'role': 'user', 'content': 'help'}], user_id='contract', user_name='Contract', enable_acp_subagents=False)
@@ -100,6 +106,21 @@ async def main():
     assert calls == ['write'], calls
     assert 'secret' not in str(result), result
 
+    calls.clear()
+    result = await run([message(tools=[tool_call('web_search_exa')]), message('search limited')], [web_search_exa])
+    assert result['status'] == 'success', result
+    assert result['usage']['model_calls'] == 2, result
+    assert {row['component'] for row in result['usage']['models']} == {'main'}, result
+    assert calls == ['search'], calls
+    assert 'secret' not in str(result), result
+
+    calls.clear()
+    EnvConfig.AGENT_TOOL_CALL_LIMIT = 1
+    result = await run([message(tools=[tool_call('web_search_exa', 'one'), tool_call('web_search_exa', 'two')])], [web_search_exa])
+    assert result['error_code'] == 'budget_exceeded', result
+    assert len(calls) <= 1, calls
+    EnvConfig.AGENT_TOOL_CALL_LIMIT = 10
+
     # The PTC bridge calls .arun directly; its copied tool must sanitize there too.
     prepared = prepare_ptc_tools([get_recent_conversation])[0]
     assert prepared is not get_recent_conversation
@@ -129,11 +150,11 @@ async def main():
         else:
             raise AssertionError('PTC swallowed a graph interrupt')
 
-    child = create_agent(model=ContractModel(responses=[message('child', tokens=7)], tags=['frontier:research']))
+    child = create_agent(model=ContractModel(responses=[message('child', tokens=7)], tags=['frontier:document']))
     @tool
     async def delegate(config: RunnableConfig) -> str:
-        """Delegate one synthetic research question."""
-        await child.ainvoke({'messages': [{'role': 'user', 'content': 'research'}]}, config=config)
+        """Delegate one synthetic document question."""
+        await child.ainvoke({'messages': [{'role': 'user', 'content': 'document'}]}, config=config)
         return 'child complete'
 
     result = await run([message(tools=[tool_call('delegate')]), message('finished')], [delegate])
@@ -143,7 +164,7 @@ async def main():
     assert result['usage']['output_tokens'] == 6, result
     assert result['usage']['cache_read_tokens'] == 9, result
     assert result['usage']['usage_missing_calls'] == 0, result
-    assert {row['component'] for row in result['usage']['models']} == {'main', 'research'}, result
+    assert {row['component'] for row in result['usage']['models']} == {'main', 'document'}, result
 
 asyncio.run(main())
 '''

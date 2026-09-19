@@ -61,7 +61,7 @@ QQ 入口另有 `delivery:` 队列保证生成、发送和落库顺序；锁顺�
 各服务独立超时；单服务故障不使全部工具失效。同步加载入口仅供尚未启动事件循环的兼容调用者。
 成功发现的服务保留缓存；失败服务按 30、60、120、240、300 秒退避，
 到期后的下一次 Agent 请求重新发现，不运行后台轮询。工具集合变化会递增注册表 revision，
-触发后续请求重建 Agent 组件，恢复的 Exa 工具也会重新进入 research-agent。
+触发后续请求重建 Agent 组件，恢复的 Exa 工具也会重新进入主 Agent 的直接工具列表。
 MCP 接入统一为 Streamable HTTP：每项必须提供 HTTP(S) `url`，`transport` 默认 `http`，
 也接受 `streamable_http`；不再接受旧的 stdio/SSE 接入或 `command`、`args`、`env` 字段。
 `startup_timeout_seconds` 可为单个服务设置 5–300 秒发现超时；字符串 `headers` 用于认证头。

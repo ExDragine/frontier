@@ -279,7 +279,6 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
     }
     ptc_names = {tool.name for tool in module.agent_tools.ptc_tools}
     direct_names = {tool.name for tool in module.agent_tools.direct_tools}
-    research_names = {tool.name for tool in module.agent_tools.research_tools}
     assert ptc_names == {
         "get_message",
         "get_login_info",
@@ -290,6 +289,7 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "iching_divination",
     }
     assert direct_names == {
+        "tavily_extract", "tavily_search", "web_search_exa", "web_fetch_exa",
         "send_image",
         "upload_group_file",
         "send_friend_nudge",
@@ -305,11 +305,8 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "search_messages",
         "get_history_messages",
     }
-    assert research_names == {"tavily_extract", "tavily_search", "web_search_exa", "web_fetch_exa"}
     assert ptc_names.isdisjoint(direct_names)
-    assert ptc_names.isdisjoint(research_names)
-    assert direct_names.isdisjoint(research_names)
-    assert ptc_names | direct_names | research_names == {tool.name for tool in module.agent_tools.main_tools}
+    assert ptc_names | direct_names == {tool.name for tool in module.agent_tools.main_tools}
     assert {tool.name for tool in groups["memory"]} == {
         "get_recent_conversation",
         "search_messages",
@@ -332,7 +329,8 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
     recovered = FakeBaseTool("web_search_exa", "content")
     registry._register_mcp_tools([recovered])
     assert registry.revision == revision + 1
-    assert registry.research_tools == [recovered]
+    assert recovered in registry.direct_tools
+    assert recovered not in registry.ptc_tools
     assert sum(tool is recovered for tool in registry.main_tools) == 1
     assert "mcp_tool" not in registry.tool_metadata
     assert "send_image" in {tool.name for tool in registry.main_tools}

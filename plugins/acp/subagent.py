@@ -22,7 +22,7 @@ from .service import (
     acp_service,
 )
 
-_RESERVED_SUBAGENT_NAMES = {"general-purpose", "research-agent", "document-agent"}
+_RESERVED_SUBAGENT_NAMES = {"general-purpose", "document-agent"}
 
 
 def _delegated_prompt(state: Any) -> str:

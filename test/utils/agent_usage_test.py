@@ -19,7 +19,7 @@ def response(input_tokens=10, output_tokens=5):
 
 def test_usage_counts_retries_and_missing_metadata_without_double_counting():
     callback = RunUsageCallback()
-    for run_id, component in [("one", "main"), ("two", "research"), ("three", "main")]:
+    for run_id, component in [("one", "main"), ("two", "document"), ("three", "main")]:
         callback.on_chat_model_start({}, [], run_id=run_id, tags=[f"frontier:{component}"], metadata={"ls_model_name": "test"})
     callback.on_llm_end(response(), run_id="one")
     callback.on_llm_end(response(), run_id="one")
@@ -33,7 +33,7 @@ def test_usage_counts_retries_and_missing_metadata_without_double_counting():
     assert usage["output_tokens"] == 8
     assert usage["cache_read_tokens"] == 8
     assert usage["reasoning_tokens"] == 4
-    assert {row["component"] for row in usage["models"]} == {"main", "research"}
+    assert {row["component"] for row in usage["models"]} == {"main", "document"}
     assert "private-key" not in str(usage)
 
 

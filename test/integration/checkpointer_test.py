@@ -131,7 +131,7 @@ async def main():
     agent = object.__new__(cognitive.FrontierCognitive)
     agent.tools = [get_recent_conversation, create_picture]
     agent.ptc_tools = []
-    agent.research_subagent = agent.document_subagent = None
+    agent.document_subagent = None
     agent.working_dir = str(Path.cwd() / 'sandbox')
     agent.load_system_prompt = lambda _: 'Answer only the current request.'
     cognitive.agent_tools = SimpleNamespace(restricted_tools=[])
