@@ -72,9 +72,13 @@ class SearchSource:
             raise SourceError(f"http_{response.status_code}", retryable)
         data = response.json()
         results = data.get("results", []) if isinstance(data, dict) else []
+        if not isinstance(results, list):
+            raise SourceError("invalid_results")
         output = []
         now = dt.datetime.now(dt.UTC)
         for item in results[: self.cfg.source_results]:
+            if not isinstance(item, dict):
+                continue
             try:
                 url = canonical_url(str(item.get("url", "")))
                 title = compact(str(item.get("title", "")))[:300]
@@ -119,32 +123,31 @@ class SourcePool:
         self.errors = []
 
     async def collect(self, edition, seen):
-        async def collect_query(query):
-            for source in self.sources:
-                for attempt in range(2):
-                    try:
-                        items = eligible(
-                            await source.search(query, edition),
-                            edition,
-                            seen,
-                        )
-                        if items:
-                            return items
-                    except SourceError as exc:
-                        self.errors.append(f"{source.name}:{exc}")
-                        if not exc.retryable:
-                            break
-                    except Exception as exc:
-                        self.errors.append(f"{source.name}:{type(exc).__name__}")
-                    if attempt == 0:
-                        await asyncio.sleep(1)
+        self.errors = []
+
+        async def collect_query(source, query):
+            for attempt in range(2):
+                try:
+                    return eligible(await source.search(query, edition), edition, seen)
+                except SourceError as exc:
+                    self.errors.append(f"{source.name}:{exc}")
+                    if not exc.retryable:
+                        break
+                except Exception as exc:
+                    self.errors.append(f"{source.name}:{type(exc).__name__}")
+                if attempt == 0:
+                    await asyncio.sleep(1)
             return []
 
-        batches = await asyncio.gather(
-            *(collect_query(query) for query in self.cfg.queries)
-        )
-        flattened = [item for batch in batches for item in batch]
-        return eligible(flattened, edition, seen)[:40]
+        collected = []
+        for source in self.sources:
+            batches = await asyncio.gather(
+                *(collect_query(source, query) for query in self.cfg.queries)
+            )
+            collected = eligible(collected + [item for batch in batches for item in batch], edition, seen)
+            if len(collected) >= self.cfg.target_stories:
+                break
+        return collected[:40]
 
 
 def configured_sources(client, cfg):

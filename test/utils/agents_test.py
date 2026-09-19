@@ -1895,3 +1895,30 @@ class TestChatAgentStreaming:
         content = result["response"]["messages"][0].content
         assert expected in content
         assert "private provider details" not in content
+
+
+@pytest.mark.asyncio
+async def test_components_refresh_when_mcp_recovers_without_config_change(monkeypatch):
+    registry = types.SimpleNamespace(revision=0, direct_tools=[], ptc_tools=[], research_tools=[])
+    initialize_calls = []
+
+    async def initialize():
+        initialize_calls.append(True)
+
+    registry.initialize = initialize
+    monkeypatch.setattr(cognitive_mod, "agent_tools", registry)
+    monkeypatch.setattr(cognitive_mod, "build_research_subagent", lambda tools: tuple(tools))
+    monkeypatch.setattr(cognitive_mod, "build_document_subagent", lambda: object())
+    agent = cognitive_mod.FrontierCognitive()
+    await agent._prepare_components()
+    document = agent.document_subagent
+    assert agent.research_subagent is None
+    await agent._prepare_components()
+    assert agent.document_subagent is document
+    tool = types.SimpleNamespace(name="web_search_exa")
+    registry.research_tools = [tool]
+    registry.revision = 1
+    await agent._prepare_components()
+    assert agent.research_subagent == (tool,)
+    assert agent.document_subagent is not document
+    assert len(initialize_calls) == 3

@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import stat
+import time
 
 from utils.mcp import build_mcp_adapter
 
@@ -30,6 +31,7 @@ _MCP_JSON_SCHEMA = {
             "command": {"type": "string", "minLength": 1},
             "args": {"type": "array", "items": {"type": "string"}},
             "env": {"type": "object"},
+            "headers": {"type": "object", "additionalProperties": {"type": "string"}},
             "url": {"type": "string", "format": "uri"},
             "transport": {"type": "string", "enum": ["stdio", "sse", "streamable_http", "http"]},
             "startup_timeout_seconds": {
@@ -112,6 +114,9 @@ def _load_and_validate(config_path: str = "mcp.json") -> dict:
 tools_description = None
 
 _mcp_tools = None
+_server_tools: dict[str, list] = {}
+_server_failures: dict[str, int] = {}
+_retry_at: dict[str, float] = {}
 
 
 def _error_summary(exc: BaseException) -> str:
@@ -125,15 +130,19 @@ async def _load_mcp_tools() -> list:
     if tools_description is None:
         tools_description = _load_and_validate()
 
-    async def load_server(name: str) -> list:
+    async def load_server(name: str) -> None:
         entry = tools_description[name]
         timeout = float(entry.get("startup_timeout_seconds", _MCP_STARTUP_TIMEOUT_SECONDS))
         try:
             adapter = build_mcp_adapter(entry)
-            return await asyncio.wait_for(
+            discovered = await asyncio.wait_for(
                 adapter.list_tools(),
                 timeout=timeout,
             )
+            _server_tools[name] = discovered
+            _server_failures.pop(name, None)
+            _retry_at.pop(name, None)
+            return
         except TimeoutError:
             transport = entry.get("transport", "unknown")
             logger.error(
@@ -144,23 +153,32 @@ async def _load_mcp_tools() -> list:
                 timeout,
                 transport,
             )
-            return []
         except Exception as exc:
             logger.error("MCP 服务 '%s' 加载失败，已跳过: %s", name, _error_summary(exc))
-            return []
 
-    batches = await asyncio.gather(*(load_server(name) for name in tools_description))
-    return [tool for batch in batches for tool in batch]
+        failures = min(_server_failures.get(name, 0) + 1, 5)
+        _server_failures[name] = failures
+        _retry_at[name] = time.monotonic() + min(30 * 2 ** (failures - 1), 300)
+
+    await asyncio.gather(*(
+        load_server(name) for name in tools_description
+        if name not in _server_tools and time.monotonic() >= _retry_at.get(name, 0)
+    ))
+    combined = [tool for name in tools_description for tool in _server_tools.get(name, [])]
+    if _mcp_tools is not None and len(combined) == len(_mcp_tools) and all(
+        left is right for left, right in zip(combined, _mcp_tools, strict=True)
+    ):
+        return _mcp_tools
+    return combined
 
 
 async def mcp_get_tools_async():
-    """Load once in the caller's event loop, without blocking bot startup imports."""
+    """Cache healthy servers; retry failed discovery with a 30–300 second backoff."""
     from utils.agents.runtime import run_serialized
 
     async def load():
         global _mcp_tools
-        if _mcp_tools is None:
-            _mcp_tools = await _load_mcp_tools()
+        _mcp_tools = await _load_mcp_tools()
         return _mcp_tools
 
     return await run_serialized("mcp-discovery", load)

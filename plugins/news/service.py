@@ -39,17 +39,8 @@ class NewsService:
                     await self.repo.checkpoint(edition.report_id, token, "edit", articles=articles)
                 stage = "edit"
                 row = await self.repo.get(edition.report_id)
-                payload = (
-                    NewsPayload.model_validate(row["payload"])
-                    if row["payload"]
-                    else await self.editor.edit(edition, articles)
-                )
-                validate_evidence(payload, articles)
-                await self.repo.checkpoint(edition.report_id, token, "validate", payload=payload)
-                stage = "validate"
-                payload = await self.editor.verify(payload, articles)
-                if len(payload.stories) < self.cfg.min_stories:
-                    raise InsufficientEvidence("too few supported stories")
+                stage = "edit/validate"
+                payload = await self._validated_payload(edition, token, articles, row["payload"])
                 status = "ready" if len(payload.stories) >= self.cfg.target_stories else "degraded"
                 await self.repo.checkpoint(
                     edition.report_id, token, "complete", payload=payload, status=status
@@ -61,3 +52,27 @@ class NewsService:
         except Exception as exc:
             await self.repo.fail(edition.report_id, token, f"{stage}:{type(exc).__name__}")
             raise
+
+    async def _validated_payload(self, edition, token, articles, cached_payload):
+        for attempt in range(self.cfg.max_generation_attempts):
+            try:
+                payload = (
+                    NewsPayload.model_validate(cached_payload)
+                    if cached_payload else await self.editor.edit(edition, articles)
+                )
+                validate_evidence(payload, articles)
+                await self.repo.checkpoint(edition.report_id, token, "validate", payload=payload)
+                payload = await self.editor.verify(payload, articles)
+                validate_evidence(payload, articles)
+                if len(payload.stories) < self.cfg.min_stories:
+                    raise InsufficientEvidence("too few supported stories")
+                return payload
+            except (ValueError, InsufficientEvidence):
+                # Content rejection must not permanently pin a bad draft.
+                # Transport errors instead preserve the draft for recovery.
+                cached_payload = None
+                await self.repo.checkpoint(
+                    edition.report_id, token, "edit", clear_payload=True,
+                )
+                if attempt + 1 == self.cfg.max_generation_attempts:
+                    raise

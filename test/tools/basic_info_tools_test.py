@@ -319,3 +319,67 @@ def test_module_tools_groups_tools_by_domain(monkeypatch):
         "web_search_exa",
         "web_fetch_exa",
     }
+
+    # Recovered discovery replaces the old registry without duplicating tools.
+    registry = module.agent_tools
+    revision = registry.revision
+    registry._register_mcp_tools(registry.mcp_tools)
+    assert registry.revision == revision
+    recovered = FakeBaseTool("web_search_exa", "content")
+    registry._register_mcp_tools([recovered])
+    assert registry.revision == revision + 1
+    assert registry.research_tools == [recovered]
+    assert sum(tool is recovered for tool in registry.main_tools) == 1
+    assert "mcp_tool" not in registry.tool_metadata
+    assert "send_image" in {tool.name for tool in registry.main_tools}
+
+
+@pytest.mark.asyncio
+async def test_mcp_discovery_retries_failed_servers_after_backoff(load_tool_module, monkeypatch):
+    calls = []
+    recovered = False
+
+    class Adapter:
+        def __init__(self, entry):
+            self.name = entry["url"]
+
+        async def list_tools(self):
+            calls.append(self.name)
+            if self.name == "broken" and not recovered:
+                raise ConnectionError("temporary")
+            return [self.name]
+
+    adapter_module = types.ModuleType("utils.mcp")
+    adapter_module.build_mcp_adapter = Adapter
+    monkeypatch.setitem(sys.modules, "utils.mcp", adapter_module)
+    mod = load_tool_module("mcp_client")
+    mod.tools_description = {name: {"transport": "http", "url": name} for name in ("healthy", "broken")}
+    clock = [100.0]
+    monkeypatch.setattr(mod, "time", types.SimpleNamespace(monotonic=lambda: clock[0]))
+    first = await mod.mcp_get_tools_async()
+    assert first == ["healthy"]
+    assert await mod.mcp_get_tools_async() is first
+    assert calls == ["healthy", "broken"]
+    clock[0] = 130.0
+    assert await mod.mcp_get_tools_async() is first
+    assert calls == ["healthy", "broken", "broken"]
+    recovered = True
+    clock[0] = 189.0
+    assert await mod.mcp_get_tools_async() is first
+    clock[0] = 190.0
+    tools = await mod.mcp_get_tools_async()
+    assert tools == ["healthy", "broken"]
+    assert await mod.mcp_get_tools_async() is tools
+    assert calls == ["healthy", "broken", "broken", "broken"]
+    assert mod._retry_at == {}
+
+
+def test_mcp_config_accepts_string_auth_headers(load_tool_module, monkeypatch):
+    adapter_module = types.ModuleType("utils.mcp")
+    adapter_module.build_mcp_adapter = lambda entry: None
+    monkeypatch.setitem(sys.modules, "utils.mcp", adapter_module)
+    mod = load_tool_module("mcp_client")
+    mod._validate_mcp_config({"exa": {
+        "transport": "http", "url": "https://example.com/mcp",
+        "headers": {"Authorization": "Bearer test-only"},
+    }})

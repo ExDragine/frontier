@@ -1,13 +1,19 @@
 """Render archived payloads without changing editorial content."""
 
 import asyncio
+import datetime as dt
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from jinja2 import Environment, FileSystemLoader
 
 from utils.markdown_render import html_to_image
 
 HERE = Path(__file__).resolve().parent
+
+
+def edition_time(report):
+    return dt.datetime.fromtimestamp(report["scheduled_at"], ZoneInfo("Asia/Shanghai"))
 
 
 def render_html(report):
@@ -25,8 +31,10 @@ def render_html(report):
     template = Environment(
         loader=FileSystemLoader(str(HERE / "templates")), autoescape=True
     ).get_template("daily_news.html")
+    scheduled = edition_time(report)
     return template.render(
-        current_time="", period="新闻简报", report_time="",
+        current_time=scheduled.strftime("%Y-%m-%d"), period="简报",
+        report_time=scheduled.strftime("%H:%M"),
         top_stories=[template_item(item) for item in payload["top_stories"]],
         worth_reading=[template_item(item) for item in payload["worth_reading"]],
     )
@@ -39,7 +47,7 @@ async def render_image(report, timeout=30):
 
 
 def render_text(report):
-    lines = ["Frontier 新闻简报"]
+    lines = [f"Frontier 新闻简报 · {edition_time(report):%Y-%m-%d %H:%M}（北京时间）"]
     stories = report["payload"]["top_stories"] + report["payload"]["worth_reading"]
     for index, story in enumerate(stories, 1):
         lines.append(f"{index}. {story['title']}\n{story['summary']}")

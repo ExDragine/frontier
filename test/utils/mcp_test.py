@@ -28,8 +28,10 @@ from utils.mcp import build_mcp_adapter, decline_elicitation
 for name, expected in [("http", StreamableHttpTransport),
                        ("streamable_http", StreamableHttpTransport),
                        ("sse", SSETransport)]:
-    adapter = build_mcp_adapter({"transport": name, "url": "https://example.com/mcp"})
+    adapter = build_mcp_adapter({"transport": name, "url": "https://example.com/mcp",
+                                 "headers": {"Authorization": "Bearer test-only"}})
     assert isinstance(adapter.client.transport, expected)
+    assert adapter.client.transport.headers["Authorization"] == "Bearer test-only"
 
 adapter = build_mcp_adapter({
     "transport": "stdio", "command": sys.executable, "args": [sys.argv[1]],

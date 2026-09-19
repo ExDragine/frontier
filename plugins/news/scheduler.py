@@ -53,6 +53,7 @@ async def generate(namespace="published", now=None):
     await repo.initialize()
     if not cfg.enabled:
         raise RuntimeError("news plugin disabled")
+    await repo.prune(cfg.retention_days)
     edition = edition_for(now or dt.datetime.now(dt.UTC), cfg, namespace)
     report = await service.generate_report(edition)
     if report.get("image") is None:
@@ -73,8 +74,10 @@ async def daily_news(job_id="daily_news", **_kwargs):
     groups = await task_manager.get_task_groups(job_id)
     sent = await deliver(repo, report, groups, cfg)
     states = await repo.deliveries(report["id"])
+    delivered = {item["target"] for item in states if item["state"] == "sent"}
     state_text = ",".join(f"{item['target']}:{item['state']}" for item in states)
     return TaskRunResult(
+        status="success" if all(str(group) in delivered for group in groups) else "failed",
         groups_sent=sent,
         messages_sent=len(sent),
         output_summary=f"news {report['status']}; sent={len(sent)}/{len(groups)}; {state_text}",

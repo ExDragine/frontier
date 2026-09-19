@@ -55,18 +55,18 @@ class TaskExecutor:
             if not isinstance(result, TaskRunResult):
                 result = TaskRunResult(groups_sent=group_ids, messages_sent=len(group_ids))
 
-            # 记录成功
+            # 保留 handler 的实际投递结果。
             duration = int((time.time() - start_time) * 1000)
             await self.task_manager.log_execution(
                 job_id=job_id,
-                status="success",
+                status=result.status,
                 execution_time=execution_time,
                 duration_ms=duration,
                 output_summary=result.output_summary,
                 groups_sent=result.groups_sent if result.groups_sent is not None else group_ids,
                 messages_sent=result.messages_sent,
             )
-            if task.trigger_type == "date":
+            if task.trigger_type == "date" and result.status == "success":
                 await self.task_manager.archive_task(job_id)
 
         except asyncio.CancelledError:

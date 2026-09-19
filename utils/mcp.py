@@ -23,9 +23,9 @@ def build_mcp_adapter(entry: dict) -> MCPAdapter:
             keep_alive=False,
         )
     elif transport_name == "sse":
-        transport = SSETransport(entry["url"])
+        transport = SSETransport(entry["url"], headers=entry.get("headers"))
     elif transport_name in {"http", "streamable_http"}:
-        transport = StreamableHttpTransport(entry["url"])
+        transport = StreamableHttpTransport(entry["url"], headers=entry.get("headers"))
     else:
         raise ValueError(f"Unsupported MCP transport: {transport_name}")
     return MCPAdapter(Client(transport, elicitation_handler=decline_elicitation))

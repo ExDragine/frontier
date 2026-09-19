@@ -355,3 +355,48 @@ async def test_agent_task_final_group_delivery_mentions_owner(monkeypatch):
     assert [segment.type for segment in calls[0]["message"]] == ["mention", "text"]
     assert calls[0]["message"][0].data == {"user_id": 456}
     assert calls[0]["message"][1].data == {"text": " 该喝水了"}
+
+
+@pytest.mark.asyncio
+async def test_handler_failed_delivery_is_recorded_as_failure(monkeypatch, task_manager):
+    async def handler(**kwargs):
+        return TaskRunResult(status="failed", groups_sent=[9], messages_sent=1, output_summary="partial delivery")
+
+    await task_manager.register_task(
+        job_id="news_partial", name="News", handler_module="module", handler_function="func",
+        trigger_type="interval", trigger_args={"minutes": 1}, group_ids=[9, 10],
+    )
+    executor = TaskExecutor(task_manager)
+    monkeypatch.setattr(executor, "_load_handler", lambda m, f: handler)
+    await executor.execute("news_partial")
+    stats = await task_manager.get_task_statistics("news_partial")
+    assert stats["failed_runs"] == 1
+    assert stats["success_runs"] == 0
+    history = await task_manager.get_execution_history("news_partial")
+    assert history[0].status == "failed"
+    assert history[0].messages_sent == 1
+    assert history[0].output_summary == "partial delivery"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("delivered,expected", [([], "failed"), ([9], "failed"), ([9, 10], "success")])
+async def test_news_scheduler_reports_persisted_delivery_outcome(monkeypatch, delivered, expected):
+    from unittest.mock import AsyncMock
+
+    from plugins.news import scheduler
+    from plugins.news.config import NewsConfig
+
+    repository = types.SimpleNamespace(deliveries=AsyncMock(return_value=[
+        {"target": str(group), "state": "sent" if group in delivered else "failed"}
+        for group in (9, 10)
+    ]))
+    monkeypatch.setattr(scheduler, "generate", AsyncMock(return_value=(
+        NewsConfig(), repository, {"id": "r", "status": "ready"},
+    )))
+    # All success can also mean a previously delivered archive, with no new sends.
+    monkeypatch.setattr(scheduler, "deliver", AsyncMock(return_value=[]))
+    manager = types.SimpleNamespace(get_task_groups=AsyncMock(return_value=[9, 10]))
+    monkeypatch.setattr(sys.modules["plugins.clockwork"], "task_manager", manager, raising=False)
+    result = await scheduler.daily_news()
+    assert result.status == expected
+    assert result.messages_sent == 0

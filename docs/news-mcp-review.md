@@ -1,6 +1,16 @@
 # 新闻模块、Exa MCP 与日志检查
 
-检查日期：2026-09-20。代码基线：`5f6830c`。新闻与 MCP 部分为检查结论；本轮代码修复针对日志占位符。
+检查日期：2026-09-20。初次检查基线：`5f6830c`。下文保留原始问题及复现证据；这些问题已在后续分支合并修复中处理。
+
+## 合并后的修复
+
+已合并 `feat/news-plugin-reliability` 和 `fix/exa-mcp-startup`。新闻分支内容此前已压缩进入主分支，本次补齐合并关系；MCP 分支提供单服务发现超时配置和 Exa 直连示例。
+
+额外修复了下面四项新闻问题，以及生成次数上限、归档清理、长任务租约被缩短、期次时间缺失和投递失败误记 success。MCP 增加失败服务退避重发现、工具注册表和 Agent 组件刷新，以及 HTTP/SSE 认证头传递。日志占位符修复同时保留。
+
+回归测试位于 `test/news/test_reliability.py`、`test/plugins/clockwork_test.py`、`test/tools/basic_info_tools_test.py`、`test/utils/agents_test.py` 和 `test/utils/mcp_test.py`。具体运行语义见 [新闻运维说明](news-plugin.md) 和 [架构说明](architecture.md)。以下“待修复”及测试数量描述均属于初次检查记录。
+
+合并修复后的全量回归为 **897 passed**（3 条既有第三方警告），ruff、CI 指定类型检查、`git diff --check` 均通过。使用合并后代码连接 Exa 官方 HTTP MCP，再次成功发现 `web_search_exa`、`web_fetch_exa`。没有执行真实 QQ 投递或付费搜索／模型生成。
 
 ## 结论
 

@@ -275,15 +275,17 @@ class FrontierCognitive:
         self.research_subagent = build_research_subagent(research_tools) if research_tools else None
         self.document_subagent = build_document_subagent()
         self._component_revision = EnvConfig.REVISION
+        self._component_tool_revision = getattr(agent_tools, "revision", 0)
 
     async def _prepare_components(self):
         if "_component_revision" not in self.__dict__:
             return  # Explicitly injected components, used by isolated callers/tests.
-        if self._component_revision == EnvConfig.REVISION:
-            return
         initialize = getattr(agent_tools, "initialize", None)
         if initialize is not None:
             await initialize()
+        if (self._component_revision == EnvConfig.REVISION
+                and self.__dict__.get("_component_tool_revision") == getattr(agent_tools, "revision", 0)):
+            return
         self._build_components()
 
     @staticmethod

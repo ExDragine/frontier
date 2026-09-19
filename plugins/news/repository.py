@@ -105,13 +105,14 @@ class NewsRepository:
         return await self._run(claim_report)
 
     async def checkpoint(
-        self, report_id, token, stage, articles=None, payload=None, status="generating"
+        self, report_id, token, stage, articles=None, payload=None, status="generating",
+        clear_payload=False,
     ):
         now = time.time()
 
         def save(database):
             row = database.execute(
-                "SELECT evidence,payload FROM news_reports "
+                "SELECT evidence,payload,lease_until FROM news_reports "
                 "WHERE id=? AND lease=? AND lease_until>?",
                 (report_id, token, now),
             ).fetchone()
@@ -131,16 +132,18 @@ class NewsRepository:
                 else row["payload"]
             )
             done = status in {"ready", "degraded"}
+            if clear_payload:
+                data = None
             database.execute(
                 "UPDATE news_reports SET stage=?,status=?,evidence=?,payload=?,lease=?,"
-                "lease_until=?,updated_at=? WHERE id=? AND lease=?",
+                "lease_until=?,updated_at=?,error=NULL WHERE id=? AND lease=?",
                 (
                     stage,
                     status,
                     evidence,
                     data,
                     None if done else token,
-                    0 if done else now + 330,
+                    0 if done else row["lease_until"],
                     now,
                     report_id,
                     token,
@@ -248,11 +251,33 @@ class NewsRepository:
         now = time.time()
 
         def requeue(database):
+            requeued = []
             for target in targets:
-                database.execute(
+                changed = database.execute(
                     "UPDATE news_deliveries SET state='pending',attempts=0,next_attempt=0,"
                     "deadline=?,updated_at=? WHERE report_id=? AND target=? AND state='failed'",
                     (deadline, now, report_id, target),
-                )
+                ).rowcount
+                if changed:
+                    requeued.append(target)
+            return requeued
 
-        await self._run(requeue)
+        return await self._run(requeue)
+
+    async def prune(self, retention_days):
+        now = time.time()
+        cutoff = now - retention_days * 86400
+
+        def remove(database):
+            rows = database.execute(
+                "SELECT id FROM news_reports WHERE updated_at<? AND lease_until<=? "
+                "AND NOT EXISTS (SELECT 1 FROM news_deliveries WHERE report_id=news_reports.id "
+                "AND (updated_at>=? OR (state='sending' AND lease_until>?)))",
+                (cutoff, now, cutoff, now),
+            ).fetchall()
+            for row in rows:
+                database.execute("DELETE FROM news_deliveries WHERE report_id=?", (row["id"],))
+                database.execute("DELETE FROM news_reports WHERE id=?", (row["id"],))
+            return len(rows)
+
+        return await self._run(remove)

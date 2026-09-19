@@ -1,5 +1,6 @@
 import datetime
 from dataclasses import dataclass
+from typing import Literal
 
 from sqlmodel import Field, SQLModel
 
@@ -105,3 +106,4 @@ class TaskRunResult:
     groups_sent: list[int] | None = None
     messages_sent: int = 0
     output_summary: str | None = None
+    status: Literal["success", "failed"] = "success"

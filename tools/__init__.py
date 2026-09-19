@@ -106,6 +106,7 @@ def _discover_tools() -> tuple[
 class ModuleTools:
     def __init__(self):
         self._mcp_tools = None
+        self.revision = 0
         (
             self.subagent_tools,
             self.tool_metadata,
@@ -123,19 +124,25 @@ class ModuleTools:
         return self._mcp_tools
 
     def _register_mcp_tools(self, tools):
-        if self._mcp_tools is not None:
+        if self._mcp_tools is tools:
             return
+        previous = {id(tool) for tool in self._mcp_tools or []}
+        for group in ("external", "main"):
+            self.subagent_tools[group] = [
+                tool for tool in self.subagent_tools[group] if id(tool) not in previous
+            ] + list(tools)
+        for tool in self._mcp_tools or []:
+            if self.tool_metadata.get(tool.name, {}).get("module") == "mcp":
+                self.tool_metadata.pop(tool.name)
         self._mcp_tools = tools
-        self.subagent_tools["external"].extend(tools)
-        self.subagent_tools["main"].extend(tools)
+        self.revision += 1
         for tool_obj in tools:
             self.tool_metadata[tool_obj.name] = {"module": "mcp", "group": "external"}
 
     async def initialize(self):
         from .mcp_client import mcp_get_tools_async
 
-        if self._mcp_tools is None:
-            self._register_mcp_tools(await mcp_get_tools_async())
+        self._register_mcp_tools(await mcp_get_tools_async())
 
     @property
     def restricted_tools(self):
