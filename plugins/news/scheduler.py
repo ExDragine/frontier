@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from nonebot import logger
+
 from utils.configs import EnvConfig
 from utils.http_client import get_http_client
 
@@ -58,8 +60,8 @@ async def generate(namespace="published", now=None):
             image = await render_image(report, cfg.render_timeout)
             await repo.set_image(report["id"], image)
             report = await repo.get(report["id"])
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"新闻图片渲染失败，将使用文本降级投递: {type(exc).__name__}")
     return cfg, repo, report
 
 
