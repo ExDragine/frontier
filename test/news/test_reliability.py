@@ -198,3 +198,15 @@ def test_rendering_uses_archived_edition_time():
     for rendered in (render_html(data), render_text(data)):
         assert "2026-09-19" in rendered
         assert "09:00" in rendered
+
+
+@pytest.mark.asyncio
+async def test_insufficient_collection_reports_safe_diagnostics_without_editing(repo, edition):
+    svc = service(repo, drafts=[payload(2)])
+    svc.sources.collect.return_value = []
+    svc.sources.stats = {"received": 8, "undated": 8, "outside_window": 0}
+    svc.sources.errors = ["exa:missing_key"]
+    with pytest.raises(InsufficientEvidence, match=r"eligible=0/2.*undated=8.*exa:missing_key"):
+        await svc.generate_report(edition)
+    svc.editor.edit.assert_not_awaited()
+    assert (await repo.get(edition.report_id))["status"] == "failed"

@@ -192,6 +192,10 @@ def normalize_image_for_model(data: bytes) -> ResolvedMedia | None:
             image_format = str(image.format or "").upper()
             image.verify()
 
+        # JPEG verify() may only inspect the header; force pixel decoding too.
+        with PILImage.open(BytesIO(data)) as decoded:
+            decoded.load()
+
         mime_type = _IMAGE_FORMAT_MIME.get(image_format)
         if mime_type in MODEL_IMAGE_MIME_TYPES:
             return ResolvedMedia(
@@ -237,7 +241,7 @@ def media_block_kind(block: Any) -> MediaKind | None:
     if not isinstance(block, dict):
         return None
     block_type = block.get("type")
-    if block_type == "image_url":
+    if block_type in {"image_url", "input_image"}:
         return "image"
     if block_type == "audio_url":
         return "audio"
@@ -261,7 +265,8 @@ def inline_media_bytes(block: Any) -> tuple[bytes, str] | None:
             return None
 
     block_type = block.get("type")
-    value = block.get(block_type) if block_type in {"image_url", "audio_url", "video_url"} else block.get("url")
+    key = "image_url" if block_type == "input_image" else block_type
+    value = block.get(key) if key in {"image_url", "audio_url", "video_url"} else block.get("url")
     if isinstance(value, dict):
         value = value.get("url")
     if not isinstance(value, str) or not value.startswith("data:") or "," not in value:

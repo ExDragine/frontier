@@ -35,7 +35,15 @@ class NewsService:
                 if not articles:
                     articles = eligible(await self.sources.collect(edition, set()), edition)
                     if len(articles) < self.cfg.min_stories:
-                        raise InsufficientEvidence("insufficient dated evidence")
+                        stats = getattr(self.sources, "stats", {})
+                        errors = getattr(self.sources, "errors", [])
+                        raise InsufficientEvidence(
+                            f"insufficient dated evidence: eligible={len(articles)}/{self.cfg.min_stories}; "
+                            f"received={stats.get('received', 0)}, undated={stats.get('undated', 0)}, "
+                            f"outside_window={stats.get('outside_window', 0)}; "
+                            f"window={edition.start.isoformat()}..{edition.scheduled_at.isoformat()}; "
+                            f"sources={','.join(errors) or 'ok'}"
+                        )
                     await self.repo.checkpoint(edition.report_id, token, "edit", articles=articles)
                 stage = "edit"
                 row = await self.repo.get(edition.report_id)

@@ -3,6 +3,9 @@
 import logging
 from typing import Literal
 
+from langchain.agents.middleware import AgentMiddleware
+from langchain_core.messages import BaseMessage
+
 from utils.llm_factory import model_supports
 from utils.media import (
     inline_media_bytes,
@@ -116,20 +119,28 @@ def _has_inline_payload(part: object) -> bool:
     if "base64" in part:
         return True
     block_type = part.get("type")
-    value = part.get(block_type) if block_type == "image_url" else part.get("url")
+    value = part.get("image_url") if block_type in {"image_url", "input_image"} else part.get("url")
     if isinstance(value, dict):
         value = value.get("url")
     return isinstance(value, str) and value.startswith("data:")
 
 
 def filter_messages_for_model_capabilities(
-    messages: list[dict],
+    messages: list,
     model: str,
     *,
     role: Literal["basic", "signal", "advanced", "daily_news"] | None = None,
-) -> list[dict]:
+) -> list:
     filtered_messages = []
     for message in messages:
+        if isinstance(message, BaseMessage):
+            content = message.content
+            if isinstance(content, list):
+                content = _collapse_plain_text_parts(filter_content_parts_for_model(content, model, role=role))
+                filtered_messages.append(message.model_copy(update={"content": content}))
+            else:
+                filtered_messages.append(message)
+            continue
         if not isinstance(message, dict):
             filtered_messages.append(message)
             continue
@@ -140,3 +151,22 @@ def filter_messages_for_model_capabilities(
         else:
             filtered_messages.append(message)
     return filtered_messages
+
+
+class ModelMediaMiddleware(AgentMiddleware):
+    """Normalize restored history and tool images at every model request boundary."""
+
+    def __init__(self, model: str, *, role=None):
+        self.model = model
+        self.role = role
+
+    def _request(self, request):
+        return request.override(messages=filter_messages_for_model_capabilities(
+            request.messages, self.model, role=self.role,
+        ))
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._request(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._request(request))

@@ -1234,7 +1234,8 @@ async def test_chat_agent_injects_native_web_search_when_supported(monkeypatch, 
     captured = await _run_chat_agent_with_web_search(monkeypatch, tmp_path, supported=True)
 
     assert {"type": "web_search"} not in captured["tools"]
-    assert isinstance(captured["middleware"][-1], cognitive_mod.NativeWebSearchMiddleware)
+    assert any(isinstance(item, cognitive_mod.NativeWebSearchMiddleware) for item in captured["middleware"])
+    assert isinstance(captured["middleware"][-1], cognitive_mod.ModelMediaMiddleware)
     assert "web_search" in captured["system_prompt"]
 
 

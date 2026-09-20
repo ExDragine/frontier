@@ -4,6 +4,8 @@ import asyncio
 import datetime as dt
 import hashlib
 import os
+from collections import Counter
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 
 from .schemas import Article, canonical_url, compact, eligible
@@ -21,7 +23,10 @@ def publication_time(value):
     try:
         parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
-        return None
+        try:
+            parsed = parsedate_to_datetime(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
     return parsed.astimezone(dt.UTC) if parsed.tzinfo else None
 
 
@@ -121,14 +126,24 @@ class SourcePool:
         self.sources = sources
         self.cfg = cfg
         self.errors = []
+        self.stats = Counter()
 
     async def collect(self, edition, seen):
         self.errors = []
+        self.stats = Counter()
 
         async def collect_query(source, query):
             for attempt in range(2):
                 try:
-                    return eligible(await source.search(query, edition), edition, seen)
+                    articles = await source.search(query, edition)
+                    self.stats["received"] += len(articles)
+                    self.stats["undated"] += sum(item.published_at is None for item in articles)
+                    self.stats["outside_window"] += sum(
+                        item.published_at is not None
+                        and not edition.start <= item.published_at <= edition.scheduled_at
+                        for item in articles
+                    )
+                    return eligible(articles, edition, seen)
                 except SourceError as exc:
                     self.errors.append(f"{source.name}:{exc}")
                     if not exc.retryable:
@@ -147,6 +162,7 @@ class SourcePool:
             collected = eligible(collected + [item for batch in batches for item in batch], edition, seen)
             if len(collected) >= self.cfg.target_stories:
                 break
+        self.stats["eligible"] = len(collected)
         return collected[:40]
 
 

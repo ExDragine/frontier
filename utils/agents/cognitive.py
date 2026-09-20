@@ -45,7 +45,7 @@ from utils.media import inline_media_bytes, media_block_kind
 from .capture import detect_browser_capture_intent
 from .code_interpreter import CodeInterpreterMiddleware
 from .execution import current_run_id, managed_agent_turn
-from .inputs import filter_messages_for_model_capabilities
+from .inputs import ModelMediaMiddleware, filter_messages_for_model_capabilities
 from .progress import (
     ProgressEvent,
     ProgressReporter,
@@ -491,6 +491,7 @@ class FrontierCognitive:
             middleware.append(NativeWebSearchMiddleware())
         if session_turn is not None:
             middleware.append(SessionHistoryMiddleware(session_turn, model.profile))
+        middleware.append(ModelMediaMiddleware(EnvConfig.ADVAN_MODEL, role="advanced"))
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
