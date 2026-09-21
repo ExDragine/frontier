@@ -1194,6 +1194,29 @@ class MessageDatabase:
 
         return await _run_database(self.engine, _do)
 
+    async def count_intervening_group_messages(
+        self, *, group_id: int, bot_user_id: int, user_id: int,
+        after_time: int, after_message_id: int | None, limit: int = 5,
+    ) -> int:
+        """Count other members' new messages, stopping at the reply threshold."""
+        def read():
+            conditions = [
+                Message.group_id == group_id,
+                Message.bot_user_id == bot_user_id,
+                Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL,
+                Message.role == "user",
+                Message.user_id != user_id,
+                Message.user_id != bot_user_id,
+            ]
+            if after_message_id is not None:
+                conditions.append(Message.id > after_message_id)
+            else:
+                conditions.append(Message.time > after_time)
+            with Session(self.engine) as session:
+                return len(session.exec(select(Message.id).where(*conditions).limit(limit)).all())
+
+        return await _run_database(self.engine, read)
+
     async def select_recent_media_message(
         self,
         *,

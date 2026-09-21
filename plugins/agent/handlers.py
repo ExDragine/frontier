@@ -336,7 +336,18 @@ async def _execute_agent_request(  # noqa: C901
     sanitized_response = await sanitize_outgoing_text(response_content)
     if sanitized_response != original_content:
         response = {**response, "messages": [*response_messages[:-1], AIMessage(content=sanitized_response or "")]}
-    delivery = await send_messages(context.group_id, context.event_id, response)
+    reply_id = None
+    if context.group_id is not None and time.time() * 1000 - context.msg_time >= 10_000:
+        intervening_messages = await messages_db.count_intervening_group_messages(
+            group_id=context.group_id,
+            bot_user_id=int(context.event.self_id),
+            user_id=int(context.user_id),
+            after_time=context.msg_time,
+            after_message_id=context.message_id,
+        )
+        if intervening_messages >= 5:
+            reply_id = context.event_id
+    delivery = await send_messages(context.group_id, reply_id, response)
     if delivery.successful:
         delivered_at = int(time.time() * 1000)
         inserted = None

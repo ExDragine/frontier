@@ -380,7 +380,9 @@ async def send_messages(group_id: int | None, message_id, response: dict[str, li
         return DeliveryResult()
 
     def with_reply(message: UniMessage) -> UniMessage:
-        return UniMessage.reply(str(message_id)) + message if group_id is not None else message
+        if group_id is not None and message_id is not None:
+            return UniMessage.reply(str(message_id)) + message
+        return message
 
     if not _message_should_render_as_image(content):
         try:
