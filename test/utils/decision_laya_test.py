@@ -1,5 +1,6 @@
 # ruff: noqa: S101
 
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -56,6 +57,21 @@ async def test_laya_provider_auto_mode_lets_router_choose_language():
     await provider.decide("你好", {"should_reply": {"type": "noul"}})
 
     assert router.calls[0][2] is None
+
+
+def test_laya_provider_passes_explicit_device_to_lazy_router(monkeypatch):
+    captured = {}
+
+    class Router:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setitem(sys.modules, "laya", SimpleNamespace(Router=Router))
+    provider = LayaDecisionProvider(model="multilingual", device="cpu", preload=True)
+
+    provider._build_router()
+
+    assert captured == {"preload": True, "default": "multilingual", "device": "cpu"}
 
 
 @pytest.mark.asyncio

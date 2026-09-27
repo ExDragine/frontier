@@ -12,11 +12,10 @@ REPLY_GATE_QUESTIONS: dict[str, dict[str, Any]] = {
     "should_reply": {
         "type": "noul",
         "instructions": (
-            "Should the assistant proactively reply to the latest group message? "
-            "Return true only when the user is asking for help, asking a question, "
-            "reporting a problem, or clearly addressing an AI assistant. Return false "
-            "for casual conversation, acknowledgements, jokes, or messages addressed "
-            "to another person."
+            "Does the latest message ask the AI assistant for help or an answer? "
+            "Return true for a direct question, request, or problem report. Return "
+            "false for casual conversation, acknowledgements, jokes, or a message "
+            "addressed to other people."
         ),
         "criteria": {
             "false": "casual conversation or not addressed to the assistant",

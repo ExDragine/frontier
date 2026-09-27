@@ -57,6 +57,7 @@ class LayaDecisionProvider:
         self,
         *,
         model: str = "auto",
+        device: str | None = None,
         base_url: str | None = None,
         api_key: str | None = None,
         timeout: float = 10.0,
@@ -71,6 +72,7 @@ class LayaDecisionProvider:
         if base_url is not None and not base_url.strip():
             raise ValueError("base_url must not be blank")
         self.model = model.strip()
+        self.device = device.strip() if device and device.strip() else None
         self.base_url = base_url.rstrip("/") if base_url else None
         self.api_key = api_key
         self.timeout = float(timeout)
@@ -115,7 +117,10 @@ class LayaDecisionProvider:
             ) from error
         try:
             default = "multilingual" if self.model == "auto" else self.model
-            return Router(preload=self.preload, default=default)
+            kwargs = {"preload": self.preload, "default": default}
+            if self.device is not None:
+                kwargs["device"] = self.device
+            return Router(**kwargs)
         except Exception as error:
             raise LayaProviderError(f"failed to initialize Laya Router: {error}") from error
 

@@ -13,7 +13,7 @@
 ```python
 from utils.decision import LayaDecisionProvider, score_reply_gate
 
-provider = LayaDecisionProvider(model="auto")
+provider = LayaDecisionProvider(model="auto", device="cpu")
 score = await score_reply_gate(provider, "这个报错怎么解决？")
 if score.should_reply:
     ...
