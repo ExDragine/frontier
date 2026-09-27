@@ -42,6 +42,10 @@ def test_env_config_defaults(monkeypatch):
     assert EnvConfig.MAX_INLINE_MEDIA_BYTES == 20 * 1024 * 1024
     assert EnvConfig.CONTENT_CHECK_ENABLED is False
     assert EnvConfig.QQ_TEXT_CANARY_ENABLED is False
+    assert EnvConfig.LAYA_CANDIDATE_ENABLED is False
+    assert EnvConfig.LAYA_CANDIDATE_MODEL == "auto"
+    assert EnvConfig.LAYA_CANDIDATE_DEVICE == "cpu"
+    assert EnvConfig.LAYA_CANDIDATE_THRESHOLD == 0.5
     assert EnvConfig.FEISHU_ENABLED is False
     assert EnvConfig.FEISHU_APP_ID == ""
     assert EnvConfig.FEISHU_BOT_OPEN_ID == ""
@@ -65,7 +69,12 @@ def test_env_config_reload_updates_runtime_sections():
         },
         "storage": {"image_enabled": False, "image_ttl_days": 9, "image_auto_cleanup": False},
         "content_check": {"enabled": True},
-        "features": {"qq_text_canary_enabled": True},
+        "features": {
+            "qq_text_canary_enabled": True,
+            "laya_candidate_enabled": True,
+            "laya_candidate_model": "multilingual",
+            "laya_candidate_threshold": 0.2,
+        },
         "models": {"signal_model_provider": "deepseek_responses"},
     })
     assert EnvConfig.REVISION == before + 1
@@ -74,6 +83,9 @@ def test_env_config_reload_updates_runtime_sections():
     assert EnvConfig.IMAGE_AUTO_CLEANUP is False
     assert EnvConfig.CONTENT_CHECK_ENABLED is True
     assert EnvConfig.QQ_TEXT_CANARY_ENABLED is True
+    assert EnvConfig.LAYA_CANDIDATE_ENABLED is True
+    assert EnvConfig.LAYA_CANDIDATE_MODEL == "multilingual"
+    assert EnvConfig.LAYA_CANDIDATE_THRESHOLD == 0.2
     assert EnvConfig.FEISHU_ENABLED is False
     assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is True
     assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == [1001]
@@ -86,6 +98,7 @@ def test_env_config_reload_updates_runtime_sections():
     assert EnvConfig.AGENT_AUTO_REPLY_BLACKLIST_GROUP_LIST == []
     assert EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
     assert EnvConfig.QQ_TEXT_CANARY_ENABLED is False
+    assert EnvConfig.LAYA_CANDIDATE_ENABLED is False
 
 
 def test_feishu_connector_settings_are_non_secret_and_environment_credentials(monkeypatch):

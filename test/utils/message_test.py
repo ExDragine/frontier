@@ -872,6 +872,50 @@ async def test_message_gateway_test_group_skips_casual_messages(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_laya_candidate_prefilter_expands_lexical_candidates(monkeypatch):
+    laya_calls = []
+    signal_calls = 0
+
+    async def fake_laya(plaintext, messages):
+        laya_calls.append((plaintext, messages))
+        return True
+
+    async def fake_signal_structured(*_args, **_kwargs):
+        nonlocal signal_calls
+        signal_calls += 1
+        return DummyReplyCheckTrue()
+
+    monkeypatch.setattr(gateway_module.EnvConfig, "LAYA_CANDIDATE_ENABLED", True)
+    monkeypatch.setattr(gateway_module, "_laya_candidate_should_reply", fake_laya)
+    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    patch_reply_check_prompt(monkeypatch, "{name}")
+
+    result = await gateway_module._reply_check_should_reply(5, "这段输入需要助手处理", [{"role": "user", "content": "历史"}])
+
+    assert result is True
+    assert laya_calls == [("这段输入需要助手处理", [{"role": "user", "content": "历史"}])]
+    assert signal_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_laya_candidate_prefilter_does_not_bypass_signal(monkeypatch):
+    async def fake_laya(*_args, **_kwargs):
+        return True
+
+    async def reject_signal(*_args, **_kwargs):
+        return DummyReplyCheckFalse()
+
+    monkeypatch.setattr(gateway_module.EnvConfig, "LAYA_CANDIDATE_ENABLED", True)
+    monkeypatch.setattr(gateway_module, "_laya_candidate_should_reply", fake_laya)
+    monkeypatch.setattr(gateway_module, "signal_structured", reject_signal)
+    patch_reply_check_prompt(monkeypatch, "{name}")
+
+    result = await gateway_module._reply_check_should_reply(5, "这段输入需要助手处理", [])
+
+    assert result is False
+
+
+@pytest.mark.asyncio
 async def test_message_gateway_test_group_reply_check_has_group_cooldown(monkeypatch):
     calls = 0
 

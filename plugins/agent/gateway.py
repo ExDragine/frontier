@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from utils.configs import EnvConfig
 from utils.database import GroupSettingsManager, MessageDatabase, get_engine
+from utils.decision import LayaDecisionProvider, score_reply_gate
 from utils.signal_llm import signal_structured
 
 messages_db = MessageDatabase()
@@ -109,6 +110,8 @@ ACTIVE_TRIGGER_STRIP_CHARS = " \t\r\n:：,，.。!！?？~～…、/\\|[]()（�
 
 
 _reply_check_last_checked_at: dict[int, float] = {}
+_laya_candidate_provider: LayaDecisionProvider | None = None
+_laya_candidate_provider_revision: int | None = None
 
 
 class ReplyCheck(BaseModel):
@@ -199,11 +202,55 @@ async def _reply_check_assistant_recently_replied(group_id: int, now_ms: int) ->
     return now_ms - latest_time < REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS * 1000
 
 
+def _get_laya_candidate_provider() -> LayaDecisionProvider | None:
+    """Build the optional Laya candidate provider after configuration is loaded."""
+
+    global _laya_candidate_provider, _laya_candidate_provider_revision
+    if not getattr(EnvConfig, "LAYA_CANDIDATE_ENABLED", False):
+        return None
+    revision = getattr(EnvConfig, "REVISION", 0)
+    if _laya_candidate_provider is None or _laya_candidate_provider_revision != revision:
+        api_key = getattr(EnvConfig, "LAYA_CANDIDATE_API_KEY", None)
+        _laya_candidate_provider = LayaDecisionProvider(
+            model=getattr(EnvConfig, "LAYA_CANDIDATE_MODEL", "auto"),
+            device=getattr(EnvConfig, "LAYA_CANDIDATE_DEVICE", "cpu"),
+            base_url=getattr(EnvConfig, "LAYA_CANDIDATE_BASE_URL", "") or None,
+            api_key=api_key.get_secret_value() if api_key else None,
+            timeout=getattr(EnvConfig, "LAYA_CANDIDATE_TIMEOUT_SECONDS", 5.0),
+        )
+        _laya_candidate_provider_revision = revision
+    return _laya_candidate_provider
+
+
+async def _laya_candidate_should_reply(plaintext: str, messages: list) -> bool:
+    """Expand the candidate set without bypassing the final Signal gate."""
+
+    provider = _get_laya_candidate_provider()
+    if provider is None:
+        return False
+    try:
+        score = await score_reply_gate(
+            provider,
+            plaintext,
+            messages,
+            threshold=getattr(EnvConfig, "LAYA_CANDIDATE_THRESHOLD", 0.5),
+        )
+    except Exception as error:  # noqa: BLE001 - candidate failures must fall back to lexical rules
+        from nonebot import logger
+
+        logger.warning("Laya reply candidate prefilter failed, keeping lexical gate: {}", error)
+        return False
+    return score.should_reply
+
+
 async def _reply_check_should_reply(group_id: int, plaintext: str, messages: list) -> bool:
     now_ms = int(time.time() * 1000)
     now = time.monotonic()
     active_group = await _reply_check_group_is_active(group_id, now_ms)
-    if not _looks_like_reply_check_candidate(plaintext, active_group=active_group):
+    lexical_candidate = _looks_like_reply_check_candidate(plaintext, active_group=active_group)
+    if not lexical_candidate and len("".join(plaintext.lower().split())) >= REPLY_CHECK_MIN_TEXT_LENGTH:
+        lexical_candidate = await _laya_candidate_should_reply(plaintext, messages)
+    if not lexical_candidate:
         return False
     if await _reply_check_assistant_recently_replied(group_id, now_ms):
         return False
@@ -271,4 +318,3 @@ def _get_wake_words(group_id: int) -> list[str]:
         return list(EnvConfig.BOT_NICKNAMES)
     words = GroupSettingsManager(get_engine()).get(group_id, "wake_word")
     return words or list(EnvConfig.BOT_NICKNAMES)
-
