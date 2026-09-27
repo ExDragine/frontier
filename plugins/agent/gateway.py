@@ -22,9 +22,6 @@ REPLY_CHECK_MIN_TEXT_LENGTH = 8
 REPLY_CHECK_GROUP_COOLDOWN_SECONDS = 120
 
 
-REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS = 20 * 60
-
-
 REPLY_CHECK_ACTIVE_GROUP_WINDOW_SECONDS = 60
 
 
@@ -195,13 +192,6 @@ async def _reply_check_group_is_active(group_id: int, now_ms: int) -> bool:
     return message_count > REPLY_CHECK_ACTIVE_GROUP_MESSAGE_LIMIT
 
 
-async def _reply_check_assistant_recently_replied(group_id: int, now_ms: int) -> bool:
-    latest_time = await messages_db.latest_group_role_message_time(group_id=group_id, role="assistant")
-    if latest_time is None:
-        return False
-    return now_ms - latest_time < REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS * 1000
-
-
 def _get_laya_candidate_provider() -> LayaDecisionProvider | None:
     """Build the optional Laya candidate provider after configuration is loaded."""
 
@@ -244,18 +234,17 @@ async def _laya_candidate_should_reply(plaintext: str, messages: list) -> bool:
 
 
 async def _reply_check_should_reply(group_id: int, plaintext: str, messages: list) -> bool:
-    now_ms = int(time.time() * 1000)
     now = time.monotonic()
+    last_checked_at = _reply_check_last_checked_at.get(group_id)
+    if last_checked_at is not None and now - last_checked_at < REPLY_CHECK_GROUP_COOLDOWN_SECONDS:
+        return False
+
+    now_ms = int(time.time() * 1000)
     active_group = await _reply_check_group_is_active(group_id, now_ms)
     lexical_candidate = _looks_like_reply_check_candidate(plaintext, active_group=active_group)
     if not lexical_candidate and len("".join(plaintext.lower().split())) >= REPLY_CHECK_MIN_TEXT_LENGTH:
         lexical_candidate = await _laya_candidate_should_reply(plaintext, messages)
     if not lexical_candidate:
-        return False
-    if await _reply_check_assistant_recently_replied(group_id, now_ms):
-        return False
-    last_checked_at = _reply_check_last_checked_at.get(group_id)
-    if last_checked_at is not None and now - last_checked_at < REPLY_CHECK_GROUP_COOLDOWN_SECONDS:
         return False
     _reply_check_last_checked_at[group_id] = now
 

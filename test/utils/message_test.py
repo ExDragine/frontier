@@ -941,6 +941,27 @@ async def test_message_gateway_test_group_reply_check_has_group_cooldown(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_group_cooldown_skips_laya_candidate_prefilter(monkeypatch):
+    async def fake_signal_structured(*_args, **_kwargs):
+        return DummyReplyCheckFalse()
+
+    async def fail_if_laya_called(*_args, **_kwargs):
+        raise AssertionError("group cooldown should run before Laya")
+
+    monkeypatch.setattr(gateway_module.EnvConfig, "LAYA_CANDIDATE_ENABLED", True)
+    monkeypatch.setattr(gateway_module, "_laya_candidate_should_reply", fail_if_laya_called)
+    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.time, "monotonic", lambda: 1000.0)
+    patch_reply_check_prompt(monkeypatch, "{name}")
+
+    first = await gateway_module._reply_check_should_reply(5, "求助，这个报错怎么解决？", [])
+    second = await gateway_module._reply_check_should_reply(5, "这段输入需要助手处理", [])
+
+    assert first is False
+    assert second is False
+
+
+@pytest.mark.asyncio
 async def test_message_gateway_test_group_active_group_requires_strong_signal(monkeypatch):
     calls = 0
 
@@ -970,7 +991,7 @@ async def test_message_gateway_test_group_active_group_requires_strong_signal(mo
 
 
 @pytest.mark.asyncio
-async def test_message_gateway_test_group_uses_database_assistant_reply_cooldown(monkeypatch):
+async def test_message_gateway_test_group_does_not_use_assistant_reply_cooldown(monkeypatch):
     calls = 0
 
     async def fake_signal_structured(*_args, **_kwargs):
@@ -984,19 +1005,12 @@ async def test_message_gateway_test_group_uses_database_assistant_reply_cooldown
     monkeypatch.setattr(gateway_module.EnvConfig, "TEST_GROUP_ID", [5])
     monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
     monkeypatch.setattr(gateway_module.time, "time", lambda: 2000.0)
-    monkeypatch.setattr(
-        gateway_module,
-        "messages_db",
-        DummyReplyCheckDb(
-            latest_assistant_time=2_000_000 - gateway_module.REPLY_CHECK_ASSISTANT_REPLY_COOLDOWN_SECONDS * 1000 + 1
-        ),
-    )
     patch_reply_check_prompt(monkeypatch, "{name}")
 
     result = await _message_gateway(DummyTestGroupEvent("求助，这个报错怎么解决？"), [])
 
-    assert result is False
-    assert calls == 0
+    assert result is True
+    assert calls == 1
 
 
 @pytest.mark.asyncio
