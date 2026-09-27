@@ -333,3 +333,4 @@ env.toml
 temp
 *.db-shm
 *.db-wal
+news.toml
