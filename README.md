@@ -107,6 +107,9 @@ cp .env.example .env
 cp env.toml.example env.toml
 ```
 
+项目已将腾讯云 PyPI 镜像设为 uv 默认源；`.env.example` 和启动脚本将
+`HF_ENDPOINT` 设置为 `https://hf-mirror.com`，用于 Hugging Face 模型和 tokenizer 下载。
+
 内容检查模型默认不安装。需要在本机启用 `[content_check]` 时，安装 CPU-only 可选依赖：
 
 ```bash
