@@ -18,7 +18,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "safetensors" },
     { name = "torch", version = "2.14.0", source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }, marker = "sys_platform == 'darwin'" },
-    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu" }, marker = "sys_platform != 'darwin'" },
 ]
 sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/8d/75/94cd5d389649578aca399e5aa822637eec18319a1dadc400ffe2f9a7493f/accelerate-1.14.0.tar.gz", hash = "sha256:41b9c4377a54e0b460a959b0defa1b736e4ca0a2373252d9a539964c2afe3c8d" }
 wheels = [
@@ -801,7 +801,7 @@ dependencies = [
 content-check = [
     { name = "accelerate" },
     { name = "torch", version = "2.14.0", source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }, marker = "sys_platform == 'darwin'" },
-    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu" }, marker = "sys_platform != 'darwin'" },
     { name = "torchao" },
     { name = "transformers" },
 ]
@@ -851,7 +851,7 @@ requires-dist = [
     { name = "sqlmodel" },
     { name = "tomlkit" },
     { name = "torch", marker = "sys_platform == 'darwin' and extra == 'content-check'", index = "https://mirrors.cloud.tencent.com/pypi/simple/" },
-    { name = "torch", marker = "sys_platform != 'darwin' and extra == 'content-check'", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", marker = "sys_platform != 'darwin' and extra == 'content-check'", index = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu" },
     { name = "torchao", marker = "extra == 'content-check'" },
     { name = "transformers", marker = "extra == 'content-check'" },
     { name = "websockets" },
@@ -1627,7 +1627,7 @@ dependencies = [
     { name = "numpy" },
     { name = "safetensors" },
     { name = "torch", version = "2.14.0", source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }, marker = "sys_platform == 'darwin'" },
-    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu" }, marker = "sys_platform != 'darwin'" },
     { name = "transformers" },
 ]
 sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/31/82/0964e13e1a67ae4ac2824c3115470d31cd149a065d971a5dec6e4049ca23/laya-0.3.20.tar.gz", hash = "sha256:692de1346cf0239bb7bbcffdf0cfbd538c24834f8bc61e9b60f4106465c033c9" }
@@ -3208,7 +3208,7 @@ wheels = [
 [[package]]
 name = "torch"
 version = "2.14.0+cpu"
-source = { registry = "https://download.pytorch.org/whl/cpu" }
+source = { registry = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu" }
 resolution-markers = [
     "sys_platform != 'darwin'",
 ]
@@ -3222,20 +3222,20 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp314-cp314-linux_s390x.whl", hash = "sha256:266a253980047f3c037191f45d7e7ecfa838d13102141ca57b86fcc892663004", upload-time = "2026-09-02T18:32:17Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:27b34640fea7268862961b734c723873e15b1c2657b1eb84bcfac053e5841527", upload-time = "2026-09-02T18:32:23Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:f152f41dc5dc462afe0de780e451ebb47ea8b4451f8f919f9537aa8e2cbe1d7e", upload-time = "2026-09-02T18:32:29Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp314-cp314-win_amd64.whl", hash = "sha256:ca9b3c2c652587f7b26c86d30be3648f553bd07fb3cf9b3edb645e7eafe295a3", upload-time = "2026-09-02T18:32:35Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp314-cp314t-linux_s390x.whl", hash = "sha256:c1d81be03f715eca5b065fc767f73b2a26668a16d614e163a4378a3f38a5e471", upload-time = "2026-09-02T18:32:39Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:a6ff46c0c0c4f5b9b399dff5e4856a98ce18e61ca14ad74b21790174c7cbde08", upload-time = "2026-09-02T18:32:43Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:2baf9cbaef964d821465df0c53a91cc01b2d0ea29ebd199e2f9c7d27a7fc70a4", upload-time = "2026-09-02T18:32:48Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp314-cp314t-win_amd64.whl", hash = "sha256:8fe5ff05cf3511daecdea986005f312f3b9cdbaf07ccf0bc42c68d01a4ae5d4d", upload-time = "2026-09-02T18:32:53Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp315-cp315-manylinux_2_28_aarch64.whl", hash = "sha256:07d50e40232d2757be323693e38f531e04ee654d40537bc0b04e787c1e73a27a", upload-time = "2026-09-02T18:32:57Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp315-cp315-manylinux_2_28_x86_64.whl", hash = "sha256:a8b2fa9a03d81bc083f279737fce1cd8d1ed2e267da92215260cd644dcfdd3fe", upload-time = "2026-09-02T18:33:02Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp315-cp315-win_amd64.whl", hash = "sha256:70a98493729cdd06f2735a7e4c4867e64e5d5b4eebbd6ffb841b7b034b16aff3", upload-time = "2026-09-02T18:33:07Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp315-cp315t-manylinux_2_28_aarch64.whl", hash = "sha256:e22ddf8a9fff9934fe2dd2440d45c437bb0539f2d6d24b57b26981d6dca4157c", upload-time = "2026-09-02T18:33:11Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp315-cp315t-manylinux_2_28_x86_64.whl", hash = "sha256:18b417c953e9b4d8b79294ca5184586790f0a609b3929e39258cea854b945870", upload-time = "2026-09-02T18:33:16Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp315-cp315t-win_amd64.whl", hash = "sha256:70b02d91b68ba0652b53294f51afbe774eea0f1f52b91a20207982298af294a2", upload-time = "2026-09-02T18:33:20Z" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp314-cp314-linux_s390x.whl", hash = "sha256:266a253980047f3c037191f45d7e7ecfa838d13102141ca57b86fcc892663004" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:27b34640fea7268862961b734c723873e15b1c2657b1eb84bcfac053e5841527" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:f152f41dc5dc462afe0de780e451ebb47ea8b4451f8f919f9537aa8e2cbe1d7e" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp314-cp314-win_amd64.whl", hash = "sha256:ca9b3c2c652587f7b26c86d30be3648f553bd07fb3cf9b3edb645e7eafe295a3" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp314-cp314t-linux_s390x.whl", hash = "sha256:c1d81be03f715eca5b065fc767f73b2a26668a16d614e163a4378a3f38a5e471" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:a6ff46c0c0c4f5b9b399dff5e4856a98ce18e61ca14ad74b21790174c7cbde08" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:2baf9cbaef964d821465df0c53a91cc01b2d0ea29ebd199e2f9c7d27a7fc70a4" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp314-cp314t-win_amd64.whl", hash = "sha256:8fe5ff05cf3511daecdea986005f312f3b9cdbaf07ccf0bc42c68d01a4ae5d4d" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp315-cp315-manylinux_2_28_aarch64.whl", hash = "sha256:07d50e40232d2757be323693e38f531e04ee654d40537bc0b04e787c1e73a27a" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp315-cp315-manylinux_2_28_x86_64.whl", hash = "sha256:a8b2fa9a03d81bc083f279737fce1cd8d1ed2e267da92215260cd644dcfdd3fe" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp315-cp315-win_amd64.whl", hash = "sha256:70a98493729cdd06f2735a7e4c4867e64e5d5b4eebbd6ffb841b7b034b16aff3" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp315-cp315t-manylinux_2_28_aarch64.whl", hash = "sha256:e22ddf8a9fff9934fe2dd2440d45c437bb0539f2d6d24b57b26981d6dca4157c" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp315-cp315t-manylinux_2_28_x86_64.whl", hash = "sha256:18b417c953e9b4d8b79294ca5184586790f0a609b3929e39258cea854b945870" },
+    { url = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/torch-2.14.0%2Bcpu-cp315-cp315t-win_amd64.whl", hash = "sha256:70b02d91b68ba0652b53294f51afbe774eea0f1f52b91a20207982298af294a2" },
 ]
 
 [[package]]
