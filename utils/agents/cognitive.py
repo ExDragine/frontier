@@ -30,6 +30,7 @@ from nonebot import logger
 import tools as _tool_registry
 from plugins.acp.subagent import build_acp_subagents
 from utils.agent_context import FrontierRuntimeContext
+from utils.agent_protocol import ConversationRef, Participant
 from utils.configs import EnvConfig
 from utils.harness_profiles import register_frontier_harness_profiles
 from utils.llm_factory import (
@@ -55,7 +56,7 @@ from .progress import (
 )
 from .prompts import build_workspace_soul_prompt
 from .prompts import load_system_prompt as compose_system_prompt
-from .runtime import agent_thread_id, conversation_workspace_key
+from .runtime import agent_thread_id, conversation_workspace_key, normalize_workspace_key
 from .session_context import SessionHistoryMiddleware, history_budget, messages_contain_media, recent_complete_turns
 from .session_errors import SessionInterruptedError
 from .sessions import TurnLease
@@ -157,6 +158,21 @@ def _named_item_key(item: Any) -> tuple[str, str]:
 def _stable_named_items(items) -> list:
     """Keep provider-visible tool/subagent arrays stable across requests."""
     return sorted(items, key=_named_item_key)
+
+
+def _merge_named_items(*groups) -> list:
+    """Merge tool-like values by public name while preserving stable order."""
+
+    merged = []
+    seen: set[tuple[str, str]] = set()
+    for group in groups:
+        for item in group:
+            key = _named_item_key(item)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
+    return _stable_named_items(merged)
 
 
 def _prompt_cache_key(*, model: str, workspace_key: str, access_profile: str) -> str:
@@ -271,6 +287,28 @@ class FrontierCognitive:
         self.document_subagent = build_document_subagent()
         self._component_revision = EnvConfig.REVISION
 
+    def _tools_for_capabilities(self, capabilities: frozenset[str]):
+        """Select a tool snapshot for an explicit platform capability set.
+
+        Empty capabilities preserve the pre-separation behavior used by ACP,
+        scheduled tasks, and the existing QQ event path.  The registry methods
+        are optional so injected test registries and staged callers that only
+        expose ``direct_tools``/``ptc_tools`` continue to work.
+        """
+
+        legacy_tools = getattr(self, "tools", [])
+        legacy_ptc_tools = getattr(self, "ptc_tools", [])
+        if not capabilities:
+            return legacy_tools, legacy_ptc_tools
+        direct_for = getattr(agent_tools, "direct_tools_for", None)
+        ptc_for = getattr(agent_tools, "ptc_tools_for", None)
+        if callable(direct_for) and callable(ptc_for):
+            return (
+                _stable_named_items(direct_for(capabilities)),
+                _stable_named_items(ptc_for(capabilities)),
+            )
+        return legacy_tools, legacy_ptc_tools
+
     async def _prepare_components(self):
         if "_component_revision" not in self.__dict__:
             return  # Explicitly injected components, used by isolated callers/tests.
@@ -344,6 +382,11 @@ class FrontierCognitive:
         enable_acp_subagents: bool = True,
         allow_silent_reply: bool = False,
         session_turn: TurnLease | None = None,
+        conversation: ConversationRef | None = None,
+        principal: Participant | None = None,
+        capabilities: frozenset[str] = frozenset(),
+        workspace_key_override: str | None = None,
+        tool_overrides: tuple[object, ...] = (),
     ):
         allowed_capture_tools = (
             await detect_browser_capture_intent(user_text)
@@ -356,9 +399,18 @@ class FrontierCognitive:
             # No model or tool has run: retire this lease rather than restore an
             # old state schema with a newly configured graph.
             raise SessionInterruptedError("configuration changed before session execution")
+        selected_tools, selected_ptc_tools = self._tools_for_capabilities(capabilities)
+        if tool_overrides:
+            ptc_names = {_named_item_key(item) for item in selected_ptc_tools}
+            selected_tools = _merge_named_items(
+                selected_tools,
+                [item for item in tool_overrides if _named_item_key(item) not in ptc_names],
+            )
         # Keep construction synchronous until the graph is ready: a Dashboard reload
         # may run during the awaits above, but cannot split model/capability selection.
-        workspace_key = conversation_workspace_key(user_id, group_id)
+        workspace_key = normalize_workspace_key(
+            workspace_key_override or conversation_workspace_key(user_id, group_id)
+        )
         uses_responses_api = provider_uses_responses_api(
             EnvConfig.ADVAN_MODEL,
             EnvConfig.ADVAN_MODEL_PROVIDER,
@@ -406,7 +458,7 @@ class FrontierCognitive:
                 for tool in restricted_tools
                 if tool.name in _ALWAYS_AVAILABLE_RESTRICTED_TOOLS
             ]
-            effective_tools = _stable_named_items([*self.tools, *always_available])
+            effective_tools = _stable_named_items([*selected_tools, *always_available])
             if allow_silent_reply:
                 effective_tools = _stable_named_items([*effective_tools, skip_reply])
         if allowed_capture_tools:
@@ -421,7 +473,7 @@ class FrontierCognitive:
             logger.debug("用户未请求截图/录屏，restricted 工具未暴露")
 
         ptc_tools = (
-            prepare_ptc_tools(_stable_named_items(getattr(self, "ptc_tools", [])))
+            prepare_ptc_tools(_stable_named_items(selected_ptc_tools))
             if access_profile == "frontier"
             else []
         )
@@ -535,6 +587,9 @@ class FrontierCognitive:
             group_id=group_id,
             group_member_role=group_member_role,
             workspace_dir=workspace_dir,
+            conversation=conversation,
+            principal=principal,
+            capabilities=capabilities,
         )
         input_data: Any = {
             "messages": messages,

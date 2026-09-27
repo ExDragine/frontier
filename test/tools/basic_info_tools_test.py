@@ -342,6 +342,19 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
     assert "mcp_tool" not in {tool.name for tool in registry.main_tools}
     assert "mcp_tool" in {tool.name for tool in previous}
 
+    # Explicit platform capabilities filter QQ/Milky modules while retaining
+    # common tools; an empty set remains the legacy unfiltered behavior.
+    message_tools = {tool.name for tool in registry.direct_tools_for(frozenset({"qq:message"}))}
+    message_ptc_tools = {tool.name for tool in registry.ptc_tools_for(frozenset({"qq:message"}))}
+    assert "send_image" in message_tools
+    assert "get_message" in message_ptc_tools
+    assert "set_group_name" not in message_tools
+    assert "upload_group_file" not in message_tools
+    assert "mystery_tool" in message_tools
+    assert {tool.name for tool in registry.direct_tools_for(frozenset())} == {
+        tool.name for tool in registry.direct_tools
+    }
+
 
 @pytest.mark.asyncio
 async def test_mcp_discovery_retries_failed_servers_after_backoff(load_tool_module, monkeypatch):

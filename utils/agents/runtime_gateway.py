@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+from utils.agent_protocol import ConversationRef, Participant, normalize_workspace_key
 from utils.agents.progress import ProgressReporter
-from utils.media import detect_mime_type, resolve_media, standard_media_block
+from utils.media import MediaKind, detect_mime_type, resolve_media, standard_media_block
 
 if TYPE_CHECKING:
     from .execution import AgentResult
@@ -16,7 +18,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class AgentRuntimeMedia:
-    kind: Literal["image", "audio"]
+    kind: MediaKind
     data: bytes
     mime_type: str
 
@@ -40,6 +42,17 @@ class AgentRuntimeRequest:
     audio_inputs: tuple[bytes, ...] = ()
     video_inputs: tuple[bytes, ...] = ()
     session_turn: TurnLease | None = None
+    # Neutral identity fields are optional while QQ callers migrate.  The
+    # legacy fields above remain the compatibility surface for existing ACP,
+    # scheduled-task and QQ entry points.
+    conversation: ConversationRef | None = None
+    principal: Participant | None = None
+    capabilities: frozenset[str] = frozenset()
+    workspace_key: str | None = None
+    # Platform-provided tools are supplemental to the built-in capability
+    # snapshot.  Keeping them on the runtime request lets a new adapter inject
+    # its own operations without importing the global registry.
+    tool_overrides: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,10 +92,10 @@ def _runtime_artifacts(messages: list[object]) -> tuple[AgentRuntimeMedia, ...]:
     for message in messages:
         segments = list(message) if isinstance(message, Iterable) else [message]
         for segment in segments:
-            kind = str(getattr(segment, "type", "") or "")
-            if kind not in {"image", "audio"}:
+            kind = str(getattr(segment, "type", getattr(segment, "kind", "")) or "")
+            if kind not in {"image", "audio", "video", "file"}:
                 continue
-            raw = getattr(segment, "raw", None)
+            raw = getattr(segment, "raw", getattr(segment, "data", None))
             if not isinstance(raw, bytes | bytearray) or not raw:
                 continue
             data = bytes(raw)
@@ -99,6 +112,54 @@ def _runtime_artifacts(messages: list[object]) -> tuple[AgentRuntimeMedia, ...]:
                 )
             )
     return tuple(artifacts)
+
+
+def _qq_group_id(conversation: ConversationRef | None) -> int | None:
+    """Translate a QQ group identity for the legacy cognitive boundary."""
+
+    if conversation is None or conversation.platform != "qq" or conversation.kind != "group":
+        return None
+    try:
+        return int(conversation.conversation_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def _conversation_workspace_key(conversation: ConversationRef | None) -> str | None:
+    """Derive an isolated key when a new adapter omits an explicit key."""
+
+    if conversation is None:
+        return None
+    # Serialize fields as a structured value so delimiters in opaque IDs
+    # cannot make two different conversations share a workspace.
+    identity = json.dumps(
+        [
+            conversation.platform,
+            conversation.account_id,
+            conversation.tenant_id,
+            conversation.kind,
+            conversation.parent_id,
+            conversation.conversation_id,
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return normalize_workspace_key(f"conversation:{identity}")
+
+
+def _legacy_identity(request: AgentRuntimeRequest) -> tuple[str, str, int | None, str | None]:
+    """Build the old cognitive identity without leaking it into new adapters."""
+
+    principal = request.principal
+    user_id = request.user_id or (principal.id if principal is not None else None)
+    if user_id is None:
+        user_id = f"acp-{request.session_id or request.workspace_key or 'request'}"
+    user_name = request.user_name
+    if principal is not None and user_name == "ACP client":
+        user_name = principal.display_name
+    group_id = request.group_id if request.group_id is not None else _qq_group_id(request.conversation)
+    group_member_role = request.group_member_role or (principal.role if principal is not None else None)
+    return str(user_id), user_name, group_id, group_member_role
 
 
 class FrontierAgentRuntime:
@@ -135,22 +196,41 @@ class FrontierAgentRuntime:
             )
             for item in (*request.images, *request.audio)
         )
+        user_id, user_name, group_id, group_member_role = _legacy_identity(request)
+        workspace_key = (
+            normalize_workspace_key(request.workspace_key)
+            if request.workspace_key
+            else _conversation_workspace_key(request.conversation)
+        )
+        compatibility_kwargs: dict[str, Any] = {}
+        if request.conversation is not None:
+            compatibility_kwargs["conversation"] = request.conversation
+        if request.principal is not None:
+            compatibility_kwargs["principal"] = request.principal
+        if request.capabilities:
+            compatibility_kwargs["capabilities"] = request.capabilities
+        if request.tool_overrides:
+            compatibility_kwargs["tool_overrides"] = request.tool_overrides
+        if workspace_key:
+            compatibility_kwargs["workspace_key_override"] = workspace_key
+
         return await self._get_cognitive().chat_agent(
             list(request.messages) or [{"role": "user", "content": content}],
-            user_id=request.user_id or f"acp-{request.session_id}",
-            user_name=request.user_name,
+            user_id=user_id,
+            user_name=user_name,
             capability=request.capability if request.capability is not None else EnvConfig.AGENT_CAPABILITY,
-            group_id=request.group_id,
-            group_member_role=request.group_member_role,
+            group_id=group_id,
+            group_member_role=group_member_role,
             image_inputs=[*request.image_inputs, *(item.data for item in request.images)],
             audio_inputs=[*request.audio_inputs, *(item.data for item in request.audio)],
             video_inputs=list(request.video_inputs),
-            thread_id_override=request.session_id or None,
+            thread_id_override=request.session_id or workspace_key or None,
             progress_reporter=progress_reporter,
             user_text=request.prompt,
             access_profile=request.access_profile,
             enable_acp_subagents=request.enable_acp_subagents,
             allow_silent_reply=request.allow_silent_reply,
+            **compatibility_kwargs,
             **({"session_turn": request.session_turn} if request.session_turn is not None else {}),
         )
 

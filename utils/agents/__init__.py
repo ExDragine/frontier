@@ -8,6 +8,7 @@ from typing import Any
 _EXPORTS = {
     "FrontierAgentState": (".cognitive", "FrontierAgentState"),
     "FrontierCognitive": (".cognitive", "FrontierCognitive"),
+    "FrontierAgentCore": (".neutral_core", "FrontierAgentCore"),
     "ProgressEvent": (".progress", "ProgressEvent"),
     "ProgressReporter": (".progress", "ProgressReporter"),
     "agent_thread_id": (".runtime", "agent_thread_id"),

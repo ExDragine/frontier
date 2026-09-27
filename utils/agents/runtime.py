@@ -8,16 +8,18 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
+from utils.agent_protocol import normalize_workspace_key
+
 
 def conversation_workspace_key(user_id: str | int, group_id: int | None) -> str:
     """Return a filesystem-safe key that cannot collide across chat scopes."""
     if group_id is not None:
-        return f"group-{group_id}"
+        return normalize_workspace_key(f"group-{group_id}")
     normalized_user_id = str(user_id)
     if normalized_user_id.isascii() and normalized_user_id.isdecimal():
-        return f"dm-{normalized_user_id}"
+        return normalize_workspace_key(f"dm-{normalized_user_id}")
     digest = hashlib.sha256(normalized_user_id.encode("utf-8")).hexdigest()
-    return f"dm-h-{digest}"
+    return normalize_workspace_key(f"dm-h-{digest}")
 
 
 def agent_thread_id(user_id: str, group_id: int | None) -> uuid.UUID:

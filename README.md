@@ -65,6 +65,10 @@ UniMessage 文本、图片、视频或文件回复
 
 QQ 已支持有界会话缓存、空闲过期与历史重建，默认关闭；可在 Dashboard 的“会话缓存”设置中启用。配置与运行边界见 [QQ 会话缓存](docs/agent-sessions.md)，设计记录见 [Checkpointer 实施计划](docs/checkpointer-plan.md)。
 
+Agent 与平台解耦的目标架构、统一消息协议、端口和迁移阶段见 [Agent 与平台解耦设计](docs/agent-platform-separation.md)。
+QQ canary 默认关闭；确认灰度指标后，可在 `env.toml` 的 `[features]` 中设置 `qq_text_canary_enabled = true`。当前覆盖群聊/私聊的文本、当前已下载媒体、当前已暂存文件、已解析引用、已完成 hydration 的近期媒体和已成功取得租约的 session；无租约时继续走旧路径。
+飞书接入方案已记录在 [Agent 与平台解耦设计](docs/agent-platform-separation.md)；仓库中的无 SDK facade、webhook 和 API 客户端仅作为隔离参考，`plugins.agent` 不会自动注册飞书 lifecycle，当前开发主线先推进 QQ 的统一编排层。重新启用飞书前仍需补持久化 history、durable queue、加密解码和真实平台验证。
+
 工具执行分为三层：媒体工件、平台写操作、聊天记忆和 MCP 联网搜索工具由主 Agent 直接调用；一次性本地/API 只读查询通过 PTC 暴露；本地文档分析可交给有独立调用预算的文档子代理。联网搜索、网页读取和多来源核验统一使用主 Agent 的模型与工具调用预算。
 
 仓库内置工作流位于 `skills/`，运行时以只读方式挂载到 `/skills`，按描述渐进加载；Agent 不再拥有宿主 Shell，也不会在启动时从远端下载 Skill。

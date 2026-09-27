@@ -26,7 +26,7 @@ from langchain_core.exceptions import (
 from utils.configs import EnvConfig
 
 from .progress import ProgressEvent, emit_progress
-from .runtime import conversation_workspace_key, run_serialized
+from .runtime import conversation_workspace_key, normalize_workspace_key, run_serialized
 from .session_errors import CheckpointCapacityExceeded, SessionInterruptedError
 from .tool_errors import BUDGET_ERRORS, ToolExecutionUncertainError
 from .usage import collect_run_usage, usage_registry
@@ -97,7 +97,10 @@ def managed_agent_turn(function):
         bound.apply_defaults()
         values = bound.arguments
         reporter = values.get("progress_reporter")
-        scope = conversation_workspace_key(values["user_id"], values.get("group_id"))
+        scope = normalize_workspace_key(
+            values.get("workspace_key_override")
+            or conversation_workspace_key(values["user_id"], values.get("group_id"))
+        )
         run_id = uuid.uuid4().hex
         token = current_run_id.set(run_id)
         started = time.monotonic()

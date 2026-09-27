@@ -386,6 +386,40 @@ def test_frontier_cognitive_separates_direct_and_ptc_tools(monkeypatch):
     assert not hasattr(frontier, "subagents")
 
 
+def test_frontier_cognitive_selects_registry_tools_for_explicit_capabilities(monkeypatch):
+    calls = []
+
+    def direct_tools_for(capabilities):
+        calls.append(("direct", capabilities))
+        return ["qq-direct"]
+
+    def ptc_tools_for(capabilities):
+        calls.append(("ptc", capabilities))
+        return ["qq-ptc"]
+
+    monkeypatch.setattr(
+        cognitive_mod,
+        "agent_tools",
+        types.SimpleNamespace(direct_tools_for=direct_tools_for, ptc_tools_for=ptc_tools_for),
+    )
+    frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
+    frontier.tools = ["legacy-direct"]
+    frontier.ptc_tools = ["legacy-ptc"]
+
+    assert frontier._tools_for_capabilities(frozenset()) == (
+        ["legacy-direct"],
+        ["legacy-ptc"],
+    )
+    assert frontier._tools_for_capabilities(frozenset({"qq:message"})) == (
+        ["qq-direct"],
+        ["qq-ptc"],
+    )
+    assert calls == [
+        ("direct", frozenset({"qq:message"})),
+        ("ptc", frozenset({"qq:message"})),
+    ]
+
+
 def test_bounded_subagents_use_dedicated_progress_messages():
     assert progress_mod.subagent_message("document-agent") == "正在阅读并整理文档…"
 

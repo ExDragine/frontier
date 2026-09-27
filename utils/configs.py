@@ -113,6 +113,27 @@ class FeatureConfig(_FrozenConfig):
     agent_enabled: bool = True
     paint_enabled: bool = True
     video_enabled: bool = True
+    # Staged migration switch.  The QQ text canary is deliberately opt-in;
+    # media, replies and session-backed turns always stay on the legacy path.
+    qq_text_canary_enabled: bool = False
+
+
+class FeishuConfig(_FrozenConfig):
+    """Non-secret Feishu connector settings.
+
+    Credentials and webhook verification material deliberately do not belong
+    in the TOML model.  The connector reads the corresponding ``FEISHU_*``
+    environment variables through :class:`EnvConfig` instead.
+    """
+
+    enabled: bool = False
+    app_id: str = ""
+    bot_open_id: str = ""
+    path: str = "/feishu/events"
+
+
+class PlatformsConfig(_FrozenConfig):
+    feishu: FeishuConfig = Field(default_factory=FeishuConfig)
 
 
 class AgentConfig(_FrozenConfig):
@@ -201,6 +222,7 @@ class FrontierSettings(_FrozenConfig):
     providers: dict[str, ProviderProfile] = Field(default_factory=dict)
     keys: KeyConfig = Field(default_factory=KeyConfig)
     features: FeatureConfig = Field(default_factory=FeatureConfig)
+    platforms: PlatformsConfig = Field(default_factory=PlatformsConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     agent_policy: AccessPolicy = Field(default_factory=AccessPolicy)
     auto_reply_policy: AutoReplyPolicy = Field(default_factory=AutoReplyPolicy)
@@ -494,6 +516,7 @@ class EnvConfig:
     AGENT_MODULE_ENABLED: ClassVar[bool]
     PAINT_MODULE_ENABLED: ClassVar[bool]
     VIDEO_MODULE_ENABLED: ClassVar[bool]
+    QQ_TEXT_CANARY_ENABLED: ClassVar[bool]
     AGENT_CAPABILITY: ClassVar[str]
     # Access policies
     AGENT_WHITELIST_MODE: ClassVar[bool]
@@ -547,6 +570,16 @@ class EnvConfig:
     DASHBOARD_JWT_EXPIRE_HOURS: ClassVar[int]
     CONTENT_CHECK_ENABLED: ClassVar[bool]
 
+    # Feishu connector boundary.  The first four values are non-secret TOML
+    # settings; credentials are loaded from process environment variables.
+    FEISHU_ENABLED: ClassVar[bool]
+    FEISHU_APP_ID: ClassVar[str]
+    FEISHU_BOT_OPEN_ID: ClassVar[str]
+    FEISHU_PATH: ClassVar[str]
+    FEISHU_APP_SECRET: ClassVar[SecretStr]
+    FEISHU_VERIFICATION_TOKEN: ClassVar[SecretStr]
+    FEISHU_ENCRYPT_KEY: ClassVar[SecretStr]
+
     REVISION: ClassVar[int] = 0
 
     @classmethod
@@ -587,6 +620,7 @@ class EnvConfig:
             "AGENT_MODULE_ENABLED": settings.features.agent_enabled,
             "PAINT_MODULE_ENABLED": settings.features.paint_enabled,
             "VIDEO_MODULE_ENABLED": settings.features.video_enabled,
+            "QQ_TEXT_CANARY_ENABLED": settings.features.qq_text_canary_enabled,
             "AGENT_CAPABILITY": settings.agent.reasoning_effort,
             "AGENT_WHITELIST_MODE": settings.agent_policy.whitelist_mode,
             "AGENT_WHITELIST_PERSON_LIST": list(settings.agent_policy.whitelist_person_list),
@@ -620,6 +654,16 @@ class EnvConfig:
             "DASHBOARD_JWT_SECRET": _runtime_dashboard_secret(settings.dashboard.jwt_secret),
             "DASHBOARD_JWT_EXPIRE_HOURS": settings.dashboard.jwt_expire_hours,
             "CONTENT_CHECK_ENABLED": settings.content_check.enabled,
+            "FEISHU_ENABLED": settings.platforms.feishu.enabled,
+            "FEISHU_APP_ID": settings.platforms.feishu.app_id,
+            "FEISHU_BOT_OPEN_ID": settings.platforms.feishu.bot_open_id,
+            "FEISHU_PATH": settings.platforms.feishu.path,
+            # Keep Feishu credentials out of env.toml and the typed settings
+            # snapshot.  Reading them at reload time also makes connector
+            # configuration changes explicit and testable.
+            "FEISHU_APP_SECRET": SecretStr(os.getenv("FEISHU_APP_SECRET", "")),
+            "FEISHU_VERIFICATION_TOKEN": SecretStr(os.getenv("FEISHU_VERIFICATION_TOKEN", "")),
+            "FEISHU_ENCRYPT_KEY": SecretStr(os.getenv("FEISHU_ENCRYPT_KEY", "")),
         }
         for field in LimitConfig.model_fields:
             values[field.upper()] = getattr(settings.limits, field)

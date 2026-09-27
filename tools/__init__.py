@@ -36,6 +36,21 @@ _PTC_READ_PREFIXES = {
     "scheduled_task": ("list_",),
 }
 
+# Platform tools stay in the legacy ``main`` group during the migration, but
+# are tagged here so neutral runtime callers can opt into only the tools their
+# adapter can actually execute.  An empty capability set deliberately means
+# "legacy mode" and keeps ACP, scheduled tasks, and existing QQ callers
+# behavior-compatible.
+_MODULE_REQUIRED_CAPABILITIES: dict[str, frozenset[str]] = {
+    "adapter": frozenset({"qq:message"}),
+    "milky_file": frozenset({"qq:file"}),
+    "milky_friend": frozenset({"qq:friend"}),
+    "milky_group": frozenset({"qq:group"}),
+    "milky_message": frozenset({"qq:message"}),
+    "milky_system": frozenset({"qq:system"}),
+}
+_BROAD_QQ_CAPABILITIES = frozenset({"qq", "platform:qq", "qq:tools"})
+
 _TOOL_MODULE_GROUPS = {
     "adapter": "main",
     "milky_file": "main",
@@ -74,12 +89,12 @@ _TOOL_MODULE_GROUPS = {
 
 def _discover_tools() -> tuple[
     dict[str, list[BaseTool]],
-    dict[str, dict[str, str]],
+    dict[str, dict[str, object]],
 ]:
     """扫描 tools 包，收集所有被 @tool 装饰的函数。"""
     tools_dir = Path(__file__).parent
     grouped_tools: dict[str, list[BaseTool]] = {group: [] for group in _ALL_TOOL_GROUPS}
-    tool_metadata: dict[str, dict[str, str]] = {}
+    tool_metadata: dict[str, dict[str, object]] = {}
 
     for mod_info in pkgutil.iter_modules([str(tools_dir)]):
         if mod_info.name in _EXCLUDED_MODULES:
@@ -89,7 +104,12 @@ def _discover_tools() -> tuple[
         group = _TOOL_MODULE_GROUPS.get(mod_info.name, "main")
         grouped_tools[group].extend(found)
         for tool_obj in found:
-            tool_metadata[tool_obj.name] = {"module": mod_info.name, "group": group}
+            tool_metadata[tool_obj.name] = {
+                "module": mod_info.name,
+                "group": group,
+                "platform": "qq" if mod_info.name in _MODULE_REQUIRED_CAPABILITIES else None,
+                "required_capabilities": _MODULE_REQUIRED_CAPABILITIES.get(mod_info.name, frozenset()),
+            }
 
     return grouped_tools, tool_metadata
 
@@ -121,6 +141,48 @@ class ModuleTools:
     def ptc_tools(self):
         """Return one-shot, read-only tools exposed only through PTC."""
         return [tool for tool in self.subagent_tools["main"] if self._uses_ptc(tool)]
+
+    def _capability_allows(self, tool: BaseTool, capabilities: frozenset[str]) -> bool:
+        """Return whether a tool is available to an explicit adapter context.
+
+        Common tools have no required capabilities and remain available to all
+        platforms.  Platform tools declare a capability at module discovery
+        time.  Broad QQ capabilities are useful for the legacy QQ adapter,
+        while a scoped capability (for example ``qq:message``) exposes only
+        that tool family.
+        """
+
+        if not capabilities:
+            return True
+        metadata = self.tool_metadata.get(getattr(tool, "name", ""), {})
+        module = str(metadata.get("module", ""))
+        required = metadata.get(
+            "required_capabilities",
+            _MODULE_REQUIRED_CAPABILITIES.get(module, frozenset()),
+        )
+        if not isinstance(required, (set, frozenset, tuple, list)):
+            required = frozenset()
+        required = frozenset(str(item) for item in required)
+        if not required:
+            return True
+        platform = metadata.get("platform") or ("qq" if module in _MODULE_REQUIRED_CAPABILITIES else None)
+        if _BROAD_QQ_CAPABILITIES & capabilities and platform == "qq":
+            return True
+        return bool(required & capabilities)
+
+    def _filtered_main_tools(self, capabilities: frozenset[str]) -> list[BaseTool]:
+        return [tool for tool in self.subagent_tools["main"] if self._capability_allows(tool, capabilities)]
+
+    def direct_tools_for(self, capabilities: frozenset[str]) -> list[BaseTool]:
+        """Return direct tools visible in an explicit capability context."""
+
+        main_tools = self._filtered_main_tools(capabilities)
+        return [tool for tool in main_tools if not self._uses_ptc(tool)] + self.mcp_tools
+
+    def ptc_tools_for(self, capabilities: frozenset[str]) -> list[BaseTool]:
+        """Return PTC tools visible in an explicit capability context."""
+
+        return [tool for tool in self._filtered_main_tools(capabilities) if self._uses_ptc(tool)]
 
     @property
     def direct_tools(self):

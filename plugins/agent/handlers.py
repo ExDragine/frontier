@@ -4,6 +4,7 @@ import asyncio
 import os
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -12,6 +13,17 @@ from nonebot import get_bot, get_driver, logger, on_message, on_notice
 from nonebot.adapters.milky.event import GroupDisbandEvent, MessageEvent
 from nonebot_plugin_apscheduler import scheduler
 
+from utils.agent_orchestration import ConversationOrchestrator, TurnStatus
+from utils.agent_protocol import (
+    AgentRequest,
+    AgentResponse,
+    ConversationRef,
+    DeliveryReceipt,
+    DeliveryStatus,
+    GateDecision,
+    MessageRef,
+    Participant,
+)
 from utils.agents import (
     FrontierCognitive,
     ProgressEvent,
@@ -25,6 +37,7 @@ from utils.agents.message_envelope import (
     serialize_agent_payload,
 )
 from utils.agents.message_envelope import content_for_persisted_images as _remove_attached_image_placeholders
+from utils.agents.neutral_core import FrontierAgentCore
 from utils.agents.runtime_gateway import AgentRuntimeRequest, FrontierAgentRuntime
 from utils.agents.sessions import HistoryBoundary, SessionKey, TurnLease, session_manager
 from utils.alconna import UniMessage
@@ -42,6 +55,7 @@ from utils.message import (
     send_messages,
 )
 
+from .adapters import QqDelivery, QqHistoryStore, QqMessageAdapter, QqReplyPolicy, QqToolProvider
 from .attachments import cleanup_staged_message_files, extract_message_files, stage_message_files
 from .chat_context import build_chat_context
 from .gateway import message_gateway
@@ -93,15 +107,50 @@ class AgentRequestContext:
     audio: list[bytes] = field(default_factory=list)
     recent_images: list[bytes] = field(default_factory=list)
     attachments: list[dict[str, object]] = field(default_factory=list)
+    current_attachments: list[dict[str, object]] = field(default_factory=list)
+    recent_attachments: list[dict[str, object]] = field(default_factory=list)
     user_nickname: str | None = None
     user_card: str | None = None
     reply_to: dict[str, object] | None = None
+    reply_seq: int | None = None
     direct_mention: bool = False
     message_id: int | None = None
 
 
+def _qq_runtime_conversation(context: AgentRequestContext) -> ConversationRef:
+    """Build the neutral conversation identity at the QQ adapter boundary."""
+
+    return QqMessageAdapter(getattr(context.event, "self_id", "")).conversation(
+        group_id=context.group_id,
+        user_id=context.user_id,
+    )
+
+
+def _qq_runtime_principal(context: AgentRequestContext) -> Participant:
+    """Build the neutral sender identity while retaining QQ role metadata."""
+
+    return QqMessageAdapter.participant(
+        user_id=context.user_id,
+        user_name=context.user_name,
+        role=_group_member_role(context.event),
+    )
+
+
 def _agent_workspace_key(user_id: str, group_id: int | None) -> str:
     return conversation_workspace_key(user_id, group_id)
+
+
+def _qq_reply_ref(context: AgentRequestContext, conversation: ConversationRef) -> MessageRef | None:
+    """Build an opaque reply reference without exposing the legacy payload."""
+
+    message_id = None
+    if isinstance(context.reply_to, dict):
+        message_id = context.reply_to.get("message_id")
+    if message_id is None:
+        message_id = context.reply_seq
+    if message_id is None:
+        return None
+    return MessageRef(platform="qq", conversation=conversation, message_id=str(message_id))
 
 
 def _agent_memory_dir(user_id: str, group_id: int | None) -> Path:
@@ -207,6 +256,273 @@ async def _settle_session(lease: TurnLease | None, **kwargs) -> None:
         logger.warning("会话状态结算失败: {}", type(exc).__name__)
 
 
+def _qq_text_canary_eligible(context: AgentRequestContext, session_turn: TurnLease | None) -> bool:
+    """Return whether this event is safe to send through the text canary.
+
+    The canary is intentionally narrower than the normal Agent path. Current
+    downloaded media, staged files, fully resolved quotes, hydrated recent
+    media, and an active session lease use the neutral message contract. A
+    session-enabled request without a lease remains on the legacy path.
+    """
+
+    if not EnvConfig.QQ_TEXT_CANARY_ENABLED:
+        return False
+    if session_turn is None and EnvConfig.SESSIONS.enabled and context.message_id is not None:
+        return False
+    # A reply sequence without its immutable snapshot means quote resolution
+    # failed after the gateway. Keep the old path so it can preserve the
+    # existing fallback and persistence behavior.
+    if context.reply_seq is not None and context.reply_to is None:
+        return False
+    if not context.text.strip() and context.reply_to is None and context.reply_seq is None:
+        return False
+    # Persisted current images/audio/video and staged files are represented by
+    # neutral message parts. The recent-media resolver has already downloaded
+    # its bytes and refreshed its file references, so it can use the same
+    # contract; unknown attachment kinds remain on the legacy path.
+    current_attachments = context.current_attachments or context.attachments
+    supported_attachment_kinds = {"image", "audio", "video", "file"}
+    has_unsupported_attachments = any(
+        not isinstance(item, dict)
+        or str(item.get("kind", "")).lower() not in supported_attachment_kinds
+        for item in current_attachments
+    )
+    has_unsupported_recent_attachments = any(
+        not isinstance(item, dict)
+        or str(item.get("kind", "")).lower() not in supported_attachment_kinds
+        for item in context.recent_attachments
+    )
+    return not has_unsupported_attachments and not has_unsupported_recent_attachments
+
+
+class _QqTextCanaryCore:
+    """Sanitize the neutral response before the QQ delivery port sends it."""
+
+    def __init__(self, core: FrontierAgentCore) -> None:
+        self._core = core
+
+    async def run(self, request: AgentRequest, *, tools=()) -> AgentResponse:
+        response = await self._core.run(request, tools=tools)
+        sanitized = await sanitize_outgoing_text(response.text)
+        sanitized_text = sanitized or ""
+        if sanitized_text == response.text:
+            return response
+        return AgentResponse(
+            text=sanitized_text,
+            artifacts=response.artifacts,
+            status=response.status,
+            should_reply=response.should_reply,
+            run_id=response.run_id,
+            usage=response.usage,
+        )
+
+
+class _QqCanaryDelivery(QqDelivery):
+    """Keep the canary's artifact conversion explicit and bounded."""
+
+    async def send(self, target: ConversationRef, response: AgentResponse) -> DeliveryReceipt:
+        if not response.text.strip() and not response.artifacts:
+            return DeliveryReceipt(DeliveryStatus.FAILED, errors=("empty_response",))
+        return await super().send(target, response)
+
+
+async def _send_qq_canary_artifacts(_target: ConversationRef, artifacts) -> DeliveryResult:
+    """Convert neutral media to QQ messages without exposing UniMessage upstream."""
+
+    from utils.alconna import UniMessage
+
+    messages = []
+    for artifact in artifacts:
+        if artifact.kind == "image":
+            messages.append(UniMessage.image(raw=artifact.data))
+        elif artifact.kind == "audio":
+            messages.append(UniMessage.audio(raw=artifact.data))
+        elif artifact.kind == "video":
+            messages.append(UniMessage.video(raw=artifact.data))
+        elif artifact.kind == "file":
+            messages.append(
+                UniMessage.file(
+                    raw=artifact.data,
+                    mimetype=artifact.mime_type,
+                    name=artifact.name or "file.bin",
+                )
+            )
+        else:
+            return DeliveryResult(attempted=1, errors=("text_canary_artifact",))
+    return await send_artifacts(messages)
+
+
+async def _qq_reply_id_for_context(context: AgentRequestContext) -> int | None:
+    """Reuse the legacy delayed-group reply heuristic for canary sends."""
+
+    if context.group_id is None or time.time() * 1000 - context.msg_time < 10_000:
+        return None
+    count_intervening = getattr(messages_db, "count_intervening_group_messages", None)
+    if not callable(count_intervening):
+        return None
+    intervening_messages = await count_intervening(
+        group_id=context.group_id,
+        bot_user_id=int(context.event.self_id),
+        user_id=int(context.user_id),
+        after_time=context.msg_time,
+        after_message_id=context.message_id,
+    )
+    return context.event_id if intervening_messages >= 5 else None
+
+
+async def _send_qq_canary_notice(context: AgentRequestContext, text: str) -> bool:
+    """Send one bounded canary failure notice without rerunning the Agent."""
+
+    try:
+        reply_id = await _qq_reply_id_for_context(context)
+        delivery = await send_messages(
+            context.group_id,
+            reply_id,
+            {"messages": [AIMessage(content=text)]},
+        )
+    except Exception as exc:
+        logger.warning("QQ 文本 canary 错误提示发送失败: {}", type(exc).__name__)
+        return False
+    return delivery.sent > 0
+
+
+async def _settle_qq_canary_session(lease: TurnLease | None, outcome) -> None:
+    """Settle a session lease after the neutral orchestrator owns delivery."""
+
+    if lease is None:
+        return
+    if outcome.status == TurnStatus.SILENT:
+        await _settle_session(lease, silent=True)
+        return
+    receipt = outcome.receipt
+    if receipt is None or receipt.status != DeliveryStatus.DELIVERED:
+        return
+    message_id = None
+    if receipt.message_refs:
+        try:
+            # QqDelivery emits artifact receipts before the final text
+            # receipt. The text message is the session history boundary.
+            message_id = int(receipt.message_refs[-1].message_id)
+        except (TypeError, ValueError):
+            message_id = None
+    await _settle_session(
+        lease,
+        delivered=True,
+        delivered_at=int(time.time() * 1000),
+        message_id=message_id,
+        content=outcome.response.text if outcome.response is not None else "",
+    )
+
+
+async def _run_qq_text_canary(
+    context: AgentRequestContext,
+    history_messages: list[dict[str, Any]],
+    session_turn: TurnLease | None = None,
+) -> tuple[bool, bool]:
+    """Run the opt-in neutral path.
+
+    The tuple is ``(handled, result)``.  ``handled=False`` is reserved for
+    history/gate failures that happen before Agent Core runs.  Once Core has
+    started, every outcome is considered handled to prevent duplicate tool
+    side effects or QQ messages on a legacy retry.
+    """
+
+    adapter = QqMessageAdapter(getattr(context.event, "self_id", ""))
+    conversation = adapter.conversation(group_id=context.group_id, user_id=context.user_id)
+    message = adapter.text_message(
+        message_id=context.event_id,
+        group_id=context.group_id,
+        user_id=context.user_id,
+        user_name=context.user_name,
+        text=context.text,
+        created_at=datetime.fromtimestamp(context.msg_time / 1000, tz=UTC),
+        role=_group_member_role(context.event),
+        mentions_agent=context.direct_mention,
+        images=context.images,
+        audio=context.audio,
+        videos=context.videos,
+        attachments=context.current_attachments or context.attachments,
+        recent_images=context.recent_images,
+        recent_attachments=context.recent_attachments,
+        reply_to=_qq_reply_ref(context, conversation),
+        quoted_payload=context.reply_to,
+        quoted_images=context.quoted_images,
+    )
+
+    async def load_history(_query):
+        # The gateway has already prepared the bounded, pre-current history.
+        # Reusing that snapshot avoids a second database query and preserves
+        # the existing before-time semantics during the canary.
+        return history_messages
+
+    async def allow_gateway_result(_message, _history):
+        return GateDecision(True, reason="legacy_gateway_passed")
+
+    async def send_text(_target: ConversationRef, text: str):
+        reply_id = await _qq_reply_id_for_context(context)
+        return await send_messages(
+            context.group_id,
+            reply_id,
+            {"messages": [AIMessage(content=text)]},
+        )
+
+    outcome = await ConversationOrchestrator(
+        _QqTextCanaryCore(FrontierAgentCore(FrontierAgentRuntime(cognitive=f_cognitive)))
+    ).handle(
+        message,
+        policy=QqReplyPolicy(allow_gateway_result),
+        history=QqHistoryStore(database=messages_db, loader=load_history),
+        delivery=_QqCanaryDelivery(text_sender=send_text, artifact_sender=_send_qq_canary_artifacts),
+        tools=QqToolProvider(),
+        workspace_key=_agent_workspace_key(context.user_id, context.group_id),
+        capabilities=frozenset({"platform:qq", "qq:tools"}),
+        execution_profile=EnvConfig.AGENT_CAPABILITY,
+        allow_silent_reply=_allows_silent_reply(context),
+        session_turn=session_turn,
+    )
+    if outcome.status in {TurnStatus.DELIVERED, TurnStatus.HISTORY_APPEND_FAILED}:
+        await _settle_qq_canary_session(session_turn, outcome)
+        return True, outcome.receipt is not None and outcome.receipt.status == DeliveryStatus.DELIVERED
+    if outcome.status == TurnStatus.SILENT:
+        await _settle_qq_canary_session(session_turn, outcome)
+        return True, False
+    if outcome.status == TurnStatus.GATED:
+        await _settle_session(session_turn, silent=True)
+        return True, outcome.status == TurnStatus.DELIVERED
+    if outcome.status in {TurnStatus.HISTORY_FAILED, TurnStatus.GATE_FAILED}:
+        # No Agent call or delivery has happened, so the legacy path can still
+        # take over safely.
+        logger.warning("QQ 文本 canary 前置阶段失败，回退旧路径: {}", outcome.error or outcome.status)
+        return False, False
+    if outcome.status == TurnStatus.AGENT_FAILED:
+        # The legacy runtime normally exposes a fixed user-facing error
+        # message.  Deliver it once after the neutral call fails; rerunning the
+        # old graph could duplicate a tool side effect.
+        notice = (
+            outcome.response.text.strip()
+            if outcome.response is not None and outcome.response.text.strip()
+            else "本轮处理失败，请稍后重试。"
+        )
+        return True, await _send_qq_canary_notice(context, notice)
+    if (
+        outcome.status == TurnStatus.DELIVERY_FAILED
+        and outcome.receipt is not None
+        and outcome.receipt.errors == ("text_canary_artifact",)
+    ):
+        # The Agent already ran, so do not fall back and regenerate.  Tell the
+        # user why this deliberately text-only canary did not send the result.
+        notice_sent = await _send_qq_canary_notice(
+            context,
+            "本轮生成了媒体内容，当前 QQ 文本灰度路径暂不支持，请稍后重试。",
+        )
+        return True, notice_sent
+    # Once Agent Core has run, retrying the legacy graph could duplicate tool
+    # side effects or send a second response.  Treat all later failures as
+    # handled, including pre-send artifact rejection.
+    logger.warning("QQ 文本 canary 已进入执行阶段，避免旧路径重试: {}", outcome.error or outcome.status)
+    return True, False
+
+
 async def _process_agent_request(
     context: AgentRequestContext,
     history_messages: list[dict[str, Any]] | None = None,
@@ -250,6 +566,15 @@ async def _execute_agent_request(  # noqa: C901
     history_messages: list[dict[str, Any]] | None = None,
     session_turn: TurnLease | None = None,
 ) -> bool:
+    if _qq_text_canary_eligible(context, session_turn):
+        canary_handled, canary_result = await _run_qq_text_canary(
+            context,
+            list(history_messages or []),
+            session_turn=session_turn,
+        )
+        if canary_handled:
+            return canary_result
+
     messages = build_chat_context(
         payload=build_agent_message_payload(
             timestamp_ms=context.msg_time,
@@ -295,6 +620,14 @@ async def _execute_agent_request(  # noqa: C901
             access_profile="frontier",
             enable_acp_subagents=True,
             session_turn=session_turn,
+            # The QQ path still uses the legacy runtime gateway, but declares
+            # its neutral identity and platform capability set now.  This
+            # enables capability-filtered tool snapshots without changing the
+            # existing message, session, or delivery flow.
+            conversation=_qq_runtime_conversation(context),
+            principal=_qq_runtime_principal(context),
+            capabilities=frozenset({"platform:qq", "qq:tools"}),
+            workspace_key=_agent_workspace_key(context.user_id, context.group_id),
         ),
         progress_reporter=_chat_progress_reporter(context.group_id),
     )
@@ -338,13 +671,20 @@ async def _execute_agent_request(  # noqa: C901
         response = {**response, "messages": [*response_messages[:-1], AIMessage(content=sanitized_response or "")]}
     reply_id = None
     if context.group_id is not None and time.time() * 1000 - context.msg_time >= 10_000:
-        intervening_messages = await messages_db.count_intervening_group_messages(
-            group_id=context.group_id,
-            bot_user_id=int(context.event.self_id),
-            user_id=int(context.user_id),
-            after_time=context.msg_time,
-            after_message_id=context.message_id,
-        )
+        count_intervening = getattr(messages_db, "count_intervening_group_messages", None)
+        if callable(count_intervening):
+            intervening_messages = await count_intervening(
+                group_id=context.group_id,
+                bot_user_id=int(context.event.self_id),
+                user_id=int(context.user_id),
+                after_time=context.msg_time,
+                after_message_id=context.message_id,
+            )
+        else:
+            # Minimal injected databases used by adapters/tests may not expose
+            # the optional quote heuristic.  Omitting a reply target is safe;
+            # the full MessageDatabase keeps the existing behavior.
+            intervening_messages = 0
         if intervening_messages >= 5:
             reply_id = context.event_id
     delivery = await send_messages(context.group_id, reply_id, response)
@@ -759,7 +1099,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     ]
 
     try:
-        attachment_refs = [
+        current_attachment_refs = [
             dict(
                 build_agent_attachment_payload(
                     kind=attachment.kind,
@@ -770,7 +1110,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             )
             for attachment in persisted_attachments
         ]
-        attachment_refs.extend(
+        current_attachment_refs.extend(
             dict(
                 build_agent_attachment_payload(
                     kind="file",
@@ -782,12 +1122,15 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             # The path remains readable for this turn even when indexing failed.
             for staged_file in staged_files
         )
-        known_attachment_paths = {str(attachment.get("path", "")) for attachment in attachment_refs}
-        attachment_refs.extend(
-            attachment
-            for attachment in recent_attachments
-            if str(attachment.get("path", "")) not in known_attachment_paths
-        )
+        known_attachment_paths = {str(attachment.get("path", "")) for attachment in current_attachment_refs}
+        attachment_refs = [
+            *current_attachment_refs,
+            *(
+                attachment
+                for attachment in recent_attachments
+                if str(attachment.get("path", "")) not in known_attachment_paths
+            ),
+        ]
         if recent_attachments:
             agent_text = f"{agent_text}\n[以上附件来自用户刚才发送的历史消息]".strip()
         context = AgentRequestContext(
@@ -806,9 +1149,12 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             audio=audio,
             videos=videos,
             attachments=attachment_refs,
+            current_attachments=current_attachment_refs,
+            recent_attachments=recent_attachments,
             # Persist and reuse the post-download snapshot so quoted media
             # semantics stay identical when this event becomes history.
             reply_to=resolved_reply_payload,
+            reply_seq=reply_seq,
             direct_mention=direct_mention,
             message_id=message_id,
         )

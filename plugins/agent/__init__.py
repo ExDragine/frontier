@@ -8,3 +8,7 @@ if globals().get("__plugin__") is not None:
     require("plugins.acp")
 
     from . import handlers as handlers
+
+    # The Feishu adapter is intentionally not registered here.  Its protocol
+    # and transport files remain a documented reference for a future host;
+    # the QQ plugin must not mount a second platform implicitly.
