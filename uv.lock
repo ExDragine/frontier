@@ -805,6 +805,9 @@ content-check = [
     { name = "torchao" },
     { name = "transformers" },
 ]
+decision = [
+    { name = "laya" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -835,6 +838,7 @@ requires-dist = [
     { name = "langchain-google-genai" },
     { name = "langchain-openai" },
     { name = "langchain-quickjs" },
+    { name = "laya", marker = "extra == 'decision'", specifier = ">=0.3.20,<0.4" },
     { name = "markdown-it-py" },
     { name = "nb-cli" },
     { name = "nonebot-adapter-milky", specifier = ">=1.3.0" },
@@ -852,7 +856,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'content-check'" },
     { name = "websockets" },
 ]
-provides-extras = ["content-check"]
+provides-extras = ["content-check", "decision"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1612,6 +1616,23 @@ dependencies = [
 sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/f4/b7/74d0992a461eacad8106e5dcfd7677d7640b5ff4e12ea545856467004f4f/langsmith-0.12.2.tar.gz", hash = "sha256:ff369ba4390e0969dbb109e838281404ae637e76ef73b347336bae05b4f87331" }
 wheels = [
     { url = "https://mirrors.cloud.tencent.com/pypi/packages/0a/e1/5c751a0f1a14de49f19a2ebc0f5dfadfaf04a07f245c5f749ec31f263715/langsmith-0.12.2-py3-none-any.whl", hash = "sha256:ca2b6386cf452cf8edebf27c9c476503c18bad895e7ad566578393fa0ba7fea2" },
+]
+
+[[package]]
+name = "laya"
+version = "0.3.20"
+source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }
+dependencies = [
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "safetensors" },
+    { name = "torch", version = "2.14.0", source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }, marker = "sys_platform == 'darwin'" },
+    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "transformers" },
+]
+sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/31/82/0964e13e1a67ae4ac2824c3115470d31cd149a065d971a5dec6e4049ca23/laya-0.3.20.tar.gz", hash = "sha256:692de1346cf0239bb7bbcffdf0cfbd538c24834f8bc61e9b60f4106465c033c9" }
+wheels = [
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/34/0c/80982f9ad6f52ca9cb146cfc00fac79e7b7f4388f00f4197575a3170be48/laya-0.3.20-py3-none-any.whl", hash = "sha256:6039e802fa5effb8dd492061cd7ad39a43087beadc4a4fa4a649614e77eb83d4" },
 ]
 
 [[package]]

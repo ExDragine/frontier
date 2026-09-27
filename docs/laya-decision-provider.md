@@ -7,6 +7,8 @@
 - **HTTP 服务**：设置 `base_url`，请求兼容 Laya/Jev 的 `/v1/systemone` 接口。
 
 项目默认不依赖 Laya，也不会在 import 阶段加载 torch、transformers 或模型权重。
+本地模式安装可选依赖组：`uv sync --extra decision`；HTTP 模式只需要配置
+`base_url`，可以不安装本地模型依赖。
 
 ## 最小示例
 
@@ -34,7 +36,7 @@ provider = LayaDecisionProvider(
 仓库提供了脱敏的合成门控样例。运行本地 Laya 评估：
 
 ```bash
-uv run --locked --extra content-check --with laya \
+uv run --locked --extra decision \
   python scripts/evaluate_reply_gate.py --model multilingual
 ```
 

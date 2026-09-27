@@ -35,6 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 content-check = ["accelerate", "torch", "torchao", "transformers"]
+decision = ["laya>=0.3.20,<0.4"]
 
 [tool.uv.sources]
 torch = [
