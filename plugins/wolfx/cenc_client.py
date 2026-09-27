@@ -5,10 +5,10 @@ import json
 import random
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from nonebot import logger
-from websockets.asyncio.client import connect
+from websockets.asyncio.client import ClientConnection, connect
 
 CENC_WEBSOCKET_URL = "wss://ws-api.wolfx.jp/cenc_eew"
 CENC_QUERY_COMMAND = "query_cenceew"
@@ -17,6 +17,29 @@ CENC_RECEIVE_TIMEOUT_SECONDS = 90.0
 CENC_RECONNECT_INITIAL_SECONDS = 1.0
 CENC_RECONNECT_MAX_SECONDS = 60.0
 CENC_STABLE_CONNECTION_SECONDS = 30.0
+
+
+class _ClosedRecvAssembler:
+    """No-op queue used when websockets closes before ``connection_made``.
+
+    websockets initializes ``ClientConnection.recv_messages`` in
+    ``connection_made`` but unconditionally closes it from ``connection_lost``.
+    A TCP reset during the handshake can therefore raise a secondary
+    AttributeError in the event-loop callback.  The connection is terminal in
+    this state, so a no-op ``close`` is sufficient for the library's cleanup.
+    """
+
+    def close(self) -> None:
+        return None
+
+
+class _SafeClientConnection(ClientConnection):
+    """Guard the websockets pre-handshake connection-lost edge case."""
+
+    def connection_lost(self, exc: Exception | None) -> None:
+        if not hasattr(self, "recv_messages"):
+            self.recv_messages = cast(Any, _ClosedRecvAssembler())
+        super().connection_lost(exc)
 
 
 class CencEventHandler(Protocol):
@@ -85,15 +108,17 @@ class CencWebSocketService:
         while True:
             connected_at: float | None = None
             try:
-                async with self._connector(
-                    CENC_WEBSOCKET_URL,
-                    open_timeout=10,
-                    close_timeout=5,
-                    ping_interval=20,
-                    ping_timeout=20,
-                    max_size=64 * 1024,
-                    max_queue=16,
-                ) as websocket:
+                connector_options: dict[str, Any] = {
+                    "open_timeout": 10,
+                    "close_timeout": 5,
+                    "ping_interval": 20,
+                    "ping_timeout": 20,
+                    "max_size": 64 * 1024,
+                    "max_queue": 16,
+                }
+                if self._connector is connect:
+                    connector_options["create_connection"] = _SafeClientConnection
+                async with self._connector(CENC_WEBSOCKET_URL, **connector_options) as websocket:
                     connected_at = time.monotonic()
                     self._connected = True
                     self._last_error = None
