@@ -202,6 +202,9 @@ def test_database_diagnostics_reports_pragmas_counts_indexes_and_fts(tmp_path: P
     assert diagnostics["tables"]["message"]["row_count"] == 0
     assert "ix_message_group_time" in diagnostics["tables"]["message"]["indexes"]
     assert diagnostics["fts"]["message_fts"]["exists"] is True
+    assert diagnostics["fts"]["message_fts"]["schema_version"] == db_module.MESSAGE_FTS_SCHEMA_VERSION
+    assert diagnostics["fts"]["message_fts"]["schema_matches"] is True
+    assert diagnostics["fts"]["message_fts"]["integrity_ok"] is True
 
 
 def test_run_database_maintenance_reports_optimize_and_checkpoint(tmp_path: Path, monkeypatch):
@@ -211,7 +214,88 @@ def test_run_database_maintenance_reports_optimize_and_checkpoint(tmp_path: Path
     result = db_module.run_database_maintenance(database.engine, checkpoint=True)
 
     assert result["optimized"] is True
+    assert result["fts_optimized"] is True
+    assert result["fts_integrity_ok"] is True
+    assert result["fts_rebuilt"] is False
     assert "wal_checkpoint" in result
+
+
+def test_check_message_fts_repairs_a_missing_external_content_index(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
+    database = MessageDatabase()
+
+    if not db_module.sqlite_supports_fts5(database.engine):
+        pytest.skip("SQLite runtime does not support FTS5")
+
+    with database.engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE message_fts")
+
+    before = db_module.check_message_fts(database.engine)
+    assert before["exists"] is False
+    assert before["repaired"] is False
+
+    after = db_module.check_message_fts(database.engine, repair=True)
+    assert after["exists"] is True
+    assert after["schema_matches"] is True
+    assert after["integrity_ok"] is True
+    assert after["repaired"] is True
+
+
+def test_database_maintenance_recreates_missing_external_content_index(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
+    database = MessageDatabase()
+
+    if not db_module.sqlite_supports_fts5(database.engine):
+        pytest.skip("SQLite runtime does not support FTS5")
+
+    with database.engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE message_fts")
+
+    result = db_module.run_database_maintenance(database.engine)
+
+    assert result["fts_rebuilt"] is True
+    assert result["fts_integrity_ok"] is True
+    assert db_module.check_message_fts(database.engine)["integrity_ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_message_search_details_returns_fts_score_and_snippet(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
+    database = MessageDatabase()
+
+    if not db_module.sqlite_supports_fts5(database.engine):
+        pytest.skip("SQLite runtime does not support FTS5")
+
+    await database.insert(1000, 10, 1, 123, "Alice", "user", "Python 搜索结果应该包含摘要")
+
+    results = await database.search_message_details(
+        group_id=123,
+        user_id=1,
+        content_query="Python",
+        limit=10,
+    )
+
+    assert len(results) == 1
+    assert results[0].message.msg_id == 10
+    assert isinstance(results[0].score, float)
+    assert results[0].snippet is not None
+    assert "[Python]" in results[0].snippet
+
+
+@pytest.mark.asyncio
+async def test_message_timeline_keeps_conversation_scope_and_window(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
+    database = MessageDatabase()
+
+    await database.insert(1_000, 10, 1, 123, "Alice", "user", "before")
+    anchor = await database.insert(2_000, 11, 2, 123, "Bob", "user", "anchor")
+    await database.insert(3_000, 12, 3, 123, "Carol", "user", "after")
+    await database.insert(4_000, 13, 4, 999, "Other", "user", "other group")
+    await database.insert(20_000, 14, 5, 123, "Late", "user", "outside window")
+
+    timeline = await database.select_message_timeline(anchor.message_id, window_ms=2_000)
+
+    assert [message.msg_id for message in timeline] == [10, 11, 12]
 
 
 def test_message_fts_initialization_logs_rebuild(tmp_path: Path, monkeypatch, caplog):

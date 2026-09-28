@@ -29,6 +29,9 @@ SQLITE_BUSY_TIMEOUT_MS = 5000
 SQLITE_CACHE_SIZE_KIB = 65536
 SQLITE_MMAP_SIZE_BYTES = 256 * 1024 * 1024
 MESSAGE_FTS_MIN_QUERY_LENGTH = 3
+MESSAGE_FTS_SCHEMA_VERSION = 1
+MESSAGE_FTS_TABLE = "message_fts"
+MESSAGE_FTS_META_TABLE = "frontier_fts_metadata"
 MESSAGE_SOURCE_TYPE_NORMAL = "message"
 MESSAGE_SOURCE_TYPE_FORWARD_NODE = "forward_node"
 _ATTACHMENT_KIND_DIRECTORIES = {
@@ -229,6 +232,85 @@ def _safe_table_count(conn, table_name: str) -> int | None:
     return int(conn.execute(text(f"SELECT count(*) FROM {quoted}")).scalar_one())  # noqa: S608
 
 
+def _message_fts_schema_sql(conn) -> str | None:
+    row = conn.execute(
+        text("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = :table_name LIMIT 1"),
+        {"table_name": MESSAGE_FTS_TABLE},
+    ).first()
+    return str(row[0]) if row and row[0] else None
+
+
+def _message_fts_schema_matches(conn) -> bool:
+    sql = _message_fts_schema_sql(conn)
+    if not sql:
+        return False
+    normalized = " ".join(sql.lower().split()).replace(" = ", "=")
+    return all(
+        marker in normalized
+        for marker in (
+            "using fts5",
+            "content='message'",
+            "content_rowid='id'",
+            "tokenize='trigram'",
+        )
+    )
+
+
+def _ensure_fts_metadata_table(conn) -> None:
+    conn.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS {MESSAGE_FTS_META_TABLE} (
+                name TEXT PRIMARY KEY,
+                version INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """  # noqa: S608
+        )
+    )
+
+
+def _record_message_fts_version(conn) -> None:
+    _ensure_fts_metadata_table(conn)
+    conn.execute(
+        text(
+            f"""
+            INSERT INTO {MESSAGE_FTS_META_TABLE}(name, version, updated_at)
+            VALUES (:name, :version, :updated_at)
+            ON CONFLICT(name) DO UPDATE SET
+                version = excluded.version,
+                updated_at = excluded.updated_at
+            """  # noqa: S608
+        ),
+        {"name": MESSAGE_FTS_TABLE, "version": MESSAGE_FTS_SCHEMA_VERSION, "updated_at": int(time.time())},
+    )
+
+
+def _message_fts_version(conn) -> int | None:
+    if not _table_exists(conn, MESSAGE_FTS_META_TABLE):
+        return None
+    row = conn.execute(
+        text(
+            f"SELECT version FROM {MESSAGE_FTS_META_TABLE} WHERE name = :name LIMIT 1"  # noqa: S608
+        ),
+        {"name": MESSAGE_FTS_TABLE},
+    ).first()
+    return int(row[0]) if row else None
+
+
+def _message_fts_integrity_check_connection(conn) -> tuple[bool, str | None]:
+    if not _table_exists(conn, MESSAGE_FTS_TABLE):
+        return False, "missing"
+    try:
+        conn.execute(  # noqa: S608
+            text(f"INSERT INTO {MESSAGE_FTS_TABLE}({MESSAGE_FTS_TABLE}) VALUES ('integrity-check')")  # noqa: S608
+        )
+    except Exception as exc:
+        logger.warning("FTS5 message index integrity check failed: %s: %s", type(exc).__name__, exc)
+        return False, type(exc).__name__
+    return True, None
+
+
 def get_database_diagnostics(engine: Engine | None = None) -> dict[str, object]:
     engine = engine or get_engine()
     inspector = inspect(engine)
@@ -245,11 +327,23 @@ def get_database_diagnostics(engine: Engine | None = None) -> dict[str, object]:
                 ),
             }
 
-        for fts_table in ["message_fts"]:
+        for fts_table in [MESSAGE_FTS_TABLE]:
+            integrity_ok, integrity_error = _message_fts_integrity_check_connection(conn)
+            schema_version = _message_fts_version(conn)
             fts_diagnostics[fts_table] = {
                 "exists": _table_exists(conn, fts_table),
                 "row_count": _safe_table_count(conn, fts_table),
+                "schema_version": schema_version,
+                "schema_version_matches": schema_version == MESSAGE_FTS_SCHEMA_VERSION,
+                "schema_matches": _message_fts_schema_matches(conn),
+                "integrity_ok": integrity_ok,
+                "integrity_error": integrity_error,
             }
+
+        # The integrity check is an FTS control write even though it changes no
+        # application rows. End that transaction before asking SQLite to
+        # checkpoint the WAL below.
+        conn.commit()
 
         pragmas = {
             name: conn.exec_driver_sql(f"PRAGMA {name}").scalar()
@@ -277,13 +371,57 @@ def get_database_diagnostics(engine: Engine | None = None) -> dict[str, object]:
 
 def run_database_maintenance(engine: Engine | None = None, *, checkpoint: bool = False) -> dict[str, object]:
     engine = engine or get_engine()
+    result: dict[str, object]
     with engine.begin() as conn:
         conn.execute(text("PRAGMA optimize"))
-        result: dict[str, object] = {"optimized": True}
-        if checkpoint:
+        result = {
+            "optimized": True,
+            "fts_optimized": False,
+            "fts_rebuilt": False,
+            "fts_schema_matches": None,
+            "fts_schema_version": None,
+            "fts_integrity_ok": None,
+        }
+        if _table_exists(conn, "message") and not _table_exists(conn, MESSAGE_FTS_TABLE):
+            _ensure_message_fts_connection(conn, force_rebuild=True)
+            result["fts_optimized"] = True
+            result["fts_rebuilt"] = True
+            result["fts_schema_matches"] = True
+            result["fts_schema_version"] = MESSAGE_FTS_SCHEMA_VERSION
+            result["fts_integrity_ok"] = True
+        elif _table_exists(conn, MESSAGE_FTS_TABLE):
+            try:
+                conn.execute(  # noqa: S608
+                    text(f"INSERT INTO {MESSAGE_FTS_TABLE}({MESSAGE_FTS_TABLE}) VALUES ('optimize')")  # noqa: S608
+                )
+                result["fts_optimized"] = True
+            except Exception as exc:
+                logger.warning("FTS5 message index optimize failed: %s: %s", type(exc).__name__, exc)
+                result["fts_optimized"] = False
+                result["fts_optimize_error"] = type(exc).__name__
+            schema_matches = _message_fts_schema_matches(conn)
+            schema_version = _message_fts_version(conn)
+            if schema_version != MESSAGE_FTS_SCHEMA_VERSION:
+                schema_matches = False
+            integrity_ok, integrity_error = _message_fts_integrity_check_connection(conn)
+            if not schema_matches:
+                integrity_ok = False
+                integrity_error = "schema_version_mismatch" if schema_version is not None else "schema_mismatch"
+            result["fts_schema_matches"] = schema_matches
+            result["fts_schema_version"] = schema_version
+            result["fts_integrity_ok"] = integrity_ok
+            if not integrity_ok:
+                _rebuild_message_fts_connection(conn)
+                result["fts_rebuilt"] = True
+                result["fts_integrity_ok"] = True
+                result["fts_integrity_error"] = integrity_error
+            else:
+                result["fts_rebuilt"] = False
+    if checkpoint:
+        with engine.connect() as conn:
             row = conn.exec_driver_sql("PRAGMA wal_checkpoint(PASSIVE)").first()
             result["wal_checkpoint"] = tuple(row) if row is not None else None
-        return result
+    return result
 
 
 def cleanup_task_execution_history(
@@ -357,12 +495,73 @@ def ensure_message_fts(engine: Engine) -> None:
         _ensure_message_fts_connection(conn)
 
 
-def _ensure_message_fts_connection(conn) -> None:
-    table_exists = _table_exists(conn, "message_fts")
+def check_message_fts(engine: Engine | None = None, *, repair: bool = False) -> dict[str, object]:
+    """Check the message FTS schema and optionally rebuild it in one transaction."""
+    engine = engine or get_engine()
+    if not sqlite_supports_fts5(engine):
+        return {
+            "supported": False,
+            "exists": False,
+            "schema_matches": False,
+            "integrity_ok": None,
+            "repaired": False,
+        }
+    with engine.begin() as conn:
+        exists = _table_exists(conn, MESSAGE_FTS_TABLE)
+        schema_matches = _message_fts_schema_matches(conn) if exists else False
+        schema_version = _message_fts_version(conn)
+        schema_version_matches = schema_version == MESSAGE_FTS_SCHEMA_VERSION
+        if not schema_version_matches:
+            schema_matches = False
+        integrity_ok, integrity_error = _message_fts_integrity_check_connection(conn) if schema_matches else (
+            False,
+            "schema_version_mismatch" if exists and schema_version is not None else ("schema_mismatch" if exists else "missing"),
+        )
+        repaired = False
+        if repair and (not schema_matches or not integrity_ok):
+            _rebuild_message_fts_connection(conn)
+            repaired = True
+            exists = True
+            schema_matches = True
+            schema_version = MESSAGE_FTS_SCHEMA_VERSION
+            schema_version_matches = True
+            integrity_ok, integrity_error = _message_fts_integrity_check_connection(conn)
+        return {
+            "supported": True,
+            "exists": exists,
+            "schema_matches": schema_matches,
+            "schema_version": schema_version,
+            "schema_version_matches": schema_version == MESSAGE_FTS_SCHEMA_VERSION,
+            "integrity_ok": integrity_ok,
+            "integrity_error": integrity_error,
+            "repaired": repaired,
+        }
+
+
+def _drop_message_fts_connection(conn) -> None:
+    for trigger in ("message_ai_fts", "message_ad_fts", "message_au_fts"):
+        conn.execute(text(f"DROP TRIGGER IF EXISTS {trigger}"))
+    conn.execute(text(f"DROP TABLE IF EXISTS {MESSAGE_FTS_TABLE}"))
+
+
+def _rebuild_message_fts_connection(conn) -> None:
+    """Recreate the external-content index and repopulate it from ``message``."""
+    if not _table_exists(conn, "message"):
+        return
+    _drop_message_fts_connection(conn)
+    _ensure_message_fts_connection(conn, force_rebuild=True)
+
+
+def _ensure_message_fts_connection(conn, *, force_rebuild: bool = False) -> None:
+    table_exists = _table_exists(conn, MESSAGE_FTS_TABLE)
+    if table_exists and not _message_fts_schema_matches(conn):
+        logger.warning("FTS5 message index schema changed; rebuilding external-content index")
+        _drop_message_fts_connection(conn)
+        table_exists = False
     conn.execute(
         text(
-            """
-            CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
+            f"""
+            CREATE VIRTUAL TABLE IF NOT EXISTS {MESSAGE_FTS_TABLE} USING fts5(
                 content,
                 group_id UNINDEXED,
                 user_id UNINDEXED,
@@ -408,15 +607,18 @@ def _ensure_message_fts_connection(conn) -> None:
             """
         )
     )
-    if not table_exists:
+    if not table_exists or force_rebuild:
         message_count = _safe_table_count(conn, "message") or 0
         started_at = time.monotonic()
         logger.info("FTS5 message index rebuild started: rows=%s", message_count)
-        conn.execute(text("INSERT INTO message_fts(message_fts) VALUES ('rebuild')"))
+        conn.execute(  # noqa: S608
+            text(f"INSERT INTO {MESSAGE_FTS_TABLE}({MESSAGE_FTS_TABLE}) VALUES ('rebuild')")  # noqa: S608
+        )
         elapsed = time.monotonic() - started_at
         logger.info("FTS5 message index rebuild finished: rows=%s elapsed=%.2fs", message_count, elapsed)
     else:
         logger.info("FTS5 message index ready")
+    _record_message_fts_version(conn)
     conn.execute(text("PRAGMA optimize"))
 
 def _fts_query(value: str) -> str:
@@ -460,6 +662,15 @@ class Message(SQLModel, table=True):
     sender_user_id: int | None = None
     bot_user_id: int | None = None
     directly_mentions_bot: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class MessageSearchResult:
+    """A message hit with optional FTS ranking metadata."""
+
+    message: Message
+    score: float | None = None
+    snippet: str | None = None
 
 
 def resolve_message_sender_user_id(message: Message) -> int | None:
@@ -1611,7 +1822,7 @@ class MessageDatabase:
                 is not None
             )
 
-    def _search_messages_fts(
+    def _search_messages_fts_details(
         self,
         session: Session,
         *,
@@ -1627,7 +1838,7 @@ class MessageDatabase:
         limit: int,
         offset: int,
         sort: str,
-    ) -> list[Message]:
+    ) -> list[MessageSearchResult]:
         params: dict[str, object] = {
             "fts_query": _fts_query(content_query),
             "limit": max(1, min(limit, 500)),
@@ -1656,7 +1867,8 @@ class MessageDatabase:
         if sort == "relevance":
             query = text(
                 """
-            SELECT m.id
+            SELECT m.id, bm25(message_fts) AS score,
+                   snippet(message_fts, 0, '[', ']', '…', 12) AS snippet
             FROM message_fts
             JOIN message AS m ON m.id = message_fts.rowid
             WHERE message_fts MATCH :fts_query
@@ -1671,7 +1883,7 @@ class MessageDatabase:
               AND (:start_time IS NULL OR m.time >= :start_time)
               AND (:end_time IS NULL OR m.time <= :end_time)
               AND (:role IS NULL OR m.role = :role)
-            ORDER BY bm25(message_fts), m.time DESC, m.id DESC
+            ORDER BY score, m.time DESC, m.id DESC
             LIMIT :limit
             OFFSET :offset
                 """
@@ -1679,7 +1891,8 @@ class MessageDatabase:
         else:
             query = text(
                 """
-            SELECT m.id
+            SELECT m.id, bm25(message_fts) AS score,
+                   snippet(message_fts, 0, '[', ']', '…', 12) AS snippet
             FROM message_fts
             JOIN message AS m ON m.id = message_fts.rowid
             WHERE message_fts MATCH :fts_query
@@ -1707,7 +1920,18 @@ class MessageDatabase:
 
         messages = session.exec(select(Message).where(col(Message.id).in_(ids))).all()
         messages_by_id = {message.id: message for message in messages}
-        return [messages_by_id[message_id] for message_id in ids if message_id in messages_by_id]
+        return [
+            MessageSearchResult(
+                message=messages_by_id[message_id],
+                score=float(row[1]) if row[1] is not None else None,
+                snippet=str(row[2]) if row[2] is not None else None,
+            )
+            for row, message_id in zip(rows, ids, strict=True)
+            if message_id in messages_by_id
+        ]
+
+    def _search_messages_fts(self, session: Session, **kwargs) -> list[Message]:
+        return [result.message for result in self._search_messages_fts_details(session, **kwargs)]
 
     async def search_messages(  # noqa: C901
         self,
@@ -1728,21 +1952,24 @@ class MessageDatabase:
         def _do():  # noqa: C901
             with Session(self.engine) as session:
                 if self._can_use_fts(content_query):
-                    return self._search_messages_fts(
-                        session,
-                        group_id=group_id,
-                        user_id=user_id,
-                        content_query=content_query or "",
-                        target_user_id=target_user_id,
-                        target_user_name=target_user_name,
-                        msg_id=msg_id,
-                        start_time=start_time,
-                        end_time=end_time,
-                        role=role,
-                        limit=limit,
-                        offset=offset,
-                        sort=sort,
-                    )
+                    try:
+                        return self._search_messages_fts(
+                            session,
+                            group_id=group_id,
+                            user_id=user_id,
+                            content_query=content_query or "",
+                            target_user_id=target_user_id,
+                            target_user_name=target_user_name,
+                            msg_id=msg_id,
+                            start_time=start_time,
+                            end_time=end_time,
+                            role=role,
+                            limit=limit,
+                            offset=offset,
+                            sort=sort,
+                        )
+                    except Exception as exc:
+                        logger.warning("FTS5 message search failed; falling back to LIKE: %s: %s", type(exc).__name__, exc)
 
                 statement = select(Message).where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
                 if group_id is None:
@@ -1779,6 +2006,129 @@ class MessageDatabase:
                     .offset(max(0, min(offset, 5000)))
                 )
                 return session.exec(statement).all()
+
+        return await _run_database(self.engine, _do)
+
+    async def search_message_details(  # noqa: C901
+        self,
+        *,
+        group_id: int | None,
+        user_id: int | None,
+        content_query: str,
+        target_user_id: int | None = None,
+        target_user_name: str | None = None,
+        msg_id: int | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
+        role: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        sort: str = "relevance",
+    ) -> list[MessageSearchResult]:
+        """Search messages while retaining FTS score and a display snippet.
+
+        ``search_messages`` remains the compatibility API returning ``Message``
+        objects. This method is for callers that need ranking metadata without
+        exposing FTS implementation details in the regular message model.
+        """
+        cleaned_query = content_query.strip()
+        if not cleaned_query:
+            return []
+        if group_id is None and user_id is None:
+            return []
+        if group_id is None and target_user_id is not None and target_user_id != user_id:
+            return []
+
+        def _do():
+            with Session(self.engine) as session:
+                if self._can_use_fts(cleaned_query):
+                    try:
+                        return self._search_messages_fts_details(
+                            session,
+                            group_id=group_id,
+                            user_id=user_id,
+                            content_query=cleaned_query,
+                            target_user_id=target_user_id,
+                            target_user_name=target_user_name,
+                            msg_id=msg_id,
+                            start_time=start_time,
+                            end_time=end_time,
+                            role=role,
+                            limit=limit,
+                            offset=offset,
+                            sort=sort,
+                        )
+                    except Exception as exc:
+                        logger.warning("FTS5 message detail search failed; falling back to LIKE: %s: %s", type(exc).__name__, exc)
+                conditions = [Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL]
+                if group_id is None:
+                    conditions.extend((Message.group_id.is_(None), Message.user_id == user_id))
+                else:
+                    conditions.append(Message.group_id == group_id)
+                    if target_user_id is not None:
+                        conditions.append(Message.user_id == target_user_id)
+                conditions.append(col(Message.content).like(self._like_pattern(cleaned_query), escape="\\"))
+                if target_user_name:
+                    conditions.append(
+                        col(Message.user_name).like(self._like_pattern(target_user_name), escape="\\")
+                    )
+                if msg_id is not None:
+                    conditions.append(Message.msg_id == msg_id)
+                if start_time is not None:
+                    conditions.append(Message.time >= start_time)
+                if end_time is not None:
+                    conditions.append(Message.time <= end_time)
+                if role is not None:
+                    conditions.append(Message.role == role)
+                messages = session.exec(
+                    select(Message)
+                    .where(*conditions)
+                    .order_by(desc(Message.time), desc(Message.id))
+                    .limit(max(1, min(limit, 500)))
+                    .offset(max(0, min(offset, 5000)))
+                ).all()
+                return [
+                    MessageSearchResult(message=message, snippet=message.content[:200])
+                    for message in messages
+                ]
+
+        return await _run_database(self.engine, _do)
+
+    async def select_message_timeline(
+        self,
+        message_id: int,
+        *,
+        window_ms: int = 5 * 60 * 1000,
+        limit: int = 100,
+    ) -> list[Message]:
+        """Return the same conversation around a persisted message hit."""
+        bounded_window = max(0, min(window_ms, 24 * 60 * 60 * 1000))
+        bounded_limit = max(1, min(limit, 500))
+
+        def _do():
+            with Session(self.engine) as session:
+                anchor = session.exec(
+                    select(Message)
+                    .where(Message.id == message_id)
+                    .where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                ).first()
+                if anchor is None:
+                    return []
+                conditions = [
+                    Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL,
+                    Message.time >= anchor.time - bounded_window,
+                    Message.time <= anchor.time + bounded_window,
+                ]
+                if anchor.group_id is None:
+                    conditions.extend((Message.group_id.is_(None), Message.user_id == anchor.user_id))
+                else:
+                    conditions.append(Message.group_id == anchor.group_id)
+                return session.exec(
+                    select(Message)
+                    .where(*conditions)
+                    .order_by(Message.time, Message.id)
+                    .limit(bounded_limit)
+                ).all()
 
         return await _run_database(self.engine, _do)
 
