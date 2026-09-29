@@ -77,6 +77,9 @@ class RunUsageCallback(BaseCallbackHandler):
         self._finish_model(run_id, kwargs.get("response"), failed=True)
 
     def on_tool_start(self, serialized, input_str, *, run_id, **kwargs):
+        # The callback protocol supplies the serialized tool and input even
+        # though usage accounting only needs the run identity.
+        del serialized, input_str, kwargs
         with self._lock:
             if run_id not in self._tools:
                 self._tools.add(run_id)

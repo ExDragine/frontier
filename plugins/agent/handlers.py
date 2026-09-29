@@ -6,12 +6,13 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from langchain.messages import AIMessage
 from nonebot import get_bot, get_driver, logger, on_message, on_notice
 from nonebot.adapters.milky.event import GroupDisbandEvent, MessageEvent
 from nonebot_plugin_apscheduler import scheduler
+from pydantic import BaseModel
 
 from utils.agent_orchestration import ConversationOrchestrator, TurnStatus
 from utils.agent_protocol import (
@@ -54,6 +55,7 @@ from utils.message import (
     send_artifacts,
     send_messages,
 )
+from utils.signal_llm import signal_structured
 
 from .adapters import QqDelivery, QqHistoryStore, QqMessageAdapter, QqReplyPolicy, QqToolProvider
 from .attachments import cleanup_staged_message_files, extract_message_files, stage_message_files
@@ -212,17 +214,77 @@ def _remove_structured_reply_marker(text: str, reply_seq: int | None) -> str:
     return text
 
 
-def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
-    """构造会话级进度消费者；群聊静默，私聊保留有限进度提示。"""
+class _GroupProgressIntent(BaseModel):
+    intent: Literal["web", "memory", "work"]
+
+
+_GROUP_PROGRESS_MESSAGES = {
+    "web": "我先查一下相关资料，核对后告诉你。",
+    "memory": "我回看一下前面的信息，整理后回复你。",
+    "work": "我先处理一下，马上给你结果。",
+}
+
+
+async def _group_progress_message(event: ProgressEvent) -> str | None:
+    """Use one cheap Signal call to turn the first progress event into a status."""
+
+    try:
+        result = await asyncio.wait_for(
+            signal_structured(
+                """判断 Agent 当前正在做哪类工作，只返回 JSON。web 表示查询网页、新闻或外部资料；
+memory 表示回忆聊天记录、读取记忆或上下文；work 表示计算、调用业务工具、生成媒体或其他处理。""",
+                f"事件类型：{event.type}\n当前动作：{event.message}",
+                _GroupProgressIntent,
+                temperature=0,
+            ),
+            timeout=2.5,
+        )
+    except Exception as exc:
+        logger.debug("群聊进度 Signal 失败: {}", type(exc).__name__)
+        return None
+    return _GROUP_PROGRESS_MESSAGES.get(result.intent)
+
+
+def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:  # noqa: C901
+    """构造会话级进度消费者；群聊只发一次 Signal 状态，私聊保留有限提示。"""
     spoken_messages: set[str] = set()
     spoken_count = 0
     max_spoken_messages = 2
+    group_signal_started = False
+    group_signal_sent = False
+    group_signal_lock = asyncio.Lock()
+    group_signal_task: asyncio.Task | None = None
+
+    async def send_group_status(event: ProgressEvent) -> None:
+        nonlocal group_signal_sent
+        message = await _group_progress_message(event)
+        if not message:
+            return
+        async with group_signal_lock:
+            if group_signal_sent:
+                return
+            group_signal_sent = True
+            try:
+                await UniMessage.text(message).send()
+            except Exception as exc:
+                group_signal_sent = False
+                logger.debug("群聊进度状态发送失败: {}", type(exc).__name__)
 
     async def reporter(event: ProgressEvent) -> None:
         nonlocal spoken_count
 
-        # 群聊只发送最终回复和媒体工件，避免中间推理叙述刷屏或泄露。
         if group_id is not None:
+            nonlocal group_signal_started, group_signal_task
+            if event.type == "done":
+                if group_signal_task is not None and not group_signal_task.done():
+                    group_signal_task.cancel()
+                return
+            if not group_signal_started and event.type in {"thinking", "tool_call", "subagent_start"}:
+                group_signal_started = True
+                # Signal 与主 Agent 并发执行，不能让状态生成拖慢回复链路。
+                group_signal_task = asyncio.create_task(
+                    send_group_status(event), name="frontier-group-progress-signal"
+                )
             return
 
         if event.type == "assistant_preamble":

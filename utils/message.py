@@ -250,7 +250,12 @@ async def message_extract(  # noqa: C901
                 text_parts.append(f"[XML消息:{service_id}]")
 
             case _:
-                logger.debug(f"未处理的消息类型: {msg_type}")
+                # Milky's forward-compatibility rule requires unknown
+                # incoming segments to survive as text instead of silently
+                # disappearing when a newer protocol adds a segment type.
+                segment_label = str(msg_type or "unknown")
+                text_parts.append(f"[不支持的消息段:{segment_label}]")
+                logger.warning("收到未支持的 Milky 消息段: {}", segment_label)
 
     text = "".join(text_parts) if text_parts else ""
 

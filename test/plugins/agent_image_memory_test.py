@@ -60,7 +60,7 @@ def test_direct_bot_mention_requires_explicit_matching_mention_segment():
 
 
 @pytest.mark.asyncio
-async def test_group_progress_reporter_blocks_all_intermediate_messages(monkeypatch):
+async def test_group_progress_reporter_sends_one_signal_status(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -82,8 +82,11 @@ async def test_group_progress_reporter_blocks_all_intermediate_messages(monkeypa
     async def allow_text(content: str):
         return content
 
+    async def signal_status(_event):
+        return "我先查一下相关资料，核对后告诉你。"
+
     monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
-    monkeypatch.setattr(agent, "sanitize_outgoing_text", allow_text)
+    monkeypatch.setattr(agent, "_group_progress_message", signal_status)
     reporter = agent._chat_progress_reporter(group_id=123)
 
     await reporter(agent.ProgressEvent(type="thinking", message="正在思考…"))
@@ -91,8 +94,9 @@ async def test_group_progress_reporter_blocks_all_intermediate_messages(monkeypa
     await reporter(agent.ProgressEvent(type="subagent_start", message="正在委派…"))
     await reporter(agent.ProgressEvent(type="assistant_preamble", message="我先查一下资料。"))
     await reporter(agent.ProgressEvent(type="assistant_preamble", message="接着核对来源。"))
+    await asyncio.sleep(0)
 
-    assert sent == []
+    assert sent == ["我先查一下相关资料，核对后告诉你。"]
 
 
 @pytest.mark.asyncio

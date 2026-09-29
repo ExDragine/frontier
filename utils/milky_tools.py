@@ -203,7 +203,7 @@ def segments_to_text(segments: list[dict] | None) -> str:
         elif segment_type == "markdown":
             parts.append(str(data.get("content", "")))
         else:
-            parts.append(f"[{segment_type}]")
+            parts.append(f"[不支持的消息段:{segment_type or 'unknown'}]")
     return truncate_text("".join(parts), 120)
 
 

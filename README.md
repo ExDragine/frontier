@@ -2,6 +2,10 @@
 
 Frontier 是一个基于 [NoneBot2](https://nonebot.dev/) 和 Milky 适配器的 AI QQ 聊天机器人。它把 QQ 消息接入 LangGraph/deepagents 驱动的 Deep Agent，支持多模型路由、工具调用、文件系统工作区、图片/视频生成、聊天记录检索、定时任务和 Web 管理面板。
 
+项目维护入口：
+[贡献指南](CONTRIBUTING.md) · [安全策略](SECURITY.md) · [变更记录](CHANGELOG.md)。
+设计文档描述当前边界或历史决策；具体行为以代码和测试为准。
+
 ## 核心架构
 
 ```

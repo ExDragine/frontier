@@ -33,6 +33,19 @@ async def test_markdown_survives_extraction_normalization_and_history_tools():
 
 
 @pytest.mark.asyncio
+async def test_unknown_incoming_segment_is_preserved_as_forward_compatible_text():
+    segments = [{"type": "future_segment", "data": {"value": "opaque"}}]
+
+    text, images, audio, video = await message_module.message_extract(segments)
+    assert text == "[不支持的消息段:future_segment]"
+    assert (images, audio, video) == ([], [], [])
+
+    normalized = await normalize_segments(None, segments)
+    assert normalized.content == "[不支持的消息段:future_segment]"
+    assert "不支持的消息段:future_segment" in format_message({"segments": segments})
+
+
+@pytest.mark.asyncio
 async def test_markdown_wake_word_works_when_adapter_plaintext_is_empty(monkeypatch):
     seen = []
 
