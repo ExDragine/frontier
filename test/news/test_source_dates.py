@@ -45,7 +45,8 @@ async def test_news_rfc_dates_survive_collection_and_unknown_dates_are_counted()
 
 
 @pytest.mark.asyncio
-async def test_exa_mcp_is_used_when_rest_key_is_missing(monkeypatch):
+@pytest.mark.parametrize("dictionary_schema", [False, True])
+async def test_exa_mcp_is_used_when_rest_key_is_missing(monkeypatch, dictionary_schema):
     calls = []
 
     class FakeTool:
@@ -76,6 +77,11 @@ async def test_exa_mcp_is_used_when_rest_key_is_missing(monkeypatch):
                 }
             )
 
+    if dictionary_schema:
+        FakeTool.args_schema = {"type": "object", "properties": {
+            name: {"type": "string"} for name in FakeTool.args_schema.model_fields
+        }}
+
     import sys
     import types
 
@@ -96,6 +102,7 @@ async def test_exa_mcp_is_used_when_rest_key_is_missing(monkeypatch):
     assert articles[0].provider == "exa"
     assert articles[0].published_at == dt.datetime(2026, 9, 18, 12, tzinfo=dt.UTC)
     assert calls[0]["query"] == "news"
+    assert calls[0]["numResults"] == cfg.source_results
     assert calls[0]["startPublishedDate"] == "2026-09-18T01:00:00+00:00"
 
 

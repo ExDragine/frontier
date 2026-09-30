@@ -71,24 +71,25 @@ async def test_rejected_draft_cleared_even_when_budget_exhausted(repo, edition):
 
 
 @pytest.mark.asyncio
-async def test_verification_network_failure_preserves_draft(repo, edition):
-    svc = service(repo, drafts=[payload(2)], verification=[ConnectionError(), payload(2)])
-    with pytest.raises(ConnectionError):
-        await svc.generate_report(edition)
-    assert (await repo.get(edition.report_id))["payload"] is not None
-    assert (await svc.generate_report(edition))["status"] == "ready"
-    assert svc.editor.edit.await_count == 1
+async def test_single_edit_needs_no_remote_verifier(repo, edition):
+    svc = service(repo, drafts=[payload(2)], verification=[TimeoutError()])
+    report = await svc.generate_report(edition)
+    assert report["status"] == "ready"
+    assert report["payload"] == payload(2).model_dump()
+    svc.editor.edit.assert_awaited_once()
+    svc.editor.verify.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_verification_timeout_publishes_evidence_validated_draft(repo, edition):
-    svc = service(repo, drafts=[payload(2)], verification=[TimeoutError()])
-
-    report = await svc.generate_report(edition)
-
-    assert report["status"] == "degraded"
-    assert report["payload"] == payload(2).model_dump()
-    assert svc.editor.edit.await_count == 1
+async def test_edit_timeout_preserves_evidence_for_retry(repo, edition):
+    svc = service(repo, drafts=[TimeoutError(), payload(2)])
+    with pytest.raises(TimeoutError):
+        await svc.generate_report(edition)
+    row = await repo.get(edition.report_id)
+    assert row["status"] == "failed"
+    assert row["payload"] is None
+    assert (await svc.generate_report(edition))["status"] == "ready"
+    svc.sources.collect.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -221,3 +222,18 @@ async def test_insufficient_collection_reports_safe_diagnostics_without_editing(
         await svc.generate_report(edition)
     svc.editor.edit.assert_not_awaited()
     assert (await repo.get(edition.report_id))["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_editor_receives_configured_story_target(monkeypatch, edition):
+    import json
+
+    from plugins.news.editor import NewsEditor
+
+    editor = NewsEditor(NewsConfig(target_stories=14))
+    call = AsyncMock(return_value=payload(2))
+    monkeypatch.setattr(editor, "call", call)
+    await editor.edit(edition, [article(str(i)) for i in range(2)])
+    data = json.loads(call.call_args.args[2])
+    assert data["target_stories"] == 14
+    assert len(data["articles"]) == 2

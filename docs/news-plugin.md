@@ -13,9 +13,11 @@ If sending succeeds but recording the receipt fails, the delivery remains in-fli
 ## Recovery and retention
 Search results are merged and deduplicated before deciding whether to consult the next provider, up to target_stories. Each provider/query makes at most two attempts on retryable failures.
 
-max_generation_attempts (default 3) bounds editorial/verification attempts per generation invocation, including validation of a recovered draft. Content rejection clears the draft and permits re-editing; a transport failure preserves the draft for the next invocation. The overall generation_timeout still bounds the entire operation. Generation checkpoints retain the original lease deadline.
+The normal path uses one model call to edit the collected evidence, with an explicit target_stories goal (default 14). Local checks validate article references, exact quotes, duplicates and minimum count; there is no second model verification call. These checks do not prove every summary claim is supported. max_generation_attempts (default 3) bounds retries for invalid output, including validation of a recovered draft. Content rejection clears the draft and permits re-editing; a transport failure preserves evidence and any saved draft for the next invocation. The overall generation_timeout still bounds the entire operation. Generation checkpoints retain the original lease deadline.
 
 Before generation, retention_days (default 30) removes inactive archives and their delivery rows after that many days without updates. Active generation/delivery leases and recently updated deliveries are protected. Images and text show the archived edition time in Beijing time.
+
+Ready and degraded editions are reused within the same scheduled slot to avoid duplicate delivery. Updating the editor does not regenerate an already archived edition. `/news preview` uses a separate preview archive without sending to subscribed groups; previews are also reused within the same slot.
 
 ## Operator commands
 /news latest

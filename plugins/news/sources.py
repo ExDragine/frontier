@@ -115,7 +115,8 @@ def _mcp_result_items(value):  # noqa: C901
 
 def _mcp_tool_arguments(tool, query, edition, source_results):
     """Build arguments compatible with both Exa MCP schema spellings."""
-    fields = getattr(getattr(tool, "args_schema", None), "model_fields", {})
+    schema = getattr(tool, "args_schema", None)
+    fields = schema.get("properties", {}) if isinstance(schema, dict) else getattr(schema, "model_fields", {})
     names = set(fields) if fields else {"query"}
     args = {"query": query}
 
