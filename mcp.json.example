@@ -1,6 +1,6 @@
 {
   "exa": {
-    "url": "https://mcp.exa.ai/mcp",
+    "url": "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa",
     "transport": "http",
     "startup_timeout_seconds": 60
   }

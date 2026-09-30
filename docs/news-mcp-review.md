@@ -16,7 +16,7 @@
 
 ## 结论
 
-新闻生产已经独立到 `plugins/news`，Clockwork 会将原任务处理器切换过去并保留既有时间、启停状态和目标群。检索使用 Exa/Tavily REST API，编辑与复核使用独立结构化模型调用，归档使用 `news.db`，不再通过主聊天 Agent 生成新闻。
+新闻生产已经独立到 `plugins/news`，Clockwork 会将原任务处理器切换过去并保留既有时间、启停状态和目标群。检索优先使用配置的 Exa MCP（没有 `EXA_API_KEY` 时也可用），也支持 Exa/Tavily REST API；编辑与复核使用独立结构化模型调用，归档使用 `news.db`，不再通过主聊天 Agent 生成新闻。
 
 但是失败恢复与投递边界还不能认为完成。下面四项已在临时 SQLite 库、合成证据、模拟模型与模拟发送器中复现，未调用真实 QQ 发送或收费搜索／模型接口。
 
@@ -57,7 +57,7 @@ web_search_exa
 web_fetch_exa
 ```
 
-本机相关条目使用 `http`，地址为 `https://mcp.exa.ai/mcp`；对应当前适配器的 `StreamableHttpTransport`。只检查了 Exa 条目和工具发现，没有调用搜索工具，也没有将配置凭据写入输出。
+本机相关条目使用 `http`，地址为 `https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa`；对应当前适配器的 `StreamableHttpTransport`。只检查了 Exa 条目和工具发现，没有调用搜索工具，也没有将配置凭据写入输出。
 
 这能确认检查时当前环境的握手和工具发现可用，不能证明此前的偶发失败已被修复。`utils/mcp.py` 和 `tools/mcp_client.py` 在新闻提交中没有修改；新闻模块改走 REST 也不会修复 Agent 的 MCP 加载。
 

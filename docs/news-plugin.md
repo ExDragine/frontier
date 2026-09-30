@@ -1,9 +1,9 @@
 # News plugin operations
 
-The production path is now: Clockwork -> plugins.news.scheduler -> direct Exa/Tavily search -> evidence-bounded editor -> archive -> render -> per-target delivery.
+The production path is now: Clockwork -> plugins.news.scheduler -> Exa MCP or direct Exa/Tavily search -> evidence-bounded editor -> archive -> render -> per-target delivery.
 
 ## Configuration
-Copy news.toml.example to news.toml when overrides are needed. Without it, the plugin reuses env.toml's daily_news model/provider. Search credentials are environment variables EXA_API_KEY and TAVILY_API_KEY.
+Copy news.toml.example to news.toml when overrides are needed. Without it, the plugin reuses env.toml's daily_news model/provider. Tavily and direct Exa REST search use the `TAVILY_API_KEY` and `EXA_API_KEY` environment variables. When `EXA_API_KEY` is absent, the Exa source automatically uses the configured `mcp.json` `web_search_advanced_exa` or `web_search_exa` tool, so the public Exa MCP endpoint does not need an Exa REST key. The example MCP URL enables the advanced tool so publication dates can be returned. MCP results are normalized into dated evidence before editing; if the MCP service is unavailable, the run fails rather than inventing publication dates.
 
 ## Delivery semantics
 A report is archived before delivery. Each QQ group has its own state. sent is terminal; failed may be retried explicitly; a timed-out/in-flight delivery becomes unknown and is never automatically retried because the platform may already have accepted it.

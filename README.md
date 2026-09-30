@@ -272,9 +272,9 @@ DeepSeek 可分别配置为 `deepseek + chat_completions`、`openai + responses`
 协议统一使用 `api_mode`；不再接受 `use_responses_api`、供应商 `provider` 别名或
 `type = "deepseek_responses"`。名为 `deepseek_responses` 的 profile 仍然可用，其类型为 `openai`。
 绘图尺寸直接填写 `paint_size`，不再转换 `paint_image_size` 和 `paint_aspect_ratio`。
-每日新闻使用独立的 `daily_news_model` / `daily_news_model_provider` 配置，默认通过
-DeepSeek V4 的官方 Responses API 直接调用服务端 `web_search`，不再依赖 Exa MCP。
-如果替换日报模型，该模型目录和 provider 协议也必须声明支持 Responses 原生联网搜索。
+每日新闻使用独立的 `daily_news_model` / `daily_news_model_provider` 配置进行编辑与复核；检索默认使用
+Exa MCP（`mcp.json` 中的 `web_search_advanced_exa` / `web_search_exa`），没有 `EXA_API_KEY` 时也可通过
+公开 MCP 端点运行。也可以配置 `EXA_API_KEY` 或 `TAVILY_API_KEY` 使用对应的 REST 来源。
 
 机器人名称只来自 `.env` 的 `NICKNAME`。数组第一项作为默认显示名称，全部非空项都可
 作为全局唤醒词；某个群在数据库中配置了自定义唤醒词后，以该群的数据库配置为准。
