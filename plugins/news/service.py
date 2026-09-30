@@ -48,12 +48,31 @@ class NewsService:
                 stage = "edit"
                 row = await self.repo.get(edition.report_id)
                 stage = "edit/validate"
-                payload = await self._validated_payload(edition, token, articles, row["payload"])
-                status = "ready" if len(payload.stories) >= self.cfg.target_stories else "degraded"
+                payload, verified = await self._validated_payload(
+                    edition, token, articles, row["payload"]
+                )
+                status = (
+                    "ready"
+                    if verified and len(payload.stories) >= self.cfg.target_stories
+                    else "degraded"
+                )
                 await self.repo.checkpoint(
                     edition.report_id, token, "complete", payload=payload, status=status
                 )
             return await self.repo.get(edition.report_id)
+        except TimeoutError:
+            # A draft is checkpointed before the independent verification call. If
+            # verification outlives the overall generation budget, publish that
+            # evidence-validated draft as degraded instead of losing the edition.
+            row = await self.repo.get(edition.report_id)
+            if stage == "edit/validate" and row and row["payload"]:
+                payload = NewsPayload.model_validate(row["payload"])
+                await self.repo.checkpoint(
+                    edition.report_id, token, "complete", payload=payload, status="degraded"
+                )
+                return await self.repo.get(edition.report_id)
+            await self.repo.fail(edition.report_id, token, f"{stage}:TimeoutError")
+            raise
         except asyncio.CancelledError:
             await asyncio.shield(self.repo.fail(edition.report_id, token, f"{stage}:cancelled"))
             raise
@@ -70,11 +89,17 @@ class NewsService:
                 )
                 validate_evidence(payload, articles)
                 await self.repo.checkpoint(edition.report_id, token, "validate", payload=payload)
-                payload = await self.editor.verify(payload, articles)
-                validate_evidence(payload, articles)
+                try:
+                    payload = await self.editor.verify(payload, articles)
+                    validate_evidence(payload, articles)
+                except TimeoutError:
+                    # Verification is an extra support pass. The draft has already
+                    # passed deterministic evidence checks, so keep it deliverable
+                    # when the verifier's provider is slow or temporarily stuck.
+                    return payload, False
                 if len(payload.stories) < self.cfg.min_stories:
                     raise InsufficientEvidence("too few supported stories")
-                return payload
+                return payload, True
             except (ValueError, InsufficientEvidence):
                 # Content rejection must not permanently pin a bad draft.
                 # Transport errors instead preserve the draft for recovery.

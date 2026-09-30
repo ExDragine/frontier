@@ -81,6 +81,17 @@ async def test_verification_network_failure_preserves_draft(repo, edition):
 
 
 @pytest.mark.asyncio
+async def test_verification_timeout_publishes_evidence_validated_draft(repo, edition):
+    svc = service(repo, drafts=[payload(2)], verification=[TimeoutError()])
+
+    report = await svc.generate_report(edition)
+
+    assert report["status"] == "degraded"
+    assert report["payload"] == payload(2).model_dump()
+    assert svc.editor.edit.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_checkpoint_preserves_long_generation_lease(repo, edition):
     token = await repo.claim(edition, ttl=930)
     before = await repo.get(edition.report_id)
