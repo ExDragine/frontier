@@ -1524,6 +1524,27 @@ class TestCollectProgress:
         assert len(thinking_calls) == 1
 
     @pytest.mark.asyncio
+    async def test_emits_tool_call_start_from_live_message_projection(self):
+        """工具调用参数流应在工具真正执行前触发早期事件。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from utils.agents.progress import collect_progress
+
+        mock_text = MagicMock()
+        mock_text.__aiter__.return_value = _AsyncIter([])
+        mock_msg = MagicMock()
+        mock_msg.text = mock_text
+        mock_msg.tool_calls = _AsyncIter([{"name": "web_search", "args": ""}])
+        mock_msg.tool_calls.__await__ = lambda: asyncio.sleep(0).__await__()
+        reporter = AsyncMock()
+
+        await collect_progress(self._mock_stream(messages=[mock_msg]), reporter)
+
+        early = [call.args[0] for call in reporter.call_args_list if call.args[0].type == "tool_call_start"]
+        assert len(early) == 1
+        assert early[0].detail == {"tool_name": "web_search", "early": True}
+
+    @pytest.mark.asyncio
     async def test_emits_subagent_start(self):
         from unittest.mock import MagicMock
 

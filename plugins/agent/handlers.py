@@ -225,10 +225,25 @@ _GROUP_PROGRESS_MESSAGES = {
 }
 
 
+def _quick_group_progress_message(event: ProgressEvent) -> str | None:
+    """Classify obvious tool events without adding another model round trip."""
+    detail = event.detail or {}
+    tool_name = str(detail.get("tool_name") or "").lower()
+    message = event.message.lower()
+    if any(keyword in f"{tool_name} {message}" for keyword in ("web", "search", "news", "exa", "tavily")):
+        return _GROUP_PROGRESS_MESSAGES["web"]
+    if any(keyword in f"{tool_name} {message}" for keyword in ("memory", "history", "conversation", "recall")):
+        return _GROUP_PROGRESS_MESSAGES["memory"]
+    return None
+
+
 async def _group_progress_message(event: ProgressEvent) -> str | None:
     """Use one cheap Signal call to turn the first progress event into a status."""
 
     try:
+        quick_message = _quick_group_progress_message(event)
+        if quick_message:
+            return quick_message
         result = await asyncio.wait_for(
             signal_structured(
                 """判断 Agent 当前正在做哪类工作，只返回 JSON。web 表示查询网页、新闻或外部资料；
@@ -257,7 +272,10 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:  # noqa: 
 
     async def send_group_status(event: ProgressEvent) -> None:
         nonlocal group_signal_sent
-        message = await _group_progress_message(event)
+        try:
+            message = await asyncio.wait_for(_group_progress_message(event), timeout=0.35)
+        except TimeoutError:
+            message = _GROUP_PROGRESS_MESSAGES["work"]
         if not message:
             return
         async with group_signal_lock:
@@ -270,7 +288,7 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:  # noqa: 
                 group_signal_sent = False
                 logger.debug("群聊进度状态发送失败: {}", type(exc).__name__)
 
-    async def reporter(event: ProgressEvent) -> None:
+    async def reporter(event: ProgressEvent) -> None:  # noqa: C901
         nonlocal spoken_count
 
         if group_id is not None:
@@ -279,9 +297,25 @@ def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:  # noqa: 
                 if group_signal_task is not None and not group_signal_task.done():
                     group_signal_task.cancel()
                 return
-            if not group_signal_started and event.type in {"thinking", "tool_call", "subagent_start"}:
+            if group_signal_sent:
+                return
+            if event.type == "thinking":
+                if not group_signal_started:
+                    group_signal_started = True
+                    # Give the model a short window to reveal a more useful
+                    # tool-call event before falling back to generic wording.
+                    async def delayed_status() -> None:
+                        await asyncio.sleep(0.08)
+                        await send_group_status(event)
+
+                    group_signal_task = asyncio.create_task(
+                        delayed_status(), name="frontier-group-progress-signal"
+                    )
+                return
+            if event.type in {"tool_call_start", "tool_call", "subagent_start"}:
+                if group_signal_task is not None and not group_signal_task.done():
+                    group_signal_task.cancel()
                 group_signal_started = True
-                # Signal 与主 Agent 并发执行，不能让状态生成拖慢回复链路。
                 group_signal_task = asyncio.create_task(
                     send_group_status(event), name="frontier-group-progress-signal"
                 )

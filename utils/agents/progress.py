@@ -17,6 +17,7 @@ class ProgressEvent:
 
     type: Literal[
         "thinking",
+        "tool_call_start",
         "tool_call",
         "tool_result",
         "subagent_start",
@@ -104,31 +105,62 @@ async def collect_progress(stream, reporter: ProgressReporter | None) -> None:  
                     ),
                 )
 
-    async def consume_messages() -> None:
+    async def consume_messages() -> None:  # noqa: C901
         first_message = True
         async for message in stream.messages:
+            current_message = message
             if first_message:
                 await emit_progress(reporter, ProgressEvent(type="thinking", message="正在思考…"))
                 first_message = False
             message_text = ""
             text_buffer = ""
-            async for chunk in message.text:
-                message_text += chunk
-                text_buffer += chunk
-                while "\n\n" in text_buffer:
-                    index = text_buffer.index("\n\n")
-                    paragraph = text_buffer[:index].strip()
-                    text_buffer = text_buffer[index + 2 :]
-                    if paragraph:
-                        await emit_progress(reporter, ProgressEvent(type="text_delta", message=paragraph))
+
+            async def consume_text(stream_message=current_message) -> None:
+                nonlocal message_text, text_buffer
+                async for chunk in stream_message.text:
+                    message_text += chunk
+                    text_buffer += chunk
+                    while "\n\n" in text_buffer:
+                        index = text_buffer.index("\n\n")
+                        paragraph = text_buffer[:index].strip()
+                        text_buffer = text_buffer[index + 2 :]
+                        if paragraph:
+                            await emit_progress(reporter, ProgressEvent(type="text_delta", message=paragraph))
+
+            async def consume_early_tool_call(stream_message=current_message) -> None:
+                tool_call_projection = stream_message.tool_calls
+                if not hasattr(tool_call_projection, "__aiter__"):
+                    return
+                tool_name: str | None = None
+                async for chunk in tool_call_projection:
+                    if isinstance(chunk, dict):
+                        candidate = chunk.get("name")
+                    else:
+                        candidate = getattr(chunk, "name", None)
+                    if isinstance(candidate, str) and candidate:
+                        tool_name = candidate
+                        await emit_progress(
+                            reporter,
+                            ProgressEvent(
+                                type="tool_call_start",
+                                message=tool_message(tool_name),
+                                detail={"tool_name": tool_name, "early": True},
+                            ),
+                        )
+                        return
+
+            # The official v3 API exposes text and tool-call deltas as
+            # independent live projections. Consuming text first would drain
+            # the model call before the first tool-call chunk can be observed.
+            await asyncio.gather(consume_text(), consume_early_tool_call())
 
             # 每个 stream.messages 条目对应一次模型调用。只有带工具调用的
             # AI 文本才是“边做边说”的过程发言；无工具调用的消息是终止回复，
             # 继续交给正常的最终回复链路，避免重复发送。
             try:
-                tool_calls = await message.tool_calls
+                tool_calls = await current_message.tool_calls
             except (AttributeError, TypeError):
-                tool_calls = getattr(getattr(message, "output_message", None), "tool_calls", None)
+                tool_calls = getattr(getattr(current_message, "output_message", None), "tool_calls", None)
             except Exception as exc:
                 logger.debug(f"读取模型消息工具调用失败，跳过过程发言: {type(exc).__name__}: {exc}")
                 tool_calls = None
