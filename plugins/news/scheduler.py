@@ -8,7 +8,6 @@ from zoneinfo import ZoneInfo
 from nonebot import logger
 
 from utils.configs import EnvConfig
-from utils.http_client import get_http_client
 
 from .config import load_news_config
 from .delivery import deliver
@@ -43,8 +42,7 @@ def context():
             update={"model": EnvConfig.DAILY_NEWS_MODEL, "provider": EnvConfig.DAILY_NEWS_MODEL_PROVIDER}
         )
     repo = NewsRepository(Path(os.getenv("FRONTIER_NEWS_DB", "news.db")))
-    client = get_http_client("news-search", timeout=cfg.source_timeout)
-    service = NewsService(repo, configured_sources(client, cfg), NewsEditor(cfg), cfg)
+    service = NewsService(repo, configured_sources(cfg), NewsEditor(cfg), cfg)
     return cfg, repo, service
 
 

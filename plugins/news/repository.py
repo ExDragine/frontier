@@ -104,51 +104,24 @@ class NewsRepository:
 
         return await self._run(claim_report)
 
-    async def checkpoint(
-        self, report_id, token, stage, articles=None, payload=None, status="generating",
-        clear_payload=False,
-    ):
+    async def complete(self, report_id, token, status, articles, payload):
+        """Persist a finished report; fails if the generation lease was lost."""
         now = time.time()
+        evidence = json.dumps(
+            [article.model_dump(mode="json") for article in articles],
+            ensure_ascii=False,
+        )
+        data = json.dumps(payload.model_dump(mode="json"), ensure_ascii=False)
 
         def save(database):
-            row = database.execute(
-                "SELECT evidence,payload,lease_until FROM news_reports "
+            changed = database.execute(
+                "UPDATE news_reports SET stage='complete',status=?,evidence=?,payload=?,"
+                "lease=NULL,lease_until=0,updated_at=?,error=NULL "
                 "WHERE id=? AND lease=? AND lease_until>?",
-                (report_id, token, now),
-            ).fetchone()
-            if not row:
+                (status, evidence, data, now, report_id, token, now),
+            ).rowcount
+            if not changed:
                 raise RuntimeError("news lease lost")
-            evidence = (
-                json.dumps(
-                    [article.model_dump(mode="json") for article in articles],
-                    ensure_ascii=False,
-                )
-                if articles is not None
-                else row["evidence"]
-            )
-            data = (
-                json.dumps(payload.model_dump(mode="json"), ensure_ascii=False)
-                if payload is not None
-                else row["payload"]
-            )
-            done = status in {"ready", "degraded"}
-            if clear_payload:
-                data = None
-            database.execute(
-                "UPDATE news_reports SET stage=?,status=?,evidence=?,payload=?,lease=?,"
-                "lease_until=?,updated_at=?,error=NULL WHERE id=? AND lease=?",
-                (
-                    stage,
-                    status,
-                    evidence,
-                    data,
-                    None if done else token,
-                    0 if done else row["lease_until"],
-                    now,
-                    report_id,
-                    token,
-                ),
-            )
 
         await self._run(save)
 
@@ -170,15 +143,15 @@ class NewsRepository:
             ).rowcount
         )
 
-    async def stage_deliveries(self, report_id, targets, deadline):
+    async def stage_deliveries(self, report_id, targets):
         now = time.time()
 
         def stage(database):
             for target in sorted(set(targets)):
                 database.execute(
                     "INSERT OR IGNORE INTO news_deliveries"
-                    "(report_id,target,deadline,updated_at) VALUES(?,?,?,?)",
-                    (report_id, target, deadline, now),
+                    "(report_id,target,updated_at) VALUES(?,?,?)",
+                    (report_id, target, now),
                 )
 
         await self._run(stage)
@@ -194,69 +167,26 @@ class NewsRepository:
             ]
         )
 
-    async def claim_delivery(self, report_id, target, ttl=60, max_attempts=3):
-        now = time.time()
-        token = uuid.uuid4().hex
-
-        def claim_target(database):
-            database.execute(
-                "UPDATE news_deliveries SET state='unknown',"
-                "error='expired_inflight_send',updated_at=? "
-                "WHERE state='sending' AND lease_until<=?",
-                (now, now),
-            )
-            changed = database.execute(
-                "UPDATE news_deliveries SET state='sending',attempts=attempts+1,"
-                "lease=?,lease_until=?,updated_at=? WHERE report_id=? AND target=? "
-                "AND state IN ('pending','failed') AND next_attempt<=? "
-                "AND deadline>? AND attempts<?",
-                (
-                    token,
-                    now + ttl,
-                    now,
-                    report_id,
-                    target,
-                    now,
-                    now,
-                    max_attempts,
-                ),
-            ).rowcount
-            return token if changed else None
-
-        return await self._run(claim_target)
-
-    async def finish_delivery(
-        self, report_id, target, token, state, receipt=None, error=None, retry_delay=60
-    ):
+    async def mark_delivery(self, report_id, target, state, error=None):
         now = time.time()
         await self._run(
             lambda database: database.execute(
-                "UPDATE news_deliveries SET state=?,receipt=?,error=?,next_attempt=?,"
-                "lease=NULL,lease_until=0,updated_at=? "
-                "WHERE report_id=? AND target=? AND lease=?",
-                (
-                    state,
-                    receipt,
-                    error,
-                    now + retry_delay,
-                    now,
-                    report_id,
-                    target,
-                    token,
-                ),
+                "UPDATE news_deliveries SET state=?,error=?,attempts=attempts+1,updated_at=? "
+                "WHERE report_id=? AND target=?",
+                (state, error, now, report_id, target),
             ).rowcount
         )
 
-    async def retry_failed(self, report_id, targets, deadline):
+    async def retry_failed(self, report_id, targets):
         now = time.time()
 
         def requeue(database):
             requeued = []
             for target in targets:
                 changed = database.execute(
-                    "UPDATE news_deliveries SET state='pending',attempts=0,next_attempt=0,"
-                    "deadline=?,updated_at=? WHERE report_id=? AND target=? AND state='failed'",
-                    (deadline, now, report_id, target),
+                    "UPDATE news_deliveries SET state='pending',updated_at=? "
+                    "WHERE report_id=? AND target=? AND state='failed'",
+                    (now, report_id, target),
                 ).rowcount
                 if changed:
                     requeued.append(target)
@@ -272,8 +202,8 @@ class NewsRepository:
             rows = database.execute(
                 "SELECT id FROM news_reports WHERE updated_at<? AND lease_until<=? "
                 "AND NOT EXISTS (SELECT 1 FROM news_deliveries WHERE report_id=news_reports.id "
-                "AND (updated_at>=? OR (state='sending' AND lease_until>?)))",
-                (cutoff, now, cutoff, now),
+                "AND (updated_at>=? OR state='pending'))",
+                (cutoff, now, cutoff),
             ).fetchall()
             for row in rows:
                 database.execute("DELETE FROM news_deliveries WHERE report_id=?", (row["id"],))

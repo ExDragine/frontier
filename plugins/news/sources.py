@@ -1,10 +1,9 @@
-"""Direct search-provider collection with bounded fallback."""
+"""News collection through the configured public Exa MCP endpoint."""
 
 import asyncio
 import datetime as dt
 import hashlib
 import json
-import os
 import re
 from collections import Counter
 from email.utils import parsedate_to_datetime
@@ -199,97 +198,6 @@ def _mcp_articles(value, *, provider="exa"):
     return output
 
 
-class SearchSource:
-    endpoints = {
-        "exa": "https://api.exa.ai/search",
-        "tavily": "https://api.tavily.com/search",
-    }
-
-    def __init__(self, name, key, client, cfg):
-        self.name = name
-        self.key = key
-        self.client = client
-        self.cfg = cfg
-
-    async def search(self, query, edition):
-        if not self.key:
-            raise SourceError("missing_key")
-        if self.name == "exa":
-            headers = {"x-api-key": self.key}
-            body = {
-                "query": query,
-                "type": "auto",
-                "numResults": self.cfg.source_results,
-                "startPublishedDate": edition.start.isoformat(),
-                "endPublishedDate": edition.scheduled_at.isoformat(),
-                "contents": {"text": True},
-            }
-        else:
-            headers = {"Authorization": f"Bearer {self.key}"}
-            body = {
-                "query": query,
-                "topic": "news",
-                "max_results": self.cfg.source_results,
-                "include_raw_content": True,
-                "start_date": edition.start.date().isoformat(),
-                "end_date": edition.scheduled_at.date().isoformat(),
-            }
-        async with asyncio.timeout(self.cfg.source_timeout):
-            response = await self.client.post(
-                self.endpoints[self.name],
-                headers=headers,
-                json=body,
-                timeout=self.cfg.source_timeout,
-            )
-        if response.status_code >= 400:
-            retryable = response.status_code == 429 or response.status_code >= 500
-            raise SourceError(f"http_{response.status_code}", retryable)
-        data = response.json()
-        results = data.get("results", []) if isinstance(data, dict) else []
-        if not isinstance(results, list):
-            raise SourceError("invalid_results")
-        output = []
-        now = dt.datetime.now(dt.UTC)
-        for item in results[: self.cfg.source_results]:
-            if not isinstance(item, dict):
-                continue
-            try:
-                url = canonical_url(str(item.get("url", "")))
-                title = compact(str(item.get("title", "")))[:300]
-                text = compact(
-                    str(
-                        item.get("text")
-                        or item.get("raw_content")
-                        or item.get("content")
-                        or ""
-                    )
-                )[:6000]
-                fingerprint = hashlib.sha256(
-                    (title + "\n" + text).encode()
-                ).hexdigest()
-                article_id = hashlib.sha256(
-                    (url + fingerprint).encode()
-                ).hexdigest()[:32]
-                output.append(
-                    Article(
-                        article_id=article_id,
-                        url=url,
-                        title=title,
-                        text=text,
-                        source=urlsplit(url).hostname or self.name,
-                        provider=self.name,
-                        published_at=publication_time(
-                            item.get("publishedDate") or item.get("published_date")
-                        ),
-                        fetched_at=now,
-                        fingerprint=fingerprint,
-                    )
-                )
-            except (TypeError, ValueError):
-                continue
-        return output
-
-
 class ExaMcpSource:
     """Use the configured public Exa MCP endpoint when no REST key is set."""
 
@@ -381,12 +289,5 @@ class SourcePool:
         return collected[:40]
 
 
-def configured_sources(client, cfg):
-    sources = []
-    for name in cfg.sources:
-        key = os.getenv(f"{name.upper()}_API_KEY", "")
-        if name == "exa" and not key:
-            sources.append(ExaMcpSource(cfg))
-        else:
-            sources.append(SearchSource(name, key, client, cfg))
-    return SourcePool(sources, cfg)
+def configured_sources(cfg):
+    return SourcePool([ExaMcpSource(cfg)], cfg)
