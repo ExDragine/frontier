@@ -105,6 +105,10 @@ def _artifact_from_mapping(block: Mapping[str, object]) -> AgentArtifact | None:
         return None
     decoded = inline_media_bytes(block)
     raw = bytes(decoded[0]) if decoded and decoded[0] else None
+    if raw is None:
+        raw_value = block.get("raw", block.get("data"))
+        if isinstance(raw_value, (bytes, bytearray)) and raw_value:
+            raw = bytes(raw_value)
     decoded_mime = decoded[1] if decoded else None
     url, path = _mapping_source(block)
     name_value = block.get("name") or block.get("filename")

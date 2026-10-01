@@ -224,6 +224,23 @@ async def test_extract_uni_messages():
 
 
 @pytest.mark.asyncio
+async def test_extract_artifacts_accepts_neutral_tool_mapping_without_sdk_types():
+    response = {
+        "messages": [
+            types.SimpleNamespace(
+                type="tool",
+                name="paint",
+                artifact={"kind": "image", "data": b"image", "mime_type": "image/png"},
+            )
+        ]
+    }
+
+    result = await cognitive_mod.FrontierCognitive.extract_artifacts(response)
+
+    assert result == [AgentArtifact(kind="image", data=b"image", mime_type="image/png")]
+
+
+@pytest.mark.asyncio
 async def test_extract_artifacts_supports_all_native_media_kinds_without_platform_messages():
     import base64
 
