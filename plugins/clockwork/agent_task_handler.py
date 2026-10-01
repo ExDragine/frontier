@@ -6,6 +6,7 @@ from nonebot import get_bot, logger
 from nonebot.adapters.milky.message import MessageSegment
 from nonebot_plugin_alconna import Target, UniMessage
 
+from plugins.agent.adapters.qq import qq_artifact_messages
 from utils.agents import FrontierCognitive
 from utils.agents.message_envelope import build_agent_message_payload, serialize_agent_payload
 from utils.agents.runtime_gateway import AgentRuntimeRequest, FrontierAgentRuntime
@@ -49,7 +50,7 @@ def _require_agent_success(result) -> None:
         raise RuntimeError(message)
 
 
-async def run_agent_task(job_id: str = "", **kwargs) -> TaskRunResult:
+async def run_agent_task(job_id: str = "", **kwargs) -> TaskRunResult:  # noqa: C901
     """执行统一自动任务：跑 Agent，并把最终结果投递到任务目标。"""
     from plugins.clockwork import task_manager
 
@@ -98,8 +99,13 @@ async def run_agent_task(job_id: str = "", **kwargs) -> TaskRunResult:
 
     messages_sent = 0
     if metadata.delivery_mode != "none":
-        for artifact in result.get("uni_messages", []) or []:
-            if isinstance(artifact, UniMessage):
+        artifacts = result.get("artifacts", result.get("uni_messages", [])) or []
+        if artifacts:
+            try:
+                native_messages = qq_artifact_messages(artifacts)
+            except ValueError as exc:
+                raise RuntimeError(f"任务 {job_id} 媒体工件无效: {exc}") from exc
+            for artifact in native_messages:
                 await artifact.send(target=target)
                 messages_sent += 1
 

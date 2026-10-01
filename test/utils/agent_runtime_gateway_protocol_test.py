@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from utils.agent_protocol import ConversationRef, Participant
+from utils.agent_protocol import AgentArtifact, ConversationRef, Participant
 from utils.agents.runtime_gateway import AgentRuntimeRequest, FrontierAgentRuntime
 
 
@@ -127,3 +127,28 @@ async def test_runtime_forwards_platform_tool_overrides():
     )
 
     assert captured["tool_overrides"] == (tool,)
+
+
+@pytest.mark.asyncio
+async def test_runtime_prompt_returns_neutral_artifacts_without_platform_conversion():
+    class Cognitive:
+        async def chat_agent(self, _messages, **kwargs):
+            return {
+                "response": {"messages": [{"content": "done"}]},
+                "artifacts": [
+                    AgentArtifact(
+                        kind="image",
+                        data=b"image",
+                        mime_type="image/png",
+                    )
+                ],
+                "should_reply": True,
+            }
+
+    result = await FrontierAgentRuntime(Cognitive()).prompt(
+        AgentRuntimeRequest(prompt="hello")
+    )
+
+    assert result.text == "done"
+    assert result.artifacts[0].kind == "image"
+    assert result.artifacts[0].data == b"image"

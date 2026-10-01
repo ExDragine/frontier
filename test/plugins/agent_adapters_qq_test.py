@@ -295,6 +295,38 @@ async def test_qq_delivery_accepts_sync_sender_and_mapping_receipts():
 
 
 @pytest.mark.asyncio
+async def test_qq_delivery_converts_neutral_artifacts_at_platform_boundary(monkeypatch):
+    sent = []
+
+    async def capture(messages):
+        sent.extend(messages)
+        return DeliveryReceipt(DeliveryStatus.DELIVERED)
+
+    from utils import message as message_module
+
+    monkeypatch.setattr(message_module, "send_artifacts", capture)
+    receipt = await QqDelivery().send(
+        _group(),
+        AgentResponse(
+            text="",
+            artifacts=(
+                AgentArtifact(kind="image", data=b"image", mime_type="image/png"),
+                AgentArtifact(kind="audio", data=b"", mime_type="audio/ogg", url="https://example.test/a.ogg"),
+                AgentArtifact(kind="video", data=b"", mime_type="video/mp4", path="video.mp4"),
+                AgentArtifact(kind="file", data=b"file", mime_type="text/plain", name="notes.txt"),
+            ),
+        ),
+    )
+
+    assert receipt.status is DeliveryStatus.DELIVERED
+    assert [segment.type for message in sent for segment in message] == ["image", "audio", "video", "file"]
+    assert sent[0][0].raw == b"image"
+    assert sent[1][0].url == "https://example.test/a.ogg"
+    assert sent[2][0].path == "video.mp4"
+    assert sent[3][0].name == "notes.txt"
+
+
+@pytest.mark.asyncio
 async def test_qq_reply_policy_accepts_injected_gate_and_has_conservative_fallback():
     current = InboundMessage(
         message_id="1",

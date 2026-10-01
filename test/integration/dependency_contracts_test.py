@@ -162,7 +162,8 @@ result = asyncio.run(agent.chat_agent(
 assert not result.get("error"), result
 assert result["status"] == "success", result
 assert result["response"]["messages"][-1].content == "contract completed", result
-assert result["uni_messages"][0][0].raw == b"contract-image", result
+assert result["artifacts"][0].kind == "image", result
+assert result["artifacts"][0].data == b"contract-image", result
 workspace_key = conversation_workspace_key("contract", None)
 assert (Path(agent.working_dir) / "memory" / workspace_key / "SOUL.md").is_file()
 '''

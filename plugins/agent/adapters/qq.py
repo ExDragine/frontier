@@ -511,13 +511,59 @@ def _legacy_receipt(target: ConversationRef, result: object) -> DeliveryReceipt:
     return DeliveryReceipt(DeliveryStatus.FAILED, _message_refs(target, result), errors or ("delivery_failed",))
 
 
+def qq_artifact_messages(artifacts: Sequence[AgentArtifact]):
+    """Build native QQ messages from neutral artifacts at the adapter edge."""
+
+    from utils.alconna import UniMessage
+
+    messages = []
+    for artifact in artifacts:
+        source: dict[str, object] = {}
+        if artifact.data:
+            source["raw"] = artifact.data
+        elif artifact.url:
+            source["url"] = artifact.url
+        elif artifact.path:
+            source["path"] = artifact.path
+        else:
+            raise ValueError("empty_artifact")
+
+        media_kwargs = {"mimetype": artifact.mime_type} if artifact.mime_type else {}
+        if artifact.kind == "image":
+            messages.append(UniMessage.image(**source, **media_kwargs))
+        elif artifact.kind == "audio":
+            messages.append(UniMessage.audio(**source, **media_kwargs))
+        elif artifact.kind == "video":
+            messages.append(UniMessage.video(**source, **media_kwargs))
+        elif artifact.kind == "file":
+            kwargs = {**source, **media_kwargs}
+            if artifact.name:
+                kwargs["name"] = artifact.name
+            messages.append(UniMessage.file(**kwargs))
+        else:
+            raise ValueError("unsupported_artifact")
+    return messages
+
+
+async def send_qq_artifacts(_target: ConversationRef, artifacts: Sequence[AgentArtifact]):
+    """Convert neutral artifacts at the QQ boundary and use legacy delivery."""
+
+    from utils.delivery import DeliveryResult
+    from utils.message import send_artifacts
+
+    try:
+        messages = qq_artifact_messages(artifacts)
+    except ValueError as exc:
+        return DeliveryResult(attempted=1, errors=(str(exc),))
+    return await send_artifacts(messages)
+
+
 class QqDelivery:
     """Deliver neutral responses through the existing QQ sender.
 
     ``text_sender`` receives ``(ConversationRef, text)``.  ``artifact_sender``
-    is intentionally injected because the legacy ``send_artifacts`` accepts
-    ``UniMessage`` objects; the canary supplies the QQ-specific conversion
-    policy while the port remains neutral.
+    can be injected by a staged caller.  The default sender performs the
+    neutral ``AgentArtifact`` → ``UniMessage`` conversion at the QQ boundary.
     """
 
     def __init__(
@@ -548,18 +594,14 @@ class QqDelivery:
             return DeliveryReceipt(DeliveryStatus.DELIVERED)
         receipts: list[DeliveryReceipt] = []
         if response.artifacts:
-            if self._artifact_sender is None:
-                receipts.append(
-                    DeliveryReceipt(DeliveryStatus.FAILED, errors=("artifact_sender_required",))
-                )
-            else:
-                try:
-                    result = self._artifact_sender(target, response.artifacts)
-                    if inspect.isawaitable(result):
-                        result = await result
-                    receipts.append(_legacy_receipt(target, result))
-                except Exception as exc:
-                    receipts.append(DeliveryReceipt(DeliveryStatus.FAILED, errors=(type(exc).__name__,)))
+            try:
+                sender = self._artifact_sender or send_qq_artifacts
+                result = sender(target, response.artifacts)
+                if inspect.isawaitable(result):
+                    result = await result
+                receipts.append(_legacy_receipt(target, result))
+            except Exception as exc:
+                receipts.append(DeliveryReceipt(DeliveryStatus.FAILED, errors=(type(exc).__name__,)))
         if response.text.strip():
             try:
                 receipts.append(await self._send_text(target, response.text))
@@ -657,4 +699,6 @@ __all__ = [
     "QqMessageAdapter",
     "QqReplyPolicy",
     "QqToolProvider",
+    "qq_artifact_messages",
+    "send_qq_artifacts",
 ]

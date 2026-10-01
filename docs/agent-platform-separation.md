@@ -205,6 +205,8 @@ class AgentArtifact:
     data: bytes
     mime_type: str
     name: str | None = None
+    url: str | None = None       # optional remote source for URL-backed tools
+    path: str | None = None      # optional local source for path-backed tools
 
 
 @dataclass(frozen=True, slots=True)
@@ -400,7 +402,7 @@ get_bot()
 MessageDatabase
 ```
 
-当前 [`utils/agents/cognitive.py`](../utils/agents/cognitive.py) 中的 `UniMessage` 工件提取应改为产生 `AgentArtifact`，由 QQ/飞书 Delivery 负责转换。
+当前 [`utils/agents/cognitive.py`](../utils/agents/cognitive.py) 中的多媒体工件提取产生 `AgentArtifact`，由 QQ/飞书 Delivery 负责把内联字节、URL 或本地路径转换为平台消息。
 
 ## 8. 工具和能力注册
 

@@ -106,6 +106,15 @@ def test_agent_protocol_import_boundary_is_clean():
     assert not violations, _format_violations(violations)
 
 
+def test_cognitive_media_extraction_does_not_import_platform_message_types():
+    """Media extraction must return AgentArtifact, never construct QQ messages."""
+
+    root = Path(__file__).resolve().parents[2]
+    cognitive = root / "utils" / "agents" / "cognitive.py"
+    violations = _scan_imports(cognitive, root=root)
+    assert not [item for item in violations if "utils.alconna" in item or "UniMessage" in item], violations
+
+
 @pytest.mark.xfail(
     strict=False,
     reason=(

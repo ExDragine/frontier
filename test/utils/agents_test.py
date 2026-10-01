@@ -13,6 +13,7 @@ import pytest
 from langchain_core import exceptions as model_errors
 from PIL import Image
 
+from utils.agent_protocol import AgentArtifact
 from utils.agents import assistant as assistant_mod
 from utils.agents import cognitive as cognitive_mod
 from utils.agents import inputs as inputs_mod
@@ -211,7 +212,43 @@ async def test_extract_uni_messages():
         ]
     }
     result = await cognitive_mod.FrontierCognitive.extract_uni_messages(response)
-    assert result == [media]
+    assert result == [
+        AgentArtifact(
+            kind="image",
+            data=b"",
+            mime_type="image/png",
+            name="image.png",
+            url="https://example.com/image.png",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_extract_artifacts_supports_all_native_media_kinds_without_platform_messages():
+    import base64
+
+    response = {
+        "messages": [
+            types.SimpleNamespace(
+                type="ai",
+                content_blocks=[
+                    {"type": "image", "base64": base64.b64encode(b"image").decode(), "mime_type": "image/png"},
+                    {"type": "audio", "url": "https://example.test/audio.ogg"},
+                    {"type": "video", "url": "https://example.test/video.mp4"},
+                    {"type": "file", "url": "https://example.test/report.txt", "name": "report.txt"},
+                ],
+            )
+        ]
+    }
+
+    result = await cognitive_mod.FrontierCognitive.extract_artifacts(response)
+
+    assert [artifact.kind for artifact in result] == ["image", "audio", "video", "file"]
+    assert result[0].data == b"image"
+    assert result[0].url is None
+    assert result[1].url == "https://example.test/audio.ogg"
+    assert result[3].name == "report.txt"
+    assert all(isinstance(artifact, AgentArtifact) for artifact in result)
 
 
 @pytest.mark.asyncio
