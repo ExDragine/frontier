@@ -134,8 +134,11 @@ def _iter_runtime_artifact_segments(value: object):
 
 def _runtime_artifact(value: object) -> AgentRuntimeMedia | None:
     if isinstance(value, AgentArtifact):
+        kind = _runtime_artifact_kind(value.kind)
+        if kind is None:
+            return None
         return AgentRuntimeMedia(
-            kind=value.kind, data=value.data, mime_type=value.mime_type,
+            kind=kind, data=value.data, mime_type=value.mime_type,
             name=value.name, url=value.url, path=value.path,
         )
     kind = media_block_kind(value) if isinstance(value, Mapping) else None
