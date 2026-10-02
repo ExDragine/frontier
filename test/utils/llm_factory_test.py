@@ -209,7 +209,7 @@ def test_deepseek_responses_routes_through_chat_openai(monkeypatch):
     assert kw["verbosity"] == "low"
     assert kw["profile"]["max_input_tokens"] == 1_000_000
     assert factory.provider_uses_responses_api("deepseek-v4-pro", "deepseek_responses") is True
-    assert factory.model_supports_native_web_search("deepseek-v4-pro", "deepseek_responses") is True
+    assert factory.model_supports_native_web_search("deepseek-v4-pro", "deepseek_responses") is False
     assert factory.provider_is_official_openai("deepseek-v4-pro", "deepseek_responses") is False
     assert (
         factory.provider_official_deepseek_api_mode("deepseek-v4-pro", "deepseek_responses")
