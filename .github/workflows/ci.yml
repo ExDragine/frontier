@@ -41,14 +41,11 @@ jobs:
           utils/delivery.py
           plugins/dashboard/api/settings_routes.py
       - name: Test (including real dependency contracts)
-        env:
-          ALL_PROXY: ""
-          all_proxy: ""
-          HTTP_PROXY: ""
-          http_proxy: ""
-          HTTPS_PROXY: ""
-          https_proxy: ""
-        run: uv run --locked pytest test/ -q
+        run: >-
+          env -u ALL_PROXY -u all_proxy
+          -u HTTP_PROXY -u http_proxy
+          -u HTTPS_PROXY -u https_proxy
+          uv run --locked pytest test/ -q
 
   renderer:
     runs-on: ubuntu-latest
