@@ -638,6 +638,9 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     monkeypatch.setattr(cognitive_mod, "provider_official_deepseek_api_mode", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
+        cognitive_mod, "native_web_search_support", lambda *_args, **_kwargs: (False, "test route")
+    )
+    monkeypatch.setattr(
         cognitive_mod, "filter_messages_for_model_capabilities", inputs_mod.filter_messages_for_model_capabilities
     )
     monkeypatch.setattr(inputs_mod, "model_supports", lambda *_args, **_kwargs: False)
