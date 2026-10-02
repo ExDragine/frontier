@@ -347,7 +347,7 @@ def test_official_deepseek_route_detection_rejects_proxies_and_wrong_models(
     assert factory.provider_official_deepseek_api_mode(model, "candidate") is None
 
 
-def test_deepseek_native_web_search_accepts_official_v1_base_url(monkeypatch):
+def test_deepseek_responses_does_not_advertise_native_web_search(monkeypatch):
     monkeypatch.setattr(
         factory.EnvConfig,
         "LLM_PROVIDERS",
@@ -361,7 +361,38 @@ def test_deepseek_native_web_search_accepts_official_v1_base_url(monkeypatch):
         },
     )
 
-    assert factory.model_supports_native_web_search("deepseek-future-model", "official_deepseek") is True
+    supported, reason = factory.native_web_search_support(
+        "deepseek-future-model",
+        "official_deepseek",
+    )
+
+    assert supported is False
+    assert "DeepSeek Responses ignores" in reason
+    assert factory.model_supports_native_web_search(
+        "deepseek-future-model",
+        "official_deepseek",
+    ) is False
+
+
+def test_responses_proxy_can_explicitly_opt_in_to_native_web_search(monkeypatch):
+    monkeypatch.setattr(
+        factory.EnvConfig,
+        "LLM_PROVIDERS",
+        {
+            "responses_proxy": {
+                "type": "openai",
+                "api_mode": "responses",
+                "base_url": "https://proxy.example.com/v1",
+                "api_key": "sk-test",
+                "native_web_search": True,
+            }
+        },
+    )
+
+    supported, reason = factory.native_web_search_support("model", "responses_proxy")
+
+    assert supported is True
+    assert "explicitly opted in" in reason
 
 
 @pytest.mark.parametrize(

@@ -328,28 +328,46 @@ def provider_official_deepseek_api_mode(model: str, provider: str | None = None)
     return api_mode if official else None
 
 
-def model_supports_native_web_search(model: str, provider: str | None = None) -> bool:
-    """Return whether the route supports provider-hosted web search.
+def native_web_search_support(
+    model: str,
+    provider: str | None = None,
+) -> tuple[bool, str]:
+    """Return whether provider-hosted Responses web search is really available.
 
-    Both DeepSeek's official Responses endpoint and OpenAI's first-party
-    Responses API accept the stable ``{"type": "web_search"}`` tool. Keep
-    compatible proxies opt out by default because sharing the OpenAI adapter
-    does not imply support for OpenAI-hosted tools. A proxy may explicitly opt
-    in with ``native_web_search = true``, but only on the Responses protocol.
+    Responses is only a wire protocol. It does not imply that an OpenAI-compatible
+    endpoint implements OpenAI-hosted built-in tools. Official OpenAI Responses is
+    enabled automatically. Compatible Responses providers must opt in explicitly
+    with ``native_web_search = true`` after their upstream capability is verified.
+
+    DeepSeek's Responses compatibility endpoint currently ignores built-in
+    ``web_search``, so it must not be advertised to the Agent even though it
+    accepts the Responses request shape.
     """
-    if provider_official_deepseek_api_mode(model, provider) == ApiMode.RESPONSES.value:
-        return True
-    if provider_is_official_openai(model, provider) and provider_uses_responses_api(
-        model, provider
-    ):
-        return True
     _, profile = _provider_profile(model, provider)
     provider_type, api_mode = _provider_protocol(model, profile)
+    if api_mode != ApiMode.RESPONSES.value:
+        return False, f"api_mode={api_mode or 'unknown'} is not Responses"
+
+    if provider_official_deepseek_api_mode(model, provider) == ApiMode.RESPONSES.value:
+        return False, "DeepSeek Responses ignores built-in web_search"
+
+    if provider_is_official_openai(model, provider):
+        return True, "official OpenAI Responses web_search"
+
+    if profile.get("native_web_search") is True and provider_type == "openai":
+        return True, "Responses-compatible provider explicitly opted in"
+
     return (
-        profile.get("native_web_search") is True
-        and provider_type == "openai"
-        and api_mode == ApiMode.RESPONSES.value
+        False,
+        "Responses-compatible route has not opted in to provider-hosted web_search; "
+        "set native_web_search=true only if the upstream endpoint implements it",
     )
+
+
+def model_supports_native_web_search(model: str, provider: str | None = None) -> bool:
+    """Backward-compatible boolean wrapper around :func:`native_web_search_support`."""
+    supported, _reason = native_web_search_support(model, provider)
+    return supported
 
 
 def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile | None:
