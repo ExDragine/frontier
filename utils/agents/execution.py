@@ -23,6 +23,7 @@ from langchain_core.exceptions import (
     ModelTimeoutError,
 )
 
+from utils.agent_protocol import AgentArtifact
 from utils.configs import EnvConfig
 
 from .progress import ProgressEvent, emit_progress
@@ -40,6 +41,9 @@ _TERMINAL_PROGRESS_TIMEOUT_SECONDS = 1.0
 class AgentResult(TypedDict):
     response: dict[str, Any]
     total_time: float
+    artifacts: list[AgentArtifact]
+    # Compatibility alias retained for ACP/scheduled integrations while they
+    # migrate to the neutral ``artifacts`` field.
     uni_messages: list[Any]
     should_reply: bool
     status: AgentStatus
@@ -143,6 +147,7 @@ def managed_agent_turn(function):
                 result = {
                     "response": {"messages": [AIMessage(agent_error_message(exc))]},
                     "total_time": time.monotonic() - started,
+                    "artifacts": [],
                     "uni_messages": [],
                     "should_reply": True,
                     "status": status,

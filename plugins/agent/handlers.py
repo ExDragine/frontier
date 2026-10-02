@@ -57,7 +57,14 @@ from utils.message import (
 )
 from utils.signal_llm import signal_structured
 
-from .adapters import QqDelivery, QqHistoryStore, QqMessageAdapter, QqReplyPolicy, QqToolProvider
+from .adapters import (
+    QqDelivery,
+    QqHistoryStore,
+    QqMessageAdapter,
+    QqReplyPolicy,
+    QqToolProvider,
+    send_qq_artifacts,
+)
 from .attachments import cleanup_staged_message_files, extract_message_files, stage_message_files
 from .chat_context import build_chat_context
 from .gateway import message_gateway
@@ -425,27 +432,41 @@ class _QqCanaryDelivery(QqDelivery):
 async def _send_qq_canary_artifacts(_target: ConversationRef, artifacts) -> DeliveryResult:
     """Convert neutral media to QQ messages without exposing UniMessage upstream."""
 
-    from utils.alconna import UniMessage
-
     messages = []
     for artifact in artifacts:
+        source = {}
+        if getattr(artifact, "data", None):
+            source["raw"] = artifact.data
+        elif getattr(artifact, "url", None):
+            source["url"] = artifact.url
+        elif getattr(artifact, "path", None):
+            source["path"] = artifact.path
+        else:
+            return DeliveryResult(attempted=1, errors=("text_canary_artifact",))
+        media_kwargs = {"mimetype": artifact.mime_type} if getattr(artifact, "mime_type", None) else {}
+        name = getattr(artifact, "name", None)
         if artifact.kind == "image":
-            messages.append(UniMessage.image(raw=artifact.data))
+            messages.append(UniMessage.image(**source, **media_kwargs))
         elif artifact.kind == "audio":
-            messages.append(UniMessage.audio(raw=artifact.data))
+            messages.append(UniMessage.audio(**source, **media_kwargs))
         elif artifact.kind == "video":
-            messages.append(UniMessage.video(raw=artifact.data))
+            messages.append(UniMessage.video(**source, **media_kwargs))
         elif artifact.kind == "file":
-            messages.append(
-                UniMessage.file(
-                    raw=artifact.data,
-                    mimetype=artifact.mime_type,
-                    name=artifact.name or "file.bin",
-                )
-            )
+            kwargs = {**source, **media_kwargs}
+            if name:
+                kwargs["name"] = name
+            messages.append(UniMessage.file(**kwargs))
         else:
             return DeliveryResult(attempted=1, errors=("text_canary_artifact",))
     return await send_artifacts(messages)
+
+
+async def _send_agent_artifacts(context: AgentRequestContext, artifacts) -> DeliveryResult:
+    """Deliver neutral artifacts while accepting pre-migration test/caller values."""
+
+    if artifacts and all(hasattr(artifact, "kind") for artifact in artifacts):
+        return await send_qq_artifacts(_qq_runtime_conversation(context), artifacts)
+    return await send_artifacts(artifacts)
 
 
 async def _qq_reply_id_for_context(context: AgentRequestContext) -> int | None:
@@ -745,11 +766,11 @@ async def _execute_agent_request(  # noqa: C901
     if result.get("error"):
         logger.warning("Agent returned error response: {}", result["error"])
 
-    artifacts = result.get("uni_messages", [])
+    artifacts = result.get("artifacts", result.get("uni_messages", []))
     artifact_delivery = DeliveryResult()
     if artifacts:
         logger.info("📤 发送 {} 个媒体工件", len(artifacts))
-        artifact_delivery = await send_artifacts(artifacts)
+        artifact_delivery = await _send_agent_artifacts(context, artifacts)
         if artifact_delivery.errors:
             logger.warning("媒体工件未完整送达: {}", artifact_delivery.errors)
 

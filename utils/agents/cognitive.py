@@ -5,6 +5,7 @@ import hashlib
 import os
 import time
 import uuid
+from collections.abc import Iterable, Mapping
 from typing import Any, Literal, NotRequired, cast
 
 from deepagents import FilesystemPermission, MemoryMiddleware, create_deep_agent
@@ -30,7 +31,7 @@ from nonebot import logger
 import tools as _tool_registry
 from plugins.acp.subagent import build_acp_subagents
 from utils.agent_context import FrontierRuntimeContext
-from utils.agent_protocol import ConversationRef, Participant
+from utils.agent_protocol import AgentArtifact, ConversationRef, Participant
 from utils.configs import EnvConfig
 from utils.harness_profiles import register_frontier_harness_profiles
 from utils.llm_factory import (
@@ -42,7 +43,7 @@ from utils.llm_factory import (
     provider_official_deepseek_api_mode,
     provider_uses_responses_api,
 )
-from utils.media import inline_media_bytes, media_block_kind
+from utils.media import detect_mime_type, inline_media_bytes, media_block_kind
 
 from .capture import detect_browser_capture_intent
 from .code_interpreter import CodeInterpreterMiddleware
@@ -68,27 +69,163 @@ from .workspace import SKILLS_BACKEND_PATH, build_agent_backend
 register_frontier_harness_profiles()
 
 
-def _native_media_message(block):
-    from utils.alconna import UniMessage
+_ARTIFACT_KINDS = frozenset({"image", "audio", "video", "file"})
 
-    kind = media_block_kind(block)
+
+def _normalized_artifact_kind(value: object) -> str | None:
+    kind = str(value or "").lower()
+    if kind == "voice":
+        # Legacy QQ segments use ``voice`` for a playable audio segment.  Keep
+        # the neutral boundary to the four media kinds in AgentArtifact.
+        kind = "audio"
+    return kind if kind in _ARTIFACT_KINDS else None
+
+
+def _mapping_source(block: Mapping[str, object]) -> tuple[str | None, str | None]:
+    """Read a neutral URL/path source from standard or legacy content blocks."""
+
+    block_type = str(block.get("type") or "")
+    value: object = block.get("url")
+    if value is None and block_type in {"image_url", "audio_url", "video_url", "input_image"}:
+        value = block.get(block_type)
+    if isinstance(value, Mapping):
+        value = value.get("url")
+    url = str(value) if isinstance(value, str) and value else None
+    path_value = block.get("path")
+    path = str(path_value) if isinstance(path_value, str) and path_value else None
+    if url and url.startswith("data:"):
+        # inline_media_bytes() owns data-URL decoding; do not expose the
+        # encoded payload as a remote source to the platform adapter.
+        url = None
+    return url, path
+
+
+def _artifact_from_mapping(block: Mapping[str, object]) -> AgentArtifact | None:
+    kind = media_block_kind(block) or _normalized_artifact_kind(block.get("kind"))
     if kind is None:
         return None
     decoded = inline_media_bytes(block)
-    raw = decoded[0] if decoded else None
-    url = block.get("url") if isinstance(block, dict) else None
-    if isinstance(url, str) and url.startswith("data:"):
-        url = None
-    if kind == "image" and (raw is not None or url):
-        return UniMessage.image(raw=raw) if raw is not None else UniMessage.image(url=url)
-    if kind == "audio" and (raw is not None or url):
-        return UniMessage.audio(raw=raw) if raw is not None else UniMessage.audio(url=url)
-    if kind == "video" and (raw is not None or url):
-        return UniMessage.video(raw=raw) if raw is not None else UniMessage.video(url=url)
-    if kind == "file" and url:
-        file_name = str(block.get("name") or block.get("filename") or "attachment")
-        return UniMessage.file(url=url, name=file_name)
+    raw = bytes(decoded[0]) if decoded and decoded[0] else None
+    if raw is None:
+        raw_value = block.get("raw", block.get("data"))
+        if isinstance(raw_value, (bytes, bytearray)) and raw_value:
+            raw = bytes(raw_value)
+    decoded_mime = decoded[1] if decoded else None
+    url, path = _mapping_source(block)
+    name_value = block.get("name") or block.get("filename")
+    name = str(name_value) if isinstance(name_value, str) and name_value else None
+    declared_mime = block.get("mime_type") or block.get("mimetype") or decoded_mime
+    if raw is None and not url and not path:
+        return None
+    mime_type = detect_mime_type(
+        raw or b"",
+        kind=kind,
+        declared_mime=str(declared_mime) if declared_mime else None,
+        file_name=name,
+    )
+    return AgentArtifact(
+        kind=kind,
+        data=raw or b"",
+        mime_type=mime_type,
+        name=name,
+        url=url,
+        path=path,
+    )
+
+
+def _native_media_artifact(block: object) -> AgentArtifact | None:
+    """Convert a model-native media block into a platform-neutral artifact."""
+
+    if not isinstance(block, Mapping):
+        return None
+    return _artifact_from_mapping(block)
+
+
+def _native_media_message(block: object) -> AgentArtifact | None:
+    """Compatibility name for callers that used the old native-media helper."""
+
+    return _native_media_artifact(block)
+
+
+def _segment_value(segment: object, *names: str) -> object:
+    if isinstance(segment, Mapping):
+        for name in names:
+            if name in segment:
+                return segment[name]
+        return None
+    for name in names:
+        value = getattr(segment, name, None)
+        if value is not None:
+            return value
     return None
+
+
+def _artifact_from_segment(segment: object) -> AgentArtifact | None:
+    """Convert a tool artifact segment without importing a platform SDK."""
+
+    if isinstance(segment, AgentArtifact):
+        return segment
+    if isinstance(segment, Mapping):
+        return _artifact_from_mapping(segment)
+
+    kind = _normalized_artifact_kind(_segment_value(segment, "kind", "type"))
+    if kind is None:
+        return None
+    raw_value = _segment_value(segment, "raw", "data")
+    raw = bytes(raw_value) if isinstance(raw_value, (bytes, bytearray)) and raw_value else None
+    url_value = _segment_value(segment, "url")
+    path_value = _segment_value(segment, "path")
+    url = str(url_value) if isinstance(url_value, str) and url_value else None
+    path = str(path_value) if isinstance(path_value, str) and path_value else None
+    if url and url.startswith("data:"):
+        decoded = inline_media_bytes({"type": kind, "url": url})
+        if decoded and decoded[0]:
+            raw = bytes(decoded[0])
+            url = None
+            declared_mime = decoded[1]
+        else:
+            declared_mime = None
+    else:
+        declared_mime = _segment_value(segment, "mime_type", "mimetype")
+    name_value = _segment_value(segment, "name", "filename")
+    name = str(name_value) if isinstance(name_value, str) and name_value else None
+    if raw is None and not url and not path:
+        return None
+    mime_type = detect_mime_type(
+        raw or b"",
+        kind=kind,
+        declared_mime=str(declared_mime) if declared_mime else None,
+        file_name=name,
+    )
+    return AgentArtifact(
+        kind=kind,
+        data=raw or b"",
+        mime_type=mime_type,
+        name=name,
+        url=url,
+        path=path,
+    )
+
+
+def _iter_tool_artifact_segments(value: object):
+    """Yield media-like values from a legacy segment-shaped artifact.
+
+    This intentionally relies only on the small segment protocol (``type``,
+    ``raw``, ``url`` and friends), so a tool's historical segment container
+    can cross the boundary without making Agent Core import or return a
+    platform type.
+    """
+
+    if isinstance(value, AgentArtifact) or isinstance(value, Mapping):
+        yield value
+        return
+    if isinstance(value, (str, bytes, bytearray)):
+        return
+    if isinstance(value, Iterable):
+        for item in value:
+            yield from _iter_tool_artifact_segments(item)
+        return
+    yield value
 
 
 class FrontierAgentState(DeepAgentState):
@@ -330,23 +467,35 @@ class FrontierCognitive:
         return compose_system_prompt(group_id)
 
     @staticmethod
-    async def extract_uni_messages(response):
-        """Extract QQ artifacts plus native multimodal blocks from the final AI message."""
+    async def extract_artifacts(response) -> list[AgentArtifact]:
+        """Extract neutral tool artifacts and native media blocks.
+
+        Tool implementations still return their historical segment containers
+        during the migration.  They are inspected structurally here and
+        converted into :class:`AgentArtifact`; no platform message object is
+        created or returned by Agent Core.
+        """
         if not response or not isinstance(response, dict):
-            logger.warning("⚠️ extract_uni_messages: response 为空或不是字典类型")
+            logger.warning("⚠️ extract_artifacts: response 为空或不是字典类型")
             return []
 
-        uni_messages = []
+        artifacts: list[AgentArtifact] = []
         response_messages = response.get("messages", [])
         for message in response_messages:
-            if getattr(message, "type", None) == "tool" and getattr(message, "artifact", None) is not None:
-                tool_name = getattr(message, "name", "unknown")
-                from utils.alconna import UniMessage
-
-                if not isinstance(message.artifact, UniMessage):
-                    continue
-                uni_messages.append(message.artifact)
-                logger.info(f"📤 提取 UniMessage: {tool_name} - 类型: {type(message.artifact)}")
+            if getattr(message, "type", None) != "tool":
+                continue
+            raw_artifact = getattr(message, "artifact", None)
+            if raw_artifact is None:
+                continue
+            tool_name = getattr(message, "name", "unknown")
+            extracted = [
+                artifact
+                for segment in _iter_tool_artifact_segments(raw_artifact)
+                if (artifact := _artifact_from_segment(segment)) is not None
+            ]
+            if extracted:
+                artifacts.extend(extracted)
+                logger.info("📤 提取中性媒体工件: {} - 数量: {}", tool_name, len(extracted))
 
         ai_messages = [message for message in response_messages if getattr(message, "type", None) == "ai"]
         if ai_messages:
@@ -354,15 +503,21 @@ class FrontierCognitive:
             blocks = getattr(final_ai, "content_blocks", None)
             if blocks is None:
                 blocks = getattr(final_ai, "content", None)
-            if isinstance(blocks, list):
-                uni_messages.extend(
-                    media_message
+            if isinstance(blocks, (list, tuple)):
+                artifacts.extend(
+                    artifact
                     for block in blocks
-                    if (media_message := _native_media_message(block))
+                    if (artifact := _native_media_message(block)) is not None
                 )
 
-        logger.info(f"📨 总共提取到 {len(uni_messages)} 个 UniMessage")
-        return uni_messages
+        logger.info("📨 总共提取到 {} 个中性媒体工件", len(artifacts))
+        return artifacts
+
+    @staticmethod
+    async def extract_uni_messages(response) -> list[AgentArtifact]:
+        """Compatibility spelling for the pre-separation extraction entry point."""
+
+        return await FrontierCognitive.extract_artifacts(response)
 
     @managed_agent_turn
     async def chat_agent(  # noqa: C901
@@ -653,7 +808,7 @@ class FrontierCognitive:
                 if getattr(message, "id", None) not in prior_ids
             ]}
         should_reply = not bool(response.get("suppress_reply", False))
-        uni_messages = (
+        artifacts = (
             await FrontierCognitive.extract_uni_messages(response) if should_reply else []
         )
         ai_messages = [message for message in response.get("messages", []) if getattr(message, "type", None) == "ai"]
@@ -672,7 +827,7 @@ class FrontierCognitive:
             session_turn.valid_result = bool(ai_messages) or not should_reply
             session_turn.entry.state = "awaiting_delivery"
             session_turn.media_turn = bool(
-                image_inputs or audio_inputs or video_inputs or uni_messages
+                image_inputs or audio_inputs or video_inputs or artifacts
                 or messages_contain_media([*messages, *response.get("messages", [])])
             )
 
@@ -686,6 +841,10 @@ class FrontierCognitive:
         return {
             "response": {"messages": [final_response]},
             "total_time": processing_time,
-            "uni_messages": uni_messages,
+            # ``uni_messages`` remains as a short-lived compatibility alias
+            # for ACP/scheduled callers.  Both fields contain only neutral
+            # AgentArtifact values; QQ conversion happens in QqDelivery.
+            "artifacts": artifacts,
+            "uni_messages": artifacts,
             "should_reply": should_reply,
         }

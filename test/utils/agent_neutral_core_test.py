@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from utils.agent_protocol import (
+    AgentArtifact,
     AgentRequest,
     AudioPart,
     ChatMessage,
@@ -163,6 +164,37 @@ async def test_bridge_accepts_legacy_mapping_runtime_result(agent_request):
     assert response.run_id == "run-mapping"
     assert response.artifacts[0].kind == "image"
     assert response.artifacts[0].data == b"legacy-image"
+
+
+@pytest.mark.asyncio
+async def test_bridge_keeps_neutral_artifact_sources_without_sdk_objects(agent_request):
+    class MappingRuntime:
+        async def run(self, runtime_agent_request):
+            return {
+                "response": {"messages": [{"content": "mapping reply"}]},
+                "artifacts": [
+                    AgentArtifact(
+                        kind="file",
+                        data=b"",
+                        mime_type="text/plain",
+                        name="notes.txt",
+                        url="https://example.test/notes.txt",
+                    )
+                ],
+                "status": "success",
+            }
+
+    response = await FrontierAgentCore(MappingRuntime()).run(agent_request)
+
+    assert response.artifacts == (
+        AgentArtifact(
+            kind="file",
+            data=b"",
+            mime_type="text/plain",
+            name="notes.txt",
+            url="https://example.test/notes.txt",
+        ),
+    )
 
 
 @pytest.mark.asyncio

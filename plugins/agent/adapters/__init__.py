@@ -21,7 +21,15 @@ from .feishu_webhook import (
     FeishuWebhookHost,
     FeishuWebhookResult,
 )
-from .qq import QqDelivery, QqHistoryStore, QqMessageAdapter, QqReplyPolicy, QqToolProvider
+from .qq import (
+    QqDelivery,
+    QqHistoryStore,
+    QqMessageAdapter,
+    QqReplyPolicy,
+    QqToolProvider,
+    qq_artifact_messages,
+    send_qq_artifacts,
+)
 
 __all__ = [
     "FEISHU_TEXT_CAPABILITIES",
@@ -43,4 +51,6 @@ __all__ = [
     "QqMessageAdapter",
     "QqReplyPolicy",
     "QqToolProvider",
+    "qq_artifact_messages",
+    "send_qq_artifacts",
 ]
