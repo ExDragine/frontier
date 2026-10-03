@@ -1,5 +1,5 @@
 # ruff: noqa: S101
-"""Verify the legacy QQ handler declares the neutral platform boundary."""
+"""Verify the production QQ handler declares the neutral platform boundary."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ async def test_qq_handler_passes_neutral_identity_and_capabilities(monkeypatch):
             return {"response": {"messages": []}, "uni_messages": [], "should_reply": False}
 
     monkeypatch.setattr(agent, "FrontierAgentRuntime", Runtime)
-    monkeypatch.setattr(agent, "build_chat_context", lambda **_kwargs: [{"role": "user", "content": "hello"}])
+    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", False)
     monkeypatch.setattr(agent, "f_cognitive", object())
 
     context = _context(agent)
@@ -63,4 +63,3 @@ async def test_qq_handler_passes_neutral_identity_and_capabilities(monkeypatch):
     # Keep the old workspace key so existing QQ memory and session files are
     # not moved merely by declaring the neutral identity.
     assert request.workspace_key == "group-42"
-

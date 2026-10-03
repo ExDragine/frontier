@@ -1,16 +1,10 @@
 # ruff: noqa: S101
 """Guard the boundary between the Agent Core and platform integrations.
 
-The existing ``utils.agents`` package is still being migrated.  Its legacy
-modules currently import a few NoneBot/Alconna objects, so that check remains a
-non-strict ``xfail`` during the migration.  The new ``utils.agent_protocol``
-package is the first clean boundary and is checked strictly as soon as it is
-present.
-
-Once the adapters have moved out of ``utils.agents``, remove the legacy
-``xfail`` and make that check strict as well.  Keeping the scan in AST space
-also catches imports hidden behind ``TYPE_CHECKING`` or function bodies before
-those modules are imported by a test.
+The Agent Core and compatibility bridge now use only standard-library logging
+and neutral protocol values.  Keeping this scan in AST space catches imports
+hidden behind ``TYPE_CHECKING`` or function bodies before those modules are
+imported by a test.
 """
 
 from __future__ import annotations
@@ -115,15 +109,8 @@ def test_cognitive_media_extraction_does_not_import_platform_message_types():
     assert not [item for item in violations if "utils.alconna" in item or "UniMessage" in item], violations
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "Legacy Agent modules still contain platform imports while the P0-P2 "
-        "migration is in progress; tighten this check after handlers move."
-    ),
-)
 def test_legacy_agent_core_import_boundary_is_clean():
-    """Track remaining legacy imports without blocking the first migration step."""
+    """All Agent Core modules stay free of platform SDK imports."""
 
     root = Path(__file__).resolve().parents[2]
     violations = _scan_paths(_legacy_agent_files(root), root=root)

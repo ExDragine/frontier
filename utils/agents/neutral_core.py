@@ -60,6 +60,27 @@ def _parts_text(parts: Sequence[MessagePart]) -> str:
     return "".join(_part_text(part) for part in parts)
 
 
+def _prompt_part_text(part: MessagePart) -> str:
+    """Return only textual input for legacy intent/capture hooks.
+
+    Media is already represented by the structured message blocks and the
+    runtime media fields.  Keeping ``prompt`` textual avoids appending a
+    second ``[image]``/``[audio]``/``[video]`` marker when the compatibility
+    gateway forwards the neutral request.
+    """
+
+    if isinstance(part, (ImagePart, AudioPart, VideoPart)):
+        return ""
+    if isinstance(part, QuotePart):
+        quoted = "".join(_prompt_part_text(item) for item in part.parts)
+        return f"[引用: {quoted}]" if quoted else "[引用消息]"
+    return _part_text(part)
+
+
+def _prompt_text(parts: Sequence[MessagePart]) -> str:
+    return "".join(_prompt_part_text(part) for part in parts)
+
+
 def _part_block(part: MessagePart) -> object:
     """Translate one neutral part to a legacy model content block."""
 
@@ -179,7 +200,11 @@ def _current_media(request: AgentRequest) -> tuple[
 
 
 def _response_text(value: object) -> str:
-    content = getattr(value, "content", value)
+    content = getattr(value, "content", None)
+    if content is None and hasattr(value, "text"):
+        content = value.text
+    if content is None:
+        content = value
     if isinstance(content, str):
         return content
     if isinstance(content, Mapping):
@@ -251,7 +276,7 @@ class FrontierAgentCore:
         sender = request.current.sender
         runtime_request = AgentRuntimeRequest(
             session_id=request.request_id,
-            prompt=_parts_text(request.current.parts),
+            prompt=_prompt_text(request.current.parts),
             images=images,
             audio=audio,
             messages=tuple(messages),

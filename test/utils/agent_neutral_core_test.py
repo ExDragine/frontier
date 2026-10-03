@@ -82,7 +82,7 @@ async def test_bridge_maps_neutral_request_and_result(agent_request):
     runtime_request = runtime.requests[0]
     assert runtime.tools == [("tool-1",)]
     assert runtime_request.tool_overrides == ("tool-1",)
-    assert runtime_request.prompt == "hello [image][audio][video]world"
+    assert runtime_request.prompt == "hello world"
     assert runtime_request.user_id == "user-1"
     assert runtime_request.user_name == "Alice"
     assert runtime_request.conversation == agent_request.current.conversation
@@ -118,7 +118,7 @@ async def test_bridge_keeps_media_nested_in_current_quote(agent_request):
     await FrontierAgentCore(runtime).run(request)
 
     runtime_request = runtime.requests[0]
-    assert runtime_request.prompt == "follow up[引用: quoted[image]]"
+    assert runtime_request.prompt == "follow up[引用: quoted]"
     assert runtime_request.image_inputs == (b"quoted-image",)
     current_blocks = runtime_request.messages[-1]["content"]
     assert [block["type"] for block in current_blocks] == ["text", "text", "image"]

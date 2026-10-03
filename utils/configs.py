@@ -123,8 +123,9 @@ class FeatureConfig(_FrozenConfig):
     agent_enabled: bool = True
     paint_enabled: bool = True
     video_enabled: bool = True
-    # Staged migration switch.  The QQ text canary is deliberately opt-in;
-    # media, replies and session-backed turns always stay on the legacy path.
+    # Deprecated compatibility setting.  The QQ neutral orchestrator is now
+    # always active; this field remains accepted so older env.toml files do
+    # not fail validation during the final cutover.
     qq_text_canary_enabled: bool = False
     # Laya only expands the automatic-reply candidate set; Decision remains the
     # final gate.  Keep this opt-in because the optional model needs local

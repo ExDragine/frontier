@@ -62,8 +62,8 @@ class QqMessageAdapter:
     """Normalize the small identity/message subset needed by the Agent port.
 
     Native Milky event parsing remains in ``handlers.py`` for now.  This
-    adapter owns the conversion after parsing, so the text canary can construct
-    an :class:`InboundMessage` without importing handler internals.
+    adapter owns the conversion after parsing, so the QQ entry point can
+    construct an :class:`InboundMessage` without importing handler internals.
     """
 
     def __init__(self, account_id: str | int) -> None:
@@ -593,6 +593,7 @@ class QqDelivery:
         if not response.should_reply:
             return DeliveryReceipt(DeliveryStatus.DELIVERED)
         receipts: list[DeliveryReceipt] = []
+        text_receipt: DeliveryReceipt | None = None
         if response.artifacts:
             try:
                 sender = self._artifact_sender or send_qq_artifacts
@@ -604,16 +605,27 @@ class QqDelivery:
                 receipts.append(DeliveryReceipt(DeliveryStatus.FAILED, errors=(type(exc).__name__,)))
         if response.text.strip():
             try:
-                receipts.append(await self._send_text(target, response.text))
+                text_receipt = await self._send_text(target, response.text)
+                receipts.append(text_receipt)
             except Exception as exc:
-                receipts.append(DeliveryReceipt(DeliveryStatus.FAILED, errors=(type(exc).__name__,)))
+                text_receipt = DeliveryReceipt(DeliveryStatus.FAILED, errors=(type(exc).__name__,))
+                receipts.append(text_receipt)
         if not receipts:
             return DeliveryReceipt(DeliveryStatus.DELIVERED)
-        status = DeliveryStatus.DELIVERED
-        if any(receipt.status == DeliveryStatus.UNKNOWN for receipt in receipts):
-            status = DeliveryStatus.UNKNOWN
-        if any(receipt.status == DeliveryStatus.FAILED for receipt in receipts):
-            status = DeliveryStatus.FAILED
+        # A media item may fail after the final text has been acknowledged.
+        # The text receipt is the assistant-turn delivery boundary: an
+        # artifact-only success must never make an undelivered final text look
+        # committed, and a successful artifact must not mask a text failure.
+        if text_receipt is not None:
+            status = text_receipt.status
+        else:
+            artifact_statuses = [receipt.status for receipt in receipts]
+            if any(status == DeliveryStatus.FAILED for status in artifact_statuses):
+                status = DeliveryStatus.FAILED
+            elif any(status == DeliveryStatus.UNKNOWN for status in artifact_statuses):
+                status = DeliveryStatus.UNKNOWN
+            else:
+                status = DeliveryStatus.DELIVERED
         return DeliveryReceipt(
             status=status,
             message_refs=tuple(ref for receipt in receipts for ref in receipt.message_refs),

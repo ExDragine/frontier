@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import logging
 import os
 import time
 import uuid
@@ -26,7 +27,6 @@ from langchain.tools import ToolRuntime
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.types import Command
-from nonebot import logger
 
 import tools as _tool_registry
 from plugins.acp.subagent import build_acp_subagents
@@ -67,6 +67,8 @@ from .tool_errors import WEB_SEARCH_TOOL_NAMES, prepare_ptc_tools, tool_error_mi
 from .workspace import SKILLS_BACKEND_PATH, build_agent_backend
 
 register_frontier_harness_profiles()
+
+logger = logging.getLogger(__name__)
 
 
 _ARTIFACT_KINDS = frozenset({"image", "audio", "video", "file"})
@@ -495,7 +497,7 @@ class FrontierCognitive:
             ]
             if extracted:
                 artifacts.extend(extracted)
-                logger.info("📤 提取中性媒体工件: {} - 数量: {}", tool_name, len(extracted))
+                logger.info("📤 提取中性媒体工件: %s - 数量: %s", tool_name, len(extracted))
 
         ai_messages = [message for message in response_messages if getattr(message, "type", None) == "ai"]
         if ai_messages:
@@ -510,7 +512,7 @@ class FrontierCognitive:
                     if (artifact := _native_media_message(block)) is not None
                 )
 
-        logger.info("📨 总共提取到 {} 个中性媒体工件", len(artifacts))
+        logger.info("📨 总共提取到 %s 个中性媒体工件", len(artifacts))
         return artifacts
 
     @staticmethod

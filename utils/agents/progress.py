@@ -1,14 +1,15 @@
 """Streaming progress events for Deep Agent execution."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from nonebot import logger
-
 from utils.progress_messages import subagent_message, tool_message
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -40,7 +41,7 @@ async def emit_progress(reporter: ProgressReporter | None, event: ProgressEvent)
     try:
         await reporter(event)
     except Exception as exc:
-        logger.warning(f"Progress reporter 调用失败: {type(exc).__name__}: {exc}")
+        logger.warning("Progress reporter 调用失败: %s: %s", type(exc).__name__, exc)
 
 
 async def collect_progress(stream, reporter: ProgressReporter | None) -> None:  # noqa: C901
@@ -162,7 +163,7 @@ async def collect_progress(stream, reporter: ProgressReporter | None) -> None:  
             except (AttributeError, TypeError):
                 tool_calls = getattr(getattr(current_message, "output_message", None), "tool_calls", None)
             except Exception as exc:
-                logger.debug(f"读取模型消息工具调用失败，跳过过程发言: {type(exc).__name__}: {exc}")
+                logger.debug("读取模型消息工具调用失败，跳过过程发言: %s: %s", type(exc).__name__, exc)
                 tool_calls = None
 
             preamble = message_text.strip()
@@ -180,7 +181,7 @@ async def collect_progress(stream, reporter: ProgressReporter | None) -> None:  
         try:
             await coro
         except Exception as exc:
-            logger.warning(f"Progress collector 异常: {type(exc).__name__}: {exc}")
+            logger.warning("Progress collector 异常: %s: %s", type(exc).__name__, exc)
 
     await asyncio.gather(
         safe_consume(consume_subagents()),

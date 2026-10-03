@@ -8,6 +8,7 @@ from typing import Any, cast
 import pytest
 
 from plugins.agent.attachments import StagedMessageFile
+from utils.agent_protocol import AgentArtifact
 from utils.delivery import DeliveryResult
 
 
@@ -104,7 +105,7 @@ async def test_history_only_records_delivered_response_after_send(monkeypatch, d
 
 
 @pytest.mark.asyncio
-async def test_artifact_failure_reaches_user_even_without_final_text(monkeypatch):
+async def test_artifact_only_failure_is_not_retried_or_persisted(monkeypatch):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
@@ -114,17 +115,21 @@ async def test_artifact_failure_reaches_user_even_without_final_text(monkeypatch
 
     class Cognitive:
         async def chat_agent(self, *_args, **_kwargs):
-            return {"response": {"messages": []}, "uni_messages": ["artifact"]}
+            return {
+                "response": {"messages": []},
+                "uni_messages": [AgentArtifact(kind="image", data=b"artifact", mime_type="image/png")],
+            }
 
+    stored = []
     class Database:
-        async def insert(self, **_kwargs):
-            pass
+        async def insert(self, **kwargs):
+            stored.append(kwargs["content"])
 
     async def send_artifacts(_artifacts):
         return DeliveryResult(attempted=1, errors=("RuntimeError",))
 
-    async def send_messages(_group_id, _message_id, response):
-        sent.append(agent.outgoing_message_content(response["messages"][-1]))
+    async def send_messages(*_args, **_kwargs):
+        sent.append("unexpected text")
         return DeliveryResult(attempted=1, sent=1)
 
     monkeypatch.setattr(agent, "f_cognitive", Cognitive())
@@ -133,8 +138,9 @@ async def test_artifact_failure_reaches_user_even_without_final_text(monkeypatch
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
-    assert await agent._process_agent_request(_context(agent))
-    assert sent == ["部分附件发送失败，请稍后重试。"]
+    assert await agent._process_agent_request(_context(agent)) is False
+    assert sent == []
+    assert stored == []
 
 
 @pytest.mark.asyncio

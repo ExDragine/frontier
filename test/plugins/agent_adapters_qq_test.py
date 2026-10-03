@@ -277,7 +277,9 @@ async def test_qq_delivery_uses_injected_senders_and_reports_partial_artifact_fa
             artifacts=(AgentArtifact(kind="image", data=b"x", mime_type="image/png"),),
         ),
     )
-    assert receipt.status == DeliveryStatus.FAILED
+    # The final text was delivered, so the turn is committed even when a
+    # preceding media artifact reports a partial failure.
+    assert receipt.status == DeliveryStatus.DELIVERED
     assert receipt.errors == ("media_failed",)
     assert [call[0] for call in calls] == ["artifacts", "text"]
 
@@ -292,6 +294,26 @@ async def test_qq_delivery_accepts_sync_sender_and_mapping_receipts():
 
     assert receipt.status is DeliveryStatus.DELIVERED
     assert receipt.message_refs[0].message_id == "msg-1"
+
+
+@pytest.mark.asyncio
+async def test_qq_delivery_does_not_commit_when_final_text_fails_after_artifact():
+    async def send_artifacts(_target, _artifacts):
+        return DeliveryReceipt(DeliveryStatus.DELIVERED, message_refs=())
+
+    async def send_text(_target, _text):
+        return DeliveryReceipt(DeliveryStatus.FAILED, errors=("text_failed",))
+
+    receipt = await QqDelivery(text_sender=send_text, artifact_sender=send_artifacts).send(
+        _group(),
+        AgentResponse(
+            text="done",
+            artifacts=(AgentArtifact(kind="image", data=b"x", mime_type="image/png"),),
+        ),
+    )
+
+    assert receipt.status is DeliveryStatus.FAILED
+    assert receipt.errors == ("text_failed",)
 
 
 @pytest.mark.asyncio

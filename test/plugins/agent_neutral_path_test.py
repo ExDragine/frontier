@@ -1,4 +1,4 @@
-"""Focused tests for the opt-in QQ text canary boundary."""
+"""Focused tests for the production QQ neutral boundary."""
 
 # ruff: noqa: S101
 
@@ -44,45 +44,40 @@ def agent(monkeypatch):
     return handlers
 
 
-def test_text_canary_is_opt_in_and_accepts_resolved_quotes(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", False)
+def test_neutral_path_accepts_all_normalized_message_shapes(agent, monkeypatch):
     context = _context(agent)
-    assert agent._qq_text_canary_eligible(context, None) is False
-
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
-    assert agent._qq_text_canary_eligible(context, None) is True
-    assert agent._qq_text_canary_eligible(_context(agent, group_id=None), None) is True
-    assert agent._qq_text_canary_eligible(_context(agent, images=[b"image"]), None) is True
-    assert agent._qq_text_canary_eligible(_context(agent, audio=[b"audio"]), None) is True
-    assert agent._qq_text_canary_eligible(_context(agent, videos=[b"video"]), None) is True
-    assert agent._qq_text_canary_eligible(
+    assert agent._qq_neutral_eligible(context, None) is True
+    assert agent._qq_neutral_eligible(_context(agent, group_id=None), None) is True
+    assert agent._qq_neutral_eligible(_context(agent, images=[b"image"]), None) is True
+    assert agent._qq_neutral_eligible(_context(agent, audio=[b"audio"]), None) is True
+    assert agent._qq_neutral_eligible(_context(agent, videos=[b"video"]), None) is True
+    assert agent._qq_neutral_eligible(
         _context(agent, images=[b"image"], attachments=[{"kind": "image", "path": "/memory/image.png"}]), None
     ) is True
-    assert agent._qq_text_canary_eligible(
+    assert agent._qq_neutral_eligible(
         _context(agent, current_attachments=[{"kind": "file", "path": "/memory/file.txt"}]), None
     ) is True
-    assert agent._qq_text_canary_eligible(
+    assert agent._qq_neutral_eligible(
         _context(agent, recent_attachments=[{"kind": "file", "path": "/memory/recent.txt"}]), None
     ) is True
-    assert agent._qq_text_canary_eligible(
+    assert agent._qq_neutral_eligible(
         _context(agent, recent_attachments=[{"path": "/memory/unknown.bin"}]), None
-    ) is False
-    assert agent._qq_text_canary_eligible(_context(agent, recent_images=[b"recent-image"]), None) is True
-    assert agent._qq_text_canary_eligible(_context(agent, reply_to={"message_id": "1"}), None) is True
-    assert agent._qq_text_canary_eligible(_context(agent, reply_seq=17), None) is False
-    assert agent._qq_text_canary_eligible(
+    ) is True
+    assert agent._qq_neutral_eligible(_context(agent, recent_images=[b"recent-image"]), None) is True
+    assert agent._qq_neutral_eligible(_context(agent, reply_to={"message_id": "1"}), None) is True
+    assert agent._qq_neutral_eligible(_context(agent, reply_seq=17), None) is True
+    assert agent._qq_neutral_eligible(
         _context(agent, reply_seq=17, reply_to={"message_id": "17", "content": "quoted"}), None
     ) is True
-    assert agent._qq_text_canary_eligible(_context(agent, reply_to={"message_id": "1"}, attachments=[{"path": "x"}]), None) is False
-    assert agent._qq_text_canary_eligible(context, object()) is True
+    assert agent._qq_neutral_eligible(_context(agent, reply_to={"message_id": "1"}, attachments=[{"path": "x"}]), None) is True
+    assert agent._qq_neutral_eligible(context, object()) is True
 
     monkeypatch.setattr(agent.EnvConfig, "SESSIONS", SimpleNamespace(enabled=True))
-    assert agent._qq_text_canary_eligible(_context(agent, message_id=11), None) is False
+    assert agent._qq_neutral_eligible(_context(agent, message_id=11), None) is True
 
 
 @pytest.mark.asyncio
 async def test_agent_failure_sends_one_notice_without_legacy_retry(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
     sent = []
 
     class FailingCore:
@@ -101,15 +96,14 @@ async def test_agent_failure_sends_one_notice_without_legacy_retry(agent, monkey
 
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_text_canary(_context(agent), [])
+    handled, result = await agent._run_qq_neutral(_context(agent), [])
     assert (handled, result) == (True, True)
     assert len(sent) == 1
     assert "boom" not in sent[0][0][2]["messages"][0].content
 
 
 @pytest.mark.asyncio
-async def test_private_text_canary_uses_neutral_delivery_scope(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
+async def test_private_neutral_uses_neutral_delivery_scope(agent, monkeypatch):
     sent = []
 
     class Core:
@@ -129,15 +123,14 @@ async def test_private_text_canary_uses_neutral_delivery_scope(agent, monkeypatc
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_text_canary(_context(agent, group_id=None), [])
+    handled, result = await agent._run_qq_neutral(_context(agent, group_id=None), [])
     assert (handled, result) == (True, True)
     assert len(sent) == 1
     assert sent[0][0:2] == (None, None)
 
 
 @pytest.mark.asyncio
-async def test_session_canary_forwards_lease_and_settles_after_delivery(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
+async def test_session_neutral_forwards_lease_and_settles_after_delivery(agent, monkeypatch):
     seen = []
     settled = []
     session = SimpleNamespace(current_id="qq:42:message:9")
@@ -162,7 +155,7 @@ async def test_session_canary_forwards_lease_and_settles_after_delivery(agent, m
     monkeypatch.setattr(agent, "messages_db", Database())
     monkeypatch.setattr(agent, "_settle_session", settle)
 
-    handled, result = await agent._run_qq_text_canary(_context(agent, message_id=9), [], session_turn=session)
+    handled, result = await agent._run_qq_neutral(_context(agent, message_id=9), [], session_turn=session)
 
     assert (handled, result) == (True, True)
     assert seen == [session]
@@ -173,8 +166,7 @@ async def test_session_canary_forwards_lease_and_settles_after_delivery(agent, m
 
 
 @pytest.mark.asyncio
-async def test_media_canary_passes_current_downloads_through_neutral_message(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
+async def test_media_neutral_passes_current_downloads_through_neutral_message(agent, monkeypatch):
     seen = []
 
     class Core:
@@ -193,7 +185,7 @@ async def test_media_canary_passes_current_downloads_through_neutral_message(age
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_text_canary(
+    handled, result = await agent._run_qq_neutral(
         _context(agent, images=[b"image"], audio=[b"audio"], videos=[b"video"]), []
     )
     assert (handled, result) == (True, True)
@@ -206,8 +198,7 @@ async def test_media_canary_passes_current_downloads_through_neutral_message(age
 
 
 @pytest.mark.asyncio
-async def test_file_canary_passes_current_staged_ref_through_neutral_message(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
+async def test_file_neutral_passes_current_staged_ref_through_neutral_message(agent, monkeypatch):
     seen = []
 
     class Core:
@@ -226,7 +217,7 @@ async def test_file_canary_passes_current_staged_ref_through_neutral_message(age
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_text_canary(
+    handled, result = await agent._run_qq_neutral(
         _context(agent, current_attachments=[{"kind": "file", "path": "/memory/report.txt", "file_name": "report.txt"}]),
         [],
     )
@@ -237,8 +228,7 @@ async def test_file_canary_passes_current_staged_ref_through_neutral_message(age
 
 
 @pytest.mark.asyncio
-async def test_recent_media_canary_preserves_source_marker_and_parts(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
+async def test_recent_media_neutral_preserves_source_marker_and_parts(agent, monkeypatch):
     seen = []
 
     class Core:
@@ -257,7 +247,7 @@ async def test_recent_media_canary_preserves_source_marker_and_parts(agent, monk
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_text_canary(
+    handled, result = await agent._run_qq_neutral(
         _context(
             agent,
             recent_images=[b"recent-image"],
@@ -272,8 +262,7 @@ async def test_recent_media_canary_preserves_source_marker_and_parts(agent, monk
 
 
 @pytest.mark.asyncio
-async def test_quote_canary_maps_resolved_snapshot_and_media(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
+async def test_quote_neutral_maps_resolved_snapshot_and_media(agent, monkeypatch):
     seen = []
 
     class Core:
@@ -292,7 +281,7 @@ async def test_quote_canary_maps_resolved_snapshot_and_media(agent, monkeypatch)
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_text_canary(
+    handled, result = await agent._run_qq_neutral(
         _context(
             agent,
             text="",
@@ -310,8 +299,7 @@ async def test_quote_canary_maps_resolved_snapshot_and_media(agent, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_history_failure_can_fall_back_before_core_runs(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
+async def test_history_failure_is_handled_without_legacy_retry(agent, monkeypatch):
     core_calls = []
 
     class Core:
@@ -333,14 +321,18 @@ async def test_history_failure_can_fall_back_before_core_runs(agent, monkeypatch
     monkeypatch.setattr(agent, "QqHistoryStore", FailedHistory)
     monkeypatch.setattr(agent, "messages_db", SimpleNamespace())
 
-    handled, result = await agent._run_qq_text_canary(_context(agent), [])
-    assert (handled, result) == (False, False)
+    async def send_notice(*_args, **_kwargs):
+        return DeliveryResult(attempted=1, sent=1)
+
+    monkeypatch.setattr(agent, "send_messages", send_notice)
+
+    handled, result = await agent._run_qq_neutral(_context(agent), [])
+    assert (handled, result) == (True, True)
     assert core_calls == []
 
 
 @pytest.mark.asyncio
 async def test_delivery_failure_is_handled_without_retry(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
     sent = []
 
     class Core:
@@ -362,14 +354,13 @@ async def test_delivery_failure_is_handled_without_retry(agent, monkeypatch):
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_text_canary(_context(agent), [])
+    handled, result = await agent._run_qq_neutral(_context(agent), [])
     assert (handled, result) == (True, False)
     assert len(sent) == 1
 
 
 @pytest.mark.asyncio
 async def test_empty_success_response_is_not_persisted(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
     sent = []
 
     class Core:
@@ -388,14 +379,13 @@ async def test_empty_success_response_is_not_persisted(agent, monkeypatch):
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_text_canary(_context(agent), [])
+    handled, result = await agent._run_qq_neutral(_context(agent), [])
     assert (handled, result) == (True, False)
     assert sent == []
 
 
 @pytest.mark.asyncio
 async def test_artifact_response_is_handled_without_legacy_retry(agent, monkeypatch):
-    monkeypatch.setattr(agent.EnvConfig, "QQ_TEXT_CANARY_ENABLED", True)
     sent = []
 
     class Core:
@@ -423,7 +413,7 @@ async def test_artifact_response_is_handled_without_legacy_retry(agent, monkeypa
 
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_text_canary(_context(agent), [])
+    handled, result = await agent._run_qq_neutral(_context(agent), [])
     assert (handled, result) == (True, True)
     assert len(sent) == 2
     assert sent[0][0] == "artifacts"
@@ -431,7 +421,7 @@ async def test_artifact_response_is_handled_without_legacy_retry(agent, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_canary_artifact_sender_maps_file_artifacts(agent, monkeypatch):
+async def test_neutral_artifact_sender_maps_file_artifacts(agent, monkeypatch):
     captured = []
 
     async def send_artifacts(artifacts):
@@ -439,7 +429,7 @@ async def test_canary_artifact_sender_maps_file_artifacts(agent, monkeypatch):
         return DeliveryResult(attempted=1, sent=1)
 
     monkeypatch.setattr(agent, "send_artifacts", send_artifacts)
-    result = await agent._send_qq_canary_artifacts(
+    result = await agent._send_qq_neutral_artifacts(
         SimpleNamespace(platform="qq"),
         (AgentArtifact(kind="file", data=b"file", mime_type="text/plain", name="notes.txt"),),
     )

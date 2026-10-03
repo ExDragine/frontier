@@ -85,7 +85,11 @@ class AgentRuntime(Protocol):
 
 
 def _message_text(value: object) -> str:
-    content = getattr(value, "content", value)
+    content = getattr(value, "content", None)
+    if content is None and hasattr(value, "text"):
+        content = value.text
+    if content is None:
+        content = value
     if isinstance(content, str):
         return content
     if isinstance(content, dict):
@@ -290,8 +294,11 @@ class FrontierAgentRuntime:
             capability=request.capability if request.capability is not None else EnvConfig.AGENT_CAPABILITY,
             group_id=group_id,
             group_member_role=group_member_role,
-            image_inputs=[*request.image_inputs, *(item.data for item in request.images)],
-            audio_inputs=[*request.audio_inputs, *(item.data for item in request.audio)],
+            # ``images``/``audio`` are the canonical neutral media fields.
+            # Legacy callers populate only ``*_inputs``; the neutral bridge
+            # populates both for compatibility, so concatenate neither twice.
+            image_inputs=list(request.image_inputs or tuple(item.data for item in request.images)),
+            audio_inputs=list(request.audio_inputs or tuple(item.data for item in request.audio)),
             video_inputs=list(request.video_inputs),
             thread_id_override=request.session_id or workspace_key or None,
             progress_reporter=progress_reporter,
@@ -313,13 +320,20 @@ class FrontierAgentRuntime:
         response = result.get("response", {}) if isinstance(result, dict) else {}
         response_messages = response.get("messages", []) if isinstance(response, dict) else []
         final_message = response_messages[-1] if response_messages else ""
+        status = result.get("status", "failed" if result.get("error") else "success") if isinstance(result, dict) else "failed"
+        # The legacy cognitive result carries silent turns as
+        # ``should_reply=False`` rather than a dedicated status.  Preserve
+        # that distinction at the neutral runtime boundary so the
+        # ConversationOrchestrator never appends an empty assistant turn.
+        if isinstance(result, dict) and result.get("should_reply") is False and status == "success":
+            status = "silent"
         return AgentRuntimeResult(
             text=_message_text(final_message).strip(),
             artifacts=_runtime_artifacts(result.get("artifacts", result.get("uni_messages", [])))
             if isinstance(result, dict)
             else (),
             error=str(result["error"]) if isinstance(result, dict) and result.get("error") else None,
-            status=result.get("status", "failed" if result.get("error") else "success"),
+            status=status,
             run_id=result.get("run_id"),
             usage=result.get("usage"),
         )

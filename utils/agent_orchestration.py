@@ -273,6 +273,20 @@ class ConversationOrchestrator:
                 receipt=receipt,
             )
 
+        # Assistant history is a text-turn boundary.  Artifact-only replies
+        # can still be delivered, but there is no textual assistant message to
+        # append and no platform-independent artifact history representation.
+        if not response.text.strip():
+            return TurnOutcome(
+                request_id=request_id,
+                status=TurnStatus.DELIVERED,
+                history=loaded_history,
+                gate=gate,
+                request=request,
+                response=response,
+                receipt=receipt,
+            )
+
         try:
             await history.append(_assistant_message(message, response, receipt))
         except Exception as error:

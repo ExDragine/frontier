@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.messages import AIMessage
 
+from utils.agent_protocol import AgentArtifact
 from utils.agents.sessions import SessionManager
 from utils.configs import SessionConfig
 from utils.delivery import DeliveryResult
@@ -54,7 +55,9 @@ async def test_session_lease_covers_qq_delivery_and_failure_cleanup(monkeypatch,
             lease.entry.state = "awaiting_delivery"
             lease.graph = SimpleNamespace(aupdate_state=update)
             lease.final_message = AIMessage(content="raw", id="answer")
-            return {"response": {"messages": [lease.final_message]}, "uni_messages": ["artifact"] if outcome == "partial_artifacts" else [],
+            return {"response": {"messages": [lease.final_message]}, "uni_messages": [
+                        AgentArtifact(kind="image", data=b"artifact", mime_type="image/png")
+                    ] if outcome == "partial_artifacts" else [],
                     "should_reply": outcome != "silent"}
 
     async def sanitize(_text):
@@ -91,7 +94,7 @@ async def test_session_lease_covers_qq_delivery_and_failure_cleanup(monkeypatch,
     assert captured["query"]["bot_user_id"] == 99
     assert captured["lease"].finished
     assert captured["sends"] == (0 if outcome in {"cancel", "silent"} else 1)
-    if outcome in {"success", "db_failure", "silent"}:
+    if outcome in {"success", "partial_artifacts", "db_failure", "silent"}:
         assert len(manager.entries) == 1
         assert next(iter(manager.entries.values())).state == "idle"
         if outcome != "silent":

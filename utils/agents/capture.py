@@ -1,9 +1,11 @@
 """Decision-LLM gate for browser capture tools."""
 
+import logging
 import re
 
-from nonebot import logger
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 class BrowserCaptureIntent(BaseModel):

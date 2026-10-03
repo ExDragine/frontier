@@ -270,12 +270,7 @@ async def test_agent_image_placeholders_follow_persistence(  # noqa: C901
     assert captured["user_text"] == expected_user_text
     current_content = captured["messages"][-1]["content"]
     assert ("[图片]" in current_content[0]["text"]) is (not persist_media)
-    assert current_content[1] == {"type": "text", "text": "以下图片来自当前消息："}
-    assert current_content[2]["type"] == "image"
-    assert current_content[3] == {"type": "text", "text": "以下语音来自当前消息："}
-    assert current_content[4]["type"] == "audio"
-    assert current_content[5] == {"type": "text", "text": "以下视频来自当前消息："}
-    assert current_content[6]["type"] == "video"
+    assert [block["type"] for block in current_content] == ["text", "image", "audio", "video"]
 
 
 @pytest.mark.asyncio
@@ -380,10 +375,16 @@ async def test_agent_lazily_hydrates_recent_media_followup(monkeypatch):  # noqa
     assert captured["image_inputs"] == [b"recent-image"]
     assert len(captured["messages"]) == 2
     current_content = captured["messages"][-1]["content"]
-    payload = json.loads(current_content[0]["text"])
-    assert payload["attachments"][0]["path"] == "/memory/group-123/files/recent.txt"
-    assert payload["content"].endswith("[以上附件来自用户刚才发送的历史消息]")
-    assert current_content[1] == {"type": "text", "text": "以下图片来自用户刚才发送的历史消息："}
+    assert current_content[0]["text"] == "帮我分析一下\n[以上附件来自用户刚才发送的历史消息]"
+    assert any(
+        block.get("text") == "[文件: recent.txt] (/memory/group-123/files/recent.txt)"
+        for block in current_content
+        if block.get("type") == "text"
+    )
+    assert any(
+        block.get("type") == "image" or "[image]" in block.get("text", "")
+        for block in current_content
+    )
 
 
 @pytest.mark.asyncio
@@ -506,16 +507,13 @@ async def test_agent_injects_staged_file_memory_path_even_if_indexing_fails(  # 
     assert captured["workspace_key"] == "group-123"
     assert isinstance(captured["message_time"], int)
     assert captured["message_time"] > 0
-    current_text = _first_text(captured["messages"][-1]["content"])
-    payload = json.loads(current_text)
-    assert payload["attachments"] == [
-        {
-            "kind": "file",
-            "mime_type": "text/plain",
-            "file_name": "report.txt",
-            "path": "/memory/group-123/files/report.txt",
-        }
-    ]
+    current_content = captured["messages"][-1]["content"]
+    assert current_content[0]["text"] == "[文件:report.txt (4字节)]"
+    assert any(
+        "/memory/group-123/files/report.txt" in block.get("text", "")
+        for block in current_content
+        if block.get("type") == "text"
+    )
     if index_file:
         assert captured["attachment"]["kind"] == "file"
         assert captured["attachment"]["mime_type"] == "text/plain"
@@ -969,10 +967,11 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
     stored_reply = json.loads(captured["stored_reply_context"])
     assert stored_reply["sender"]["user_id"] == "111"
     assert stored_reply["content"] == "原始消息内容"
-    current = json.loads(_first_text(captured["messages"][-1]["content"]))
-    assert current["content"] == "这是什么意思？"
-    assert current["reply_to"]["sender"]["display_name"] == "Alice"
-    assert current["reply_to"]["content"] == "原始消息内容"
+    current = captured["messages"][-1]["content"]
+    assert current == [
+        {"type": "text", "text": "这是什么意思？"},
+        {"type": "text", "text": "[引用: 原始消息内容]"},
+    ]
 
 
 @pytest.mark.asyncio
@@ -1215,12 +1214,11 @@ async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # 
     current_content = captured["messages"][-1]["content"]
     assert current_content[0]["type"] == "text"
     assert "[图片]" not in current_content[0]["text"]
-    reply_to = json.loads(current_content[0]["text"])["reply_to"]
-    assert reply_to["content"] == "[引用消息包含图片 1 张]"
-    assert reply_to["media"] == {"image_count": 1}
+    assert current_content[1]["type"] == "text"
+    assert "引用消息包含图片 1 张" in current_content[1]["text"]
     finalized_reply = json.loads(captured["finalized_context"]["reply_context_json"])
-    assert finalized_reply == reply_to
-    assert current_content[1] == {"type": "text", "text": "以下图片来自上面的引用消息："}
+    assert finalized_reply["content"] == "[引用消息包含图片 1 张]"
+    assert finalized_reply["media"] == {"image_count": 1}
     assert current_content[2]["type"] == "image"
 
 
@@ -1283,24 +1281,15 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
 
     assert captured["messages"][:-1] == history
     assert len(captured["messages"]) == 3
-    current_text = _first_text(captured["messages"][-1]["content"])
-    payload = json.loads(current_text)
-    assert payload["schema"] == "frontier.qq_message.v1"
-    assert payload["chat"]["type"] == expected_chat_type
-    assert payload["chat"].get("group_id") == (str(group_id) if group_id is not None else None)
-    assert payload["sender"]["user_id"] == "456"
-    expected_bot_context = {"user_id": "1"}
-    if group_id is not None:
-        expected_bot_context["directly_mentioned"] = True
-    assert payload["bot_context"] == expected_bot_context
-    assert payload["sender"]["display_name"] == ("项目经理" if group_id is not None else "Bob")
-    if group_id is not None:
-        assert payload["sender"]["nickname"] == "Bob"
-        assert "card" not in payload["sender"]
-        assert payload["content"].startswith("[你被主动@了，这条消息是明确对你说的]")
-    else:
-        assert payload["content"] == "hi"
-    assert "is_current" not in payload
+    assert captured["messages"][-1]["content"] == [{"type": "text", "text": "hi"}]
+    conversation = captured["kwargs"]["conversation"]
+    assert conversation.kind == expected_chat_type
+    assert conversation.conversation_id == (str(group_id) if group_id is not None else "456")
+    principal = captured["kwargs"]["principal"]
+    assert principal.id == "456"
+    assert principal.display_name == ("项目经理" if group_id is not None else "Bob")
+    assert principal.role == ("admin" if group_id is not None else None)
+    assert captured["kwargs"]["group_member_role"] == ("admin" if group_id is not None else None)
     assert captured["kwargs"]["user_text"] == "hi"
     assert captured["kwargs"]["group_member_role"] == ("admin" if group_id is not None else None)
     assert captured["kwargs"]["allow_silent_reply"] is False
@@ -1405,7 +1394,7 @@ async def test_process_agent_request_inlines_recent_history_image(monkeypatch):
     await agent._process_agent_request(context)
 
     content = captured["messages"][-1]["content"]
-    assert content[1] == {"type": "text", "text": "以下图片来自用户刚才发送的历史消息："}
+    assert content[1] == {"type": "text", "text": "[以下媒体来自用户刚才发送的历史消息]"}
     assert content[2]["type"] == "image"
     assert captured["image_inputs"] == [b"recent-image"]
 
@@ -1440,13 +1429,12 @@ async def test_process_agent_request_interprets_empty_text_as_user_calling_bot(m
         quoted_images=[],
         images=[],
         videos=[],
+        direct_mention=True,
     )
 
     await agent._process_agent_request(context)
 
-    current_text = _first_text(captured["messages"][-1]["content"])
-    payload = json.loads(current_text)
-    assert payload["content"] == "[用户叫了你一声]"
+    assert captured["messages"][-1]["content"] == [{"type": "text", "text": "[用户叫了你一声]"}]
 
 
 @pytest.mark.asyncio

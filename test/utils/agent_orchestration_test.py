@@ -8,6 +8,7 @@ import pytest
 
 from utils.agent_orchestration import ConversationOrchestrator, TurnStatus
 from utils.agent_protocol import (
+    AgentArtifact,
     AgentResponse,
     ChatMessage,
     ConversationRef,
@@ -168,6 +169,28 @@ async def test_success_passes_workspace_and_capabilities_and_appends_after_deliv
     assert len(history.appended) == 1
     assert history.appended[0].role == "assistant"
     assert history.appended[0].content == "hi"
+
+
+@pytest.mark.asyncio
+async def test_artifact_only_delivery_does_not_append_empty_assistant_history(message):
+    class ArtifactCore(FakeCore):
+        async def run(self, request, *, tools=()):
+            return AgentResponse(
+                text="",
+                artifacts=(AgentArtifact(kind="image", data=b"x", mime_type="image/png"),),
+            )
+
+    history = FakeHistory()
+    outcome = await ConversationOrchestrator(ArtifactCore()).handle(
+        message,
+        policy=FakePolicy(True),
+        history=history,
+        delivery=FakeDelivery(DeliveryStatus.DELIVERED),
+    )
+
+    assert outcome.status is TurnStatus.DELIVERED
+    assert outcome.history_appended is False
+    assert history.appended == []
 
 
 @pytest.mark.asyncio

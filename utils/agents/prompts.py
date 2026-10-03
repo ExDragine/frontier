@@ -1,10 +1,12 @@
 """Frontier system prompt loading and composition."""
 
-from nonebot import logger
+import logging
 
 from utils.configs import EnvConfig
 
 from .workspace import PROJECT_ROOT
+
+logger = logging.getLogger(__name__)
 
 PRIVATE_CHAT_STYLE = (
     "【当前会话风格】这是私聊。日常对话优先用一个短段落、1–3 句话自然回应；"
@@ -34,12 +36,12 @@ def load_base_system_prompt(group_id: int | None) -> str:
             if words:
                 name = words[0]
         except Exception as exc:
-            logger.debug("Wake word injection skipped: {}: {}", type(exc).__name__, exc)
+            logger.debug("Wake word injection skipped: %s: %s", type(exc).__name__, exc)
 
     try:
         return toml_prompt.format(name=name)
     except KeyError as exc:
-        logger.error("❌ system prompt 模板变量缺失: {}", exc)
+        logger.error("❌ system prompt 模板变量缺失: %s", exc)
         return f"You are {name}, a helpful assistant. [配置错误: 模板变量缺失]"
 
 
@@ -47,7 +49,7 @@ def load_prompt_fragment(filename: str, description: str) -> str:
     try:
         return (PROJECT_ROOT / "prompts" / filename).read_text(encoding="utf-8").strip()
     except OSError as exc:
-        logger.warning("读取{}失败: {}", description, exc)
+        logger.warning("读取%s失败: %s", description, exc)
         return ""
 
 

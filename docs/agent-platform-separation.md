@@ -1,13 +1,13 @@
 # Agent 与平台解耦设计
 
-状态：P0/P1/P2 基础边界、P3 工具能力注入和 QQ 文本 canary 已实施；飞书接入方案已文档化并保留为隔离参考，当前开发主线暂不继续扩展飞书。
+状态：P0/P1/P2 基础边界、P3 工具能力注入和 QQ 生产切换已实施；飞书接入方案已文档化并保留为隔离参考，当前开发主线暂不继续扩展飞书。
 
-当前实现进度（2026-09-27）：
+当前实现进度（2026-10-03）：
 
 - P0 已落地：`utils/agent_protocol/` 提供平台无关值对象、Agent 请求/结果和应用端口，并有导入边界测试。
 - P1 已落地：`AgentRuntimeRequest`、`FrontierRuntimeContext` 和 `FrontierCognitive` 接受中性会话、参与者、能力和 workspace key；旧 QQ/ACP 调用保持兼容。
-- P2 已落地：`ConversationOrchestrator` 定义中立的历史→门控→Agent→投递生命周期；`plugins/agent/adapters/qq.py` 提供可注入的 QQ message、history、reply policy、delivery 和 tool facade。它们只在默认关闭的窄 canary 中接入，其他 QQ 消息仍走原生产路径。
-- P3 已落地：工具注册器为 QQ/Milky 模块声明 capability，`FrontierCognitive` 按显式能力筛选 direct/PTC 工具；QQ 入口声明中性会话、参与者、workspace 和 `platform:qq` 能力。`FrontierAgentCore` 将中性 `AgentRequest` 桥接到现有 runtime；`features.qq_text_canary_enabled` 可选择性地把群聊和私聊的当前文本、已下载媒体、当前已暂存文件、已解析引用、已完成 hydration 的近期媒体和成功取得租约的 session 接入编排层；没有 session 租约时继续走旧路径。
+- P2 已落地：`ConversationOrchestrator` 定义中立的历史→门控→Agent→投递生命周期；`plugins/agent/adapters/qq.py` 提供可注入的 QQ message、history、reply policy、delivery 和 tool facade，并已接入 QQ 生产入口。
+- P3 已落地：工具注册器为 QQ/Milky 模块声明 capability，`FrontierCognitive` 按显式能力筛选 direct/PTC 工具；QQ 入口声明中性会话、参与者、workspace 和 `platform:qq` 能力。`FrontierAgentCore` 将中性 `AgentRequest` 桥接到现有 runtime；群聊和私聊的文本、已下载媒体、当前已暂存文件、已解析引用、已完成 hydration 的近期媒体和 session 统一进入编排层。旧 `qq_text_canary_enabled` 字段只保留配置兼容性，不再控制路由。
 - 飞书方案已单独文档化：`plugins/agent/adapters/feishu*.py` 保留为无 SDK 的边界参考和契约测试，`plugins.agent` 不会自动注册它，当前不把它作为生产接入主线。后续若重新启动飞书工作，再由独立宿主显式注册 lifecycle，并按本文 P4/P5 补持久化 history、durable queue、加密解码和媒体能力。
 
 目标：在保留 QQ/Milky 现有行为的前提下，把 Agent 执行和平台接入拆开，使飞书等新平台可以复用同一套 Agent、工具编排、workspace、memory、session 和执行控制。
@@ -21,11 +21,11 @@
 1. 先增加中性协议或 facade，不改变现有生产入口。
 2. 用 fake Agent、fake 平台和回放数据验证边界、身份隔离、投递结果和历史语义。
 3. 让新路径以 shadow/canary 方式运行，比较旧路径与新路径的门控、workspace、工具集合和投递结果。
-4. 只切换一个入口或一种消息类型；只有 Agent Core 启动前的历史/门控失败才回退旧入口。Core 启动后不重跑旧 Agent，避免重复工具副作用或重复投递；已经送达的平台消息也不回滚。
+4. 生产切换后由中性编排器统一处理入口；Core 启动后不重跑旧 Agent，避免重复工具副作用或重复投递；已经送达的平台消息也不回滚。
 5. 观察一轮稳定性和资源指标后，再扩大消息类型、媒体能力和工具能力。
 6. 第二个平台稳定运行后，才删除兼容字段或评估数据库泛化。
 
-本次执行已经完成 P0～P3，并把飞书适配器方案及边界写入文档。下一步转向 QQ 统一编排层的覆盖范围、媒体工件和 session 兼容；飞书持久化 history、durable queue 和真实平台验证暂时冻结。
+本次执行已经完成 P0～P3，并完成 QQ 统一编排层的生产切换；飞书适配器方案及边界写入文档，飞书持久化 history、durable queue 和真实平台验证暂时冻结。
 
 ## 1. 背景与当前边界
 
@@ -543,13 +543,13 @@ QqDelivery
 QqToolProvider
 ```
 
-当前已包装现有实现，并增加 `ConversationOrchestrator`。Milky 事件解析和下载编排仍由 `handlers.py` 承担；`QqMessageAdapter` 已接管中性身份、当前/近期已解析媒体、文件和引用的 `InboundMessage` 构造，以及 history→`ChatMessage` 转换。切换前保持旧入口作为回退路径。
+当前已包装现有实现，并增加 `ConversationOrchestrator`。Milky 事件解析和下载编排仍由 `handlers.py` 承担；`QqMessageAdapter` 已接管中性身份、当前/近期已解析媒体、文件和引用的 `InboundMessage` 构造，以及 history→`ChatMessage` 转换。QQ 入口已完成生产切换，旧执行函数只作为显式兼容 helper 保留，不参与正常路由。
 
 ### P3：工具能力注入
 
 已完成第一步：`tools/__init__.py` 为 QQ/Milky 模块提供 capability 元数据和按能力筛选的 direct/PTC 快照；显式传入 `qq`、`platform:qq` 或 `qq:tools` 时开放完整 QQ 工具，细分能力可只开放消息、文件、好友、群管理或系统工具。空 capability 仍保持旧调用的全量行为。
 
-QQ `handlers.py` 已通过 `AgentRuntimeRequest` 注入中性身份和 `platform:qq` 能力；设置 `[features].qq_text_canary_enabled = true` 后，群聊和私聊的当前文本、已下载媒体、当前已暂存文件、已经解析完成的引用、已经完成 hydration 的近期媒体和成功取得租约的 session 进入 `ConversationOrchestrator`，session 租约在中性投递成功或静默结果后结算；没有租约时继续走旧路径。网关仍在媒体下载前执行，canary 复用已准备的历史快照和延迟群回复策略；引用和近期媒体必须先生成不可变快照，解析失败时继续走旧路径；近期附件按独立字段传入，不会误混入当前请求；前置历史/门控失败才回退旧路径，Agent 执行后不重跑旧 Agent，避免重复工具副作用或投递。平台工具提供器选出的工具会继续传入 runtime，和能力快照中的同名工具只保留一份。
+QQ `handlers.py` 已通过 `AgentRuntimeRequest` 注入中性身份和 `platform:qq` 能力；群聊和私聊的当前文本、已下载媒体、当前已暂存文件、解析中的引用、已完成 hydration 的近期媒体和 session 统一进入 `ConversationOrchestrator`，session 租约在中性投递成功或静默结果后结算。网关仍在媒体下载前执行，编排器复用已准备的历史快照和延迟群回复策略；近期附件按独立字段传入，不会误混入当前请求；Agent 执行后不重跑旧 Agent，避免重复工具副作用或重复投递。平台工具提供器选出的工具会继续传入 runtime，和能力快照中的同名工具只保留一份。
 
 ### P4：飞书最小闭环（暂缓，作为参考设计）
 

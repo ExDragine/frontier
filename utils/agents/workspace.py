@@ -1,15 +1,16 @@
 """Deep Agent workspace and filesystem backend construction."""
 
+import logging
 import os
 import time
 from pathlib import Path
 
 from deepagents.backends import CompositeBackend, FilesystemBackend
-from nonebot import logger
 
 SKILLS_BACKEND_PATH = "/skills"
 MEMORY_BACKEND_PATH = "/memory"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+logger = logging.getLogger(__name__)
 
 
 def ensure_dir(path: str) -> str:
