@@ -25,19 +25,10 @@ async def test_toolbox_loads_and_caches_its_menu_from_another_directory(monkeypa
     assert calls[0][1]["width"] == 480
 
 
-def test_clockwork_loads_daily_news_resources_from_another_directory(monkeypatch, tmp_path):
+def test_clockwork_daily_news_is_a_compatibility_wrapper():
     from plugins.clockwork import task_handlers
 
-    monkeypatch.chdir(tmp_path)
-    html = task_handlers.render_daily_news_html(
-        {"top_stories": [{"title": "<headline>", "summary": "News summary"}]},
-        current_time="2026-09-14", period="早报", report_time="08:00",
-    )
-    assert "&lt;headline&gt;" in html
-    assert "News summary" in html
-    assert task_handlers.load_daily_news_css()
-    system, user = task_handlers.daily_news_research_prompts("2026-09-14", "早报", "08:00", [])
-    assert system and "2026-09-14" in user
+    assert callable(task_handlers.daily_news)
 
 
 @pytest.mark.asyncio

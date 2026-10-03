@@ -9,7 +9,7 @@ NoneBot, Milky, or other platform SDK types are imported here.
 from __future__ import annotations
 
 import inspect
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from utils.agent_protocol import (
@@ -33,6 +33,7 @@ from .runtime_gateway import (
     AgentRuntimeRequest,
     AgentRuntimeResult,
     FrontierAgentRuntime,
+    _runtime_artifacts,
 )
 
 
@@ -194,23 +195,7 @@ def _mapping_result(result: Mapping[str, Any]) -> AgentRuntimeResult:
     messages = response.get("messages", []) if isinstance(response, Mapping) else []
     text = _response_text(messages[-1]) if messages else str(result.get("text", ""))
     raw_artifacts = result.get("artifacts", result.get("uni_messages", ()))
-    artifacts: list[AgentRuntimeMedia] = []
-    items = raw_artifacts if isinstance(raw_artifacts, Sequence) and not isinstance(raw_artifacts, (str, bytes)) else ()
-    for item in items:
-        segments = list(item) if isinstance(item, Iterable) and not isinstance(item, (str, bytes, bytearray)) else [item]
-        for segment in segments:
-            kind = str(getattr(segment, "kind", getattr(segment, "type", "")) or "")
-            if kind not in {"image", "audio", "video", "file"}:
-                continue
-            data = getattr(segment, "data", getattr(segment, "raw", None))
-            if isinstance(data, (bytes, bytearray)) and data:
-                artifacts.append(
-                    AgentRuntimeMedia(
-                        kind=kind,
-                        data=bytes(data),
-                        mime_type=str(getattr(segment, "mime_type", getattr(segment, "mimetype", "application/octet-stream"))),
-                    )
-                )
+    artifacts = list(_runtime_artifacts(raw_artifacts))
     status = str(result.get("status", "failed" if result.get("error") else "success"))
     if result.get("should_reply") is False and status == "success":
         status = "silent"
@@ -291,7 +276,14 @@ class FrontierAgentCore:
         if not isinstance(result, AgentRuntimeResult):
             raise TypeError("runtime must return AgentRuntimeResult or a legacy result mapping")
         artifacts = tuple(
-            AgentArtifact(kind=item.kind, data=item.data, mime_type=item.mime_type)
+            AgentArtifact(
+                kind=item.kind,
+                data=item.data,
+                mime_type=item.mime_type,
+                name=item.name,
+                url=item.url,
+                path=item.path,
+            )
             for item in result.artifacts
         )
         return AgentResponse(

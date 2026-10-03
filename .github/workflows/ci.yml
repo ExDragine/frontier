@@ -3,6 +3,11 @@ name: Python checks
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -21,6 +26,12 @@ jobs:
         run: uv sync --locked --group dev
       - name: Lint
         run: uv run --locked ruff check .
+      - name: Check maintenance script formatting
+        run: uv run --locked ruff format --check scripts/check_local_links.py
+      - name: Check local documentation links
+        run: uv run --locked python scripts/check_local_links.py
+      - name: Compile Python sources
+        run: uv run --locked python -m compileall -q models plugins scripts tools utils
       - name: Check typed runtime boundaries
         run: >-
           uv run --locked ty check
@@ -30,4 +41,26 @@ jobs:
           utils/delivery.py
           plugins/dashboard/api/settings_routes.py
       - name: Test (including real dependency contracts)
-        run: uv run --locked pytest test/ -q
+        run: >-
+          env -u ALL_PROXY -u all_proxy
+          -u HTTP_PROXY -u http_proxy
+          -u HTTPS_PROXY -u https_proxy
+          uv run --locked pytest test/ -q
+
+  renderer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: renderer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: renderer/package-lock.json
+      - name: Install renderer dependencies
+        run: npm ci
+      - name: Build checked-in renderer assets
+        run: npm run build:check

@@ -3,7 +3,6 @@
 import os
 import tomllib
 from pathlib import Path
-from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -17,7 +16,6 @@ class NewsConfig(BaseModel):
     model: str = ""
     provider: str = ""
     model_extra_body: dict = Field(default_factory=dict)
-    sources: tuple[Literal["exa", "tavily"], ...] = ("exa", "tavily")
     queries: tuple[str, ...] = ("中国 今日 主要新闻", "全球 今日 主要新闻", "科技 最新消息", "经济 社会 最新消息")
     window_hours: int = Field(default=24, ge=1, le=72)
     min_stories: int = Field(default=3, ge=1, le=18)
@@ -28,10 +26,7 @@ class NewsConfig(BaseModel):
     source_timeout: int = Field(default=20, ge=1, le=60)
     render_timeout: int = Field(default=30, ge=1, le=120)
     send_timeout: int = Field(default=30, ge=1, le=120)
-    catchup_seconds: int = Field(default=900, ge=60, le=7200)
-    retry_delay: int = Field(default=60, ge=1, le=600)
     max_generation_attempts: int = Field(default=3, ge=1, le=5)
-    max_delivery_attempts: int = Field(default=3, ge=1, le=5)
     retention_days: int = Field(default=30, ge=2, le=365)
     bot_id: str = ""
 
@@ -66,8 +61,6 @@ class NewsConfig(BaseModel):
             raise ValueError("news bot_id must be numeric")
         if self.min_stories > self.target_stories:
             raise ValueError("min_stories exceeds target_stories")
-        if not self.sources or len(set(self.sources)) != len(self.sources):
-            raise ValueError("configure distinct search providers")
         return self
 
 

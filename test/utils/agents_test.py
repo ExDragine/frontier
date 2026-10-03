@@ -13,6 +13,7 @@ import pytest
 from langchain_core import exceptions as model_errors
 from PIL import Image
 
+from utils.agent_protocol import AgentArtifact
 from utils.agents import assistant as assistant_mod
 from utils.agents import cognitive as cognitive_mod
 from utils.agents import inputs as inputs_mod
@@ -211,7 +212,60 @@ async def test_extract_uni_messages():
         ]
     }
     result = await cognitive_mod.FrontierCognitive.extract_uni_messages(response)
-    assert result == [media]
+    assert result == [
+        AgentArtifact(
+            kind="image",
+            data=b"",
+            mime_type="image/png",
+            name="image.png",
+            url="https://example.com/image.png",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_extract_artifacts_accepts_neutral_tool_mapping_without_sdk_types():
+    response = {
+        "messages": [
+            types.SimpleNamespace(
+                type="tool",
+                name="paint",
+                artifact={"kind": "image", "data": b"image", "mime_type": "image/png"},
+            )
+        ]
+    }
+
+    result = await cognitive_mod.FrontierCognitive.extract_artifacts(response)
+
+    assert result == [AgentArtifact(kind="image", data=b"image", mime_type="image/png")]
+
+
+@pytest.mark.asyncio
+async def test_extract_artifacts_supports_all_native_media_kinds_without_platform_messages():
+    import base64
+
+    response = {
+        "messages": [
+            types.SimpleNamespace(
+                type="ai",
+                content_blocks=[
+                    {"type": "image", "base64": base64.b64encode(b"image").decode(), "mime_type": "image/png"},
+                    {"type": "audio", "url": "https://example.test/audio.ogg"},
+                    {"type": "video", "url": "https://example.test/video.mp4"},
+                    {"type": "file", "url": "https://example.test/report.txt", "name": "report.txt"},
+                ],
+            )
+        ]
+    }
+
+    result = await cognitive_mod.FrontierCognitive.extract_artifacts(response)
+
+    assert [artifact.kind for artifact in result] == ["image", "audio", "video", "file"]
+    assert result[0].data == b"image"
+    assert result[0].url is None
+    assert result[1].url == "https://example.test/audio.ogg"
+    assert result[3].name == "report.txt"
+    assert all(isinstance(artifact, AgentArtifact) for artifact in result)
 
 
 @pytest.mark.asyncio
@@ -583,6 +637,9 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
     monkeypatch.setattr(cognitive_mod, "provider_is_official_anthropic", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(cognitive_mod, "provider_official_deepseek_api_mode", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        cognitive_mod, "native_web_search_support", lambda *_args, **_kwargs: (False, "test route")
+    )
     monkeypatch.setattr(
         cognitive_mod, "filter_messages_for_model_capabilities", inputs_mod.filter_messages_for_model_capabilities
     )
@@ -1522,6 +1579,27 @@ class TestCollectProgress:
 
         thinking_calls = [c for c in reporter.call_args_list if c[0][0].type == "thinking"]
         assert len(thinking_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_emits_tool_call_start_from_live_message_projection(self):
+        """工具调用参数流应在工具真正执行前触发早期事件。"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from utils.agents.progress import collect_progress
+
+        mock_text = MagicMock()
+        mock_text.__aiter__.return_value = _AsyncIter([])
+        mock_msg = MagicMock()
+        mock_msg.text = mock_text
+        mock_msg.tool_calls = _AsyncIter([{"name": "web_search", "args": ""}])
+        mock_msg.tool_calls.__await__ = lambda: asyncio.sleep(0).__await__()
+        reporter = AsyncMock()
+
+        await collect_progress(self._mock_stream(messages=[mock_msg]), reporter)
+
+        early = [call.args[0] for call in reporter.call_args_list if call.args[0].type == "tool_call_start"]
+        assert len(early) == 1
+        assert early[0].detail == {"tool_name": "web_search", "early": True}
 
     @pytest.mark.asyncio
     async def test_emits_subagent_start(self):

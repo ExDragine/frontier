@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
-from utils.agent_protocol import ConversationRef, Participant, normalize_workspace_key
+from utils.agent_protocol import AgentArtifact, ConversationRef, Participant, normalize_workspace_key
 from utils.agents.progress import ProgressReporter
-from utils.media import MediaKind, detect_mime_type, resolve_media, standard_media_block
+from utils.media import (
+    MediaKind,
+    detect_mime_type,
+    inline_media_bytes,
+    media_block_kind,
+    resolve_media,
+    standard_media_block,
+)
 
 if TYPE_CHECKING:
     from .execution import AgentResult
@@ -21,6 +28,9 @@ class AgentRuntimeMedia:
     kind: MediaKind
     data: bytes
     mime_type: str
+    name: str | None = None
+    url: str | None = None
+    path: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,36 +91,95 @@ def _message_text(value: object) -> str:
     if isinstance(content, dict):
         if content.get("type") in {"text", "output_text"} or "text" in content:
             return str(content.get("text", ""))
+        if "content" in content:
+            return _message_text(content["content"])
         return ""
     if isinstance(content, list):
         return "\n".join(part for item in content if (part := _message_text(item)))
     return str(content or "")
 
 
-def _runtime_artifacts(messages: list[object]) -> tuple[AgentRuntimeMedia, ...]:
+def _runtime_artifact_kind(value: object) -> MediaKind | None:
+    kind = str(value or "").lower()
+    if kind == "voice":
+        kind = "audio"
+    return kind if kind in {"image", "audio", "video", "file"} else None
+
+
+def _runtime_value(value: object, *names: str) -> object:
+    if isinstance(value, Mapping):
+        for name in names:
+            if name in value:
+                return value[name]
+        return None
+    for name in names:
+        item = getattr(value, name, None)
+        if item is not None:
+            return item
+    return None
+
+
+def _iter_runtime_artifact_segments(value: object):
+    if isinstance(value, (AgentArtifact, Mapping)):
+        yield value
+        return
+    if isinstance(value, (str, bytes, bytearray)):
+        return
+    if isinstance(value, Iterable):
+        for item in value:
+            yield from _iter_runtime_artifact_segments(item)
+        return
+    yield value
+
+
+def _runtime_artifact(value: object) -> AgentRuntimeMedia | None:
+    if isinstance(value, AgentArtifact):
+        kind = _runtime_artifact_kind(value.kind)
+        if kind is None:
+            return None
+        return AgentRuntimeMedia(
+            kind=kind, data=value.data, mime_type=value.mime_type,
+            name=value.name, url=value.url, path=value.path,
+        )
+    kind = media_block_kind(value) if isinstance(value, Mapping) else None
+    if kind is None:
+        kind = _runtime_artifact_kind(_runtime_value(value, "kind", "type"))
+    if kind is None:
+        return None
+    inline = inline_media_bytes(value) if isinstance(value, Mapping) else None
+    raw = inline[0] if inline and inline[0] else None
+    declared_mime = (inline[1] if inline else None) or _runtime_value(value, "mime_type", "mimetype")
+    if raw is None:
+        raw_value = _runtime_value(value, "raw", "data")
+        raw = bytes(raw_value) if isinstance(raw_value, (bytes, bytearray)) and raw_value else None
+    url_value = _runtime_value(value, "url")
+    path_value = _runtime_value(value, "path")
+    url = str(url_value) if isinstance(url_value, str) and url_value and not url_value.startswith("data:") else None
+    path = str(path_value) if isinstance(path_value, str) and path_value else None
+    name_value = _runtime_value(value, "name", "filename")
+    name = str(name_value) if isinstance(name_value, str) and name_value else None
+    if raw is None and not url and not path:
+        return None
+    return AgentRuntimeMedia(
+        kind=kind,
+        data=raw or b"",
+        mime_type=detect_mime_type(
+            raw or b"",
+            kind=kind,
+            declared_mime=str(declared_mime) if declared_mime else None,
+            file_name=name,
+        ),
+        name=name,
+        url=url,
+        path=path,
+    )
+
+
+def _runtime_artifacts(messages: object) -> tuple[AgentRuntimeMedia, ...]:
     artifacts: list[AgentRuntimeMedia] = []
-    for message in messages:
-        segments = list(message) if isinstance(message, Iterable) else [message]
-        for segment in segments:
-            kind = str(getattr(segment, "type", getattr(segment, "kind", "")) or "")
-            if kind not in {"image", "audio", "video", "file"}:
-                continue
-            raw = getattr(segment, "raw", getattr(segment, "data", None))
-            if not isinstance(raw, bytes | bytearray) or not raw:
-                continue
-            data = bytes(raw)
-            declared_mime = getattr(segment, "mimetype", None)
-            artifacts.append(
-                AgentRuntimeMedia(
-                    kind=kind,
-                    data=data,
-                    mime_type=detect_mime_type(
-                        data,
-                        kind=kind,
-                        declared_mime=str(declared_mime) if declared_mime else None,
-                    ),
-                )
-            )
+    for segment in _iter_runtime_artifact_segments(messages):
+        if artifact := _runtime_artifact(segment):
+            artifacts.append(artifact)
     return tuple(artifacts)
 
 
@@ -246,7 +315,7 @@ class FrontierAgentRuntime:
         final_message = response_messages[-1] if response_messages else ""
         return AgentRuntimeResult(
             text=_message_text(final_message).strip(),
-            artifacts=_runtime_artifacts(result.get("uni_messages", []))
+            artifacts=_runtime_artifacts(result.get("artifacts", result.get("uni_messages", [])))
             if isinstance(result, dict)
             else (),
             error=str(result["error"]) if isinstance(result, dict) and result.get("error") else None,

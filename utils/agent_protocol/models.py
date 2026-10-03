@@ -190,6 +190,11 @@ class AgentArtifact:
     data: bytes
     mime_type: str
     name: str | None = None
+    # Remote and local sources are optional compatibility fields for tools
+    # that return a URL/path instead of inline bytes.  Platform adapters decide
+    # how to deliver them; the Agent Core never constructs a platform message.
+    url: str | None = None
+    path: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

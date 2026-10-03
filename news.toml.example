@@ -5,6 +5,7 @@ timezone = "Asia/Shanghai"
 # model/provider 留空时复用 env.toml 的 daily_news_model / daily_news_model_provider。
 model = ""
 provider = ""
+# Exa without EXA_API_KEY uses mcp.json's public web_search_exa tool.
 sources = ["exa", "tavily"]
 queries = ["中国 今日 主要新闻", "全球 今日 主要新闻", "科技 最新消息", "经济 社会 最新消息"]
 window_hours = 24

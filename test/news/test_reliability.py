@@ -37,12 +37,9 @@ def payload(count=2):
     ], worth_reading=[])
 
 
-def service(repo, *, drafts, verification=None, attempts=3):
+def service(repo, *, drafts, attempts=3):
     sources = SimpleNamespace(collect=AsyncMock(return_value=[article(str(i)) for i in range(2)]))
-    editor = SimpleNamespace(
-        edit=AsyncMock(side_effect=drafts),
-        verify=AsyncMock(side_effect=verification or (lambda draft, _articles: draft)),
-    )
+    editor = SimpleNamespace(edit=AsyncMock(side_effect=drafts))
     return NewsService(repo, sources, editor, NewsConfig(
         min_stories=2, target_stories=2, max_generation_attempts=attempts,
     ))
@@ -59,33 +56,53 @@ async def test_rejected_draft_is_reedited_and_ready_report_reused(repo, edition)
 
 
 @pytest.mark.asyncio
-async def test_rejected_draft_cleared_even_when_budget_exhausted(repo, edition):
+async def test_exhausted_attempts_fail_and_next_run_recollects(repo, edition):
     svc = service(repo, drafts=[payload(1), payload(1)], attempts=2)
     with pytest.raises(InsufficientEvidence):
         await svc.generate_report(edition)
     assert svc.editor.edit.await_count == 2
-    assert (await repo.get(edition.report_id))["payload"] is None
+    assert (await repo.get(edition.report_id))["status"] == "failed"
     svc.editor.edit.side_effect = [payload(2)]
     assert (await svc.generate_report(edition))["status"] == "ready"
-    assert svc.sources.collect.await_count == 1
+    assert svc.sources.collect.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_verification_network_failure_preserves_draft(repo, edition):
-    svc = service(repo, drafts=[payload(2)], verification=[ConnectionError(), payload(2)])
-    with pytest.raises(ConnectionError):
+async def test_edit_timeout_fails_and_next_run_recollects(repo, edition):
+    svc = service(repo, drafts=[TimeoutError(), payload(2)])
+    with pytest.raises(TimeoutError):
         await svc.generate_report(edition)
-    assert (await repo.get(edition.report_id))["payload"] is not None
+    row = await repo.get(edition.report_id)
+    assert row["status"] == "failed"
+    assert row["payload"] is None
     assert (await svc.generate_report(edition))["status"] == "ready"
-    assert svc.editor.edit.await_count == 1
+    assert svc.sources.collect.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_checkpoint_preserves_long_generation_lease(repo, edition):
-    token = await repo.claim(edition, ttl=930)
-    before = await repo.get(edition.report_id)
-    await repo.checkpoint(edition.report_id, token, "edit")
-    assert (await repo.get(edition.report_id))["lease_until"] == before["lease_until"]
+async def test_complete_requires_live_generation_lease(repo, edition):
+    token = await repo.claim(edition)
+    await repo._run(lambda db: db.execute("UPDATE news_reports SET lease_until=0"))
+    with pytest.raises(RuntimeError, match="lease"):
+        await repo.complete(edition.report_id, token, "ready", [], payload(2))
+
+
+@pytest.mark.asyncio
+async def test_retention_protects_active_generation_and_pending_delivery(repo, edition):
+    cutoff = time.time() - 40 * 86400
+    token = await repo.claim(edition)
+    await repo._run(lambda db: db.execute("UPDATE news_reports SET updated_at=?", (cutoff,)))
+    assert await repo.prune(30) == 0  # Active generation lease.
+    await repo.fail(edition.report_id, token, "failed")
+    await repo.stage_deliveries(edition.report_id, ["1"])
+    await repo._run(lambda db: db.execute("UPDATE news_reports SET updated_at=?", (cutoff,)))
+    assert await repo.prune(30) == 0  # Pending delivery.
+    await repo.mark_delivery(edition.report_id, "1", "sent")
+    await repo._run(lambda db: db.execute("UPDATE news_reports SET updated_at=?", (cutoff,)))
+    await repo._run(lambda db: db.execute("UPDATE news_deliveries SET updated_at=?", (cutoff,)))
+    assert await repo.prune(30) == 1
+    assert await repo.get(edition.report_id) is None
+    assert await repo.deliveries(edition.report_id) == []
 
 
 @pytest.mark.asyncio
@@ -106,7 +123,7 @@ async def test_insufficient_unique_evidence_uses_fallback(edition):
 def sender(monkeypatch):
     from plugins.news import delivery
 
-    send = AsyncMock(return_value=SimpleNamespace(message_id="123"))
+    send = AsyncMock()
     message = SimpleNamespace(send=send)
     monkeypatch.setattr(delivery, "UniMessage", SimpleNamespace(text=lambda _: message))
     return send
@@ -117,37 +134,50 @@ def report():
 
 
 @pytest.mark.asyncio
-async def test_send_confirmation_failure_cannot_resend(repo, sender, monkeypatch):
+async def test_deliver_marks_sent_and_never_resends(repo, sender):
     from plugins.news.delivery import deliver
 
-    original = repo.finish_delivery
-
-    async def fail_confirmation(*args, **kwargs):
-        if args[3] == "sent":
-            raise OSError("database unavailable")
-        return await original(*args, **kwargs)
-
-    monkeypatch.setattr(repo, "finish_delivery", fail_confirmation)
-    cfg = NewsConfig()
-    assert await deliver(repo, report(), [1], cfg) == [1]
-    assert (await repo.deliveries("r"))[0]["state"] == "sending"
-    assert await repo.retry_failed("r", ["1"], time.time() + 60) == []
-    await repo._run(lambda db: db.execute("UPDATE news_deliveries SET lease_until=0"))
-    assert await deliver(repo, report(), [1], cfg) == []
-    assert (await repo.deliveries("r"))[0]["state"] == "unknown"
-    assert sender.await_count == 1
+    assert await deliver(repo, report(), [1, 2], NewsConfig()) == [1, 2]
+    rows = {row["target"]: (row["state"], row["attempts"]) for row in await repo.deliveries("r")}
+    assert rows == {"1": ("sent", 1), "2": ("sent", 1)}
+    assert await deliver(repo, report(), [1, 2], NewsConfig()) == []
+    assert sender.await_count == 2
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("state", ["absent", "sent", "unknown", "failed"])
+async def test_deliver_timeout_is_failed_and_retryable(repo, sender):
+    from plugins.news.delivery import deliver
+
+    sender.side_effect = TimeoutError()
+    assert await deliver(repo, report(), [1], NewsConfig()) == []
+    row = (await repo.deliveries("r"))[0]
+    assert row["state"] == "failed" and row["error"] == "TimeoutError"
+    sender.side_effect = None
+    assert await repo.retry_failed("r", ["1"]) == ["1"]
+    assert await deliver(repo, report(), ["1"], NewsConfig(), stage=False) == [1]
+    assert (await repo.deliveries("r"))[0]["state"] == "sent"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_send_stays_pending(repo, sender):
+    from plugins.news.delivery import deliver
+
+    sender.side_effect = asyncio.CancelledError()
+    with pytest.raises(asyncio.CancelledError):
+        await deliver(repo, report(), [1], NewsConfig())
+    assert (await repo.deliveries("r"))[0]["state"] == "pending"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["absent", "sent", "pending", "failed"])
 async def test_retry_only_existing_failed_target(repo, sender, state):
     from plugins.news.delivery import deliver
 
     if state != "absent":
-        await repo.stage_deliveries("r", ["1"], time.time() + 60)
-        token = await repo.claim_delivery("r", "1")
-        await repo.finish_delivery("r", "1", token, state)
-    targets = await repo.retry_failed("r", ["1"], time.time() + 60)
+        await repo.stage_deliveries("r", ["1"])
+        if state != "pending":
+            await repo.mark_delivery("r", "1", state)
+    targets = await repo.retry_failed("r", ["1"])
     sent = await deliver(repo, report(), targets, NewsConfig(), stage=False)
     assert sent == ([1] if state == "failed" else [])
     assert sender.await_count == (1 if state == "failed" else 0)
@@ -156,39 +186,7 @@ async def test_retry_only_existing_failed_target(repo, sender, state):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exception", [TimeoutError, asyncio.CancelledError])
-async def test_ambiguous_send_never_becomes_retryable(repo, sender, exception):
-    from plugins.news.delivery import deliver
-
-    sender.side_effect = exception
-    if exception is asyncio.CancelledError:
-        with pytest.raises(asyncio.CancelledError):
-            await deliver(repo, report(), [1], NewsConfig())
-    else:
-        assert await deliver(repo, report(), [1], NewsConfig()) == []
-    assert (await repo.deliveries("r"))[0]["state"] in {"unknown", "sending"}
-    assert await repo.retry_failed("r", ["1"], time.time() + 60) == []
-
-
-@pytest.mark.asyncio
-async def test_retention_protects_active_generation_and_delivery(repo, edition):
-    cutoff = time.time() - 40 * 86400
-    token = await repo.claim(edition)
-    await repo._run(lambda db: db.execute("UPDATE news_reports SET updated_at=?", (cutoff,)))
-    assert await repo.prune(30) == 0  # Active generation.
-    await repo.fail(edition.report_id, token, "failed")
-    await repo.stage_deliveries(edition.report_id, ["1"], time.time() + 60)
-    await repo.claim_delivery(edition.report_id, "1")
-    await repo._run(lambda db: db.execute("UPDATE news_reports SET updated_at=?", (cutoff,)))
-    await repo._run(lambda db: db.execute("UPDATE news_deliveries SET updated_at=?", (cutoff,)))
-    assert await repo.prune(30) == 0  # Active delivery.
-    await repo._run(lambda db: db.execute("UPDATE news_deliveries SET lease_until=0"))
-    assert await repo.prune(30) == 1
-    assert await repo.get(edition.report_id) is None
-    assert await repo.deliveries(edition.report_id) == []
-
-
-def test_rendering_uses_archived_edition_time():
+async def test_rendering_uses_archived_edition_time():
     from plugins.news.rendering import render_html, render_text
 
     data = report() | {
@@ -205,8 +203,23 @@ async def test_insufficient_collection_reports_safe_diagnostics_without_editing(
     svc = service(repo, drafts=[payload(2)])
     svc.sources.collect.return_value = []
     svc.sources.stats = {"received": 8, "undated": 8, "outside_window": 0}
-    svc.sources.errors = ["exa:missing_key"]
-    with pytest.raises(InsufficientEvidence, match=r"eligible=0/2.*undated=8.*exa:missing_key"):
+    svc.sources.errors = ["exa:mcp_tool_missing"]
+    with pytest.raises(InsufficientEvidence, match=r"eligible=0/2.*undated=8.*exa:mcp_tool_missing"):
         await svc.generate_report(edition)
     svc.editor.edit.assert_not_awaited()
     assert (await repo.get(edition.report_id))["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_editor_receives_configured_story_target(monkeypatch, edition):
+    import json
+
+    from plugins.news.editor import NewsEditor
+
+    editor = NewsEditor(NewsConfig(target_stories=14))
+    call = AsyncMock(return_value=payload(2))
+    monkeypatch.setattr(editor, "call", call)
+    await editor.edit(edition, [article(str(i)) for i in range(2)])
+    data = json.loads(call.call_args.args[2])
+    assert data["target_stories"] == 14
+    assert len(data["articles"]) == 2

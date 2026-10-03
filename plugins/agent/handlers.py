@@ -6,12 +6,13 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from langchain.messages import AIMessage
 from nonebot import get_bot, get_driver, logger, on_message, on_notice
 from nonebot.adapters.milky.event import GroupDisbandEvent, MessageEvent
 from nonebot_plugin_apscheduler import scheduler
+from pydantic import BaseModel
 
 from utils.agent_orchestration import ConversationOrchestrator, TurnStatus
 from utils.agent_protocol import (
@@ -54,8 +55,16 @@ from utils.message import (
     send_artifacts,
     send_messages,
 )
+from utils.signal_llm import signal_structured
 
-from .adapters import QqDelivery, QqHistoryStore, QqMessageAdapter, QqReplyPolicy, QqToolProvider
+from .adapters import (
+    QqDelivery,
+    QqHistoryStore,
+    QqMessageAdapter,
+    QqReplyPolicy,
+    QqToolProvider,
+    send_qq_artifacts,
+)
 from .attachments import cleanup_staged_message_files, extract_message_files, stage_message_files
 from .chat_context import build_chat_context
 from .gateway import message_gateway
@@ -212,17 +221,111 @@ def _remove_structured_reply_marker(text: str, reply_seq: int | None) -> str:
     return text
 
 
-def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:
-    """构造会话级进度消费者；群聊静默，私聊保留有限进度提示。"""
+class _GroupProgressIntent(BaseModel):
+    intent: Literal["web", "memory", "work"]
+
+
+_GROUP_PROGRESS_MESSAGES = {
+    "web": "我先查一下相关资料，核对后告诉你。",
+    "memory": "我回看一下前面的信息，整理后回复你。",
+    "work": "我先处理一下，马上给你结果。",
+}
+
+
+def _quick_group_progress_message(event: ProgressEvent) -> str | None:
+    """Classify obvious tool events without adding another model round trip."""
+    detail = event.detail or {}
+    tool_name = str(detail.get("tool_name") or "").lower()
+    message = event.message.lower()
+    if any(keyword in f"{tool_name} {message}" for keyword in ("web", "search", "news", "exa", "tavily")):
+        return _GROUP_PROGRESS_MESSAGES["web"]
+    if any(keyword in f"{tool_name} {message}" for keyword in ("memory", "history", "conversation", "recall")):
+        return _GROUP_PROGRESS_MESSAGES["memory"]
+    return None
+
+
+async def _group_progress_message(event: ProgressEvent) -> str | None:
+    """Use one cheap Signal call to turn the first progress event into a status."""
+
+    try:
+        quick_message = _quick_group_progress_message(event)
+        if quick_message:
+            return quick_message
+        result = await asyncio.wait_for(
+            signal_structured(
+                """判断 Agent 当前正在做哪类工作，只返回 JSON。web 表示查询网页、新闻或外部资料；
+memory 表示回忆聊天记录、读取记忆或上下文；work 表示计算、调用业务工具、生成媒体或其他处理。""",
+                f"事件类型：{event.type}\n当前动作：{event.message}",
+                _GroupProgressIntent,
+                temperature=0,
+            ),
+            timeout=2.5,
+        )
+    except Exception as exc:
+        logger.debug("群聊进度 Signal 失败: {}", type(exc).__name__)
+        return None
+    return _GROUP_PROGRESS_MESSAGES.get(result.intent)
+
+
+def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:  # noqa: C901
+    """构造会话级进度消费者；群聊只发一次 Signal 状态，私聊保留有限提示。"""
     spoken_messages: set[str] = set()
     spoken_count = 0
     max_spoken_messages = 2
+    group_signal_started = False
+    group_signal_sent = False
+    group_signal_lock = asyncio.Lock()
+    group_signal_task: asyncio.Task | None = None
 
-    async def reporter(event: ProgressEvent) -> None:
+    async def send_group_status(event: ProgressEvent) -> None:
+        nonlocal group_signal_sent
+        try:
+            message = await asyncio.wait_for(_group_progress_message(event), timeout=0.35)
+        except TimeoutError:
+            message = _GROUP_PROGRESS_MESSAGES["work"]
+        if not message:
+            return
+        async with group_signal_lock:
+            if group_signal_sent:
+                return
+            group_signal_sent = True
+            try:
+                await UniMessage.text(message).send()
+            except Exception as exc:
+                group_signal_sent = False
+                logger.debug("群聊进度状态发送失败: {}", type(exc).__name__)
+
+    async def reporter(event: ProgressEvent) -> None:  # noqa: C901
         nonlocal spoken_count
 
-        # 群聊只发送最终回复和媒体工件，避免中间推理叙述刷屏或泄露。
         if group_id is not None:
+            nonlocal group_signal_started, group_signal_task
+            if event.type == "done":
+                if group_signal_task is not None and not group_signal_task.done():
+                    group_signal_task.cancel()
+                return
+            if group_signal_sent:
+                return
+            if event.type == "thinking":
+                if not group_signal_started:
+                    group_signal_started = True
+                    # Give the model a short window to reveal a more useful
+                    # tool-call event before falling back to generic wording.
+                    async def delayed_status() -> None:
+                        await asyncio.sleep(0.08)
+                        await send_group_status(event)
+
+                    group_signal_task = asyncio.create_task(
+                        delayed_status(), name="frontier-group-progress-signal"
+                    )
+                return
+            if event.type in {"tool_call_start", "tool_call", "subagent_start"}:
+                if group_signal_task is not None and not group_signal_task.done():
+                    group_signal_task.cancel()
+                group_signal_started = True
+                group_signal_task = asyncio.create_task(
+                    send_group_status(event), name="frontier-group-progress-signal"
+                )
             return
 
         if event.type == "assistant_preamble":
@@ -329,27 +432,41 @@ class _QqCanaryDelivery(QqDelivery):
 async def _send_qq_canary_artifacts(_target: ConversationRef, artifacts) -> DeliveryResult:
     """Convert neutral media to QQ messages without exposing UniMessage upstream."""
 
-    from utils.alconna import UniMessage
-
     messages = []
     for artifact in artifacts:
+        source = {}
+        if getattr(artifact, "data", None):
+            source["raw"] = artifact.data
+        elif getattr(artifact, "url", None):
+            source["url"] = artifact.url
+        elif getattr(artifact, "path", None):
+            source["path"] = artifact.path
+        else:
+            return DeliveryResult(attempted=1, errors=("text_canary_artifact",))
+        media_kwargs = {"mimetype": artifact.mime_type} if getattr(artifact, "mime_type", None) else {}
+        name = getattr(artifact, "name", None)
         if artifact.kind == "image":
-            messages.append(UniMessage.image(raw=artifact.data))
+            messages.append(UniMessage.image(**source, **media_kwargs))
         elif artifact.kind == "audio":
-            messages.append(UniMessage.audio(raw=artifact.data))
+            messages.append(UniMessage.audio(**source, **media_kwargs))
         elif artifact.kind == "video":
-            messages.append(UniMessage.video(raw=artifact.data))
+            messages.append(UniMessage.video(**source, **media_kwargs))
         elif artifact.kind == "file":
-            messages.append(
-                UniMessage.file(
-                    raw=artifact.data,
-                    mimetype=artifact.mime_type,
-                    name=artifact.name or "file.bin",
-                )
-            )
+            kwargs = {**source, **media_kwargs}
+            if name:
+                kwargs["name"] = name
+            messages.append(UniMessage.file(**kwargs))
         else:
             return DeliveryResult(attempted=1, errors=("text_canary_artifact",))
     return await send_artifacts(messages)
+
+
+async def _send_agent_artifacts(context: AgentRequestContext, artifacts) -> DeliveryResult:
+    """Deliver neutral artifacts while accepting pre-migration test/caller values."""
+
+    if artifacts and all(hasattr(artifact, "kind") for artifact in artifacts):
+        return await send_qq_artifacts(_qq_runtime_conversation(context), artifacts)
+    return await send_artifacts(artifacts)
 
 
 async def _qq_reply_id_for_context(context: AgentRequestContext) -> int | None:
@@ -649,11 +766,11 @@ async def _execute_agent_request(  # noqa: C901
     if result.get("error"):
         logger.warning("Agent returned error response: {}", result["error"])
 
-    artifacts = result.get("uni_messages", [])
+    artifacts = result.get("artifacts", result.get("uni_messages", []))
     artifact_delivery = DeliveryResult()
     if artifacts:
         logger.info("📤 发送 {} 个媒体工件", len(artifacts))
-        artifact_delivery = await send_artifacts(artifacts)
+        artifact_delivery = await _send_agent_artifacts(context, artifacts)
         if artifact_delivery.errors:
             logger.warning("媒体工件未完整送达: {}", artifact_delivery.errors)
 

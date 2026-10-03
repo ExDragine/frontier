@@ -39,6 +39,18 @@ else:
 """)
 
 
+def test_nonebot_registers_news_command(tmp_path):
+    _run(tmp_path, """
+import nonebot
+nonebot.init(driver='nonebot.drivers.fastapi:Driver', log_level='WARNING')
+assert nonebot.load_plugin('plugins.news') is not None
+plugin = nonebot.get_plugin('news')
+from plugins.news import commands
+assert commands.news in plugin.matcher
+assert nonebot.require('plugins.news') is plugin.module
+""")
+
+
 @pytest.mark.parametrize("first,second", [
     ("plugins.agent", "plugins.toolbox"),
     ("plugins.toolbox", "plugins.agent"),

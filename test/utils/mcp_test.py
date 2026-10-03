@@ -85,6 +85,6 @@ def test_exa_example_uses_direct_streamable_http():
     config = json.loads((repo_root / "mcp.json.example").read_text(encoding="utf-8"))
 
     assert config["exa"]["transport"] == "http"
-    assert config["exa"]["url"] == "https://mcp.exa.ai/mcp"
+    assert config["exa"]["url"] == "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa"
     assert config["exa"]["startup_timeout_seconds"] == 60
     assert "command" not in config["exa"]
