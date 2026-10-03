@@ -167,6 +167,34 @@ async def test_bridge_accepts_legacy_mapping_runtime_result(agent_request):
 
 
 @pytest.mark.asyncio
+async def test_bridge_drops_responses_reasoning_blocks(agent_request):
+    class MappingRuntime:
+        async def run(self, runtime_agent_request):
+            return {
+                "response": {
+                    "messages": [
+                        {
+                            "content": [
+                                {
+                                    "type": "reasoning",
+                                    "content": [
+                                        {"type": "reasoning_text", "text": "private chain"}
+                                    ],
+                                },
+                                {"type": "text", "text": "visible answer"},
+                            ]
+                        }
+                    ]
+                },
+                "status": "success",
+            }
+
+    response = await FrontierAgentCore(MappingRuntime()).run(agent_request)
+
+    assert response.text == "visible answer"
+
+
+@pytest.mark.asyncio
 async def test_bridge_keeps_neutral_artifact_sources_without_sdk_objects(agent_request):
     class MappingRuntime:
         async def run(self, runtime_agent_request):

@@ -33,6 +33,7 @@ from .runtime_gateway import (
     AgentRuntimeRequest,
     AgentRuntimeResult,
     FrontierAgentRuntime,
+    _message_text,
     _runtime_artifacts,
 )
 
@@ -200,19 +201,9 @@ def _current_media(request: AgentRequest) -> tuple[
 
 
 def _response_text(value: object) -> str:
-    content = getattr(value, "content", None)
-    if content is None and hasattr(value, "text"):
-        content = value.text
-    if content is None:
-        content = value
-    if isinstance(content, str):
-        return content
-    if isinstance(content, Mapping):
-        value = content.get("text", content.get("content", ""))
-        return _response_text(value)
-    if isinstance(content, list):
-        return "\n".join(text for item in content if (text := _response_text(item)))
-    return str(content or "")
+    """Compatibility wrapper that excludes Responses reasoning blocks."""
+
+    return _message_text(value)
 
 
 def _mapping_result(result: Mapping[str, Any]) -> AgentRuntimeResult:

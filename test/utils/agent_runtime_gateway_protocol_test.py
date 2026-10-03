@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import pytest
+from langchain_core.messages import AIMessage
 
 from utils.agent_protocol import AgentArtifact, ConversationRef, Participant
 from utils.agents.runtime_gateway import AgentRuntimeRequest, FrontierAgentRuntime
@@ -152,3 +153,34 @@ async def test_runtime_prompt_returns_neutral_artifacts_without_platform_convers
     assert result.text == "done"
     assert result.artifacts[0].kind == "image"
     assert result.artifacts[0].data == b"image"
+
+
+@pytest.mark.asyncio
+async def test_runtime_prompt_drops_responses_reasoning_blocks():
+    class Cognitive:
+        async def chat_agent(self, _messages, **kwargs):
+            del kwargs
+            return {
+                "response": {
+                    "messages": [
+                        AIMessage(
+                            content=[
+                                {
+                                    "type": "reasoning",
+                                    "content": [
+                                        {"type": "reasoning_text", "text": "private chain"}
+                                    ],
+                                },
+                                {"type": "text", "text": "visible answer"},
+                            ]
+                        )
+                    ]
+                },
+                "should_reply": True,
+            }
+
+    result = await FrontierAgentRuntime(Cognitive()).prompt(
+        AgentRuntimeRequest(prompt="hello")
+    )
+
+    assert result.text == "visible answer"

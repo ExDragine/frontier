@@ -84,23 +84,62 @@ class AgentRuntime(Protocol):
     ) -> AgentRuntimeResult: ...
 
 
-def _message_text(value: object) -> str:
-    content = getattr(value, "content", None)
-    if content is None and hasattr(value, "text"):
-        content = value.text
-    if content is None:
-        content = value
+_VISIBLE_TEXT_BLOCK_TYPES = frozenset({"text", "output_text"})
+_REASONING_BLOCK_TYPES = frozenset({"analysis", "reasoning", "reasoning_text", "thinking"})
+_MISSING = object()
+
+
+def _content_text(content: object) -> str:
+    """Extract visible text without traversing reasoning content blocks.
+
+    DeepSeek Responses returns chain-of-thought as a nested
+    ``reasoning -> reasoning_text`` output item.  Walking every ``content``
+    field recursively would turn that private item into the QQ reply.
+    """
+
     if isinstance(content, str):
         return content
-    if isinstance(content, dict):
-        if content.get("type") in {"text", "output_text"} or "text" in content:
+    if isinstance(content, Mapping):
+        block_type = str(content.get("type", "")).casefold()
+        if block_type in _REASONING_BLOCK_TYPES:
+            return ""
+        if block_type in _VISIBLE_TEXT_BLOCK_TYPES or "text" in content:
             return str(content.get("text", ""))
-        if "content" in content:
-            return _message_text(content["content"])
+        nested = content.get("content", _MISSING)
+        if nested is not _MISSING:
+            return _content_text(nested)
         return ""
     if isinstance(content, list):
-        return "\n".join(part for item in content if (part := _message_text(item)))
+        return "\n".join(part for item in content if (part := _content_text(item)))
     return str(content or "")
+
+
+def _message_text(value: object) -> str:
+    """Return only model-visible text from a LangChain/OpenAI message."""
+
+    # AIMessage.text deliberately excludes Responses ``reasoning`` blocks.
+    # Treat a non-callable, even empty, text property as authoritative so an
+    # all-reasoning message cannot fall back to its raw content and leak it.
+    text = getattr(value, "text", _MISSING)
+    if text is not _MISSING and text is not None:
+        if isinstance(text, str):
+            return text
+        if callable(text):
+            try:
+                text = text()
+            except (TypeError, AttributeError):
+                text = _MISSING
+            else:
+                if text:
+                    return str(text)
+                text = _MISSING
+        else:
+            return str(text)
+
+    content = getattr(value, "content", _MISSING)
+    if content is _MISSING or content is None:
+        content = value
+    return _content_text(content)
 
 
 def _runtime_artifact_kind(value: object) -> MediaKind | None:
