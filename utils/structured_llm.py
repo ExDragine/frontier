@@ -1,4 +1,4 @@
-"""Provider-aware structured calls without Agent loops or Signal-specific settings."""
+"""Provider-aware structured calls without Agent loops or decision-only settings."""
 
 import json
 import re

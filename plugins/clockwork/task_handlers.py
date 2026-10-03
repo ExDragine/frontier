@@ -210,7 +210,8 @@ async def build_daily_news_artifacts(
     payload = await assistant_agent(
         daily_news_format_prompt(today, period, report_time),
         f"请把下面的新闻素材包整理成严格 JSON：\n\n{material}",
-        use_model=EnvConfig.SIGNAL_MODEL,
+        use_model=EnvConfig.BASIC_MODEL,
+        model_role="basic",
         tools=None,
         response_format=DailyNewsPayload,
         temperature=0,

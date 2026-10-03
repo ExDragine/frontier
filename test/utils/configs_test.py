@@ -18,6 +18,9 @@ def test_env_config_defaults(monkeypatch):
     assert EnvConfig.BASIC_MODEL_PROVIDER == ""
     assert EnvConfig.BASIC_MODEL_CAPABILITIES == []
     assert EnvConfig.ADVAN_MODEL_PROVIDER == ""
+    assert EnvConfig.DECISION_MODEL == "deepseek-flash"
+    assert EnvConfig.DECISION_MODEL_PROVIDER == "deepseek"
+    assert EnvConfig.DECISION_MODEL_CAPABILITIES == ["text"]
     assert EnvConfig.SIGNAL_MODEL == "deepseek-flash"
     assert EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
     assert EnvConfig.SIGNAL_MODEL_CAPABILITIES == ["text"]
@@ -99,6 +102,34 @@ def test_env_config_reload_updates_runtime_sections():
     assert EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
     assert EnvConfig.QQ_TEXT_CANARY_ENABLED is False
     assert EnvConfig.LAYA_CANDIDATE_ENABLED is False
+
+
+def test_decision_model_fields_are_canonical_and_old_aliases_follow():
+    from utils.configs import EnvConfig
+
+    EnvConfig.reload(
+        {
+            "config_version": 2,
+            "models": {
+                "decision_model": "decision-v1",
+                "decision_model_provider": "decision-provider",
+                "decision_model_capabilities": ["text"],
+            },
+            "providers": {
+                "decision-provider": {
+                    "type": "openai",
+                    "api_mode": "chat_completions",
+                    "decision_extra_body": {"thinking": {"type": "disabled"}},
+                }
+            },
+        }
+    )
+
+    assert EnvConfig.DECISION_MODEL == EnvConfig.SIGNAL_MODEL == "decision-v1"
+    assert EnvConfig.DECISION_MODEL_PROVIDER == EnvConfig.SIGNAL_MODEL_PROVIDER == "decision-provider"
+    assert EnvConfig.LLM_PROVIDERS["decision-provider"]["decision_extra_body"] == {
+        "thinking": {"type": "disabled"}
+    }
 
 
 def test_feishu_connector_settings_are_non_secret_and_environment_credentials(monkeypatch):
@@ -282,6 +313,8 @@ def test_v2_config_loads_new_sections_and_keeps_keys_in_toml(monkeypatch):
     assert EnvConfig.SYSTEM_PROMPT == "你是 {name}"
     assert EnvConfig.BASIC_MODEL == "gpt-5-mini"
     assert EnvConfig.BASIC_MODEL_PROVIDER == "openai_chat"
+    assert EnvConfig.DECISION_MODEL == "gpt-5-nano"
+    assert EnvConfig.DECISION_MODEL_PROVIDER == "openai"
     assert EnvConfig.ADVAN_MODEL == "gpt-5.4"
     assert EnvConfig.ADVAN_MODEL_CAPABILITIES == ["text", "vision"]
     assert EnvConfig.DAILY_NEWS_MODEL == "deepseek-v4-pro"

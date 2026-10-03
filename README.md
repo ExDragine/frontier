@@ -11,7 +11,7 @@ plugins/agent on_message(priority=10)
   ↓
 文本/消息段提取 → 消息归一化 → 引用上下文 → DB 存储
   ↓
-message_gateway 门控（黑白名单 / @ / 唤醒词 / Signal LLM）
+message_gateway 门控（黑白名单 / @ / 唤醒词 / Decision LLM）
   ↓
 媒体下载 + 内容安全检查
   ↓

@@ -26,7 +26,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
   ├─ Phase 2: 消息存储 + 回复网关
   │    MessageDatabase.insert / replace_derived_messages
   │    prepare_message 构造历史上下文
-  │    message_gateway 判断黑白名单、to_me、唤醒词、Signal LLM 辅助回复
+  │    message_gateway 判断黑白名单、to_me、唤醒词、Decision LLM 辅助回复
   │    网关不通过 → common.finish()
   │
   ├─ Phase 3: 媒体下载和附件索引
@@ -83,7 +83,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `message.py` | 共享消息段提取、媒体下载、内容安全、Markdown/图片回复渲染和投递 |
 | `configs.py` | `EnvConfig`：从 `env.toml` 读取模型、端点、密钥、功能开关、Dashboard、内容安全配置 |
 | `llm_factory.py` | OpenAI-compatible / Google / Anthropic / DeepSeek 模型路由，供应商 profile，能力判断 |
-| `signal_llm.py` | 轻量结构化 LLM 调用，用于回复门控、浏览器捕获意图等判断 |
+| `decision_llm.py` / `signal_llm.py` | 轻量结构化 Decision LLM 调用；后者仅保留兼容导出，用于回复门控、浏览器捕获意图等判断 |
 | `markdown_render.py` | Markdown → 图片，使用本地 Mermaid/ECharts/KaTeX/Prism 渲染增强内容，适配 QQ 文本/图片发送 |
 | `browser_capture.py` | Playwright 截图/录屏/页面数据提取，带浏览器重启和超时处理 |
 | `paint_service.py` / `video_service.py` | 共享图片和视频生成服务，供命令和 Agent 工具复用 |
@@ -103,7 +103,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `earth` | `earthquake`, `radar`, `weather` | 地震、雷达、天气 |
 | `memory` | `memory` | 当前会话最近对话、聊天记录搜索和平台历史读取，由主 Agent 按需调用 |
 | `divination` | `iching`, `tarot` | 易经、塔罗 |
-| `restricted` | `ens_normal`, `ens_professional`, `webpage_screenshot`, `webpage_recording` | 受控工具：ENS 在 Agent 中显式追加；网页截图/录屏需 Signal LLM 判断用户明确要求 |
+| `restricted` | `ens_normal`, `ens_professional`, `webpage_screenshot`, `webpage_recording` | 受控工具：ENS 在 Agent 中显式追加；网页截图/录屏需 Decision LLM 判断用户明确要求 |
 | `external` | MCP tools | `mcp.json` 定义的外部工具，首次 Agent 执行通过 `agent_tools.initialize()` 异步加载 |
 
 工具注册约定：
@@ -118,7 +118,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 `FrontierCognitive.chat_agent()` 的关键行为：
 - 构造函数不创建模型或连接 MCP。首轮初始化组件，`EnvConfig.REVISION` 变化后在下一轮重建。
 - QQ、用户定时任务和内置 ACP 服务经 `FrontierAgentRuntime.run()` 调用；`chat_agent()` 保留兼容入口。
-- 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，Signal 判断使用 `EnvConfig.SIGNAL_MODEL`。
+- 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，决策判断使用 `EnvConfig.DECISION_MODEL`。
 - 当模型引用的供应商 `api_mode` 为 `responses` 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；其他协议路径会跳过这些参数。
 - 根据模型自身的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
 - 主 Agent 默认接收当前消息以及 `[storage].query_message_numbers` 控制的最近历史，并直接持有当前会话的最近对话、聊天搜索和平台历史工具；超出窗口的前文按需调用工具获取。Exa / Tavily 联网搜索、网页读取和多来源核验由主 Agent 直接执行并共享主图调用预算，`document-agent` 继承当前 backend 并仅读分析 workspace / memory 文件。一次性本地/API 只读查询工具通过 PTC 交给主 Agent，联网搜索、媒体工件与平台写操作保留为主 Agent 直接工具。
@@ -143,7 +143,7 @@ Prompt 加载链：
 - `FrontierCognitive.load_system_prompt()` 组合 `env.toml` 的 `[bot].system_prompt` 与 `prompts/AGENTS.md` 始终适用的全局操作规范；基础人设中的 `{name}` 会按当前唤醒词注入。
 - 自定义 `MemoryMiddleware` 从当前 workspace 的 `/memory/{workspace_key}/SOUL.md` 注入动态人设，并同时提供 SOUL 的写入边界与优先级约束。
 - 完整的图表、指标卡和时间线渲染契约位于只读内置 Skill `/skills/rich-markdown/SKILL.md`，仅在需要增强 Markdown 时按需加载。
-- `plugins/agent/prompts/reply_check.md` 用于群聊是否应主动回复的 Signal LLM 判断。
+- `plugins/agent/prompts/reply_check.md` 用于群聊是否应主动回复的 Decision LLM 判断。
 - `plugins/clockwork/prompts/daily_news.md` 用于每日新闻任务。
 - ENS 详细工作流位于只读内置 Skill `/skills/ens-weather/SKILL.md`；主提示词只保留加载入口。
 
@@ -173,7 +173,7 @@ Prompt 加载链：
 
 模型路由规则：
 - 显式 `*_model_provider` 优先。
-- 所有 `*_model_provider`（包括 paint/video）均指向 `[providers.<name>]`；供应商 profile 用 `type` 管理 LangChain 适配器、用 `api_mode` 管理协议，并统一保存 base URL 和 API key。Signal 的结构化策略由可选 `structured_output_method` 指定，默认 `auto`。
+- 所有 `*_model_provider`（包括 paint/video）均指向 `[providers.<name>]`；供应商 profile 用 `type` 管理 LangChain 适配器、用 `api_mode` 管理协议，并统一保存 base URL 和 API key。Decision 的结构化策略由可选 `structured_output_method` 指定，默认 `auto`。
 - Paint/Video 服务使用 OpenAI-compatible Images/Videos API，因此对应 provider 的 `type` 必须为 `openai`。
 - 官方 OpenAI / DeepSeek Responses 路由会自动启用服务端 `web_search`；兼容代理只有在确认支持该托管工具后，才可在 provider profile 中显式设置 `native_web_search = true`。
 - 没有显式 provider 时，`llm_factory.py` 会根据模型名前缀推断：`deepseek*`、`gemini-*`、`claude-*`，其余走 OpenAI-compatible。
@@ -240,7 +240,7 @@ Milky 群管理工具会读取 `RunnableConfig.configurable.group_member_role` �
 
 3. `message_gateway()` 在媒体下载前运行。不要在网关前引入必须下载媒体的逻辑。
 
-4. Browser capture 工具不是普通兜底工具。`webpage_screenshot` / `webpage_recording` 只有在 Signal LLM 判断用户明确要求网页外观/录屏时才暴露。
+4. Browser capture 工具不是普通兜底工具。`webpage_screenshot` / `webpage_recording` 只有在 Decision LLM 判断用户明确要求网页外观/录屏时才暴露。
 
 5. 提示词分为常驻层和按需层：`env.toml` 基本人设与 `prompts/AGENTS.md` 全局规范常驻，workspace `SOUL.md` 由 Memory middleware 注入，详细工作流与渲染契约保存在 Skills 中按需加载。修改前先确认目标层级。
 

@@ -129,7 +129,7 @@ def filter_messages_for_model_capabilities(
     messages: list,
     model: str,
     *,
-    role: Literal["basic", "signal", "advanced", "daily_news"] | None = None,
+    role: Literal["basic", "decision", "signal", "advanced", "daily_news"] | None = None,
 ) -> list:
     filtered_messages = []
     for message in messages:

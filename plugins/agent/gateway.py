@@ -11,7 +11,11 @@ from pydantic import BaseModel, Field
 from utils.configs import EnvConfig
 from utils.database import GroupSettingsManager, MessageDatabase, get_engine
 from utils.decision import LayaDecisionProvider, score_reply_gate
-from utils.signal_llm import signal_structured
+from utils.decision_llm import decision_structured
+
+# Keep the old module-level name as an injection hook for existing tests and
+# plugins; all runtime requests use the canonical decision model underneath.
+signal_structured = decision_structured
 
 messages_db = MessageDatabase()
 
@@ -213,7 +217,7 @@ def _get_laya_candidate_provider() -> LayaDecisionProvider | None:
 
 
 async def _laya_candidate_should_reply(plaintext: str, messages: list) -> bool:
-    """Expand the candidate set without bypassing the final Signal gate."""
+    """Expand the candidate set without bypassing the final decision gate."""
 
     provider = _get_laya_candidate_provider()
     if provider is None:

@@ -133,6 +133,41 @@ async def test_signal_llm_class_allows_explicit_model_override(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_decision_llm_uses_decision_model_and_tag(monkeypatch):
+    captured = {}
+
+    class DummyRunnable:
+        async def ainvoke(self, _messages):
+            return Gateway(is_safe=True)
+
+    class DummyModel:
+        profile = None
+
+        def with_structured_output(self, schema, *, method):
+            captured["schema"] = schema
+            captured["method"] = method
+            return DummyRunnable()
+
+    def fake_create_llm(**kwargs):
+        captured["llm_kwargs"] = kwargs
+        return DummyModel()
+
+    monkeypatch.setattr(signal_llm, "create_llm", fake_create_llm)
+    monkeypatch.setattr(signal_llm.EnvConfig, "DECISION_MODEL", "decision-model")
+    monkeypatch.setattr(signal_llm.EnvConfig, "DECISION_MODEL_PROVIDER", "decision-provider")
+    monkeypatch.setattr(llm_factory.EnvConfig, "LLM_PROVIDERS", {
+        "decision-provider": {"type": "openai", "api_mode": "chat_completions"},
+    })
+
+    response = await signal_llm.decision_structured("判断", "你好", Gateway)
+
+    assert response.is_safe is True
+    assert captured["llm_kwargs"]["model"] == "decision-model"
+    assert captured["llm_kwargs"]["provider"] == "decision-provider"
+    assert captured["llm_kwargs"]["tags"] == ["frontier:decision"]
+
+
+@pytest.mark.asyncio
 async def test_provider_signal_extra_body_merges_with_call_site_override(monkeypatch):
     captured = {}
 

@@ -16,25 +16,28 @@ from .inputs import build_user_content
 
 def configured_model_route(
     model: str,
-    role: Literal["basic", "signal", "advanced", "daily_news"] | None = None,
+    role: Literal["basic", "decision", "signal", "advanced", "daily_news"] | None = None,
 ) -> dict[str, str]:
-    if role == "basic":
-        return {"provider": EnvConfig.BASIC_MODEL_PROVIDER}
-    if role == "signal":
-        return {"provider": EnvConfig.SIGNAL_MODEL_PROVIDER}
-    if role == "advanced":
-        return {"provider": EnvConfig.ADVAN_MODEL_PROVIDER}
-    if role == "daily_news":
-        return {"provider": EnvConfig.DAILY_NEWS_MODEL_PROVIDER}
-    if model == EnvConfig.BASIC_MODEL:
-        return {"provider": EnvConfig.BASIC_MODEL_PROVIDER}
-    if model == EnvConfig.ADVAN_MODEL:
-        return {"provider": EnvConfig.ADVAN_MODEL_PROVIDER}
-    if model == EnvConfig.SIGNAL_MODEL:
-        return {"provider": EnvConfig.SIGNAL_MODEL_PROVIDER}
-    if model == EnvConfig.DAILY_NEWS_MODEL:
-        return {"provider": EnvConfig.DAILY_NEWS_MODEL_PROVIDER}
-    return {}
+    role_routes = {
+        "basic": EnvConfig.BASIC_MODEL_PROVIDER,
+        "decision": EnvConfig.DECISION_MODEL_PROVIDER,
+        "signal": EnvConfig.SIGNAL_MODEL_PROVIDER,
+        "advanced": EnvConfig.ADVAN_MODEL_PROVIDER,
+        "daily_news": EnvConfig.DAILY_NEWS_MODEL_PROVIDER,
+    }
+    if role in role_routes:
+        return {"provider": role_routes[role]}
+    model_routes: dict[str, str] = {}
+    for configured_model, configured_provider in (
+        (EnvConfig.BASIC_MODEL, EnvConfig.BASIC_MODEL_PROVIDER),
+        (EnvConfig.ADVAN_MODEL, EnvConfig.ADVAN_MODEL_PROVIDER),
+        (EnvConfig.DECISION_MODEL, EnvConfig.DECISION_MODEL_PROVIDER),
+        (EnvConfig.SIGNAL_MODEL, EnvConfig.SIGNAL_MODEL_PROVIDER),
+        (EnvConfig.DAILY_NEWS_MODEL, EnvConfig.DAILY_NEWS_MODEL_PROVIDER),
+    ):
+        model_routes.setdefault(configured_model, configured_provider)
+    provider = model_routes.get(model)
+    return {"provider": provider} if provider is not None else {}
 
 
 def json_document_candidates(text: str, *, prefer_object: bool = False) -> list[str]:
@@ -79,7 +82,7 @@ async def assistant_agent(
     system_prompt: str = "",
     user_prompt: str = "",
     use_model: str | None = None,
-    model_role: Literal["basic", "signal", "advanced", "daily_news"] | None = None,
+    model_role: Literal["basic", "decision", "signal", "advanced", "daily_news"] | None = None,
     tools=None,
     response_format=None,
     middleware=None,

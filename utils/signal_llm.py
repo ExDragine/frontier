@@ -6,7 +6,12 @@ from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel
 
 from utils.configs import EnvConfig
-from utils.llm_factory import create_llm, provider_signal_extra_body, structured_output_options
+from utils.llm_factory import (
+    create_llm,
+    provider_decision_extra_body,
+    provider_signal_extra_body,
+    structured_output_options,
+)
 
 _JSON_MODE_INSTRUCTION = (
     "Return ONLY valid JSON matching the requested schema. Do not wrap the JSON in markdown or include explanations."
@@ -44,8 +49,13 @@ def _parse_text_json(schema: type[BaseModel], message: Any) -> Any:
         return parser.parse(text[start : end + 1])
 
 
-class SignalLLM:
-    """Low-overhead LLM wrapper for routing and structured decisions."""
+class DecisionLLM:
+    """Low-overhead LLM wrapper for provider-aware structured decisions."""
+
+    _model_attribute = "DECISION_MODEL"
+    _provider_attribute = "DECISION_MODEL_PROVIDER"
+    _request_tag = "frontier:decision"
+    _extra_body_resolver = staticmethod(provider_decision_extra_body)
 
     def __init__(
         self,
@@ -55,8 +65,8 @@ class SignalLLM:
         max_retries: int = 2,
         timeout: int = 30,
     ):
-        self.model = model or EnvConfig.SIGNAL_MODEL
-        self.provider = EnvConfig.SIGNAL_MODEL_PROVIDER if provider is None else provider
+        self.model = model or getattr(EnvConfig, self._model_attribute)
+        self.provider = getattr(EnvConfig, self._provider_attribute) if provider is None else provider
         self.max_retries = max_retries
         self.timeout = timeout
 
@@ -73,14 +83,14 @@ class SignalLLM:
             "max_retries": self.max_retries,
             "timeout": self.timeout,
             "provider": self.provider,
-            "tags": ["frontier:signal"],
+            "tags": [self._request_tag],
         }
         if temperature is not None:
             kwargs["temperature"] = temperature
         if model_kwargs is not None:
             kwargs["model_kwargs"] = model_kwargs
-        # provider 级 Signal 请求参数（如关闭思考模式）优先，调用点显式传入的覆盖它。
-        payload = provider_signal_extra_body(self.model, self.provider)
+        # provider 级 decision 请求参数（如关闭思考模式）优先，调用点显式传入的覆盖它。
+        payload = self._extra_body_resolver(self.model, self.provider)
         if extra_body:
             payload.update(extra_body)
         if payload:
@@ -122,6 +132,38 @@ class SignalLLM:
         return schema.model_validate(result)
 
 
+class SignalLLM(DecisionLLM):
+    """Deprecated compatibility wrapper for the former Signal name."""
+
+    _model_attribute = "SIGNAL_MODEL"
+    _provider_attribute = "SIGNAL_MODEL_PROVIDER"
+    _request_tag = "frontier:signal"
+    _extra_body_resolver = staticmethod(provider_signal_extra_body)
+
+
+async def decision_structured(
+    system_prompt: str,
+    user_prompt: str,
+    schema: type[BaseModel],
+    *,
+    temperature: float | None = None,
+    model_kwargs: dict | None = None,
+    extra_body: dict | None = None,
+    method: str | None = None,
+) -> Any:
+    """Run one structured decision using the configured decision model."""
+
+    return await DecisionLLM().structured(
+        system_prompt,
+        user_prompt,
+        schema,
+        method=method,
+        temperature=temperature,
+        model_kwargs=model_kwargs,
+        extra_body=extra_body,
+    )
+
+
 async def signal_structured(
     system_prompt: str,
     user_prompt: str,
@@ -132,7 +174,20 @@ async def signal_structured(
     extra_body: dict | None = None,
     method: str | None = None,
 ) -> Any:
-    return await SignalLLM().structured(
+    """Deprecated compatibility entry point.
+
+    A normal runtime reload keeps the legacy aliases equal to the decision
+    settings, so old imports still emit decision-tagged requests.  Tests and
+    external integrations that intentionally override only the old settings
+    continue to exercise the legacy wrapper.
+    """
+
+    model_matches_decision = getattr(EnvConfig, "SIGNAL_MODEL", None) == getattr(EnvConfig, "DECISION_MODEL", None)
+    provider_matches_decision = getattr(EnvConfig, "SIGNAL_MODEL_PROVIDER", None) == getattr(
+        EnvConfig, "DECISION_MODEL_PROVIDER", None
+    )
+    client = DecisionLLM if model_matches_decision and provider_matches_decision else SignalLLM
+    return await client().structured(
         system_prompt,
         user_prompt,
         schema,

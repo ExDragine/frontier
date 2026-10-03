@@ -1,4 +1,4 @@
-"""Signal-LLM gate for browser capture tools."""
+"""Decision-LLM gate for browser capture tools."""
 
 import re
 
@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class BrowserCaptureIntent(BaseModel):
-    """Signal LLM 对用户消息的截图/录屏意图判断结果。"""
+    """Decision LLM 对用户消息的截图/录屏意图判断结果。"""
 
     screenshot: bool = Field(
         description="用户是否要求查看某个网页的可视化外观（截图/拍照/快照/看看长啥样/打开看看等）"
@@ -16,7 +16,7 @@ class BrowserCaptureIntent(BaseModel):
 
 
 # This is a broad candidate filter, not authorization. Ambiguous visual requests
-# still go to Signal; URLs alone and ordinary conversation require no extra call.
+# still go to the decision model; URLs alone and ordinary conversation require no extra call.
 _CAPTURE_CANDIDATE = re.compile(
     r"截|拍照|拍个|拍张|快照|录屏|录制|录视频|录下来|录一段|来张|来一张|"
     r"打开|访问|看看|长啥样|长什么样|什么样|外观|页面|网页|首页|"
@@ -54,7 +54,7 @@ async def detect_browser_capture_intent(user_text: str | None) -> set[str]:
             schema=BrowserCaptureIntent,
         )
     except Exception:
-        logger.warning("Signal LLM 截图/录屏意图检测失败，默认不暴露工具")
+        logger.warning("Decision LLM 截图/录屏意图检测失败，默认不暴露工具")
         return set()
 
     tools: set[str] = set()

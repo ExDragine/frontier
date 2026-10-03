@@ -23,7 +23,7 @@
 - `cache_read_tokens`、`reasoning_tokens`：分别是输入和输出 token 的明细，不应再次加到总 token。
 - `usage_reported_calls`、`usage_missing_calls`：有/无供应商用量回报的调用数。
 - `tool_calls`、`tool_errors`：实际触发回调的工具调用，包含子代理和 PTC 内部调用；因此不等同于主图工具预算计数。
-- `models`：按模型及 `main / document / assistant / signal / other` 分项统计。
+- `models`：按模型及 `main / document / assistant / decision / other` 分项统计。
 
 统计作用域是 `managed_agent_turn`，跨并发会话隔离，覆盖该轮内的 LangChain 子调用、模型中间件重试和摘要调用。成功、失败、超时均返回已有用量；取消继续传播 `CancelledError`，同时保留截至取消时的统计。
 
@@ -39,7 +39,7 @@ Dashboard 总览显示累计数据，认证后的 `GET /api/dashboard/status/usa
 - 参数绑定错误继续由 LangChain 的工具校验处理；已有工具主动返回的业务提示保持原样。
 - PTC 工具通过 QuickJS 直接调用 `arun`，不经过图中间件。注册给 PTC 的工具会复制并包装同步/异步入口，避免原始异常文本进入解释器结果；原工具对象不被修改。
 
-## Signal 结构化输出
+## Decision 结构化输出
 
 每个 `[providers.<name>]` 可设置 `structured_output_method`：
 
@@ -53,6 +53,6 @@ Dashboard 总览显示累计数据，认证后的 `GET /api/dashboard/status/usa
 
 调用方显式指定 `method` 的优先级高于 provider 配置。兼容代理不会仅因模型名就自动启用原生 schema；可按实际协议支持显式指定。DeepSeek 自动选择不设置 strict，不切换到 beta endpoint；DeepSeek 路由在 `auto` 下只把 schema 放进提示词，不再强制工具调用，需要强制工具 schema 时显式设置 `structured_output_method = "function_calling"`（思考模式关闭后可用）。
 
-每个 `[providers.<name>]` 还可设置 `signal_extra_body`（默认空表）：其中的键合并进 Signal 请求的 `extra_body`，用于传递供应商侧的推理开关等参数，例如 DeepSeek 的 `{"thinking": {"type": "disabled"}}`（思考模式默认开启，effort 默认 `high`）。它只作用于 Signal 轻量调用，不进入主 Agent；调用点显式传入的 `extra_body` 覆盖同名键。该字段经 OpenAI-compatible 与 DeepSeek 适配器透传，Messages 路由不接收此参数；关闭思考后如需回到强制工具 schema，可再显式设置 `structured_output_method = "function_calling"`。
+每个 `[providers.<name>]` 还可设置 `decision_extra_body`（默认空表）：其中的键合并进 decision 请求的 `extra_body`，用于传递供应商侧的推理开关等参数，例如 DeepSeek 的 `{"thinking": {"type": "disabled"}}`（思考模式默认开启，effort 默认 `high`）。它只作用于 decision 轻量调用，不进入主 Agent；调用点显式传入的 `extra_body` 覆盖同名键。该字段经 OpenAI-compatible 与 DeepSeek 适配器透传，Messages 路由不接收此参数；关闭思考后如需回到强制工具 schema，可再显式设置 `structured_output_method = "function_calling"`。旧配置中的 `signal_extra_body` 仍可被读取，但新配置应使用 `decision_extra_body`。
 
-无论采用哪种策略，Signal 均校验最终 Pydantic 结果。解析失败或供应商拒绝后不会自行再发一次请求来切换协议。轻量 Agent 的 `response_format` 继续使用 LangChain 原有的结构化策略。
+无论采用哪种策略，Decision LLM 均校验最终 Pydantic 结果。解析失败或供应商拒绝后不会自行再发一次请求来切换协议。普通任务交给 `basic_model`；它的 `response_format` 继续使用 LangChain 原有的结构化策略。

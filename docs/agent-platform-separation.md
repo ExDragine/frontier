@@ -258,7 +258,7 @@ class PlatformToolProvider(Protocol):
 
 - 是否允许该用户或会话访问；
 - 是否需要 @ 或唤醒词；
-- 是否使用 Signal LLM 判断主动回复；
+- 是否使用 Decision LLM 判断主动回复；
 - 群聊和私聊的回复策略；
 - 当前消息是否应被忽略。
 

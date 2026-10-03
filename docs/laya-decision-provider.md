@@ -6,6 +6,10 @@
 - **本地 SDK**：不设置 `base_url`，首次调用时惰性导入 `laya.Router`。
 - **HTTP 服务**：设置 `base_url`，请求兼容 Laya/Jev 的 `/v1/systemone` 接口。
 
+同一 `DecisionProvider` 协议也有 `LLMDecisionProvider` 实现：它使用 `[models]`
+中的 `decision_model`，把传统聊天模型的输出转换为 Pydantic 校验的结构化答案。
+普通文本、翻译和格式化任务不经过这个 provider，使用 `basic_model`。
+
 项目默认不依赖 Laya，也不会在 import 阶段加载 torch、transformers 或模型权重。
 本地模式安装可选依赖组：`uv sync --extra decision`；HTTP 模式只需要配置
 `base_url`，可以不安装本地模型依赖。
@@ -44,6 +48,6 @@ uv run --locked --extra decision \
 置信度和延迟。样例只用于接口和趋势验证，不能代表生产效果；上线前应使用脱敏、
 人工标注的真实消息，并按语言和群活跃度重新校准阈值。
 
-Laya 的预测结果只能作为决策层输入。Signal 仍是默认线上门控，浏览器截图/录屏等
+Laya 的预测结果只能作为决策层输入。Decision LLM 仍是默认线上门控，浏览器截图/录屏等
 受控工具继续 fail-closed。启用 Laya 前应先运行 shadow mode，记录两者的分歧、延迟、
 fallback 和人工纠错结果。

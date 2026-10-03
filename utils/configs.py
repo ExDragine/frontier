@@ -68,7 +68,7 @@ class VideoModelConfig(MediaModelConfig):
 
 class ModelsConfig(_FrozenConfig):
     basic: ModelConfig = Field(default_factory=ModelConfig)
-    signal: ModelConfig = Field(
+    decision: ModelConfig = Field(
         default_factory=lambda: ModelConfig(
             model="deepseek-flash",
             provider="deepseek",
@@ -91,6 +91,12 @@ class ModelsConfig(_FrozenConfig):
         )
     )
 
+    @property
+    def signal(self) -> ModelConfig:
+        """Deprecated compatibility alias for the decision model role."""
+
+        return self.decision
+
 
 class ProviderProfile(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
@@ -101,6 +107,10 @@ class ProviderProfile(BaseModel):
     api_key: str = ""
     native_web_search: bool = False
     structured_output_method: Literal["auto", "json_schema", "function_calling", "json_mode", "text_json"] = "auto"
+    decision_extra_body: dict[str, Any] = Field(default_factory=dict)
+    # Deprecated compatibility field.  New configurations should use
+    # ``decision_extra_body``; normalization keeps both keys available while
+    # old v2 files are migrated in memory.
     signal_extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -116,7 +126,7 @@ class FeatureConfig(_FrozenConfig):
     # Staged migration switch.  The QQ text canary is deliberately opt-in;
     # media, replies and session-backed turns always stay on the legacy path.
     qq_text_canary_enabled: bool = False
-    # Laya only expands the automatic-reply candidate set; Signal remains the
+    # Laya only expands the automatic-reply candidate set; Decision remains the
     # final gate.  Keep this opt-in because the optional model needs local
     # calibration before it can be enabled in production.
     laya_candidate_enabled: bool = False
@@ -368,7 +378,19 @@ def _normalize_provider_profile(
             if existing and provider_type == existing.get("type")
             else _default_api_mode(provider_type)
         )
-    return {**existing, **profile}
+    merged = {**existing, **profile}
+    # ``signal_extra_body`` was the original name for parameters that are
+    # applied only to the lightweight structured decision model.  Preserve
+    # old files while publishing the canonical decision name to new callers.
+    old_payload = merged.get("signal_extra_body")
+    new_payload = merged.get("decision_extra_body")
+    if old_payload and new_payload and old_payload != new_payload:
+        raise ValueError("provider 不得同时配置内容不同的 signal_extra_body 和 decision_extra_body")
+    if not merged.get("decision_extra_body") and isinstance(merged.get("signal_extra_body"), Mapping):
+        merged["decision_extra_body"] = dict(merged["signal_extra_body"])
+    if not merged.get("signal_extra_body") and isinstance(merged.get("decision_extra_body"), Mapping):
+        merged["signal_extra_body"] = dict(merged["decision_extra_body"])
+    return merged
 
 
 def _normalize_provider_profiles(providers: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -396,6 +418,18 @@ def _normalize_provider_profiles(providers: Mapping[str, Any]) -> dict[str, dict
 
 def _normalize_models(models: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     """Map current flat TOML model fields onto typed model roles."""
+    model_fields = dict(models)
+    # ``signal_*`` was the pre-decision name.  Accept it as a migration alias
+    # so an existing v2 configuration keeps booting, while all runtime values
+    # are sourced from the canonical ``decision`` role.
+    for suffix in ("model", "model_provider", "model_capabilities"):
+        old_key = f"signal_{suffix}"
+        new_key = f"decision_{suffix}"
+        if old_key in model_fields:
+            if new_key in model_fields:
+                raise ValueError(f"[models] 不得同时配置 {old_key} 和 {new_key}")
+            model_fields[new_key] = model_fields.pop(old_key)
+
     defaults = ModelsConfig()
     normalized = {}
     known_fields = set()
@@ -410,9 +444,9 @@ def _normalize_models(models: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
             }.get(field, field)
             key = f"{role}_{suffix}"
             known_fields.add(key)
-            values[field] = models.get(key, getattr(model, field))
+            values[field] = model_fields.get(key, getattr(model, field))
         normalized[role] = values
-    unknown = models.keys() - known_fields
+    unknown = model_fields.keys() - known_fields
     if unknown:
         raise ValueError("[models] 不支持的字段: " + ", ".join(sorted(unknown)))
     return normalized
@@ -498,6 +532,11 @@ class EnvConfig:
     BASIC_MODEL: ClassVar[str]
     BASIC_MODEL_PROVIDER: ClassVar[str]
     BASIC_MODEL_CAPABILITIES: ClassVar[list[str]]
+    DECISION_MODEL: ClassVar[str]
+    DECISION_MODEL_PROVIDER: ClassVar[str]
+    DECISION_MODEL_CAPABILITIES: ClassVar[list[str]]
+    # Deprecated runtime aliases kept for plugins and integrations that have
+    # not migrated their imports yet.
     SIGNAL_MODEL: ClassVar[str]
     SIGNAL_MODEL_PROVIDER: ClassVar[str]
     SIGNAL_MODEL_CAPABILITIES: ClassVar[list[str]]
@@ -613,9 +652,15 @@ class EnvConfig:
             "BASIC_MODEL": model.basic.model,
             "BASIC_MODEL_PROVIDER": model.basic.provider,
             "BASIC_MODEL_CAPABILITIES": list(model.basic.capabilities),
-            "SIGNAL_MODEL": model.signal.model,
-            "SIGNAL_MODEL_PROVIDER": model.signal.provider,
-            "SIGNAL_MODEL_CAPABILITIES": list(model.signal.capabilities),
+            "DECISION_MODEL": model.decision.model,
+            "DECISION_MODEL_PROVIDER": model.decision.provider,
+            "DECISION_MODEL_CAPABILITIES": list(model.decision.capabilities),
+            # Keep the old names as read-compatible aliases.  Internal code
+            # should use DECISION_MODEL* so decision and basic workloads stay
+            # visibly separate.
+            "SIGNAL_MODEL": model.decision.model,
+            "SIGNAL_MODEL_PROVIDER": model.decision.provider,
+            "SIGNAL_MODEL_CAPABILITIES": list(model.decision.capabilities),
             "ADVAN_MODEL": model.advanced.model,
             "ADVAN_MODEL_PROVIDER": model.advanced.provider,
             "ADVAN_MODEL_CAPABILITIES": list(model.advanced.capabilities),

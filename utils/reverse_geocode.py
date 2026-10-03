@@ -1,6 +1,6 @@
 """GCJ-02 坐标 → 位置描述（LLM 辅助逆地理编码）。
 
-API 返回的台风坐标为 GCJ-02 坐标系，此模块通过轻量 LLM 调用
+API 返回的台风坐标为 GCJ-02 坐标系，此模块通过 basic LLM 调用
 查询坐标对应的海域或行政区划名称。
 
 注意：不使用 with_structured_output，因为 DeepSeek 思考模式不
@@ -71,8 +71,8 @@ async def reverse_geocode(lat: float, lng: float) -> str:
     """
     try:
         llm = create_llm(
-            model=EnvConfig.SIGNAL_MODEL,
-            provider=EnvConfig.SIGNAL_MODEL_PROVIDER,
+            model=EnvConfig.BASIC_MODEL,
+            provider=EnvConfig.BASIC_MODEL_PROVIDER,
             temperature=0.1,
             streaming=False,
         )

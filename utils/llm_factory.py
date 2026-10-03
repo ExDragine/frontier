@@ -147,10 +147,16 @@ def _normalize_capabilities(capabilities: object) -> set[str]:
 def _model_specific_capabilities(model: str, role: str | None = None) -> set[str]:
     role_capabilities = {
         "basic": (EnvConfig.BASIC_MODEL, EnvConfig.BASIC_MODEL_CAPABILITIES),
-        "signal": (EnvConfig.SIGNAL_MODEL, EnvConfig.SIGNAL_MODEL_CAPABILITIES),
+        "decision": (EnvConfig.DECISION_MODEL, EnvConfig.DECISION_MODEL_CAPABILITIES),
         "advanced": (EnvConfig.ADVAN_MODEL, EnvConfig.ADVAN_MODEL_CAPABILITIES),
         "daily_news": (EnvConfig.DAILY_NEWS_MODEL, EnvConfig.DAILY_NEWS_MODEL_CAPABILITIES),
     }
+    # ``signal`` remains an input alias for older callers.  It follows the
+    # legacy attributes only when they were overridden independently; normal
+    # reloads keep those aliases equal to the decision role.
+    if role == "signal":
+        configured_model, configured_capabilities = EnvConfig.SIGNAL_MODEL, EnvConfig.SIGNAL_MODEL_CAPABILITIES
+        return _normalize_capabilities(configured_capabilities) if model == configured_model else set()
     if role is not None:
         configured = role_capabilities.get(role)
         if configured is None:
@@ -159,7 +165,11 @@ def _model_specific_capabilities(model: str, role: str | None = None) -> set[str
         return _normalize_capabilities(capabilities) if model == configured_model else set()
 
     capabilities: set[str] = set()
-    for configured_model, configured_capabilities in role_capabilities.values():
+    configured_roles = list(role_capabilities.values())
+    # Include the deprecated attributes for callers that still monkeypatch or
+    # populate them directly instead of going through EnvConfig.reload().
+    configured_roles.append((EnvConfig.SIGNAL_MODEL, EnvConfig.SIGNAL_MODEL_CAPABILITIES))
+    for configured_model, configured_capabilities in configured_roles:
         if model == configured_model:
             capabilities.update(_normalize_capabilities(configured_capabilities))
     return capabilities
@@ -399,10 +409,10 @@ def get_langchain_model_profile(model: str, provider_type: str) -> ModelProfile 
     return profile
 
 
-def provider_signal_extra_body(model: str, provider: str | None = None) -> dict[str, Any]:
-    """Return the provider's Signal-only request payload.
+def provider_decision_extra_body(model: str, provider: str | None = None) -> dict[str, Any]:
+    """Return the provider's decision-only request payload.
 
-    只作用于 Signal 轻量调用，不进入主 Agent；用于传递供应商的推理开关等
+    只作用于 decision 轻量调用，不进入主 Agent；用于传递供应商的推理开关等
     ``extra_body`` 参数，例如 DeepSeek 的 ``{"thinking": {"type": "disabled"}}``。
     """
     try:
@@ -410,8 +420,16 @@ def provider_signal_extra_body(model: str, provider: str | None = None) -> dict[
     except ValueError:
         # create_llm() 会对同一个 profile 先报错，这里只做尽力而为的读取。
         return {}
-    payload = profile.get("signal_extra_body")
+    payload = profile.get("decision_extra_body")
+    if not isinstance(payload, dict) or not payload:
+        payload = profile.get("signal_extra_body")
     return dict(payload) if isinstance(payload, dict) else {}
+
+
+def provider_signal_extra_body(model: str, provider: str | None = None) -> dict[str, Any]:
+    """Deprecated alias for :func:`provider_decision_extra_body`."""
+
+    return provider_decision_extra_body(model, provider)
 
 
 def _needs_prompt_schema(model: str, provider: str | None, provider_type: str) -> bool:
