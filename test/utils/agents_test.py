@@ -1280,11 +1280,13 @@ async def _run_chat_agent_with_web_search(
     *,
     supported: bool,
     model: str | None = None,
+    user_text: str | None = None,
 ) -> dict:
     """构造 chat_agent 运行环境并捕获 create_deep_agent 的 tools/system_prompt 参数。"""
 
     class DummyAgent:
         async def astream_events(self, payload, config=None, context=None, version=None):
+            captured["payload"] = payload
             return _FakeStream(
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok", artifact=None)]},
             )
@@ -1316,6 +1318,7 @@ async def _run_chat_agent_with_web_search(
         user_id="u1",
         user_name="test",
         group_id=123,
+        user_text=user_text,
     )
     return captured
 
@@ -1326,7 +1329,9 @@ async def test_chat_agent_injects_native_web_search_when_supported(monkeypatch, 
 
     assert {"type": "web_search"} not in captured["tools"]
     assert any(isinstance(item, cognitive_mod.NativeWebSearchMiddleware) for item in captured["middleware"])
-    assert isinstance(captured["middleware"][-1], cognitive_mod.ModelMediaMiddleware)
+    assert not any(type(item).__name__ == "ModelMediaMiddleware" for item in captured["middleware"])
+    filesystem = next(item for item in captured["middleware"] if type(item).__name__ == "FilesystemMiddleware")
+    assert filesystem.offload_binary_content is True
     assert "web_search" in captured["system_prompt"]
 
 
@@ -1336,7 +1341,36 @@ async def test_chat_agent_skips_web_search_when_route_unsupported(monkeypatch, t
 
     assert {"type": "web_search"} not in captured["tools"]
     assert not any(isinstance(item, cognitive_mod.NativeWebSearchMiddleware) for item in captured["middleware"])
+    assert not any(type(item).__name__ == "ModelMediaMiddleware" for item in captured["middleware"])
     assert cognitive_mod.WEB_SEARCH_PROMPT_HINT not in captured["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_attaches_answer_rubric_only_for_direct_text(monkeypatch, tmp_path):
+    captured = await _run_chat_agent_with_web_search(
+        monkeypatch,
+        tmp_path,
+        supported=False,
+        user_text="请解释这个错误",
+    )
+
+    rubric = next(item for item in captured["middleware"] if type(item).__name__ == "RubricMiddleware")
+    assert rubric.max_iterations == cognitive_mod.EnvConfig.ANSWER_RUBRIC_MAX_ITERATIONS
+    assert captured["payload"]["rubric"] == cognitive_mod.ANSWER_RUBRIC
+
+    without_text = await _run_chat_agent_with_web_search(monkeypatch, tmp_path, supported=False)
+    assert not any(type(item).__name__ == "RubricMiddleware" for item in without_text["middleware"])
+    assert "rubric" not in without_text["payload"]
+
+    monkeypatch.setattr(cognitive_mod.EnvConfig, "ANSWER_RUBRIC_ENABLED", False)
+    disabled = await _run_chat_agent_with_web_search(
+        monkeypatch,
+        tmp_path,
+        supported=False,
+        user_text="请解释这个错误",
+    )
+    assert not any(type(item).__name__ == "RubricMiddleware" for item in disabled["middleware"])
+    assert "rubric" not in disabled["payload"]
 
 
 def test_native_web_search_middleware_injects_provider_tool_at_model_boundary():

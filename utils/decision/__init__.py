@@ -1,8 +1,8 @@
 """Platform-neutral decision providers used by gates and routers.
 
-The package deliberately has no import-time dependency on Laya or any model
-runtime.  Providers are loaded lazily so the default decision path remains
-lightweight when the optional Laya dependency is not installed.
+The package keeps Laya and model construction lazy.  Importing this package
+does not load torch, transformers, or model weights, while the SDK itself is
+installed as a regular project dependency.
 """
 
 from utils.decision_llm import DecisionLLM, decision_structured

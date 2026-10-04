@@ -1,6 +1,6 @@
 # Laya 决策 Provider
 
-`utils.decision.LayaDecisionProvider` 是 Laya 与 Frontier 之间的可选边界。
+`utils.decision.LayaDecisionProvider` 是 Laya 与 Frontier 之间的边界。
 它支持两种后端：
 
 - **本地 SDK**：不设置 `base_url`，首次调用时惰性导入 `laya.Router`。
@@ -10,9 +10,8 @@
 中的 `decision_model`，把传统聊天模型的输出转换为 Pydantic 校验的结构化答案。
 普通文本、翻译和格式化任务不经过这个 provider，使用 `basic_model`。
 
-项目默认不依赖 Laya，也不会在 import 阶段加载 torch、transformers 或模型权重。
-本地模式安装可选依赖组：`uv sync --extra decision`；HTTP 模式只需要配置
-`base_url`，可以不安装本地模型依赖。
+Laya 作为项目主依赖安装，但仍不会在 import 阶段加载 torch、transformers 或模型权重。
+HTTP 模式只需要配置 `base_url`；本地模式首次使用时才加载 SDK 和模型。
 
 ## 最小示例
 
@@ -40,7 +39,7 @@ provider = LayaDecisionProvider(
 仓库提供了脱敏的合成门控样例。运行本地 Laya 评估：
 
 ```bash
-uv run --locked --extra decision \
+uv run --locked \
   python scripts/evaluate_reply_gate.py --model multilingual
 ```
 

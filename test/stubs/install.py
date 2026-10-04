@@ -81,6 +81,16 @@ def install_all_third_party_stubs():
             (),
             {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
         ),
+        FilesystemMiddleware=type(
+            "FilesystemMiddleware",
+            (),
+            {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
+        ),
+        RubricMiddleware=type(
+            "RubricMiddleware",
+            (),
+            {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
+        ),
         register_harness_profile=lambda *_args, **_kwargs: None,
         create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}),
     )

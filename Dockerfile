@@ -64,13 +64,9 @@ FROM runtime-system AS runtime
 
 COPY --from=dependencies --chown=frontier:frontier /app/.venv /app/.venv
 
-FROM dependencies AS content-check-dependencies
-
-RUN uv sync --locked --no-dev --no-install-project --extra content-check
-
-FROM runtime-system AS runtime-content-check
-
-COPY --from=content-check-dependencies --chown=frontier:frontier /app/.venv /app/.venv
+# Kept as a compatibility target: content-check dependencies are now part of
+# the regular project environment.
+FROM runtime AS runtime-content-check
 
 # Keep the lightweight image as the default target for `docker build .`.
 FROM runtime AS default

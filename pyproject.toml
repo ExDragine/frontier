@@ -22,6 +22,11 @@ dependencies = [
   "beautifulsoup4",
   "playwright",
   "httpx2[http2]",
+  "laya>=0.3.20,<0.4",
+  "accelerate",
+  "torch",
+  "torchao",
+  "transformers",
   "imageio-ffmpeg",
   "gitpython",
   "sqlmodel",
@@ -32,10 +37,6 @@ dependencies = [
   "websockets",
   "python-dotenv",
 ]
-
-[project.optional-dependencies]
-content-check = ["accelerate", "torch", "torchao", "transformers"]
-decision = ["laya>=0.3.20,<0.4"]
 
 [tool.uv.sources]
 torch = [

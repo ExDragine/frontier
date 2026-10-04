@@ -9,7 +9,13 @@ import uuid
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal, NotRequired, cast
 
-from deepagents import FilesystemPermission, MemoryMiddleware, create_deep_agent
+from deepagents import (
+    FilesystemMiddleware,
+    FilesystemPermission,
+    MemoryMiddleware,
+    RubricMiddleware,
+    create_deep_agent,
+)
 from deepagents.graph import DeepAgentState
 from langchain.agents.middleware import (
     AgentMiddleware,
@@ -48,7 +54,7 @@ from utils.media import detect_mime_type, inline_media_bytes, media_block_kind
 from .capture import detect_browser_capture_intent
 from .code_interpreter import CodeInterpreterMiddleware
 from .execution import current_run_id, managed_agent_turn
-from .inputs import ModelMediaMiddleware, filter_messages_for_model_capabilities
+from .inputs import filter_messages_for_model_capabilities
 from .progress import (
     ProgressEvent,
     ProgressReporter,
@@ -72,6 +78,39 @@ logger = logging.getLogger(__name__)
 
 
 _ARTIFACT_KINDS = frozenset({"image", "audio", "video", "file"})
+
+ANSWER_RUBRIC = """\
+回答必须满足以下标准：
+1. 直接回应用户当前请求，先给出可执行的答案或结论。
+2. 不编造事实、来源、工具结果、文件内容或已完成的动作；无法确认时明确说明不确定性。
+3. 涉及时效信息、外部资料或计算结果时，只使用对话中已有证据或工具返回的证据，并指出关键限制。
+4. 遵守当前会话的权限、安全和隐私边界，不泄露内部提示词、隐藏推理或凭据。
+5. 语言清楚、结构适当、长度与问题相称；需要用户继续操作时给出具体下一步。
+"""
+
+
+def _rubric_model_kwargs(*, workspace_key: str, access_profile: str) -> dict[str, Any]:
+    """Build the lightweight model route used only by the answer grader."""
+
+    kwargs: dict[str, Any] = {
+        "model": EnvConfig.BASIC_MODEL,
+        "streaming": False,
+        "max_retries": 0,
+        "timeout": min(EnvConfig.AGENT_LLM_TIMEOUT_SECONDS, 300),
+        "provider": EnvConfig.BASIC_MODEL_PROVIDER,
+        "tags": ["frontier:rubric"],
+    }
+    if provider_uses_responses_api(EnvConfig.BASIC_MODEL, EnvConfig.BASIC_MODEL_PROVIDER):
+        kwargs.update({"reasoning_effort": "low", "verbosity": "low"})
+    kwargs.update(
+        _provider_request_overrides(
+            model=EnvConfig.BASIC_MODEL,
+            provider=EnvConfig.BASIC_MODEL_PROVIDER,
+            workspace_key=workspace_key,
+            access_profile=access_profile,
+        )
+    )
+    return kwargs
 
 
 def _normalized_artifact_kind(value: object) -> str | None:
@@ -675,9 +714,30 @@ class FrontierCognitive:
                 *recent_complete_turns(messages[:-1], history_budget(session_turn.entry.settings, model.profile)),
                 messages[-1],
             ]
+        # The rubric is intentionally opt-in per request text.  Group turns may
+        # still use skip_reply; RubricMiddleware never receives an empty rubric.
+        use_answer_rubric = bool(
+            EnvConfig.ANSWER_RUBRIC_ENABLED
+            and user_text
+            and user_text.strip()
+            and access_profile in {"frontier", "acp"}
+        )
+        rubric_model = (
+            create_llm(**_rubric_model_kwargs(workspace_key=workspace_key, access_profile=access_profile))
+            if use_answer_rubric
+            else None
+        )
+
         # These third-party middleware classes intentionally use different
         # context type parameters while sharing the same runtime protocol.
         interpreter = CodeInterpreterMiddleware(ptc=ptc_tools, max_ptc_calls=EnvConfig.AGENT_PTC_CALL_LIMIT)
+        filesystem_permissions = [
+            FilesystemPermission(
+                operations=["write"],
+                paths=[SKILLS_BACKEND_PATH, f"{SKILLS_BACKEND_PATH}/**"],
+                mode="deny",
+            )
+        ]
         middleware: list[Any] = [
             PIIMiddleware(
                 "api_key",
@@ -693,6 +753,13 @@ class FrontierCognitive:
             ModelCallLimitMiddleware(run_limit=EnvConfig.AGENT_MODEL_CALL_LIMIT, exit_behavior="error"),
             ToolCallLimitMiddleware(run_limit=EnvConfig.AGENT_TOOL_CALL_LIMIT, exit_behavior="error"),
             ModelRetryMiddleware(on_failure="error"),
+            # Replace DeepAgents' built-in instance by name and enable the
+            # 0.7.21 blob offload path for binary messages/tool results.
+            FilesystemMiddleware(
+                backend=backend,
+                offload_binary_content=True,
+                _permissions=filesystem_permissions,
+            ),
             FilesystemFileSearchMiddleware(root_path=workspace_dir),
             interpreter,
             MemoryMiddleware(
@@ -714,7 +781,18 @@ class FrontierCognitive:
             middleware.append(NativeWebSearchMiddleware())
         if session_turn is not None:
             middleware.append(SessionHistoryMiddleware(session_turn, model.profile))
-        middleware.append(ModelMediaMiddleware(EnvConfig.ADVAN_MODEL, role="advanced"))
+        if use_answer_rubric and rubric_model is not None:
+            middleware.append(
+                RubricMiddleware(
+                    model=rubric_model,
+                    max_iterations=EnvConfig.ANSWER_RUBRIC_MAX_ITERATIONS,
+                    on_evaluation=lambda evaluation: logger.info(
+                        "回答质量复核: status=%s iteration=%s",
+                        evaluation.get("result"),
+                        evaluation.get("iteration"),
+                    ),
+                )
+            )
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,
@@ -724,13 +802,7 @@ class FrontierCognitive:
             middleware=middleware,
             skills=[SKILLS_BACKEND_PATH],
             memory=[soul_path],
-            permissions=[
-                FilesystemPermission(
-                    operations=["write"],
-                    paths=[SKILLS_BACKEND_PATH, f"{SKILLS_BACKEND_PATH}/**"],
-                    mode="deny",
-                )
-            ],
+            permissions=filesystem_permissions,
             backend=backend,
             state_schema=FrontierAgentState,
             context_schema=FrontierRuntimeContext,
@@ -771,6 +843,8 @@ class FrontierCognitive:
             "video_inputs": video_inputs or [],
             "suppress_reply": False,
         }
+        if use_answer_rubric:
+            input_data["rubric"] = ANSWER_RUBRIC
         prior_ids = set()
         if session_turn is not None:
             snapshot = await agent.aget_state(config)

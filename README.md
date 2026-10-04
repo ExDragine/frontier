@@ -115,11 +115,8 @@ cp env.toml.example env.toml
 PyTorch wheel 镜像，因为腾讯 PyPI 镜像不提供 `+cpu` wheel。`.env.example` 和启动脚本将
 `HF_ENDPOINT` 设置为 `https://hf-mirror.com`，用于 Hugging Face 模型和 tokenizer 下载。
 
-内容检查模型默认不安装。需要在本机启用 `[content_check]` 时，安装 CPU-only 可选依赖：
-
-```bash
-uv sync --extra content-check
-```
+内容检查模型依赖已随项目默认安装。启用 `[content_check]` 后，首次检查会按配置下载对应的
+Hugging Face 模型和 tokenizer。
 
 [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) 是 Frontier 的内置能力。
 复制配置后即可接入一个或多个外部 ACP Agent：
@@ -205,17 +202,16 @@ npm run build --prefix renderer
 
 ### Docker
 
-默认镜像不包含 Torch 和内容检查模型依赖：
+默认镜像已包含 Torch 和内容检查模型依赖：
 
 ```bash
 docker compose up -d
 ```
 
-需要启用 CPU 内容检查时，选择对应构建目标，并在 `env.toml` 中设置
-`[content_check].enabled = true`：
+在 `env.toml` 中设置 `[content_check].enabled = true`：
 
 ```bash
-FRONTIER_DOCKER_TARGET=runtime-content-check docker compose up -d --build
+docker compose up -d --build
 ```
 
 容器会把 Hugging Face 和 Torch 缓存写入 `frontier_cache` volume。首次部署前需要准备

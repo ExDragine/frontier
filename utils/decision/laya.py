@@ -1,4 +1,4 @@
-"""Optional Laya decision provider.
+"""Laya decision provider.
 
 Laya is intentionally kept behind this adapter.  The rest of Frontier only
 sees ``DecisionResult`` and never imports torch, transformers, or the Laya
@@ -12,7 +12,7 @@ import asyncio
 import inspect
 import time
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from .models import DecisionQuestions, DecisionResult, DecisionState
 
@@ -50,7 +50,7 @@ class LayaDecisionProvider:
 
     ``router`` and ``http_client`` are injectable for tests.  The SDK import
     and router construction are lazy, so importing this class never downloads
-    model weights and does not make Laya a required dependency.
+    model weights even though the SDK is installed with the project.
     """
 
     def __init__(
@@ -112,12 +112,11 @@ class LayaDecisionProvider:
             from laya import Router
         except ImportError as error:
             raise LayaProviderError(
-                "Laya local provider requires the optional 'laya' package; "
-                "run with `uv run --with laya` or use base_url"
+                "Laya local provider could not import the installed 'laya' package"
             ) from error
         try:
             default = "multilingual" if self.model == "auto" else self.model
-            kwargs = {"preload": self.preload, "default": default}
+            kwargs: dict[str, Any] = {"preload": self.preload, "default": default}
             if self.device is not None:
                 kwargs["device"] = self.device
             return Router(**kwargs)
@@ -139,7 +138,7 @@ class LayaDecisionProvider:
         return result
 
     async def _decide_http(self, state: DecisionState, questions: DecisionQuestions) -> object:
-        client = self._http_client
+        client = cast(Any, self._http_client)
         if client is None:
             from utils.http_client import get_http_client
 

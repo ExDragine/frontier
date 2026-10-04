@@ -154,7 +154,13 @@ def filter_messages_for_model_capabilities(
 
 
 class ModelMediaMiddleware(AgentMiddleware):
-    """Normalize restored history and tool images at every model request boundary."""
+    """Compatibility middleware for standalone graphs.
+
+    The main Frontier graph no longer installs this class: DeepAgents'
+    ``UnsupportedContentMiddleware`` owns capability filtering there, while
+    the initial message boundary keeps the project-specific normalization and
+    notices above.
+    """
 
     def __init__(self, model: str, *, role=None):
         self.model = model
