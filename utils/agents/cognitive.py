@@ -791,11 +791,7 @@ class FrontierCognitive:
                 if callable(abort := getattr(stream, "abort", None)):
                     await abort()
             finally:
-                try:
-                    await finish_progress_collection(progress_task)
-                finally:
-                    if callable(close := getattr(interpreter, "aclose", None)):
-                        await close()
+                await finish_progress_collection(progress_task)
 
         if response is None:
             response = {}
