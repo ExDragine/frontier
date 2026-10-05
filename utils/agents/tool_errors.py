@@ -1,14 +1,9 @@
 """Shared tool error policy for the main graph and read-only subagents."""
 
 import logging
-from functools import wraps
-
 from langchain.agents.middleware import ToolErrorMiddleware
 from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
 from langchain.agents.middleware.tool_call_limit import ToolCallLimitExceededError
-from langchain_core.tools import ToolException
-from langgraph.errors import GraphBubbleUp
-
 from .session_errors import CheckpointCapacityExceeded, SessionInterruptedError
 
 logger = logging.getLogger(__name__)
@@ -53,40 +48,3 @@ def tool_error_middleware(*, read_only_tools=(), all_read_only: bool = False) ->
         raise ToolExecutionUncertainError(name) from None
 
     return ToolErrorMiddleware(on_error=on_error)
-
-
-def _guard_ptc_sync(function):
-    @wraps(function)
-    def call(*args, **kwargs):
-        try:
-            return function(*args, **kwargs)
-        except (*CONTROL_ERRORS, ToolExecutionUncertainError, GraphBubbleUp):
-            raise
-        except Exception as exc:
-            raise ToolException(read_only_error_message(exc)) from None
-    return call
-
-
-def _guard_ptc_async(function):
-    @wraps(function)
-    async def call(*args, **kwargs):
-        try:
-            return await function(*args, **kwargs)
-        except (*CONTROL_ERRORS, ToolExecutionUncertainError, GraphBubbleUp):
-            raise
-        except Exception as exc:
-            raise ToolException(read_only_error_message(exc)) from None
-    return call
-
-
-def prepare_ptc_tools(tools):
-    """QuickJS invokes tool.arun directly, outside graph middleware hooks."""
-    prepared = []
-    for tool in tools:
-        updates = {}
-        if callable(getattr(tool, "func", None)):
-            updates["func"] = _guard_ptc_sync(tool.func)
-        if callable(getattr(tool, "coroutine", None)):
-            updates["coroutine"] = _guard_ptc_async(tool.coroutine)
-        prepared.append(tool.model_copy(update=updates) if updates else tool)
-    return prepared

@@ -131,11 +131,10 @@ Milky MessageEvent → NoneBot on_message(priority=10)
   - `/skills/`: 仓库内置 `skills/`，Agent 只读
   - `/memory/{workspace_key}/`: `cache/sandbox/memory/{workspace_key}`
 - 对每个 workspace，如果缺少 memory `SOUL.md`，会创建零字节空文件；群聊按 `group_id` 共享，私聊按 `user_id` 隔离。
-- 核心 middleware 顺序是 `PII → ToolRetry → ToolError → ModelCallLimit → ToolCallLimit → ModelRetry → FilesystemFileSearch → CodeInterpreter → Memory`，随后按需追加静默回复、工具搜索和原生网页搜索。
+- 核心 middleware 顺序是 `PII → ToolRetry → ToolError → ModelCallLimit → ToolCallLimit → ModelRetry → FilesystemFileSearch → Memory`，随后按需追加静默回复、工具搜索和原生网页搜索。
 - 主模型 SDK 重试关闭，由 ModelRetry 控制模型重试。图工具错误由 ToolError 统一处理；PTC 直接调用工具，使用独立的异常脱敏包装。平台写操作或未分类工具异常会结束当前轮次，不自动重复。
-- 主图模型/工具预算与单次 PTC 脚本预算由 `[limits].agent_model_call_limit / agent_tool_call_limit / agent_ptc_call_limit` 控制；子代理保留独立预算。
+- 主图模型/工具预算由 `[limits].agent_model_call_limit / agent_tool_call_limit` 控制；子代理保留独立预算。
 - QQ 的 `[sessions]` 开关开启后，同一机器人同一群共享 checkpoint，图仍按请求构建；配置修订不兼容、快照冲突、过期或容量轮换后从 DB 重建。ACP 和定时任务不接入该缓存。运行与投递租约不能被清理器回收，最终内容按实际送达文本校准；媒体轮次结算后释放整代。详见 `docs/agent-sessions.md`。
-- QuickJS 使用 `agents/code_interpreter.py` 的 turn 生命周期适配；v3 stream 退出先 abort，再清理进度与解释器，取消时不能遗留后台写入。
 - `managed_agent_turn` 收集 LangChain 用量，成功/失败返回 `usage`，取消也保留进程内统计；Dashboard `/api/dashboard/status/usage` 返回最近 100 轮无正文记录。详见 `docs/agent-execution-controls.md`。
 - 内置 skills 路径通过 FilesystemPermission 禁止写入。
 

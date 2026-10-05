@@ -7,12 +7,11 @@
 | 字段 | 默认值 | 计数范围 |
 | --- | --- | --- |
 | `agent_model_call_limit` | 20 | 一轮主 Agent 图中的模型轮数 |
-| `agent_tool_call_limit` | 40 | 一轮主图的工具调用，包含子代理委托和 PTC 脚本执行 |
-| `agent_ptc_call_limit` | 20 | 每次 PTC 脚本内部的工具桥接调用 |
+| `agent_tool_call_limit` | 40 | 一轮主图的工具调用，包含子代理委托 |
 
 这些不是全系统共享额度。Exa / Tavily 搜索和网页读取直接消耗主图工具预算；文档子代理保留每次委托 6 轮模型、8 次工具的独立预算。模型中间件重试不消耗额外主图轮数，但实际 LangChain 调用会记入用量。服务端原生工具不属于图工具计数。单次模型/整轮任务的超时配置继续生效。
 
-主图预算耗尽时停止继续执行，返回 `status="failed"`、`error_code="budget_exceeded"` 和明确中文提示，不重新运行整个任务。此前已完成的外部操作不会回滚。PTC 脚本内部超过桥接预算会返回解释器错误，后续仍受主图预算约束。
+主图预算耗尽时停止继续执行，返回 `status="failed"`、`error_code="budget_exceeded"` 和明确中文提示，不重新运行整个任务。此前已完成的外部操作不会回滚。
 
 ## 用量统计
 
@@ -22,7 +21,7 @@
 - `input_tokens`、`output_tokens`、`total_tokens`。
 - `cache_read_tokens`、`reasoning_tokens`：分别是输入和输出 token 的明细，不应再次加到总 token。
 - `usage_reported_calls`、`usage_missing_calls`：有/无供应商用量回报的调用数。
-- `tool_calls`、`tool_errors`：实际触发回调的工具调用，包含子代理和 PTC 内部调用；因此不等同于主图工具预算计数。
+- `tool_calls`、`tool_errors`：实际触发回调的工具调用，包含子代理调用；因此不等同于主图工具预算计数。
 - `models`：按模型及 `main / document / assistant / decision / other` 分项统计。
 
 统计作用域是 `managed_agent_turn`，跨并发会话隔离，覆盖该轮内的 LangChain 子调用、模型中间件重试和摘要调用。成功、失败、超时均返回已有用量；取消继续传播 `CancelledError`，同时保留截至取消时的统计。
@@ -37,7 +36,6 @@ Dashboard 总览显示累计数据，认证后的 `GET /api/dashboard/status/usa
 - 写操作或未分类工具：异常结束当前轮次，返回 `tool_execution_uncertain`，提示核实此前操作是否生效；不自动重试或邀请模型重复执行。
 - 取消、中断和预算异常保持控制流语义，不转换成普通查询失败。
 - 参数绑定错误继续由 LangChain 的工具校验处理；已有工具主动返回的业务提示保持原样。
-- PTC 工具通过 QuickJS 直接调用 `arun`，不经过图中间件。注册给 PTC 的工具会复制并包装同步/异步入口，避免原始异常文本进入解释器结果；原工具对象不被修改。
 
 ## Decision 结构化输出
 

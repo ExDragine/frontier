@@ -23,7 +23,7 @@ FrontierCognitive.chat_agent()
   ↓
 deepagents.create_deep_agent()
   ↓
-工具调用 / 文件系统后端 / memory / code interpreter
+工具调用 / 文件系统后端 / memory
   ↓
 UniMessage 文本、图片、视频或文件回复
 ```
@@ -60,7 +60,7 @@ UniMessage 文本、图片、视频或文件回复
 | 自动任务 | 创建、列出、暂停、恢复、取消用户自动任务 |
 | 网络与资料 | 主 Agent 直接调用原生网页搜索、Exa / Tavily MCP 工具 |
 | 天文空间 | 极光、彗星、卫星图、火箭发射、空间天气 |
-| 地球与天气 | 主 Agent 通过 PTC 执行纯文本查询；雷达、风场图、台风和 ENS 媒体保留直接工具 |
+| 地球与天气 | 主 Agent 执行纯文本查询；雷达、风场图、台风和 ENS 媒体保留直接工具 |
 | 游戏/业务工具 | NRC 远行商人、精灵蛋、活动日历等 |
 | 占卜 | 易经、塔罗 |
 
@@ -73,7 +73,7 @@ Agent 与平台解耦的目标架构、统一消息协议、端口和迁移阶�
 QQ 消息现在默认经过平台中立的 Conversation Orchestrator，覆盖群聊/私聊文本、已下载媒体、已暂存文件、引用、近期媒体和 session。`qq_text_canary_enabled` 仅作为旧配置兼容字段保留，不再控制路由。
 飞书接入方案已记录在 [Agent 与平台解耦设计](docs/agent-platform-separation.md)；仓库中的无 SDK facade、webhook 和 API 客户端仅作为隔离参考，`plugins.agent` 不会自动注册飞书 lifecycle，当前开发主线先推进 QQ 的统一编排层。重新启用飞书前仍需补持久化 history、durable queue、加密解码和真实平台验证。
 
-工具执行分为三层：媒体工件、平台写操作、聊天记忆和 MCP 联网搜索工具由主 Agent 直接调用；一次性本地/API 只读查询通过 PTC 暴露；本地文档分析可交给有独立调用预算的文档子代理。联网搜索、网页读取和多来源核验统一使用主 Agent 的模型与工具调用预算。
+工具执行分为三层：媒体工件、平台写操作、聊天记忆和 MCP 联网搜索工具由主 Agent 直接调用；本地文档分析可交给有独立调用预算的文档子代理。联网搜索、网页读取和多来源核验统一使用主 Agent 的模型与工具调用预算。
 
 仓库内置工作流位于 `skills/`，运行时以只读方式挂载到 `/skills`，按描述渐进加载；Agent 不再拥有宿主 Shell，也不会在启动时从远端下载 Skill。
 `document-agent` 定义位于 `utils/agents/subagents/`，继承当前会话 backend，但全局禁止写入。
@@ -84,7 +84,7 @@ QQ 消息现在默认经过平台中立的 Conversation Orchestrator，覆盖群
 |------|------|
 | 运行时 | Python 3.14+、uv |
 | Bot 框架 | NoneBot2、FastAPI driver、nonebot-adapter-milky、nonebot_plugin_alconna |
-| Agent | LangChain、LangGraph、deepagents、langchain-quickjs |
+| Agent | LangChain、LangGraph、deepagents |
 | 模型 | OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek |
 | 存储 | SQLite、SQLModel、FTS5、WAL |
 | 渲染/浏览器 | Playwright、markdown-it-py、Mermaid、Apache ECharts、KaTeX、Prism |

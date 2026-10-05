@@ -136,11 +136,6 @@ class FeatureConfig(_FrozenConfig):
     laya_candidate_base_url: str = ""
     laya_candidate_threshold: float = Field(default=0.5, ge=0, le=1)
     laya_candidate_timeout_seconds: float = Field(default=5.0, gt=0)
-    # RubricMiddleware makes a bounded second pass over direct answers.  It is
-    # enabled by default because the grader is only attached when a request
-    # has user text; group silent-reply turns still retain their normal gate.
-    answer_rubric_enabled: bool = True
-    answer_rubric_max_iterations: int = Field(default=2, ge=1, le=3)
 
 
 class FeishuConfig(_FrozenConfig):
@@ -190,7 +185,6 @@ class LimitConfig(_FrozenConfig):
     agent_job_timeout_seconds: int = Field(default=3600, ge=1)
     agent_model_call_limit: int = Field(default=20, ge=1)
     agent_tool_call_limit: int = Field(default=40, ge=1)
-    agent_ptc_call_limit: int = Field(default=20, ge=1)
 
 
 class SessionConfig(_FrozenConfig):
@@ -578,8 +572,6 @@ class EnvConfig:
     LAYA_CANDIDATE_THRESHOLD: ClassVar[float]
     LAYA_CANDIDATE_TIMEOUT_SECONDS: ClassVar[float]
     LAYA_CANDIDATE_API_KEY: ClassVar[SecretStr]
-    ANSWER_RUBRIC_ENABLED: ClassVar[bool]
-    ANSWER_RUBRIC_MAX_ITERATIONS: ClassVar[int]
     AGENT_CAPABILITY: ClassVar[str]
     # Access policies
     AGENT_WHITELIST_MODE: ClassVar[bool]
@@ -607,7 +599,6 @@ class EnvConfig:
     AGENT_JOB_TIMEOUT_SECONDS: ClassVar[int]
     AGENT_MODEL_CALL_LIMIT: ClassVar[int]
     AGENT_TOOL_CALL_LIMIT: ClassVar[int]
-    AGENT_PTC_CALL_LIMIT: ClassVar[int]
     SESSIONS: ClassVar[SessionConfig]
 
     # Notification targets
@@ -697,8 +688,6 @@ class EnvConfig:
             "LAYA_CANDIDATE_THRESHOLD": settings.features.laya_candidate_threshold,
             "LAYA_CANDIDATE_TIMEOUT_SECONDS": settings.features.laya_candidate_timeout_seconds,
             "LAYA_CANDIDATE_API_KEY": SecretStr(os.getenv("LAYA_API_KEY", "")),
-            "ANSWER_RUBRIC_ENABLED": settings.features.answer_rubric_enabled,
-            "ANSWER_RUBRIC_MAX_ITERATIONS": settings.features.answer_rubric_max_iterations,
             "AGENT_CAPABILITY": settings.agent.reasoning_effort,
             "AGENT_WHITELIST_MODE": settings.agent_policy.whitelist_mode,
             "AGENT_WHITELIST_PERSON_LIST": list(settings.agent_policy.whitelist_person_list),
