@@ -10,7 +10,6 @@ from nonebot import logger, on_command
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.permission import SUPERUSER
 
-from utils.agents import ProgressEvent, ProgressReporter
 from utils.alconna import UniMessage
 from utils.command_text import strip_command_prefix
 from utils.configs import EnvConfig
@@ -95,20 +94,6 @@ def _has_agent_access(event: MessageEvent) -> bool:
     if EnvConfig.AGENT_WHITELIST_MODE and user_id not in EnvConfig.AGENT_WHITELIST_PERSON_LIST:
         return False
     return user_id not in EnvConfig.AGENT_BLACKLIST_PERSON_LIST
-
-
-def _progress_reporter(group_id: int | None) -> ProgressReporter:
-    async def reporter(event: ProgressEvent) -> None:
-        # 群聊统一静默处理中间事件，只在任务结束后发送最终结果。
-        if group_id is not None:
-            return
-        if event.type not in {"thinking", "tool_call", "tool_result", "assistant_preamble"}:
-            return
-        message = await sanitize_outgoing_text(event.message)
-        if message:
-            await UniMessage.text(f"🔌 {message}").send()
-
-    return reporter
 
 
 def _input_media(images: list[bytes], audios: list[bytes]) -> tuple[AcpInputMedia, ...]:
@@ -208,7 +193,6 @@ async def handle_acp(event: MessageEvent) -> None:
         workspace_key=workspace_key,
         agent_name=parsed.agent_name,
         media=_input_media(images, audios),
-        progress_reporter=_progress_reporter(group_id),
     )
     delivery = await _send_result(result, group_id=group_id, message_seq=event.data.message_seq)
     if delivery.errors:

@@ -6,13 +6,12 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from langchain.messages import AIMessage
 from nonebot import get_bot, get_driver, logger, on_message, on_notice
 from nonebot.adapters.milky.event import GroupDisbandEvent, MessageEvent
 from nonebot_plugin_apscheduler import scheduler
-from pydantic import BaseModel
 
 from utils.agent_orchestration import ConversationOrchestrator, TurnStatus
 from utils.agent_protocol import (
@@ -26,8 +25,6 @@ from utils.agent_protocol import (
 )
 from utils.agents import (
     FrontierCognitive,
-    ProgressEvent,
-    ProgressReporter,
     conversation_workspace_key,
     run_serialized,
 )
@@ -39,7 +36,6 @@ from utils.agents.message_envelope import content_for_persisted_images as _remov
 from utils.agents.neutral_core import FrontierAgentCore
 from utils.agents.runtime_gateway import FrontierAgentRuntime
 from utils.agents.sessions import HistoryBoundary, SessionKey, TurnLease, session_manager
-from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
 from utils.media import resolve_media
@@ -51,7 +47,6 @@ from utils.message import (
     sanitize_outgoing_text,
     send_messages,
 )
-from utils.signal_llm import signal_structured
 from utils.timeutil import add_daily_job
 
 from .adapters import (
@@ -195,134 +190,6 @@ def _remove_structured_reply_marker(text: str, reply_seq: int | None) -> str:
     if lines and lines[0].strip() == marker:
         return "\n".join(lines[1:]).strip()
     return text
-
-
-class _GroupProgressIntent(BaseModel):
-    intent: Literal["web", "memory", "work"]
-
-
-_GROUP_PROGRESS_MESSAGES = {
-    "web": "我先查一下相关资料，核对后告诉你。",
-    "memory": "我回看一下前面的信息，整理后回复你。",
-    "work": "我先处理一下，马上给你结果。",
-}
-
-
-def _quick_group_progress_message(event: ProgressEvent) -> str | None:
-    """Classify obvious tool events without adding another model round trip."""
-    detail = event.detail or {}
-    tool_name = str(detail.get("tool_name") or "").lower()
-    message = event.message.lower()
-    if any(keyword in f"{tool_name} {message}" for keyword in ("web", "search", "news", "exa", "tavily")):
-        return _GROUP_PROGRESS_MESSAGES["web"]
-    if any(keyword in f"{tool_name} {message}" for keyword in ("memory", "history", "conversation", "recall")):
-        return _GROUP_PROGRESS_MESSAGES["memory"]
-    return None
-
-
-async def _group_progress_message(event: ProgressEvent) -> str | None:
-    """Use one cheap Signal call to turn the first progress event into a status."""
-
-    try:
-        quick_message = _quick_group_progress_message(event)
-        if quick_message:
-            return quick_message
-        result = await asyncio.wait_for(
-            signal_structured(
-                """判断 Agent 当前正在做哪类工作，只返回 JSON。web 表示查询网页、新闻或外部资料；
-memory 表示回忆聊天记录、读取记忆或上下文；work 表示计算、调用业务工具、生成媒体或其他处理。""",
-                f"事件类型：{event.type}\n当前动作：{event.message}",
-                _GroupProgressIntent,
-                temperature=0,
-            ),
-            timeout=2.5,
-        )
-    except Exception as exc:
-        logger.debug("群聊进度 Signal 失败: {}", type(exc).__name__)
-        return None
-    return _GROUP_PROGRESS_MESSAGES.get(result.intent)
-
-
-def _chat_progress_reporter(group_id: int | None) -> ProgressReporter:  # noqa: C901
-    """构造会话级进度消费者；群聊只发一次 Signal 状态，私聊保留有限提示。"""
-    spoken_messages: set[str] = set()
-    spoken_count = 0
-    max_spoken_messages = 2
-    group_signal_started = False
-    group_signal_sent = False
-    group_signal_lock = asyncio.Lock()
-    group_signal_task: asyncio.Task | None = None
-
-    async def send_group_status(event: ProgressEvent) -> None:
-        nonlocal group_signal_sent
-        try:
-            message = await asyncio.wait_for(_group_progress_message(event), timeout=0.35)
-        except TimeoutError:
-            message = _GROUP_PROGRESS_MESSAGES["work"]
-        if not message:
-            return
-        async with group_signal_lock:
-            if group_signal_sent:
-                return
-            group_signal_sent = True
-            try:
-                await UniMessage.text(message).send()
-            except Exception as exc:
-                group_signal_sent = False
-                logger.debug("群聊进度状态发送失败: {}", type(exc).__name__)
-
-    async def reporter(event: ProgressEvent) -> None:  # noqa: C901
-        nonlocal spoken_count
-
-        if group_id is not None:
-            nonlocal group_signal_started, group_signal_task
-            if event.type == "done":
-                if group_signal_task is not None and not group_signal_task.done():
-                    group_signal_task.cancel()
-                return
-            if group_signal_sent:
-                return
-            if event.type == "thinking":
-                if not group_signal_started:
-                    group_signal_started = True
-                    # Give the model a short window to reveal a more useful
-                    # tool-call event before falling back to generic wording.
-                    async def delayed_status() -> None:
-                        await asyncio.sleep(0.08)
-                        await send_group_status(event)
-
-                    group_signal_task = asyncio.create_task(
-                        delayed_status(), name="frontier-group-progress-signal"
-                    )
-                return
-            if event.type in {"tool_call_start", "tool_call", "subagent_start"}:
-                if group_signal_task is not None and not group_signal_task.done():
-                    group_signal_task.cancel()
-                group_signal_started = True
-                group_signal_task = asyncio.create_task(
-                    send_group_status(event), name="frontier-group-progress-signal"
-                )
-            return
-
-        if event.type == "assistant_preamble":
-            content = event.message.strip()
-            if not content or content in spoken_messages or spoken_count >= max_spoken_messages:
-                return
-
-            sanitized = await sanitize_outgoing_text(content)
-            # 风险审核改写后的拦截提示不作为过程发言发送，最终回复仍会正常审核。
-            if not sanitized or sanitized != content:
-                return
-
-            spoken_messages.add(content)
-            spoken_count += 1
-            await UniMessage.text(content).send()
-            return
-
-        if event.type in {"thinking", "subagent_start", "tool_call"}:
-            await UniMessage.text(event.message).send()
-
-    return reporter
 
 
 async def _settle_session(lease: TurnLease | None, **kwargs) -> None:
@@ -505,7 +372,6 @@ async def _run_qq_neutral(
         execution_profile=EnvConfig.AGENT_CAPABILITY,
         allow_silent_reply=_allows_silent_reply(context),
         session_turn=session_turn,
-        progress_reporter=_chat_progress_reporter(context.group_id),
     )
     if outcome.status in {TurnStatus.DELIVERED, TurnStatus.HISTORY_APPEND_FAILED}:
         await _settle_qq_neutral_session(session_turn, outcome)

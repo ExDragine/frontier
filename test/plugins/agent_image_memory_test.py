@@ -13,6 +13,7 @@ from nonebot.adapters.milky.model.common import Friend, FriendCategory, Group, M
 from nonebot.adapters.milky.model.message import IncomingMessage
 from nonebug import App
 
+from utils.agents.progress import ProgressEvent, emit_progress
 from utils.delivery import DeliveryResult
 from utils.timeutil import SHANGHAI
 
@@ -150,56 +151,72 @@ def test_direct_bot_mention_requires_explicit_matching_mention_segment():
 
 
 @pytest.mark.asyncio
-async def test_group_progress_reporter_sends_one_signal_status(monkeypatch):
+@pytest.mark.parametrize("group_id", [pytest.param(None, id="private"), pytest.param(123, id="group")])
+@pytest.mark.parametrize("status", ["success", "silent", "failed", "timeout"])
+async def test_chat_turn_does_not_send_progress_messages(monkeypatch, group_id, status):
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
     from plugins.agent import handlers as agent
 
-    sent: list[str] = []
+    reporters = []
+    sent = []
+    stored = []
+    final_text = "最终回答" if status == "success" else "本轮处理失败，请稍后重试。"
 
-    async def allow_text(content: str):
-        return content
+    class DummyMessagesDb(_InertMessagesDb):
+        async def insert(self, **kwargs):
+            stored.append((kwargs["role"], kwargs["content"]))
 
-    async def signal_status(_event):
-        return "我先查一下相关资料，核对后告诉你。"
+    class DummyCognitive:
+        async def chat_agent(self, *_args, progress_reporter=None, **_kwargs):
+            reporters.append(progress_reporter)
+            for event in (
+                ProgressEvent(type="thinking", message="正在思考…"),
+                ProgressEvent(type="tool_call_start", message="正在搜索…"),
+                ProgressEvent(type="tool_call", message="正在搜索…"),
+                ProgressEvent(type="tool_result", message="搜索完成"),
+                ProgressEvent(type="subagent_start", message="正在委派…"),
+                ProgressEvent(type="subagent_done", message="委派完成"),
+                ProgressEvent(type="assistant_preamble", message="我先查一下资料。"),
+                ProgressEvent(type="done", message="处理完成"),
+            ):
+                await emit_progress(progress_reporter, event)
+            return {
+                "response": {"messages": [types.SimpleNamespace(text=final_text)]},
+                "uni_messages": [],
+                "status": status,
+                "should_reply": status != "silent",
+            }
 
-    monkeypatch.setattr(agent, "UniMessage", _recording_unimessage(sent))
-    monkeypatch.setattr(agent, "_group_progress_message", signal_status)
-    reporter = agent._chat_progress_reporter(group_id=123)
+    async def send_final(target_group_id, _reply_id, response):
+        sent.append((target_group_id, agent.outgoing_message_content(response["messages"][-1])))
+        return DeliveryResult(attempted=1, sent=1)
 
-    await reporter(agent.ProgressEvent(type="thinking", message="正在思考…"))
-    await reporter(agent.ProgressEvent(type="tool_call", message="正在搜索…"))
-    await reporter(agent.ProgressEvent(type="subagent_start", message="正在委派…"))
-    await reporter(agent.ProgressEvent(type="assistant_preamble", message="我先查一下资料。"))
-    await reporter(agent.ProgressEvent(type="assistant_preamble", message="接着核对来源。"))
-    await asyncio.sleep(0)
+    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
+    monkeypatch.setattr(agent, "send_messages", send_final)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
 
-    assert sent == ["我先查一下相关资料，核对后告诉你。"]
+    context = agent.AgentRequestContext(
+        event=cast(Any, types.SimpleNamespace)(self_id="1"),
+        user_id="456",
+        user_name="Bob",
+        event_id=1,
+        group_id=group_id,
+        msg_time=1000,
+        text="帮我查一下资料",
+        quoted_images=[],
+        images=[],
+        videos=[],
+    )
 
+    delivered = await agent._process_agent_request(context, history_messages=[])
 
-@pytest.mark.asyncio
-async def test_private_progress_reporter_keeps_templates_and_two_preambles(monkeypatch):
-    import nonebot
-
-    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins.agent import handlers as agent
-
-    sent: list[str] = []
-
-    async def allow_text(content: str):
-        return content
-
-    monkeypatch.setattr(agent, "UniMessage", _recording_unimessage(sent))
-    monkeypatch.setattr(agent, "sanitize_outgoing_text", allow_text)
-    reporter = agent._chat_progress_reporter(group_id=None)
-
-    await reporter(agent.ProgressEvent(type="thinking", message="正在思考…"))
-    await reporter(agent.ProgressEvent(type="assistant_preamble", message="我先查一下资料。"))
-    await reporter(agent.ProgressEvent(type="assistant_preamble", message="接着核对来源。"))
-    await reporter(agent.ProgressEvent(type="assistant_preamble", message="最后再整理结果。"))
-
-    assert sent == ["正在思考…", "我先查一下资料。", "接着核对来源。"]
+    assert reporters == [None]
+    assert delivered is (status != "silent")
+    assert sent == ([] if status == "silent" else [(group_id, final_text)])
+    assert stored == ([("assistant", final_text)] if status == "success" else [])
 
 
 @pytest.mark.asyncio
@@ -1611,7 +1628,7 @@ async def test_gateway_approved_message_routes_directly_to_agent(monkeypatch):  
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: _NoopBot())
-    monkeypatch.setattr(agent, "UniMessage", _recording_unimessage(sent_messages))
+    monkeypatch.setattr("utils.message.UniMessage", _recording_unimessage(sent_messages))
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
@@ -1748,7 +1765,7 @@ async def test_gateway_queue_routing(case, monkeypatch):  # noqa: C901
     monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
     monkeypatch.setattr(agent, "messages_db", CaseMessagesDb())
     monkeypatch.setattr(agent, "get_bot", lambda: CaseBot())
-    monkeypatch.setattr(agent, "UniMessage", _recording_unimessage(sent_messages))
+    monkeypatch.setattr("utils.message.UniMessage", _recording_unimessage(sent_messages))
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
