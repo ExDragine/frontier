@@ -44,6 +44,11 @@
   so the one-shot read-only tools (`weather`, `earthquake`, `radar`, `iching`,
   `tarot`, `deepseek_balance`, the `milky_*` getters and the `scheduled_task`
   listings) are visible to the main Agent again instead of being dropped.
+- Wire QQ progress messages back through the neutral boundary: the
+  orchestrator, the `AgentCore` port and `AgentRuntimeRequest` now carry an
+  optional progress reporter, so private `assistant_preamble`, thinking and
+  tool-call messages plus the single group status message are emitted again.
+  Callers that pass no reporter keep the plain request/response shape.
 
 Earlier implementation notes live in `docs/` and are retained as design
 history. They are not a promise that every historical experiment remains

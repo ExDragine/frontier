@@ -194,6 +194,48 @@ async def test_artifact_only_delivery_does_not_append_empty_assistant_history(me
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_forwards_progress_reporter_to_the_core(message):
+    seen = []
+
+    class ReporterCore(FakeCore):
+        async def run(self, request, *, tools=(), progress_reporter=None):
+            seen.append(progress_reporter)
+            return AgentResponse(text="hi")
+
+    async def reporter(_event):
+        return None
+
+    outcome = await ConversationOrchestrator(ReporterCore()).handle(
+        message,
+        policy=FakePolicy(True),
+        history=FakeHistory(),
+        delivery=FakeDelivery(DeliveryStatus.DELIVERED),
+        progress_reporter=reporter,
+    )
+
+    assert outcome.status is TurnStatus.DELIVERED
+    assert seen == [reporter]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_keeps_two_argument_cores_working(message):
+    """A core that never asked for progress keeps the plain call shape."""
+
+    class LegacyCore(FakeCore):
+        async def run(self, request, *, tools=()):
+            return AgentResponse(text="hi")
+
+    outcome = await ConversationOrchestrator(LegacyCore()).handle(
+        message,
+        policy=FakePolicy(True),
+        history=FakeHistory(),
+        delivery=FakeDelivery(DeliveryStatus.DELIVERED),
+    )
+
+    assert outcome.status is TurnStatus.DELIVERED
+
+
+@pytest.mark.asyncio
 async def test_history_boundary_uses_final_delivery_message(message):
     history = FakeHistory()
     outcome = await ConversationOrchestrator(FakeCore()).handle(

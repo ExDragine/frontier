@@ -81,7 +81,7 @@ async def test_agent_failure_sends_one_notice_without_legacy_retry(agent, monkey
     sent = []
 
     class FailingCore:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             raise RuntimeError("boom")
 
     async def send_messages(*args, **kwargs):
@@ -107,7 +107,7 @@ async def test_private_neutral_uses_neutral_delivery_scope(agent, monkeypatch):
     sent = []
 
     class Core:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             assert request.current.conversation.kind == "private"
             return AgentResponse(text="private reply")
 
@@ -130,13 +130,57 @@ async def test_private_neutral_uses_neutral_delivery_scope(agent, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_neutral_path_wires_the_qq_progress_reporter(agent, monkeypatch):
+    from utils.agents import ProgressEvent
+    from utils.alconna import UniMessage
+
+    seen = []
+    sent = []
+
+    class Core:
+        async def run(self, request, *, tools=(), progress_reporter=None):
+            seen.append(progress_reporter)
+            return AgentResponse(text="ok")
+
+    async def send_messages(*_args, **_kwargs):
+        return DeliveryResult(attempted=1, sent=1)
+
+    class Database:
+        async def insert(self, **kwargs):
+            return None
+
+    class DummyMessage:
+        def __init__(self, kind, payload):
+            self.kind = kind
+            self.payload = payload
+
+        async def send(self, *_args, **_kwargs):
+            sent.append((self.kind, self.payload))
+
+    monkeypatch.setattr(agent, "FrontierAgentCore", lambda *_args, **_kwargs: Core())
+    monkeypatch.setattr(agent, "send_messages", send_messages)
+    monkeypatch.setattr(agent, "messages_db", Database())
+    monkeypatch.setattr(UniMessage, "text", classmethod(lambda cls, text: DummyMessage("text", text)))
+
+    handled, _ = await agent._run_qq_neutral(_context(agent, group_id=None), [])
+
+    assert handled is True
+    reporter = seen[0]
+    assert reporter is not None
+    # The private path reports tool activity directly, so the wiring is
+    # observable without waiting on the group Signal task.
+    await reporter(ProgressEvent(type="tool_call", message="正在查询天气…"))
+    assert sent == [("text", "正在查询天气…")]
+
+
+@pytest.mark.asyncio
 async def test_session_neutral_forwards_lease_and_settles_after_delivery(agent, monkeypatch):
     seen = []
     settled = []
     session = SimpleNamespace(current_id="qq:42:message:9")
 
     class Core:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             seen.append(request.session_turn)
             return AgentResponse(text="session reply")
 
@@ -170,7 +214,7 @@ async def test_media_neutral_passes_current_downloads_through_neutral_message(ag
     seen = []
 
     class Core:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             seen.append(request.current.parts)
             return AgentResponse(text="media reply")
 
@@ -202,7 +246,7 @@ async def test_file_neutral_passes_current_staged_ref_through_neutral_message(ag
     seen = []
 
     class Core:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             seen.append(request.current.parts)
             return AgentResponse(text="file reply")
 
@@ -232,7 +276,7 @@ async def test_recent_media_neutral_preserves_source_marker_and_parts(agent, mon
     seen = []
 
     class Core:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             seen.append(request.current.parts)
             return AgentResponse(text="recent reply")
 
@@ -266,7 +310,7 @@ async def test_quote_neutral_maps_resolved_snapshot_and_media(agent, monkeypatch
     seen = []
 
     class Core:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             seen.append(request.current)
             return AgentResponse(text="quote reply")
 
@@ -303,7 +347,7 @@ async def test_history_failure_is_handled_without_legacy_retry(agent, monkeypatc
     core_calls = []
 
     class Core:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             core_calls.append(request)
             return AgentResponse(text="must not run")
 
@@ -336,7 +380,7 @@ async def test_delivery_failure_is_handled_without_retry(agent, monkeypatch):
     sent = []
 
     class Core:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             return AgentResponse(text="reply")
 
     async def send_messages(*args, **kwargs):
@@ -364,7 +408,7 @@ async def test_empty_success_response_is_not_persisted(agent, monkeypatch):
     sent = []
 
     class Core:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             return AgentResponse(text="")
 
     async def send_messages(*args, **kwargs):
@@ -389,7 +433,7 @@ async def test_artifact_response_is_handled_without_legacy_retry(agent, monkeypa
     sent = []
 
     class Core:
-        async def run(self, request, *, tools=()):
+        async def run(self, request, *, tools=(), progress_reporter=None):
             return AgentResponse(
                 text="generated image",
                 artifacts=(AgentArtifact(kind="image", data=b"image", mime_type="image/png"),),

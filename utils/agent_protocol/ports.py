@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from .models import (
     AgentRequest,
@@ -17,16 +17,26 @@ from .models import (
     StoredMessage,
 )
 
+if TYPE_CHECKING:
+    from utils.agents.progress import ProgressReporter
+
 
 @runtime_checkable
 class AgentCore(Protocol):
-    """Execute one platform-neutral Agent request."""
+    """Execute one platform-neutral Agent request.
+
+    ``progress_reporter`` is an optional per-turn callback.  Implementations
+    that accept it forward user-visible progress (thinking, tool calls,
+    sub-agent hand-offs) to the platform adapter, while callers that pass
+    ``None`` keep the plain request/response shape.
+    """
 
     async def run(
         self,
         request: AgentRequest,
         *,
         tools: Sequence[object] = (),
+        progress_reporter: ProgressReporter | None = None,
     ) -> AgentResponse: ...
 
 

@@ -63,3 +63,6 @@ async def test_qq_handler_passes_neutral_identity_and_capabilities(monkeypatch):
     # Keep the old workspace key so existing QQ memory and session files are
     # not moved merely by declaring the neutral identity.
     assert request.workspace_key == "group-42"
+    # The QQ turn must hand its progress reporter to the runtime gateway again,
+    # otherwise private preambles and the group status message never fire.
+    assert callable(captured["progress_reporter"])

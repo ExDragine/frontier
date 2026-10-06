@@ -52,7 +52,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - 同一群的不同成员共享 workspace 锁；不同群和不同私聊可并发。QQ 锁顺序是 `delivery:` → `workspace:`，不可反向嵌套。
 - 平台消息按机器人和会话去重；当前消息/引用/历史分别分配媒体预算，当前输入优先。
 - QQ 最终文本确认发送成功后才写入 assistant 历史；队列与投递失败规则见 `docs/message_flow.md`。
-- 私聊会持续消费 Agent progress 事件：`assistant_preamble` 最多发 2 条，`thinking`/`tool_call`/`subagent_start` 逐条发送。群聊最多发 1 条状态消息，由一次轻量 Signal 调用把首个进度事件分类为网页检索/记忆/一般处理（分类整体 0.35s、Signal 调用 2.5s 超时；`thinking` 先等 0.08s 看是否出现更有用的工具事件）。
+- 私聊会持续消费 Agent progress 事件：`assistant_preamble` 最多发 2 条，`thinking`/`tool_call`/`subagent_start` 逐条发送。群聊最多发 1 条状态消息，由一次轻量 Signal 调用把首个进度事件分类为网页检索/记忆/一般处理（分类整体 0.35s、Signal 调用 2.5s 超时；`thinking` 先等 0.08s 看是否出现更有用的工具事件）。进度回调由 `_chat_progress_reporter()` 经 `ConversationOrchestrator.handle(progress_reporter=...)` → `AgentCore.run(..., progress_reporter=...)` → `AgentRuntimeRequest` 传到运行时；不传该回调的调用方保持纯请求/响应语义。
 
 ---
 

@@ -342,6 +342,7 @@ class ConversationOrchestrator:
         history: HistoryStore,
         delivery: DeliveryPort,
         tools: PlatformToolProvider | None = None,
+        progress_reporter: ProgressReporter | None = None,
     ) -> TurnOutcome:
         ...
 ```

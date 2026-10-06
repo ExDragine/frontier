@@ -354,8 +354,11 @@ class _QqNeutralCore:
     def __init__(self, core: FrontierAgentCore) -> None:
         self._core = core
 
-    async def run(self, request: AgentRequest, *, tools=()) -> AgentResponse:
-        response = await self._core.run(request, tools=tools)
+    async def run(self, request: AgentRequest, *, tools=(), progress_reporter=None) -> AgentResponse:
+        if progress_reporter is None:
+            response = await self._core.run(request, tools=tools)
+        else:
+            response = await self._core.run(request, tools=tools, progress_reporter=progress_reporter)
         sanitized = await sanitize_outgoing_text(response.text)
         sanitized_text = sanitized or ""
         if sanitized_text == response.text:
@@ -537,6 +540,7 @@ async def _run_qq_neutral(
         execution_profile=EnvConfig.AGENT_CAPABILITY,
         allow_silent_reply=_allows_silent_reply(context),
         session_turn=session_turn,
+        progress_reporter=_chat_progress_reporter(context.group_id),
     )
     if outcome.status in {TurnStatus.DELIVERED, TurnStatus.HISTORY_APPEND_FAILED}:
         await _settle_qq_neutral_session(session_turn, outcome)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from utils.agent_protocol import (
     AgentArtifact,
@@ -36,6 +36,9 @@ from .runtime_gateway import (
     _message_text,
     _runtime_artifacts,
 )
+
+if TYPE_CHECKING:
+    from .progress import ProgressReporter
 
 
 def _part_text(part: MessagePart) -> str:
@@ -229,23 +232,28 @@ async def _invoke_runtime(
     runtime: object,
     request: AgentRuntimeRequest,
     tools: Sequence[object],
+    progress_reporter: ProgressReporter | None = None,
 ) -> AgentRuntimeResult | Mapping[str, Any]:
     """Invoke either the normalized or legacy runtime shape.
 
     ``FrontierAgentRuntime.prompt`` is preferred because it already converts
     legacy graph output.  Small test doubles and older integrations may expose
-    only ``run``; both are supported during the migration.
+    only ``run``; both are supported during the migration.  Optional arguments
+    are passed only when the target accepts them.
     """
 
     method = getattr(runtime, "prompt", None) or getattr(runtime, "run", None)
     if method is None:
         raise TypeError("runtime must provide prompt() or run()")
-    kwargs: dict[str, object] = {}
     try:
-        if "tools" in inspect.signature(method).parameters:
-            kwargs["tools"] = tools
+        parameters = inspect.signature(method).parameters
     except (TypeError, ValueError):
-        pass
+        parameters = {}
+    kwargs: dict[str, object] = {}
+    if "tools" in parameters:
+        kwargs["tools"] = tools
+    if progress_reporter is not None and "progress_reporter" in parameters:
+        kwargs["progress_reporter"] = progress_reporter
     return await method(request, **kwargs)
 
 
@@ -260,6 +268,7 @@ class FrontierAgentCore:
         request: AgentRequest,
         *,
         tools: Sequence[object] = (),
+        progress_reporter: ProgressReporter | None = None,
     ) -> AgentResponse:
         images, audio, videos = _current_media(request)
         messages = [_history_message(message) for message in request.history]
@@ -287,7 +296,7 @@ class FrontierAgentCore:
             workspace_key=request.workspace_key,
             tool_overrides=tuple(tools),
         )
-        raw_result = await _invoke_runtime(self._runtime, runtime_request, tools)
+        raw_result = await _invoke_runtime(self._runtime, runtime_request, tools, progress_reporter)
         result = _mapping_result(raw_result) if isinstance(raw_result, Mapping) else raw_result
         if not isinstance(result, AgentRuntimeResult):
             raise TypeError("runtime must return AgentRuntimeResult or a legacy result mapping")

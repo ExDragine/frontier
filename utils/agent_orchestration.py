@@ -13,6 +13,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -34,6 +35,9 @@ from .agent_protocol import (
     StoredMessage,
     normalize_workspace_key,
 )
+
+if TYPE_CHECKING:
+    from utils.agents.progress import ProgressReporter
 
 
 class TurnStatus(StrEnum):
@@ -157,6 +161,7 @@ class ConversationOrchestrator:
         execution_profile: str = "default",
         allow_silent_reply: bool = False,
         session_turn: object | None = None,
+        progress_reporter: ProgressReporter | None = None,
     ) -> TurnOutcome:
         """Process a normalized message through the application ports."""
 
@@ -209,7 +214,16 @@ class ConversationOrchestrator:
         )
         try:
             selected_tools: Sequence[object] = tools.tools(capabilities) if tools else ()
-            response = await self._core.run(request, tools=selected_tools)
+            if progress_reporter is None:
+                response = await self._core.run(request, tools=selected_tools)
+            else:
+                # Only asked for when the caller supplies a reporter, so cores
+                # that keep the two-argument shape stay valid.
+                response = await self._core.run(
+                    request,
+                    tools=selected_tools,
+                    progress_reporter=progress_reporter,
+                )
         except Exception as error:
             return TurnOutcome(
                 request_id=request_id,
