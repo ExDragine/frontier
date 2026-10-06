@@ -3,112 +3,58 @@ import types
 
 import pytest
 
-
-class DummyMilkyBot:
-    def __init__(self):
-        self.calls = []
-
-    async def set_group_name(self, **kwargs):
-        self.calls.append(("set_group_name", kwargs))
-
-    async def set_group_avatar(self, **kwargs):
-        self.calls.append(("set_group_avatar", kwargs))
-
-    async def set_group_member_card(self, **kwargs):
-        self.calls.append(("set_group_member_card", kwargs))
-
-    async def set_group_member_special_title(self, **kwargs):
-        self.calls.append(("set_group_member_special_title", kwargs))
-
-    async def set_group_member_admin(self, **kwargs):
-        self.calls.append(("set_group_member_admin", kwargs))
-
-    async def set_group_member_mute(self, **kwargs):
-        self.calls.append(("set_group_member_mute", kwargs))
-
-    async def set_group_whole_mute(self, **kwargs):
-        self.calls.append(("set_group_whole_mute", kwargs))
-
-    async def kick_group_member(self, **kwargs):
-        self.calls.append(("kick_group_member", kwargs))
-
-    async def get_group_announcements(self, **kwargs):
-        self.calls.append(("get_group_announcements", kwargs))
-        return [
-            types.SimpleNamespace(
-                announcement_id="ann-1",
-                user_id=456,
-                time=1714521600,
-                content="今天维护",
-                image_url=None,
-            )
-        ]
-
-    async def send_group_announcement(self, **kwargs):
-        self.calls.append(("send_group_announcement", kwargs))
-
-    async def delete_group_announcement(self, **kwargs):
-        self.calls.append(("delete_group_announcement", kwargs))
-
-    async def get_group_essence_messages(self, **kwargs):
-        self.calls.append(("get_group_essence_messages", kwargs))
-        return types.SimpleNamespace(
-            messages=[
-                types.SimpleNamespace(
-                    message_seq=88,
-                    sender_id=456,
-                    sender_name="Alice",
-                    operator_id=789,
-                    operator_name="Bob",
-                    operation_time=1714521700,
-                )
-            ],
-            is_end=True,
+_GROUP_ANNOUNCEMENTS = [
+    types.SimpleNamespace(
+        announcement_id="ann-1",
+        user_id=456,
+        time=1714521600,
+        content="今天维护",
+        image_url=None,
+    )
+]
+_GROUP_ESSENCE_MESSAGES = types.SimpleNamespace(
+    messages=[
+        types.SimpleNamespace(
+            message_seq=88,
+            sender_id=456,
+            sender_name="Alice",
+            operator_id=789,
+            operator_name="Bob",
+            operation_time=1714521700,
         )
-
-    async def set_group_essence_message(self, **kwargs):
-        self.calls.append(("set_group_essence_message", kwargs))
-
-    async def quit_group(self, **kwargs):
-        self.calls.append(("quit_group", kwargs))
-
-    async def send_group_message_reaction(self, **kwargs):
-        self.calls.append(("send_group_message_reaction", kwargs))
-
-    async def send_group_nudge(self, **kwargs):
-        self.calls.append(("send_group_nudge", kwargs))
-
-    async def get_group_notifications(self, **kwargs):
-        self.calls.append(("get_group_notifications", kwargs))
-        return [
-            {
-                "type": "join_request",
-                "group_id": 123,
-                "notification_seq": 9001,
-                "initiator_id": 456,
-                "state": "pending",
-                "comment": "申请入群",
-                "is_filtered": False,
-            }
-        ], 8999
-
-    async def accept_group_request(self, **kwargs):
-        self.calls.append(("accept_group_request", kwargs))
-
-    async def reject_group_request(self, **kwargs):
-        self.calls.append(("reject_group_request", kwargs))
-
-    async def accept_group_invitation(self, **kwargs):
-        self.calls.append(("accept_group_invitation", kwargs))
-
-    async def reject_group_invitation(self, **kwargs):
-        self.calls.append(("reject_group_invitation", kwargs))
+    ],
+    is_end=True,
+)
+_GROUP_NOTIFICATIONS = (
+    [
+        {
+            "type": "join_request",
+            "group_id": 123,
+            "notification_seq": 9001,
+            "initiator_id": 456,
+            "state": "pending",
+            "comment": "申请入群",
+            "is_filtered": False,
+        }
+    ],
+    8999,
+)
 
 
-def _install_dummy_bot(monkeypatch, module):
-    bot = DummyMilkyBot()
-    monkeypatch.setattr(module, "get_bot", lambda: bot)
-    return bot
+@pytest.fixture
+def group_bot(load_tool_module, install_milky_bot):
+    """Milky bot stub for the group tool module plus the loaded module."""
+
+    group = load_tool_module("milky_group")
+    bot = install_milky_bot(
+        group,
+        {
+            "get_group_announcements": _GROUP_ANNOUNCEMENTS,
+            "get_group_essence_messages": _GROUP_ESSENCE_MESSAGES,
+            "get_group_notifications": _GROUP_NOTIFICATIONS,
+        },
+    )
+    return group, bot
 
 
 def _group_config(group_id=123, role="admin"):
@@ -129,9 +75,8 @@ def test_group_tools_are_split_out_of_adapter(load_tool_module):
 
 
 @pytest.mark.asyncio
-async def test_group_management_uses_current_group_from_config(load_tool_module, monkeypatch):
-    group = load_tool_module("milky_group")
-    bot = _install_dummy_bot(monkeypatch, group)
+async def test_group_management_uses_current_group_from_config(group_bot):
+    group, bot = group_bot
 
     result = await group.set_group_name(new_group_name="新群名", config=_group_config())
 
@@ -140,11 +85,10 @@ async def test_group_management_uses_current_group_from_config(load_tool_module,
 
 
 @pytest.mark.asyncio
-async def test_group_management_prefers_typed_runtime_context(load_tool_module, monkeypatch):
+async def test_group_management_prefers_typed_runtime_context(group_bot):
     from utils.agent_context import FrontierRuntimeContext
 
-    group = load_tool_module("milky_group")
-    bot = _install_dummy_bot(monkeypatch, group)
+    group, bot = group_bot
     runtime = types.SimpleNamespace(
         context=FrontierRuntimeContext(
             user_id="42",
@@ -165,9 +109,8 @@ async def test_group_management_prefers_typed_runtime_context(load_tool_module, 
 
 
 @pytest.mark.asyncio
-async def test_group_management_allows_explicit_group_id(load_tool_module, monkeypatch):
-    group = load_tool_module("milky_group")
-    bot = _install_dummy_bot(monkeypatch, group)
+async def test_group_management_allows_explicit_group_id(group_bot):
+    group, bot = group_bot
 
     result = await group.set_group_member_mute(
         group_id=456, user_id=789, duration=60, config=_group_config(group_id=456)
@@ -178,9 +121,8 @@ async def test_group_management_allows_explicit_group_id(load_tool_module, monke
 
 
 @pytest.mark.asyncio
-async def test_group_management_requires_group_context(load_tool_module, monkeypatch):
-    group = load_tool_module("milky_group")
-    _install_dummy_bot(monkeypatch, group)
+async def test_group_management_requires_group_context(group_bot):
+    group, _bot = group_bot
 
     result = await group.set_group_whole_mute(config={"configurable": {"group_id": None}})
 
@@ -223,9 +165,8 @@ async def test_group_management_requires_group_context(load_tool_module, monkeyp
         ),
     ],
 )
-async def test_privileged_group_tools_require_admin_or_owner(load_tool_module, monkeypatch, call_tool):
-    group = load_tool_module("milky_group")
-    bot = _install_dummy_bot(monkeypatch, group)
+async def test_privileged_group_tools_require_admin_or_owner(group_bot, call_tool):
+    group, bot = group_bot
 
     result = await call_tool(group)
 
@@ -235,11 +176,9 @@ async def test_privileged_group_tools_require_admin_or_owner(load_tool_module, m
 
 @pytest.mark.asyncio
 async def test_privileged_group_tools_reject_when_role_context_is_missing_or_for_another_group(
-    load_tool_module,
-    monkeypatch,
+    group_bot,
 ):
-    group = load_tool_module("milky_group")
-    bot = _install_dummy_bot(monkeypatch, group)
+    group, bot = group_bot
 
     missing_role = await group.set_group_whole_mute(config=_group_config(role=None))
     other_group = await group.kick_group_member(user_id=789, group_id=456, config=_group_config(group_id=123))
@@ -250,9 +189,8 @@ async def test_privileged_group_tools_reject_when_role_context_is_missing_or_for
 
 
 @pytest.mark.asyncio
-async def test_privileged_group_tools_allow_group_owner(load_tool_module, monkeypatch):
-    group = load_tool_module("milky_group")
-    bot = _install_dummy_bot(monkeypatch, group)
+async def test_privileged_group_tools_allow_group_owner(group_bot):
+    group, bot = group_bot
 
     result = await group.set_group_whole_mute(config=_group_config(role="owner"))
 
@@ -261,9 +199,8 @@ async def test_privileged_group_tools_allow_group_owner(load_tool_module, monkey
 
 
 @pytest.mark.asyncio
-async def test_set_group_avatar_converts_image_uri_for_milky(load_tool_module, monkeypatch, tmp_path):
-    group = load_tool_module("milky_group")
-    bot = _install_dummy_bot(monkeypatch, group)
+async def test_set_group_avatar_converts_image_uri_for_milky(group_bot, tmp_path):
+    group, bot = group_bot
     avatar_path = tmp_path / "avatar.png"
 
     result = await group.set_group_avatar(image_uri=f"file://{avatar_path}", config=_group_config())
@@ -273,9 +210,8 @@ async def test_set_group_avatar_converts_image_uri_for_milky(load_tool_module, m
 
 
 @pytest.mark.asyncio
-async def test_group_announcement_tools_call_milky_and_format_results(load_tool_module, monkeypatch):
-    group = load_tool_module("milky_group")
-    bot = _install_dummy_bot(monkeypatch, group)
+async def test_group_announcement_tools_call_milky_and_format_results(group_bot):
+    group, bot = group_bot
 
     listed = await group.get_group_announcements(config=_group_config())
     sent = await group.send_group_announcement(
@@ -301,9 +237,8 @@ async def test_group_announcement_tools_call_milky_and_format_results(load_tool_
 
 
 @pytest.mark.asyncio
-async def test_group_essence_reaction_and_nudge_tools(load_tool_module, monkeypatch):
-    group = load_tool_module("milky_group")
-    bot = _install_dummy_bot(monkeypatch, group)
+async def test_group_essence_reaction_and_nudge_tools(group_bot):
+    group, bot = group_bot
 
     essence = await group.get_group_essence_messages(page_index=0, page_size=10, config=_group_config())
     set_result = await group.set_group_essence_message(message_seq=88, is_set=True, config=_group_config())
@@ -333,9 +268,8 @@ async def test_group_essence_reaction_and_nudge_tools(load_tool_module, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_group_notification_and_invitation_tools(load_tool_module, monkeypatch):
-    group = load_tool_module("milky_group")
-    bot = _install_dummy_bot(monkeypatch, group)
+async def test_group_notification_and_invitation_tools(group_bot):
+    group, bot = group_bot
 
     notifications = await group.get_group_notifications(start_notification_seq=9010, is_filtered=True, limit=5)
     accepted = await group.accept_group_request(

@@ -27,7 +27,6 @@ _TOOL_MESSAGE_EXACT: dict[str, str] = {
     "get_wind_map": "正在获取风向图…",
     "get_static_china_radar": "正在获取雷达图…",
     "get_china_earthquake": "正在查询中国地震信息…",
-    "get_japan_earthquake": "正在查询日本地震信息…",
     # 空间 / 天文
     "solar_flare": "正在查询太阳耀斑…",
     "realtime_solarwind": "正在获取实时太阳风数据…",
@@ -68,7 +67,8 @@ _TOOL_MESSAGE_EXACT: dict[str, str] = {
 }
 
 # ── 前缀模式 ──────────────────────────────────────────────────────────────
-# 按优先级排列，命中第一个后停止。
+# 源码内按主题分组排列；匹配时按前缀长度降序（见 _TOOL_MESSAGE_PATTERNS_BY_LENGTH），
+# 因此长前缀（如 send_group_message_reaction）不会被短前缀（如 send_group_message）抢走。
 _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
     # ── 适配器发送类 ──
     ("send_image", "正在发送图片…"),
@@ -218,6 +218,11 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
     ("web_fetch_exa", "正在获取网页内容…"),
 ]
 
+# 匹配用视图：按前缀长度降序，等长时保持源码顺序（sorted 稳定）。
+_TOOL_MESSAGE_PATTERNS_BY_LENGTH: list[tuple[str, str]] = sorted(
+    _TOOL_MESSAGE_PATTERNS, key=lambda item: len(item[0]), reverse=True
+)
+
 # ── 子代理消息映射 ─────────────────────────────────────────────────────────
 _SUBAGENT_MESSAGE_MAP: dict[str, str] = {
     "document-agent": "正在阅读并整理文档…",
@@ -230,11 +235,11 @@ _SUBAGENT_MESSAGE_MAP: dict[str, str] = {
 def tool_message(tool_name: str) -> str:
     """返回工具名对应的中文进度描述。
 
-    查找顺序：精确映射 → 前缀模式 → 通用回退。
+    查找顺序：精确映射 → 前缀模式（长前缀优先）→ 通用回退。
     """
     if msg := _TOOL_MESSAGE_EXACT.get(tool_name):
         return msg
-    for prefix, msg in _TOOL_MESSAGE_PATTERNS:
+    for prefix, msg in _TOOL_MESSAGE_PATTERNS_BY_LENGTH:
         if tool_name.startswith(prefix):
             return msg
     return f"正在调用工具：{tool_name}"

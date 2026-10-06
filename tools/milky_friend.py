@@ -4,12 +4,13 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot
 
-from utils.milky_tools import format_records, resolve_user_id
+from utils.milky_tools import format_records, input_error_text, require_user_id
 
 _DEFAULT_CONFIG = cast(RunnableConfig, None)
 
 
 @tool(response_format="content")
+@input_error_text
 async def send_friend_nudge(
     user_id: int | None = None,
     is_self: bool = False,
@@ -20,9 +21,7 @@ async def send_friend_nudge(
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
         is_self: 是否向自己发送
     """
-    resolved_user_id, error = resolve_user_id(user_id, dict(config or {}))
-    if error:
-        return error
+    resolved_user_id = require_user_id(user_id, config)
     await get_bot().send_friend_nudge(user_id=resolved_user_id, is_self=is_self)
     return f"已向好友 {resolved_user_id} 发送戳一戳"
 

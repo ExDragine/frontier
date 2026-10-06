@@ -7,7 +7,7 @@ from langchain_core.tools import tool
 from nonebot import get_bot, logger
 
 from utils.database import Message, MessageDatabase, resolve_message_sender_user_id
-from utils.milky_tools import format_messages
+from utils.milky_tools import configurable, format_messages
 
 _SHANGHAI = zoneinfo.ZoneInfo("Asia/Shanghai")
 # 以约 200K tokens 的有效上下文预算规划：典型 QQ 短消息最多读取 1,000 条，
@@ -59,7 +59,7 @@ def _clean_optional_text(value: str | None) -> str | None:
 
 
 def _current_scope(config: RunnableConfig | None) -> tuple[int | None, int | None, str | None]:
-    cfg = (config or {}).get("configurable", {})
+    cfg = configurable(config)
     raw_user_id = cfg.get("user_id")
     raw_group_id = cfg.get("group_id")
     try:

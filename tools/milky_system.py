@@ -8,7 +8,8 @@ from utils.milky_tools import (
     binary_kwargs_from_uri,
     format_key_values,
     format_records,
-    resolve_group_id,
+    input_error_text,
+    require_group_id,
 )
 
 _DEFAULT_CONFIG = cast(RunnableConfig, None)
@@ -73,6 +74,7 @@ async def get_group_list(no_cache: bool = False) -> str:
 
 
 @tool(response_format="content")
+@input_error_text
 async def get_group_info(
     group_id: int | None = None,
     no_cache: bool = False,
@@ -83,14 +85,13 @@ async def get_group_info(
         group_id: 可选群号，未传时使用当前群聊
         no_cache: 是否强制不使用缓存
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     group = await get_bot().get_group_info(group_id=resolved_group_id, no_cache=no_cache)
     return format_key_values(group)
 
 
 @tool(response_format="content")
+@input_error_text
 async def get_group_member_list(
     group_id: int | None = None,
     no_cache: bool = False,
@@ -101,14 +102,13 @@ async def get_group_member_list(
         group_id: 可选群号，未传时使用当前群聊
         no_cache: 是否强制不使用缓存
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     members = await get_bot().get_group_member_list(group_id=resolved_group_id, no_cache=no_cache)
     return format_records(f"群 {resolved_group_id} 成员", members, ("user_id", "nickname", "card", "title", "role"))
 
 
 @tool(response_format="content")
+@input_error_text
 async def get_group_member_info(
     user_id: int,
     group_id: int | None = None,
@@ -121,9 +121,7 @@ async def get_group_member_info(
         group_id: 可选群号，未传时使用当前群聊
         no_cache: 是否强制不使用缓存
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     member = await get_bot().get_group_member_info(group_id=resolved_group_id, user_id=user_id, no_cache=no_cache)
     return format_key_values(member)
 

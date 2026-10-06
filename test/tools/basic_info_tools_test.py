@@ -246,7 +246,7 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
     await module.agent_tools.initialize()
     groups = module.agent_tools.subagent_tools
 
-    assert {tool.name for tool in module.agent_tools.main_tools} == {
+    assert {tool.name for tool in module.agent_tools.direct_tools} == {
         "send_image",
         "upload_group_file",
         "send_friend_nudge",
@@ -311,7 +311,7 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
         "search_messages",
         "get_history_messages",
     }
-    assert direct_names == {tool.name for tool in module.agent_tools.main_tools}
+    assert direct_names == {tool.name for tool in module.agent_tools.direct_tools}
     assert {tool.name for tool in groups["memory"]} == {
         "get_recent_conversation",
         "search_messages",
@@ -328,15 +328,15 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
 
     # The registry exposes a fresh snapshot without mutating local tools or old views.
     registry = module.agent_tools
-    previous = registry.main_tools
+    previous = registry.direct_tools
     recovered = FakeBaseTool("web_search_exa", "content")
     monkeypatch.setattr(module, "mcp_get_tools_async", AsyncMock(return_value=[recovered]))
     await registry.initialize()
     await registry.initialize()
     assert recovered in registry.direct_tools
-    assert sum(tool is recovered for tool in registry.main_tools) == 1
-    assert "send_image" in {tool.name for tool in registry.main_tools}
-    assert "mcp_tool" not in {tool.name for tool in registry.main_tools}
+    assert sum(tool is recovered for tool in registry.direct_tools) == 1
+    assert "send_image" in {tool.name for tool in registry.direct_tools}
+    assert "mcp_tool" not in {tool.name for tool in registry.direct_tools}
     assert "mcp_tool" in {tool.name for tool in previous}
 
     # Explicit platform capabilities filter QQ/Milky modules while retaining

@@ -4,9 +4,7 @@
 API 数据 → Jinja2 模板渲染 HTML → Playwright 截图 → QQ 发送。
 """
 
-from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader
 from langchain_core.tools import tool
 from nonebot import logger
 
@@ -14,53 +12,17 @@ from utils.alconna import UniMessage
 from utils.http_client import get_http_client
 from utils.markdown_render import html_to_image
 
+from ._nrc_common import (
+    API_HEADERS,
+    get_danzu_color,
+    load_css,
+    parse_danzu_id_set,
+    parse_danzu_names,
+    render_template,
+)
+
 API1_URL = "https://ap.xiaopidd.com/api.AppletXCX/getXcxjltujianListByName"
 API2_URL = "https://ap.xiaopidd.com/api.AppletXCX/getXcxjltujianListByDanzu"
-
-API_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json",
-}
-
-TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
-
-DANZU_GROUPS = {
-    1: "巨灵组",
-    2: "两栖组",
-    3: "昆虫组",
-    4: "天空组",
-    5: "动物组",
-    6: "妖精组",
-    7: "植物组",
-    8: "拟人组",
-    9: "软体组",
-    10: "大地组",
-    11: "魔力组",
-    12: "海洋组",
-    13: "龙组",
-    14: "机械组",
-}
-
-DANZU_COLORS = {
-    1: "#607D8B",
-    2: "#2196F3",
-    3: "#8BC34A",
-    4: "#00BCD4",
-    5: "#FF9800",
-    6: "#E91E63",
-    7: "#4CAF50",
-    8: "#9C27B0",
-    9: "#FF5722",
-    10: "#795548",
-    11: "#3F51B5",
-    12: "#03A9F4",
-    13: "#F44336",
-    14: "#607D8B",
-}
 
 httpx_client = get_http_client("nrc_eggs_groups")
 
@@ -100,23 +62,17 @@ async def _fetch_pets_by_danzu(danzu: str) -> list[dict]:
 
 def _parse_danzu_ids(danzu_raw) -> set[int]:
     """解析蛋组编号字符串为整数集合，支持逗号分隔的多蛋组。"""
-    if not danzu_raw:
-        return set()
-    raw = str(danzu_raw)
-    return {int(x.strip()) for x in raw.split(",") if x.strip().isdigit()}
+    return parse_danzu_id_set(danzu_raw)
 
 
 def _parse_danzu_names(danzu_raw) -> str:
     """蛋组编号 → 中文名称，多个用斜杠连接。"""
-    ids = _parse_danzu_ids(danzu_raw)
-    names = [DANZU_GROUPS.get(i, f"组{i}") for i in sorted(ids)]
-    return " / ".join(names) if names else "未知"
+    return parse_danzu_names(danzu_raw, unique_sorted=True)
 
 
 def _get_danzu_color(danzu_raw) -> str:
     """获取第一个蛋组对应的颜色标识。"""
-    ids = sorted(_parse_danzu_ids(danzu_raw))
-    return DANZU_COLORS.get(ids[0], "#9E9E9E") if ids else "#9E9E9E"
+    return get_danzu_color(danzu_raw, unique_sorted=True)
 
 
 def _check_compatible(danzu1: str, danzu2: str) -> bool:
@@ -152,13 +108,11 @@ def _build_pet_card(pet: dict) -> dict:
 
 def _render_html(mode: str, **context) -> str:
     """Jinja2 渲染：数据 → HTML 片段。"""
-    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
-    template = env.get_template("nrc_eggs_groups.html")
-    return template.render(mode=mode, **context)
+    return render_template("nrc_eggs_groups.html", mode=mode, **context)
 
 
 def _load_css() -> str:
-    return (TEMPLATES_DIR / "nrc_eggs_groups.css").read_text(encoding="utf-8")
+    return load_css("nrc_eggs_groups.css")
 
 
 # ── Tool ──────────────────────────────────────────────────────────────────

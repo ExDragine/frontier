@@ -3,99 +3,55 @@ import types
 
 import pytest
 
-
-class DummyMilkyBot:
-    def __init__(self):
-        self.calls = []
-
-    async def get_login_info(self):
-        self.calls.append(("get_login_info", {}))
-        return types.SimpleNamespace(uin=10000, nickname="Frontier")
-
-    async def get_impl_info(self):
-        self.calls.append(("get_impl_info", {}))
-        return types.SimpleNamespace(
-            impl_name="Lagrange",
-            impl_version="1.0",
-            qq_protocol_version="1",
-            qq_protocol_type="linux",
-            milky_version="1.2",
-        )
-
-    async def get_user_profile(self, **kwargs):
-        self.calls.append(("get_user_profile", kwargs))
-        return types.SimpleNamespace(nickname="Alice", qid="alice", age=18, sex="unknown", level=42)
-
-    async def get_friend_list(self, **kwargs):
-        self.calls.append(("get_friend_list", kwargs))
-        return [types.SimpleNamespace(user_id=1, nickname="Alice", remark="A")]
-
-    async def get_friend_info(self, **kwargs):
-        self.calls.append(("get_friend_info", kwargs))
-        return types.SimpleNamespace(user_id=1, nickname="Alice", remark="A")
-
-    async def get_group_list(self, **kwargs):
-        self.calls.append(("get_group_list", kwargs))
-        return [types.SimpleNamespace(group_id=123, group_name="群", member_count=3, max_member_count=500)]
-
-    async def get_group_info(self, **kwargs):
-        self.calls.append(("get_group_info", kwargs))
-        return types.SimpleNamespace(group_id=123, group_name="群", member_count=3, max_member_count=500)
-
-    async def get_group_member_list(self, **kwargs):
-        self.calls.append(("get_group_member_list", kwargs))
-        return [types.SimpleNamespace(user_id=456, nickname="Bob", card="小鲍", role="member")]
-
-    async def get_group_member_info(self, **kwargs):
-        self.calls.append(("get_group_member_info", kwargs))
-        return types.SimpleNamespace(user_id=456, nickname="Bob", card="小鲍", role="member")
-
-    async def get_peer_pins(self):
-        self.calls.append(("get_peer_pins", {}))
-        return {
-            "friends": [types.SimpleNamespace(user_id=1, nickname="Alice")],
-            "groups": [types.SimpleNamespace(group_id=123, group_name="群")],
-        }
-
-    async def set_peer_pin(self, **kwargs):
-        self.calls.append(("set_peer_pin", kwargs))
-
-    async def set_avatar(self, **kwargs):
-        self.calls.append(("set_avatar", kwargs))
-
-    async def set_nickname(self, **kwargs):
-        self.calls.append(("set_nickname", kwargs))
-
-    async def set_bio(self, **kwargs):
-        self.calls.append(("set_bio", kwargs))
-
-    async def get_custom_face_url_list(self):
-        self.calls.append(("get_custom_face_url_list", {}))
-        return ["https://example.com/face.png"]
-
-    async def get_cookies(self, **kwargs):
-        self.calls.append(("get_cookies", kwargs))
-        return "uin=o10000;"
-
-    async def get_csrf_token(self):
-        self.calls.append(("get_csrf_token", {}))
-        return "csrf"
-
-
-def _install_dummy_bot(monkeypatch, module):
-    bot = DummyMilkyBot()
-    monkeypatch.setattr(module, "get_bot", lambda: bot)
-    return bot
+_GROUP = types.SimpleNamespace(group_id=123, group_name="群", member_count=3, max_member_count=500)
+_MEMBER = types.SimpleNamespace(user_id=456, nickname="Bob", card="小鲍", role="member")
+_FRIEND = types.SimpleNamespace(user_id=1, nickname="Alice", remark="A")
 
 
 def _group_config(group_id=123):
     return {"configurable": {"group_id": group_id, "user_id": "456"}}
 
 
-@pytest.mark.asyncio
-async def test_system_read_tools_format_milky_results(load_tool_module, monkeypatch):
+@pytest.fixture
+def system_bot(load_tool_module, install_milky_bot):
+    """Milky bot stub for the system tool module plus the loaded module."""
+
     system = load_tool_module("milky_system")
-    bot = _install_dummy_bot(monkeypatch, system)
+    bot = install_milky_bot(
+        system,
+        {
+            "get_login_info": types.SimpleNamespace(uin=10000, nickname="Frontier"),
+            "get_impl_info": types.SimpleNamespace(
+                impl_name="Lagrange",
+                impl_version="1.0",
+                qq_protocol_version="1",
+                qq_protocol_type="linux",
+                milky_version="1.2",
+            ),
+            "get_user_profile": types.SimpleNamespace(
+                nickname="Alice", qid="alice", age=18, sex="unknown", level=42
+            ),
+            "get_friend_list": [_FRIEND],
+            "get_friend_info": _FRIEND,
+            "get_group_list": [_GROUP],
+            "get_group_info": _GROUP,
+            "get_group_member_list": [_MEMBER],
+            "get_group_member_info": _MEMBER,
+            "get_peer_pins": {
+                "friends": [types.SimpleNamespace(user_id=1, nickname="Alice")],
+                "groups": [types.SimpleNamespace(group_id=123, group_name="群")],
+            },
+            "get_custom_face_url_list": ["https://example.com/face.png"],
+            "get_cookies": "uin=o10000;",
+            "get_csrf_token": "csrf",
+        },
+    )
+    return system, bot
+
+
+@pytest.mark.asyncio
+async def test_system_read_tools_format_milky_results(system_bot):
+    system, bot = system_bot
 
     login = await system.get_login_info()
     impl = await system.get_impl_info()
@@ -142,9 +98,8 @@ async def test_system_read_tools_format_milky_results(load_tool_module, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_system_write_tools_call_milky(load_tool_module, monkeypatch, tmp_path):
-    system = load_tool_module("milky_system")
-    bot = _install_dummy_bot(monkeypatch, system)
+async def test_system_write_tools_call_milky(system_bot, tmp_path):
+    system, bot = system_bot
     avatar = tmp_path / "avatar.png"
 
     pin = await system.set_peer_pin(message_scene="group", peer_id=123, is_pinned=False)

@@ -12,6 +12,14 @@ from nonebot import logger
 
 from utils.alconna import UniMessage
 from utils.browser_capture import record_video, screenshot
+from utils.ens_common import (
+    CITY_COORDS,
+    build_earth_url,
+    build_return_text,
+    earth_capture_options,
+    match_coord_entry,
+)
+from utils.ens_common import format_time_text as _format_time_text
 from utils.ens_gate import _ens_prefix
 from utils.tool_helpers import tool_timer
 
@@ -27,11 +35,6 @@ def clear_ens_cache():
 
 # ── 模式编号 → 中文名 ──
 _MODE_NAMES = {1: "大气", 2: "海洋", 3: "大气化学", 4: "颗粒物", 5: "空间天气", 6: "生物"}
-
-_EARTH_LOADING_WAIT = (
-    "(function(){var l=document.getElementById('load');if(!l)return true;"
-    "var s=window.getComputedStyle(l);return s.display==='none'||s.visibility==='hidden';})()"
-)
 
 # ── 参数映射表 ──
 
@@ -111,25 +114,21 @@ def _build_professional_url(
     annot: str | None = None,
     paused: bool = False,
 ) -> str:
-    """拼接 hash-fragment URL。"""
-    segments = (
-        [time, mode, animation]
-        if animation == "primary/waves"
-        else [time, mode, height, animation]
+    """拼接 hash-fragment URL（专业模式固定带 loc 段落）。"""
+    return build_earth_url(
+        time=time,
+        mode=mode,
+        height=height,
+        animation=animation,
+        projection=projection,
+        lon=lon,
+        lat=lat,
+        zoom=zoom,
+        annot=annot,
+        # 专业模式的 anim 只有 "off"（暂停）一种取值。
+        anim_state="off" if paused else None,
+        overlay=overlay,
     )
-
-    if annot:
-        segments.append(f"annot={annot}")
-    if paused:
-        segments.append("anim=off")
-    if overlay is not None:
-        segments.append(f"overlay={overlay}")
-
-    path = "/".join(segments)
-    view = f"{projection}={lon},{lat},{zoom}"
-    loc = f"loc={lon},{lat}"
-
-    return f"https://earth.nullschool.net/zh-cn/{path}/{view}/{loc}"
 
 
 def _parse_time(raw: str) -> str:
@@ -142,36 +141,9 @@ def _parse_time(raw: str) -> str:
     return f"#{m[1]}/{m[2]}/{m[3]}/{m[4]}{m[5]}Z"
 
 
-def _format_time_text(time: str) -> str:
-    """将 URL 时间片段转为用户可读文本。"""
-    if time == "#current":
-        return "现在"
-    m = re.match(r"^#(\d{4})/(\d{2})/(\d{2})/(\d{2})(\d{2})Z$", time)
-    if m:
-        y, mo, d, h, mi = m.groups()
-        return f"{y}年{int(mo)}月{int(d)}日{h}:{mi}"
-    return time
-
-
 def _build_return_text(location_text: str, time_text: str, mode_name: str, page_data: dict) -> str:
     """构建返回给 Agent 的自然语言文本，Agent 可直接用于回复无需再调工具。"""
-    coords_str = f"（{page_data['coords']}）" if page_data.get("coords") else ""
-
-    values = []
-    if page_data.get("spotB.value"):
-        label = page_data.get("spotB.label", "")
-        values.append(f"{label} {page_data['spotB.value']}" if label else page_data["spotB.value"])
-    if page_data.get("spotA.value"):
-        label = page_data.get("spotA.label", "")
-        values.append(f"{label} {page_data['spotA.value']}" if label else page_data["spotA.value"])
-    data_str = "，".join(values) if values else "数据已返回"
-
-    time_str = f"，数据时间 {page_data['time']}" if page_data.get("time") else ""
-
-    return (
-        f"{location_text}{coords_str}{time_text}的{mode_name}：{data_str}{time_str}"
-        f" [本工具只返回{mode_name}数据，其他场景请让用户发新的vep查询]"
-    )
+    return build_return_text(location_text, time_text, mode_name, page_data, prefix="vep")
 
 
 class _ProfessionalInputError(ValueError):
@@ -206,17 +178,16 @@ def _resolve_professional_location(p6: str, p7: str) -> tuple[float, float, str]
     try:
         lon, lat = float(p6), float(p7)
     except ValueError:
-        from .ens_normal import _CITY_COORDS
-
         location = p6.strip()
         if not location:
             raise _ProfessionalInputError("请提供有效的经纬度坐标或城市名") from None
-        if location in _CITY_COORDS:
-            lon, lat = _CITY_COORDS[location]
+        if location in CITY_COORDS:
+            lon, lat = CITY_COORDS[location]
             return lon, lat, location
-        for city, coords in sorted(_CITY_COORDS.items(), key=lambda item: -len(item[0])):
-            if city in location or location in city:
-                return coords[0], coords[1], city
+        entry = match_coord_entry(location, CITY_COORDS)
+        if entry is not None:
+            city, coords = entry
+            return coords[0], coords[1], city
         raise _ProfessionalInputError(
             f"未找到「{location}」的坐标，国内城市请用标准名，国外请让 LLM 搜经纬度后直接输入数字"
         ) from None
@@ -283,37 +254,12 @@ async def run_ens_professional(
         page_data: dict = {}
 
         if paused:
-            image_bytes = await screenshot(
-                url=url,
-                width=1920,
-                height=1080,
-                wait_until="networkidle",
-                timeout=60000,
-                wait_selector="canvas",
-                wait_function=_EARTH_LOADING_WAIT,
-                post_wait_ms=5000,
-                hard_wait=True,
-                ready_timeout=30000,
-                page_data_out=page_data,
-            )
+            image_bytes = await screenshot(**earth_capture_options(url, page_data))
             text = _build_return_text(location_text, time_text, mode_name, page_data)
             artifact = UniMessage.image(raw=image_bytes)
             _ens_cache[url] = (text, artifact, _time.time())
             return text, artifact
-        video_bytes = await record_video(
-            url=url,
-            duration=3,
-            width=1920,
-            height=1080,
-            wait_until="networkidle",
-            timeout=60000,
-            wait_selector="canvas",
-            wait_function=_EARTH_LOADING_WAIT,
-            post_wait_ms=5000,
-            hard_wait=True,
-            ready_timeout=30000,
-            page_data_out=page_data,
-        )
+        video_bytes = await record_video(duration=3, **earth_capture_options(url, page_data))
         text = _build_return_text(location_text, time_text, mode_name, page_data)
         artifact = UniMessage.video(raw=video_bytes)
         _ens_cache[url] = (text, artifact, _time.time())

@@ -7,7 +7,14 @@ from langchain_core.tools import tool
 from nonebot import get_bot
 
 from utils.agent_context import FrontierRuntimeContext
-from utils.milky_tools import binary_kwargs_from_uri, format_files_info, resolve_group_id, resolve_user_id
+from utils.milky_tools import (
+    binary_kwargs_from_uri,
+    configurable,
+    format_files_info,
+    input_error_text,
+    require_group_id,
+    require_user_id,
+)
 
 _DEFAULT_CONFIG = cast(RunnableConfig, None)
 _DEFAULT_RUNTIME = cast(ToolRuntime[FrontierRuntimeContext, dict], None)
@@ -23,6 +30,7 @@ def _file_name_from_uri(file_uri: str, file_name: str | None, root_dir: str | No
 
 
 @tool(response_format="content")
+@input_error_text
 async def upload_private_file(
     file_uri: str,
     file_name: str | None = None,
@@ -35,10 +43,8 @@ async def upload_private_file(
         file_name: 文件名；使用 URL/base64 时建议显式提供
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
     """
-    resolved_user_id, error = resolve_user_id(user_id, dict(config or {}))
-    if error:
-        return error
-    workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
+    resolved_user_id = require_user_id(user_id, config)
+    workspace_dir = configurable(config).get("workspace_dir")
     kwargs = binary_kwargs_from_uri(file_uri, root_dir=workspace_dir)
     resolved_file_name = _file_name_from_uri(file_uri, file_name, root_dir=workspace_dir)
     if not resolved_file_name:
@@ -48,6 +54,7 @@ async def upload_private_file(
 
 
 @tool(response_format="content")
+@input_error_text
 async def upload_group_file(
     file_uri: str,
     file_name: str | None = None,
@@ -62,10 +69,8 @@ async def upload_group_file(
         parent_folder_id: 可选父文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
-    workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
+    resolved_group_id = require_group_id(group_id, config)
+    workspace_dir = configurable(config).get("workspace_dir")
     kwargs = binary_kwargs_from_uri(file_uri, root_dir=workspace_dir)
     resolved_file_name = _file_name_from_uri(file_uri, file_name, root_dir=workspace_dir)
     if not resolved_file_name:
@@ -80,6 +85,7 @@ async def upload_group_file(
 
 
 @tool(response_format="content")
+@input_error_text
 async def get_private_file_download_url(
     file_id: str,
     file_hash: str,
@@ -94,15 +100,14 @@ async def get_private_file_download_url(
         is_self_send: 文件是否由机器人自己发送，下载本人发出的私聊文件时为 true
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
     """
-    resolved_user_id, error = resolve_user_id(user_id, dict(config or {}))
-    if error:
-        return error
+    resolved_user_id = require_user_id(user_id, config)
     return await get_bot().get_private_file_download_url(
         user_id=resolved_user_id, file_id=file_id, file_hash=file_hash, is_self_send=is_self_send
     )
 
 
 @tool(response_format="content")
+@input_error_text
 async def persist_group_file(
     file_id: str,
     group_id: int | None = None,
@@ -115,16 +120,15 @@ async def persist_group_file(
         file_id: 已存在的群临时文件 ID
         group_id: 可选目标群号，默认当前群
     """
-    from .milky_group import _resolve_admin_group
+    from .milky_group import require_admin_group
 
-    resolved_group_id, error = _resolve_admin_group(group_id, config, runtime)
-    if error:
-        return error
+    resolved_group_id = require_admin_group(group_id, config, runtime)
     await get_bot().persist_group_file(group_id=resolved_group_id, file_id=file_id)
     return f"已将群 {resolved_group_id} 文件 {file_id} 转存为永久文件"
 
 
 @tool(response_format="content")
+@input_error_text
 async def get_group_file_download_url(
     file_id: str,
     group_id: int | None = None,
@@ -135,13 +139,12 @@ async def get_group_file_download_url(
         file_id: 文件 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     return await get_bot().get_group_file_download_url(group_id=resolved_group_id, file_id=file_id)
 
 
 @tool(response_format="content")
+@input_error_text
 async def get_group_files(
     parent_folder_id: str | None = None,
     group_id: int | None = None,
@@ -152,14 +155,13 @@ async def get_group_files(
         parent_folder_id: 可选父文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error or resolved_group_id is None:
-        return error or "无法解析群号。"
+    resolved_group_id = require_group_id(group_id, config)
     info = await get_bot().get_group_files(group_id=resolved_group_id, parent_folder_id=parent_folder_id)
     return format_files_info(resolved_group_id, info)
 
 
 @tool(response_format="content")
+@input_error_text
 async def move_group_file(
     file_id: str,
     parent_folder_id: str = "/",
@@ -174,9 +176,7 @@ async def move_group_file(
         target_folder_id: 目标文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     await get_bot().move_group_file(
         group_id=resolved_group_id,
         file_id=file_id,
@@ -187,6 +187,7 @@ async def move_group_file(
 
 
 @tool(response_format="content")
+@input_error_text
 async def rename_group_file(
     file_id: str,
     new_file_name: str,
@@ -201,9 +202,7 @@ async def rename_group_file(
         parent_folder_id: 文件所在文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     await get_bot().rename_group_file(
         group_id=resolved_group_id,
         file_id=file_id,
@@ -214,6 +213,7 @@ async def rename_group_file(
 
 
 @tool(response_format="content")
+@input_error_text
 async def delete_group_file(
     file_id: str,
     group_id: int | None = None,
@@ -224,14 +224,13 @@ async def delete_group_file(
         file_id: 文件 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     await get_bot().delete_group_file(group_id=resolved_group_id, file_id=file_id)
     return f"已删除群 {resolved_group_id} 文件 {file_id}"
 
 
 @tool(response_format="content")
+@input_error_text
 async def create_group_folder(
     folder_name: str,
     group_id: int | None = None,
@@ -242,14 +241,13 @@ async def create_group_folder(
         folder_name: 文件夹名
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     folder_id = await get_bot().create_group_folder(group_id=resolved_group_id, folder_name=folder_name)
     return f"已在群 {resolved_group_id} 创建文件夹 {folder_name}，folder_id={folder_id}"
 
 
 @tool(response_format="content")
+@input_error_text
 async def rename_group_folder(
     folder_id: str,
     new_folder_name: str,
@@ -262,9 +260,7 @@ async def rename_group_folder(
         new_folder_name: 新文件夹名
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     await get_bot().rename_group_folder(
         group_id=resolved_group_id,
         folder_id=folder_id,
@@ -274,6 +270,7 @@ async def rename_group_folder(
 
 
 @tool(response_format="content")
+@input_error_text
 async def delete_group_folder(
     folder_id: str,
     group_id: int | None = None,
@@ -284,8 +281,6 @@ async def delete_group_folder(
         folder_id: 文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     await get_bot().delete_group_folder(group_id=resolved_group_id, folder_id=folder_id)
     return f"已删除群 {resolved_group_id} 文件夹 {folder_id}"

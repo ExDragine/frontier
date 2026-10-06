@@ -9,9 +9,11 @@ from nonebot.adapters.milky.message import MessageSegment
 
 from utils.alconna import UniMessage
 from utils.milky_tools import (
-    resolve_group_id,
+    configurable,
+    input_error_text,
+    require_group_id,
+    require_user_id,
     resolve_local_path,
-    resolve_user_id,
     resolve_virtual_path,
     validate_url,
 )
@@ -33,7 +35,7 @@ async def send_image(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> t
     Args:
         source: 本地文件的绝对路径（如 /tmp/photo.png）或远程 URL
     """
-    workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
+    workspace_dir = configurable(config).get("workspace_dir")
     if path := _resolve_message_local_path(source, workspace_dir):
         return "构建了一个图片消息", UniMessage.image(path=path)
     validate_url(source)
@@ -46,7 +48,7 @@ async def send_audio(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> t
     Args:
         source: 本地文件的绝对路径（如 /tmp/music.mp3）或远程 URL
     """
-    workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
+    workspace_dir = configurable(config).get("workspace_dir")
     if path := _resolve_message_local_path(source, workspace_dir):
         return "构建了一个音频消息", UniMessage.audio(path=path)
     validate_url(source)
@@ -59,7 +61,7 @@ async def send_voice(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> t
     Args:
         source: 本地文件的绝对路径（如 /tmp/voice.wav）或远程 URL
     """
-    workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
+    workspace_dir = configurable(config).get("workspace_dir")
     if path := _resolve_message_local_path(source, workspace_dir):
         return "构建了一个语音消息", UniMessage.voice(path=path)
     validate_url(source)
@@ -72,7 +74,7 @@ async def send_video(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> t
     Args:
         source: 本地文件的绝对路径（如 /tmp/clip.mp4）或远程 URL
     """
-    workspace_dir = ((config or {}).get("configurable") or {}).get("workspace_dir")
+    workspace_dir = configurable(config).get("workspace_dir")
     if path := _resolve_message_local_path(source, workspace_dir):
         return "构建了一个视频消息", UniMessage.video(path=path)
     validate_url(source)
@@ -98,6 +100,7 @@ def _safe_file_name(name: str | None, path_or_url: str, local_path: Path | None)
 
 
 @tool(response_format="content")
+@input_error_text
 async def send_file(
     path_or_url: str,
     name: str | None = None,
@@ -110,10 +113,10 @@ async def send_file(
         name: 可选文件显示名称；默认从路径或 URL 提取
     """
     config_dict = dict(config or {})
-    configurable = config_dict.get("configurable") or {}
-    virtual_roots = configurable.get("virtual_roots")
+    configurable_section = configurable(config_dict)
+    virtual_roots = configurable_section.get("virtual_roots")
     if not isinstance(virtual_roots, dict):
-        workspace_dir = configurable.get("workspace_dir")
+        workspace_dir = configurable_section.get("workspace_dir")
         virtual_roots = {"/": workspace_dir} if workspace_dir else {}
 
     local_path = resolve_virtual_path(path_or_url, virtual_roots) if virtual_roots else None
@@ -130,11 +133,9 @@ async def send_file(
     file_name = _safe_file_name(name, path_or_url, local_path)
     try:
         bot = get_bot()
-        raw_group_id = configurable.get("group_id")
+        raw_group_id = configurable_section.get("group_id")
         if raw_group_id not in (None, ""):
-            group_id, error = resolve_group_id(config=config_dict)
-            if error:
-                return error
+            group_id = require_group_id(config=config_dict)
             file_id = await bot.upload_group_file(
                 group_id=group_id,
                 **upload_kwargs,
@@ -142,9 +143,7 @@ async def send_file(
             )
             return f"已发送群文件 {file_name}，file_id={file_id}"
 
-        user_id, error = resolve_user_id(config=config_dict)
-        if error:
-            return error
+        user_id = require_user_id(config=config_dict)
         file_id = await bot.upload_private_file(
             user_id=user_id,
             **upload_kwargs,
@@ -168,6 +167,7 @@ def _mention(user_id: str | int) -> MessageSegment:
 
 
 @tool(response_format="content")
+@input_error_text
 async def send_at(
     user_id: str,
     group_id: int | None = None,
@@ -178,9 +178,7 @@ async def send_at(
         user_id: 目标用户的 QQ 号或用户 ID
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     response = await get_bot().send_group_message(
         group_id=resolved_group_id,
         message=[_mention(user_id)],
@@ -189,6 +187,7 @@ async def send_at(
 
 
 @tool(response_format="content")
+@input_error_text
 async def send_at_all(
     group_id: int | None = None,
     config: RunnableConfig = _DEFAULT_CONFIG,
@@ -197,9 +196,7 @@ async def send_at_all(
     Args:
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     response = await get_bot().send_group_message(
         group_id=resolved_group_id,
         message=[MessageSegment.mention_all()],
@@ -208,6 +205,7 @@ async def send_at_all(
 
 
 @tool(response_format="content")
+@input_error_text
 async def send_text_with_at(
     user_id: str,
     text: str,
@@ -220,9 +218,7 @@ async def send_text_with_at(
         text: 附带的文字内容
         group_id: 可选群号，未传时使用当前群聊
     """
-    resolved_group_id, error = resolve_group_id(group_id, dict(config or {}))
-    if error:
-        return error
+    resolved_group_id = require_group_id(group_id, config)
     response = await get_bot().send_group_message(
         group_id=resolved_group_id,
         message=[_mention(user_id), MessageSegment.text(f" {text}")],

@@ -8,19 +8,17 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot
 
+from utils.milky_tools import configurable
+
 _DEFAULT_CONFIG = cast(RunnableConfig, None)
 
 
-def _configurable(config: RunnableConfig | None) -> dict:
-    return (config or {}).get("configurable", {})
-
-
 def _owner_user_id(config: RunnableConfig | None) -> str:
-    return str(_configurable(config).get("user_id") or "")
+    return str(configurable(config).get("user_id") or "")
 
 
 def _default_target(config: RunnableConfig | None) -> tuple[str, str] | tuple[None, None]:
-    cfg = _configurable(config)
+    cfg = configurable(config)
     group_id = cfg.get("group_id")
     if group_id is not None:
         return "group", str(group_id)

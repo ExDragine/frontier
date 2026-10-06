@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from tools.scheduled_task import create_scheduled_task_record
+from utils.milky_tools import configurable
 
 _SHANGHAI = zoneinfo.ZoneInfo("Asia/Shanghai")
 _TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S")
@@ -37,8 +38,8 @@ async def create_reminder(
         remind_time: 提醒时间，北京时间(UTC+8)，格式 "YYYY-MM-DD HH:MM:SS"，例如 "2026-04-02 15:00:00"
         private: 是否通过私聊发送。True=私聊，False=在原群聊@用户（默认）
     """
-    configurable = (config or {}).get("configurable", {})
-    group_id: int | None = configurable.get("group_id")
+    cfg = configurable(config)
+    group_id: int | None = cfg.get("group_id")
 
     dt = _parse_time(remind_time)
     if dt is None:
@@ -49,7 +50,7 @@ async def create_reminder(
         return f"提醒时间必须是将来的时间。当前北京时间: {now.strftime('%Y-%m-%d %H:%M:%S')}"
 
     target_type = "user" if private or not group_id else "group"
-    target_id = configurable.get("user_id") if target_type == "user" else group_id
+    target_id = cfg.get("user_id") if target_type == "user" else group_id
     prompt = f"在指定时间提醒用户：{reminder_text}。请生成一条简短提醒消息。"
     result = await create_scheduled_task_record(
         name=f"提醒: {reminder_text[:20]}",

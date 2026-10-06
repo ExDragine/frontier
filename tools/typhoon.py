@@ -18,29 +18,13 @@ from utils.http_client import get_http_client
 from utils.markdown_render import _get_browser
 from utils.reverse_geocode import reverse_geocode
 
+from ._nrc_common import API_HEADERS, IMG_HEADERS, TEMPLATES_DIR, load_css
+
 # ── 路径 ──
-TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 IMAGES_DIR = TEMPLATES_DIR / "images"
 
 # ── API ──
 API_URL = "https://mp.wztf121.com/data/wzweather/complex/currMerger.json"
-API_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json",
-}
-
-# 图片下载专用头，不设 Accept 避免 CDN 返回 406
-IMG_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36"
-    ),
-}
 
 httpx_client = get_http_client("typhoon")
 
@@ -237,7 +221,7 @@ def _process_forecasts(points: list[dict]) -> list[dict[str, Any]]:
 # ═══════════════════════════════════════════════
 
 def _load_css() -> str:
-    return (TEMPLATES_DIR / "typhoon.css").read_text(encoding="utf-8")
+    return load_css("typhoon.css")
 
 
 def _build_template_data(typhoon: dict, pos_desc: str, overlay_data: dict[str, Any] | None = None) -> dict[str, Any]:

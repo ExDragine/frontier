@@ -6,9 +6,7 @@ API 数据 → Jinja2 模板渲染 HTML → Playwright 截图 → QQ 发送。
 import datetime as dt
 import time
 import zoneinfo
-from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader
 from langchain_core.tools import tool
 from nonebot import logger
 
@@ -16,21 +14,24 @@ from utils.alconna import UniMessage
 from utils.http_client import get_http_client
 from utils.markdown_render import html_to_image
 
+from ._nrc_common import (
+    API_HEADERS as _COMMON_API_HEADERS,
+)
+from ._nrc_common import (
+    load_css,
+    render_template,
+)
+
 API_URL = "https://roco-eggs.tsuki-world.com/api/merchant/current"
 BACKUP_API_URL = "https://rocokingdomworld.org/api/merchant/live"
 IMAGE_BASE = "https://roco-eggs.tsuki-world.com"
+# 商人 API 额外要求 Referer，其余请求头与 NRC 其他模块一致。
 API_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": _COMMON_API_HEADERS["User-Agent"],
     "Referer": "https://roco-eggs.tsuki-world.com/",
-    "Accept": "application/json",
+    "Accept": _COMMON_API_HEADERS["Accept"],
 }
 _TZ_SHANGHAI = zoneinfo.ZoneInfo("Asia/Shanghai")
-
-TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 
 _RARITY_CN = {
     "legendary": "极品",
@@ -193,9 +194,8 @@ def _render_html(data: dict) -> str:
     now = int(time.time())
     countdown = _fmt_countdown(data.get("next_refresh_ts", now) - now)
 
-    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
-    template = env.get_template("nrc_merchant.html")
-    return template.render(
+    return render_template(
+        "nrc_merchant.html",
         slot_date=data.get("slot_date", ""),
         round=data.get("round", "?"),
         total_rounds=data.get("total_rounds", "?"),
@@ -206,7 +206,11 @@ def _render_html(data: dict) -> str:
 
 
 def _load_css() -> str:
-    return (TEMPLATES_DIR / "nrc_merchant.css").read_text(encoding="utf-8")
+    """商人货架 CSS。
+
+    保持零参同名函数：``plugins/clockwork/task_handlers.py`` 跨插件 import 该名字。
+    """
+    return load_css("nrc_merchant.css")
 
 
 def _summary_text(data: dict) -> str:

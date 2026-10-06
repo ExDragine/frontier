@@ -7,6 +7,8 @@ from langchain_core.tools import BaseTool
 from .mcp_client import mcp_get_tools_async
 
 # 跳过不应暴露给 Agent 的模块
+# mcp_client 只负责按 mcp.json 异步加载外部 MCP 工具（经 ModuleTools.initialize
+# 写入 external 组），其模块本身不定义任何 @tool。
 _EXCLUDED_MODULES = {"__init__", "mcp_client"}
 
 _DOMAIN_GROUPS = ("astro", "earth", "memory", "divination", "external")
@@ -37,6 +39,7 @@ _TOOL_MODULE_GROUPS = {
     "milky_system": "main",
     "deepseek_balance": "main",
     "reminder": "main",
+    "scheduled_task": "main",
     "aurora": "astro",
     "comet": "astro",
     "heavens_above": "astro",
@@ -126,18 +129,11 @@ class ModuleTools:
         if not capabilities:
             return True
         metadata = self.tool_metadata.get(getattr(tool, "name", ""), {})
-        module = str(metadata.get("module", ""))
-        required = metadata.get(
-            "required_capabilities",
-            _MODULE_REQUIRED_CAPABILITIES.get(module, frozenset()),
-        )
-        if not isinstance(required, (set, frozenset, tuple, list)):
-            required = frozenset()
-        required = frozenset(str(item) for item in required)
+        # _discover_tools() 为每个工具恒写入 frozenset 类型的 required_capabilities。
+        required = metadata.get("required_capabilities") or frozenset()
         if not required:
             return True
-        platform = metadata.get("platform") or ("qq" if module in _MODULE_REQUIRED_CAPABILITIES else None)
-        if _BROAD_QQ_CAPABILITIES & capabilities and platform == "qq":
+        if _BROAD_QQ_CAPABILITIES & capabilities and metadata.get("platform") == "qq":
             return True
         return bool(required & capabilities)
 
@@ -152,10 +148,6 @@ class ModuleTools:
     @property
     def direct_tools(self):
         """Return regular Agent tools, including network search and page reading."""
-        return [*self.subagent_tools["main"], *self.mcp_tools]
-
-    @property
-    def main_tools(self):
         return [*self.subagent_tools["main"], *self.mcp_tools]
 
 

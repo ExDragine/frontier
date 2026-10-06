@@ -3,66 +3,18 @@ import types
 
 import pytest
 
-
-class DummyMilkyBot:
-    def __init__(self):
-        self.calls = []
-
-    async def upload_private_file(self, **kwargs):
-        self.calls.append(("upload_private_file", kwargs))
-        return "private-file-id"
-
-    async def upload_group_file(self, **kwargs):
-        self.calls.append(("upload_group_file", kwargs))
-        return "group-file-id"
-
-    async def get_private_file_download_url(self, **kwargs):
-        self.calls.append(("get_private_file_download_url", kwargs))
-        return "https://example.com/private-file"
-
-    async def get_group_file_download_url(self, **kwargs):
-        self.calls.append(("get_group_file_download_url", kwargs))
-        return "https://example.com/group-file"
-
-    async def get_group_files(self, **kwargs):
-        self.calls.append(("get_group_files", kwargs))
-        return types.SimpleNamespace(
-            files=[
-                types.SimpleNamespace(
-                    file_id="file-1",
-                    file_name="report.pdf",
-                    file_size=100,
-                    parent_folder_id="/",
-                    uploader_id=456,
-                )
-            ],
-            folders=[types.SimpleNamespace(folder_id="folder-1", folder_name="资料", file_count=1)],
+_GROUP_FILES = types.SimpleNamespace(
+    files=[
+        types.SimpleNamespace(
+            file_id="file-1",
+            file_name="report.pdf",
+            file_size=100,
+            parent_folder_id="/",
+            uploader_id=456,
         )
-
-    async def move_group_file(self, **kwargs):
-        self.calls.append(("move_group_file", kwargs))
-
-    async def rename_group_file(self, **kwargs):
-        self.calls.append(("rename_group_file", kwargs))
-
-    async def delete_group_file(self, **kwargs):
-        self.calls.append(("delete_group_file", kwargs))
-
-    async def create_group_folder(self, **kwargs):
-        self.calls.append(("create_group_folder", kwargs))
-        return "folder-new"
-
-    async def rename_group_folder(self, **kwargs):
-        self.calls.append(("rename_group_folder", kwargs))
-
-    async def delete_group_folder(self, **kwargs):
-        self.calls.append(("delete_group_folder", kwargs))
-
-
-def _install_dummy_bot(monkeypatch, module):
-    bot = DummyMilkyBot()
-    monkeypatch.setattr(module, "get_bot", lambda: bot)
-    return bot
+    ],
+    folders=[types.SimpleNamespace(folder_id="folder-1", folder_name="资料", file_count=1)],
+)
 
 
 def _config(group_id=123, user_id="456", workspace_dir=None):
@@ -72,10 +24,28 @@ def _config(group_id=123, user_id="456", workspace_dir=None):
     return cfg
 
 
-@pytest.mark.asyncio
-async def test_file_upload_and_download_tools_call_milky(load_tool_module, monkeypatch, tmp_path):
+@pytest.fixture
+def file_bot(load_tool_module, install_milky_bot):
+    """Milky bot stub for the file tool module plus the loaded module."""
+
     milky_file = load_tool_module("milky_file")
-    bot = _install_dummy_bot(monkeypatch, milky_file)
+    bot = install_milky_bot(
+        milky_file,
+        {
+            "upload_private_file": "private-file-id",
+            "upload_group_file": "group-file-id",
+            "get_private_file_download_url": "https://example.com/private-file",
+            "get_group_file_download_url": "https://example.com/group-file",
+            "get_group_files": _GROUP_FILES,
+            "create_group_folder": "folder-new",
+        },
+    )
+    return milky_file, bot
+
+
+@pytest.mark.asyncio
+async def test_file_upload_and_download_tools_call_milky(file_bot, tmp_path):
+    milky_file, bot = file_bot
     local_file = tmp_path / "report.pdf"
     local_file.write_bytes(b"pdf")
 
@@ -114,9 +84,8 @@ async def test_file_upload_and_download_tools_call_milky(load_tool_module, monke
 
 
 @pytest.mark.asyncio
-async def test_group_file_management_tools_call_milky(load_tool_module, monkeypatch):
-    milky_file = load_tool_module("milky_file")
-    bot = _install_dummy_bot(monkeypatch, milky_file)
+async def test_group_file_management_tools_call_milky(file_bot):
+    milky_file, bot = file_bot
 
     files = await milky_file.get_group_files(parent_folder_id="/", config=_config())
     moved = await milky_file.move_group_file(
@@ -168,9 +137,8 @@ async def test_group_file_management_tools_call_milky(load_tool_module, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_upload_private_file_resolves_workspace_path(load_tool_module, monkeypatch, tmp_path):
-    milky_file = load_tool_module("milky_file")
-    _install_dummy_bot(monkeypatch, milky_file)
+async def test_upload_private_file_resolves_workspace_path(file_bot, tmp_path):
+    milky_file, _bot = file_bot
 
     (tmp_path / "report.pdf").write_bytes(b"pdf")
 
@@ -184,9 +152,8 @@ async def test_upload_private_file_resolves_workspace_path(load_tool_module, mon
 
 
 @pytest.mark.asyncio
-async def test_upload_group_file_resolves_workspace_path(load_tool_module, monkeypatch, tmp_path):
-    milky_file = load_tool_module("milky_file")
-    bot = _install_dummy_bot(monkeypatch, milky_file)
+async def test_upload_group_file_resolves_workspace_path(file_bot, tmp_path):
+    milky_file, bot = file_bot
 
     sandbox_file = tmp_path / "data.csv"
     sandbox_file.write_bytes(b"a,b,c")
@@ -203,9 +170,8 @@ async def test_upload_group_file_resolves_workspace_path(load_tool_module, monke
 
 
 @pytest.mark.asyncio
-async def test_upload_group_file_extracts_file_name_from_workspace_path(load_tool_module, monkeypatch, tmp_path):
-    milky_file = load_tool_module("milky_file")
-    bot = _install_dummy_bot(monkeypatch, milky_file)
+async def test_upload_group_file_extracts_file_name_from_workspace_path(file_bot, tmp_path):
+    milky_file, bot = file_bot
 
     (tmp_path / "archive.zip").write_bytes(b"zip")
 

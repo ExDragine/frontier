@@ -54,11 +54,6 @@ async def realtime_solarwind():
     MAG = "https://services.swpc.noaa.gov/text/rtsw/data/mag-2-hour.i.json"
     PLASMA = "https://services.swpc.noaa.gov/text/rtsw/data/plasma-2-hour.i.json"
     PLANETART_K = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
-    """
-    MAG_5MIN = "https://services.swpc.noaa.gov/text/rtsw/data/mag-2-hour-5-minute.json"
-    PLASMA_5MIN = "https://services.swpc.noaa.gov/text/rtsw/data/plasma-2-hour-5-minute.json"
-    PLANETART_K_5MIN = "https://services.swpc.noaa.gov/text/rtsw/data/kp-2-hour-5-minute.json"
-    """
     magnitude = (await httpx_client.get(MAG)).json()
     plasma = (await httpx_client.get(PLASMA)).json()
     planet_k = (await httpx_client.get(PLANETART_K)).json()
@@ -276,11 +271,10 @@ async def swpc_page() -> tuple[str, UniMessage | None]:
     """
     message = None
     async with async_playwright() as p:
+        browser = None
         try:
-            browser = p.chromium
-            browser = await browser.launch()
+            browser = await p.chromium.launch()
             page = await browser.new_page()
-            # await page.set_viewport_size({"width": 304, "height": 367})
             await page.goto(
                 "https://www.swpc.noaa.gov/communities/space-weather-enthusiasts-dashboard",
                 timeout=120000,
@@ -291,10 +285,12 @@ async def swpc_page() -> tuple[str, UniMessage | None]:
             if element_handle:
                 picture = await element_handle.screenshot()
                 message = picture
-            await browser.close()
             return "获取成功", UniMessage.image(raw=message)
         except Exception:
             return "获取超时，请稍后再试", None
+        finally:
+            if browser is not None:
+                await browser.close()
 
 
 @tool(response_format="content_and_artifact")
