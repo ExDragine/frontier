@@ -150,7 +150,6 @@ EnvConfig.ADVAN_MODEL = "contract-model"
 EnvConfig.AGENT_JOB_TIMEOUT_SECONDS = 30
 agent = object.__new__(cognitive.FrontierCognitive)
 agent.tools = [illustration]
-agent.ptc_tools = []
 agent.document_subagent = None
 agent.working_dir = str(Path.cwd() / "sandbox")
 agent.load_system_prompt = lambda group_id: "Answer the current request."

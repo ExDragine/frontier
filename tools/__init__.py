@@ -13,29 +13,6 @@ _DOMAIN_GROUPS = ("astro", "earth", "memory", "divination", "external")
 _RESTRICTED_GROUPS = ("restricted",)
 _ALL_TOOL_GROUPS = ("main", *_DOMAIN_GROUPS, *_RESTRICTED_GROUPS)
 
-# PTC is reserved for side-effect-free, text/structured queries. Artifact
-# tools and tools with unknown or mutating behavior remain regular Agent tools
-# so their ToolMessage metadata, retries, and UniMessage artifacts are kept.
-_PTC_READ_ONLY_MODULES = {
-    "comet",
-    "deepseek_balance",
-    "earthquake",
-    "iching",
-    "radar",
-    "rocket",
-    "space_weather",
-    "tarot",
-    "weather",
-}
-_PTC_READ_PREFIXES = {
-    "milky_file": ("get_",),
-    "milky_friend": ("get_",),
-    "milky_group": ("get_",),
-    "milky_message": ("get_",),
-    "milky_system": ("get_",),
-    "scheduled_task": ("list_",),
-}
-
 # Platform tools stay in the legacy ``main`` group during the migration, but
 # are tagged here so neutral runtime callers can opt into only the tools their
 # adapter can actually execute.  An empty capability set deliberately means
@@ -121,8 +98,7 @@ class ModuleTools:
             self.tool_metadata,
         ) = _discover_tools()
 
-        # 记忆与其他领域工具都由主 Agent 按需调用，
-        # 再按 direct / PTC 执行通道分流。
+        # 记忆与其他领域工具都由主 Agent 按需调用。
         for group in ("astro", "earth", "memory", "divination"):
             self.subagent_tools["main"].extend(self.subagent_tools[group])
 
@@ -136,11 +112,6 @@ class ModuleTools:
     @property
     def restricted_tools(self):
         return self.subagent_tools.get("restricted", [])
-
-    @property
-    def ptc_tools(self):
-        """Return one-shot, read-only tools exposed only through PTC."""
-        return [tool for tool in self.subagent_tools["main"] if self._uses_ptc(tool)]
 
     def _capability_allows(self, tool: BaseTool, capabilities: frozenset[str]) -> bool:
         """Return whether a tool is available to an explicit adapter context.
@@ -176,30 +147,17 @@ class ModuleTools:
     def direct_tools_for(self, capabilities: frozenset[str]) -> list[BaseTool]:
         """Return direct tools visible in an explicit capability context."""
 
-        main_tools = self._filtered_main_tools(capabilities)
-        return [tool for tool in main_tools if not self._uses_ptc(tool)] + self.mcp_tools
-
-    def ptc_tools_for(self, capabilities: frozenset[str]) -> list[BaseTool]:
-        """Return PTC tools visible in an explicit capability context."""
-
-        return [tool for tool in self._filtered_main_tools(capabilities) if self._uses_ptc(tool)]
+        return self._filtered_main_tools(capabilities) + self.mcp_tools
 
     @property
     def direct_tools(self):
         """Return regular Agent tools, including network search and page reading."""
-        return [tool for tool in self.subagent_tools["main"] if not self._uses_ptc(tool)] + self.mcp_tools
+        return [*self.subagent_tools["main"], *self.mcp_tools]
 
     @property
     def main_tools(self):
         return [*self.subagent_tools["main"], *self.mcp_tools]
 
-    def _uses_ptc(self, tool: BaseTool) -> bool:
-        if getattr(tool, "response_format", None) != "content":
-            return False
-        module = self.tool_metadata.get(tool.name, {}).get("module", "")
-        if module in _PTC_READ_ONLY_MODULES:
-            return True
-        return tool.name.startswith(_PTC_READ_PREFIXES.get(module, ()))
 
 _AGENT_TOOLS = None
 

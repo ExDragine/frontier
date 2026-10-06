@@ -284,9 +284,10 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_available_china_radar_areas",
         "get_static_china_radar",
     }
-    ptc_names = {tool.name for tool in module.agent_tools.ptc_tools}
+    # Every main/domain tool is a direct Agent tool: the PTC channel was removed
+    # together with the interpreter that executed it.
     direct_names = {tool.name for tool in module.agent_tools.direct_tools}
-    assert ptc_names == {
+    assert direct_names == {
         "get_message",
         "get_login_info",
         "get_deepseek_api_balance",
@@ -294,8 +295,6 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_usgs_significant_earthquakes",
         "get_available_china_radar_areas",
         "iching_divination",
-    }
-    assert direct_names == {
         "tavily_extract", "tavily_search", "web_search_exa", "web_fetch_exa",
         "send_image",
         "upload_group_file",
@@ -312,8 +311,7 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
         "search_messages",
         "get_history_messages",
     }
-    assert ptc_names.isdisjoint(direct_names)
-    assert ptc_names | direct_names == {tool.name for tool in module.agent_tools.main_tools}
+    assert direct_names == {tool.name for tool in module.agent_tools.main_tools}
     assert {tool.name for tool in groups["memory"]} == {
         "get_recent_conversation",
         "search_messages",
@@ -336,7 +334,6 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
     await registry.initialize()
     await registry.initialize()
     assert recovered in registry.direct_tools
-    assert recovered not in registry.ptc_tools
     assert sum(tool is recovered for tool in registry.main_tools) == 1
     assert "send_image" in {tool.name for tool in registry.main_tools}
     assert "mcp_tool" not in {tool.name for tool in registry.main_tools}
@@ -345,9 +342,8 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
     # Explicit platform capabilities filter QQ/Milky modules while retaining
     # common tools; an empty set remains the legacy unfiltered behavior.
     message_tools = {tool.name for tool in registry.direct_tools_for(frozenset({"qq:message"}))}
-    message_ptc_tools = {tool.name for tool in registry.ptc_tools_for(frozenset({"qq:message"}))}
     assert "send_image" in message_tools
-    assert "get_message" in message_ptc_tools
+    assert "get_message" in message_tools
     assert "set_group_name" not in message_tools
     assert "upload_group_file" not in message_tools
     assert "mystery_tool" in message_tools

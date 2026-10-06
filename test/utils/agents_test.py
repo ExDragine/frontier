@@ -425,16 +425,14 @@ def test_filter_messages_uses_advanced_role_for_shared_model(monkeypatch):
     assert filtered == messages
 
 
-def test_frontier_cognitive_separates_direct_and_ptc_tools(monkeypatch):
+def test_frontier_cognitive_collects_direct_tools(monkeypatch):
     monkeypatch.setattr(cognitive_mod.agent_tools, "direct_tools", ["direct-tool"], raising=False)
-    monkeypatch.setattr(cognitive_mod.agent_tools, "ptc_tools", ["ptc-tool"], raising=False)
     document_subagent = {"name": "document-agent", "description": "document", "tools": []}
     monkeypatch.setattr(cognitive_mod, "build_document_subagent", lambda: document_subagent)
 
     frontier = cognitive_mod.FrontierCognitive()
 
     assert frontier.tools == ["direct-tool"]
-    assert frontier.ptc_tools == ["ptc-tool"]
     assert not hasattr(frontier, "memory_subagent")
     assert frontier.document_subagent is document_subagent
     assert not hasattr(frontier, "subagents")
@@ -444,34 +442,20 @@ def test_frontier_cognitive_selects_registry_tools_for_explicit_capabilities(mon
     calls = []
 
     def direct_tools_for(capabilities):
-        calls.append(("direct", capabilities))
+        calls.append(capabilities)
         return ["qq-direct"]
-
-    def ptc_tools_for(capabilities):
-        calls.append(("ptc", capabilities))
-        return ["qq-ptc"]
 
     monkeypatch.setattr(
         cognitive_mod,
         "agent_tools",
-        types.SimpleNamespace(direct_tools_for=direct_tools_for, ptc_tools_for=ptc_tools_for),
+        types.SimpleNamespace(direct_tools_for=direct_tools_for),
     )
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = ["legacy-direct"]
-    frontier.ptc_tools = ["legacy-ptc"]
 
-    assert frontier._tools_for_capabilities(frozenset()) == (
-        ["legacy-direct"],
-        ["legacy-ptc"],
-    )
-    assert frontier._tools_for_capabilities(frozenset({"qq:message"})) == (
-        ["qq-direct"],
-        ["qq-ptc"],
-    )
-    assert calls == [
-        ("direct", frozenset({"qq:message"})),
-        ("ptc", frozenset({"qq:message"})),
-    ]
+    assert frontier._tools_for_capabilities(frozenset()) == ["legacy-direct"]
+    assert frontier._tools_for_capabilities(frozenset({"qq:message"})) == ["qq-direct"]
+    assert calls == [frozenset({"qq:message"})]
 
 
 def test_bounded_subagents_use_dedicated_progress_messages():
@@ -801,7 +785,6 @@ async def test_chat_agent_acp_profile_removes_platform_tools_and_delegation(
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
     frontier.tools = [types.SimpleNamespace(name="send_group_message")]
-    frontier.ptc_tools = [types.SimpleNamespace(name="get_group_info")]
     frontier.document_subagent = cast(Any, {"name": "document-agent", "tools": []})
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
@@ -1144,11 +1127,6 @@ async def test_chat_agent_stabilizes_tool_order_and_keeps_gated_tools_at_tail(mo
                 {"messages": [types.SimpleNamespace(type="ai", content="ok", text="ok")]},
             )
 
-    class DummyCodeInterpreterMiddleware:
-        def __init__(self, *, ptc, max_ptc_calls):
-            captured["ptc"] = list(ptc)
-            captured["max_ptc_calls"] = max_ptc_calls
-
     def tool(name):
         return types.SimpleNamespace(name=name)
 
@@ -1172,7 +1150,6 @@ async def test_chat_agent_stabilizes_tool_order_and_keeps_gated_tools_at_tail(mo
         "create_deep_agent",
         lambda **kwargs: (captured.update(kwargs) or DummyAgent()),
     )
-    monkeypatch.setattr(cognitive_mod, "CodeInterpreterMiddleware", DummyCodeInterpreterMiddleware)
     monkeypatch.setattr(cognitive_mod, "create_llm", lambda **_kwargs: object())
     monkeypatch.setattr(cognitive_mod, "provider_uses_responses_api", lambda *_args: False)
     monkeypatch.setattr(cognitive_mod, "provider_is_official_openai", lambda *_args: False)
@@ -1198,8 +1175,7 @@ async def test_chat_agent_stabilizes_tool_order_and_keeps_gated_tools_at_tail(mo
     monkeypatch.setattr(cognitive_mod.EnvConfig, "ADVAN_MODEL", "custom-model")
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
-    frontier.tools = [tool("zeta"), tool("alpha")]
-    frontier.ptc_tools = [tool("query-z"), tool("query-a")]
+    frontier.tools = [tool("zeta"), tool("alpha"), tool("query-z"), tool("query-a")]
     frontier.document_subagent = cast(Any, {"name": "document-agent", "tools": []})
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
@@ -1210,15 +1186,18 @@ async def test_chat_agent_stabilizes_tool_order_and_keeps_gated_tools_at_tail(mo
         user_text="capture this page",
     )
 
-    assert [item.name for item in captured["tools"]] == [
+    tool_names = [item.name for item in captured["tools"]]
+    # Every tool is a direct graph tool now that the PTC interpreter is gone.
+    assert tool_names == [
         "alpha",
         "ens_normal",
         "ens_professional",
+        "query-a",
+        "query-z",
         "zeta",
         "webpage_recording",
         "webpage_screenshot",
     ]
-    assert [item.name for item in captured["ptc"]] == ["query-a", "query-z"]
     assert [item["name"] for item in captured["subagents"][-2:]] == ["acp-a", "acp-z"]
 
 
@@ -1346,31 +1325,29 @@ async def test_chat_agent_skips_web_search_when_route_unsupported(monkeypatch, t
 
 
 @pytest.mark.asyncio
-async def test_chat_agent_attaches_answer_rubric_only_for_direct_text(monkeypatch, tmp_path):
-    captured = await _run_chat_agent_with_web_search(
+async def test_chat_agent_never_installs_answer_rubric(monkeypatch, tmp_path):
+    """Regression guard: the answer-rubric middleware was removed from the graph.
+
+    The ``answer_rubric_*`` settings are gone as well, so no run may install a
+    rubric middleware, carry a ``rubric`` payload key, or expose the removed
+    symbols, whether or not direct text is present.
+    """
+
+    with_text = await _run_chat_agent_with_web_search(
         monkeypatch,
         tmp_path,
         supported=False,
         user_text="请解释这个错误",
     )
-
-    rubric = next(item for item in captured["middleware"] if type(item).__name__ == "RubricMiddleware")
-    assert rubric.max_iterations == cognitive_mod.EnvConfig.ANSWER_RUBRIC_MAX_ITERATIONS
-    assert captured["payload"]["rubric"] == cognitive_mod.ANSWER_RUBRIC
-
     without_text = await _run_chat_agent_with_web_search(monkeypatch, tmp_path, supported=False)
-    assert not any(type(item).__name__ == "RubricMiddleware" for item in without_text["middleware"])
-    assert "rubric" not in without_text["payload"]
 
-    monkeypatch.setattr(cognitive_mod.EnvConfig, "ANSWER_RUBRIC_ENABLED", False)
-    disabled = await _run_chat_agent_with_web_search(
-        monkeypatch,
-        tmp_path,
-        supported=False,
-        user_text="请解释这个错误",
-    )
-    assert not any(type(item).__name__ == "RubricMiddleware" for item in disabled["middleware"])
-    assert "rubric" not in disabled["payload"]
+    for captured in (with_text, without_text):
+        assert not any(type(item).__name__ == "RubricMiddleware" for item in captured["middleware"])
+        assert "rubric" not in captured["payload"]
+
+    assert not hasattr(cognitive_mod, "ANSWER_RUBRIC")
+    assert not hasattr(cognitive_mod.EnvConfig, "ANSWER_RUBRIC_ENABLED")
+    assert not hasattr(cognitive_mod.EnvConfig, "ANSWER_RUBRIC_MAX_ITERATIONS")
 
 
 def test_native_web_search_middleware_injects_provider_tool_at_model_boundary():
@@ -2036,7 +2013,7 @@ class TestChatAgentStreaming:
 
 @pytest.mark.asyncio
 async def test_components_refresh_when_mcp_recovers_without_config_change(monkeypatch):
-    registry = types.SimpleNamespace(direct_tools=[], ptc_tools=[])
+    registry = types.SimpleNamespace(direct_tools=[])
     initialize_calls = []
 
     async def initialize():
@@ -2078,7 +2055,7 @@ async def test_main_agent_owns_network_tools_with_read_only_errors(monkeypatch, 
     monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args: False)
     monkeypatch.setattr(cognitive_mod, "agent_tools", types.SimpleNamespace(restricted_tools=[]))
     agent = object.__new__(cognitive_mod.FrontierCognitive)
-    agent.tools, agent.ptc_tools = network_tools, []
+    agent.tools = network_tools
     agent.document_subagent = {"name": "document-agent", "tools": []}
     agent.working_dir = str(tmp_path / "sandbox")
     result = await agent.chat_agent(

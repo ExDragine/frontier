@@ -23,7 +23,6 @@ from utils.agent_protocol import (
     DeliveryStatus,
     GateDecision,
     MessageRef,
-    Participant,
 )
 from utils.agents import (
     FrontierCognitive,
@@ -34,12 +33,11 @@ from utils.agents import (
 )
 from utils.agents.message_envelope import (
     build_agent_attachment_payload,
-    build_agent_message_payload,
     serialize_agent_payload,
 )
 from utils.agents.message_envelope import content_for_persisted_images as _remove_attached_image_placeholders
 from utils.agents.neutral_core import FrontierAgentCore
-from utils.agents.runtime_gateway import AgentRuntimeRequest, FrontierAgentRuntime
+from utils.agents.runtime_gateway import FrontierAgentRuntime
 from utils.agents.sessions import HistoryBoundary, SessionKey, TurnLease, session_manager
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
@@ -50,7 +48,7 @@ from utils.message import (
     download_media,
     message_check,
     message_extract,
-    outgoing_message_content,
+    outgoing_message_content,  # noqa: F401  # re-exported: tests and callers read it from this module
     sanitize_outgoing_text,
     send_artifacts,
     send_messages,
@@ -63,10 +61,8 @@ from .adapters import (
     QqMessageAdapter,
     QqReplyPolicy,
     QqToolProvider,
-    send_qq_artifacts,
 )
 from .attachments import cleanup_staged_message_files, extract_message_files, stage_message_files
-from .chat_context import build_chat_context
 from .gateway import message_gateway
 from .message_normalizer import NORMALIZED_VERSION, normalize_segments
 from .reply_context import (
@@ -124,25 +120,6 @@ class AgentRequestContext:
     reply_seq: int | None = None
     direct_mention: bool = False
     message_id: int | None = None
-
-
-def _qq_runtime_conversation(context: AgentRequestContext) -> ConversationRef:
-    """Build the neutral conversation identity at the QQ adapter boundary."""
-
-    return QqMessageAdapter(getattr(context.event, "self_id", "")).conversation(
-        group_id=context.group_id,
-        user_id=context.user_id,
-    )
-
-
-def _qq_runtime_principal(context: AgentRequestContext) -> Participant:
-    """Build the neutral sender identity while retaining QQ role metadata."""
-
-    return QqMessageAdapter.participant(
-        user_id=context.user_id,
-        user_name=context.user_name,
-        role=_group_member_role(context.event),
-    )
 
 
 def _agent_workspace_key(user_id: str, group_id: int | None) -> str:
@@ -434,14 +411,6 @@ async def _send_qq_neutral_artifacts(_target: ConversationRef, artifacts) -> Del
     return await send_artifacts(messages)
 
 
-async def _send_agent_artifacts(context: AgentRequestContext, artifacts) -> DeliveryResult:
-    """Deliver neutral artifacts while accepting pre-migration test/caller values."""
-
-    if artifacts and all(hasattr(artifact, "kind") for artifact in artifacts):
-        return await send_qq_artifacts(_qq_runtime_conversation(context), artifacts)
-    return await send_artifacts(artifacts)
-
-
 async def _qq_reply_id_for_context(context: AgentRequestContext) -> int | None:
     """Reuse the delayed-group reply heuristic for neutral sends."""
 
@@ -637,157 +606,6 @@ async def _process_agent_request(
     finally:
         # Covers cancellation, tool/model failures, early returns and sender errors.
         await _settle_session(lease)
-
-
-async def _execute_legacy_agent_request(  # noqa: C901
-    context: AgentRequestContext,
-    history_messages: list[dict[str, Any]] | None = None,
-    session_turn: TurnLease | None = None,
-) -> bool:
-    messages = build_chat_context(
-        payload=build_agent_message_payload(
-            timestamp_ms=context.msg_time,
-            msg_id=context.event_id,
-            user_id=context.user_id,
-            group_id=context.group_id,
-            user_name=context.user_name,
-            user_nickname=context.user_nickname,
-            user_card=context.user_card,
-            role="user",
-            content=context.text.strip(),
-            attachments=context.attachments,
-            reply_to=context.reply_to,
-            bot_user_id=getattr(context.event, "self_id", None),
-            directly_mentions_bot=context.direct_mention,
-        ),
-        history=list(history_messages or []),
-        images=context.images,
-        audio=context.audio,
-        videos=context.videos,
-        quoted_images=context.quoted_images,
-        recent_images=context.recent_images,
-        max_bytes=EnvConfig.MAX_INLINE_MEDIA_BYTES,
-        max_images=EnvConfig.MAX_INLINE_IMAGES,
-    )
-    capability = EnvConfig.AGENT_CAPABILITY
-    if session_turn is not None:
-        messages[-1]["id"] = session_turn.current_id
-
-    result = await FrontierAgentRuntime(cognitive=f_cognitive).run(
-        AgentRuntimeRequest(
-            messages=tuple(messages),
-            prompt=context.text,
-            user_id=context.user_id,
-            user_name=context.user_name,
-            capability=capability,
-            group_id=context.group_id,
-            image_inputs=tuple(context.images + context.quoted_images + context.recent_images),
-            audio_inputs=tuple(context.audio),
-            video_inputs=tuple(context.videos),
-            group_member_role=_group_member_role(context.event),
-            allow_silent_reply=_allows_silent_reply(context),
-            access_profile="frontier",
-            enable_acp_subagents=True,
-            session_turn=session_turn,
-            # The QQ path still uses the legacy runtime gateway, but declares
-            # its neutral identity and platform capability set now.  This
-            # enables capability-filtered tool snapshots without changing the
-            # existing message, session, or delivery flow.
-            conversation=_qq_runtime_conversation(context),
-            principal=_qq_runtime_principal(context),
-            capabilities=frozenset({"platform:qq", "qq:tools"}),
-            workspace_key=_agent_workspace_key(context.user_id, context.group_id),
-        ),
-        progress_reporter=_chat_progress_reporter(context.group_id),
-    )
-
-    if not isinstance(result, dict) or "response" not in result:
-        await UniMessage.text(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用").send()
-        return True
-
-    if result.get("should_reply") is False:
-        logger.info("Agent 选择本轮不回复: group_id={} user_id={}", context.group_id, context.user_id)
-        await _settle_session(session_turn, silent=True)
-        return False
-
-    response = result["response"]
-    if not response:
-        await UniMessage.text(f"{EnvConfig.BOT_NAME}飞升了，暂时不可用").send()
-        return True
-
-    if result.get("error"):
-        logger.warning("Agent returned error response: {}", result["error"])
-
-    artifacts = result.get("artifacts", result.get("uni_messages", []))
-    artifact_delivery = DeliveryResult()
-    if artifacts:
-        logger.info("📤 发送 {} 个媒体工件", len(artifacts))
-        artifact_delivery = await _send_agent_artifacts(context, artifacts)
-        if artifact_delivery.errors:
-            logger.warning("媒体工件未完整送达: {}", artifact_delivery.errors)
-
-    response_messages = response.get("messages", [])
-    if not isinstance(response_messages, list) or not response_messages:
-        if not artifact_delivery.errors:
-            return artifact_delivery.sent > 0
-        response_messages = [AIMessage(content="")]
-    original_content = outgoing_message_content(response_messages[-1])
-    response_content = original_content
-    if artifact_delivery.errors:
-        response_content = f"部分附件发送失败，请稍后重试。\n\n{response_content}".strip()
-    sanitized_response = await sanitize_outgoing_text(response_content)
-    if sanitized_response != original_content:
-        response = {**response, "messages": [*response_messages[:-1], AIMessage(content=sanitized_response or "")]}
-    reply_id = None
-    if context.group_id is not None and time.time() * 1000 - context.msg_time >= 10_000:
-        count_intervening = getattr(messages_db, "count_intervening_group_messages", None)
-        if callable(count_intervening):
-            intervening_messages = await count_intervening(
-                group_id=context.group_id,
-                bot_user_id=int(context.event.self_id),
-                user_id=int(context.user_id),
-                after_time=context.msg_time,
-                after_message_id=context.message_id,
-            )
-        else:
-            # Minimal injected databases used by adapters/tests may not expose
-            # the optional quote heuristic.  Omitting a reply target is safe;
-            # the full MessageDatabase keeps the existing behavior.
-            intervening_messages = 0
-        if intervening_messages >= 5:
-            reply_id = context.event_id
-    delivery = await send_messages(context.group_id, reply_id, response)
-    if delivery.successful:
-        delivered_at = int(time.time() * 1000)
-        inserted = None
-        try:
-            inserted = await messages_db.insert(
-                time=delivered_at,
-                # A final Milky text/image send produces one platform message.
-                msg_id=delivery.message_ids[0] if delivery.message_ids else None,
-                # 私聊按对端 user_id 建立会话范围；群聊保留真实机器人发送者 ID。
-                user_id=int(context.user_id) if context.group_id is None else int(context.event.self_id),
-                sender_user_id=int(context.event.self_id),
-                group_id=context.group_id,
-                user_name="Assistant",
-                role="assistant",
-                content=outgoing_message_content(response["messages"][-1]),
-                bot_user_id=int(context.event.self_id),
-                normalized_version=NORMALIZED_VERSION,
-                normalized_status="complete",
-            )
-        except Exception as exc:
-            # Delivery has happened: never retry the send because persistence failed.
-            logger.exception("回复已送达但历史记录写入失败: {}", type(exc).__name__)
-        if not artifact_delivery.errors and not result.get("error"):
-            await _settle_session(
-                session_turn, delivered=True, delivered_at=delivered_at,
-                content=outgoing_message_content(response["messages"][-1]),
-                message_id=getattr(inserted, "message_id", None),
-            )
-    elif delivery.errors:
-        logger.warning("回复未送达，未记入已回复历史: {}", delivery.errors)
-    return delivery.sent > 0 or artifact_delivery.sent > 0
 
 
 async def _execute_agent_request(

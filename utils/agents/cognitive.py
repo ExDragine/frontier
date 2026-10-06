@@ -377,8 +377,8 @@ class NativeWebSearchMiddleware(AgentMiddleware):
     """Inject provider-native web search only after local-tool middleware.
 
     Provider tool specs are dictionaries. Keeping them out of the agent's base
-    tool list prevents PTC and other local-tool middleware from dereferencing
-    ``tool.name`` on a dict.
+    tool list prevents local-tool middleware from dereferencing ``tool.name``
+    on a dict.
     """
 
     @staticmethod
@@ -418,38 +418,32 @@ class FrontierCognitive:
         self._component_revision = None
 
     def __getattr__(self, name):
-        if name in {"tools", "ptc_tools", "document_subagent"} and "_component_revision" in self.__dict__:
+        if name in {"tools", "document_subagent"} and "_component_revision" in self.__dict__:
             self._build_components()
             return self.__dict__[name]
         raise AttributeError(name)
 
     def _build_components(self):
         self.tools = _stable_named_items(agent_tools.direct_tools)
-        self.ptc_tools = _stable_named_items(agent_tools.ptc_tools)
         self.document_subagent = build_document_subagent()
         self._component_revision = EnvConfig.REVISION
 
-    def _tools_for_capabilities(self, capabilities: frozenset[str]):
+    def _tools_for_capabilities(self, capabilities: frozenset[str]) -> list:
         """Select a tool snapshot for an explicit platform capability set.
 
         Empty capabilities preserve the pre-separation behavior used by ACP,
-        scheduled tasks, and the existing QQ event path.  The registry methods
-        are optional so injected test registries and staged callers that only
-        expose ``direct_tools``/``ptc_tools`` continue to work.
+        scheduled tasks, and the existing QQ event path.  The registry method is
+        optional so injected test registries and staged callers that only expose
+        ``direct_tools`` continue to work.
         """
 
         legacy_tools = getattr(self, "tools", [])
-        legacy_ptc_tools = getattr(self, "ptc_tools", [])
         if not capabilities:
-            return legacy_tools, legacy_ptc_tools
+            return legacy_tools
         direct_for = getattr(agent_tools, "direct_tools_for", None)
-        ptc_for = getattr(agent_tools, "ptc_tools_for", None)
-        if callable(direct_for) and callable(ptc_for):
-            return (
-                _stable_named_items(direct_for(capabilities)),
-                _stable_named_items(ptc_for(capabilities)),
-            )
-        return legacy_tools, legacy_ptc_tools
+        if callable(direct_for):
+            return _stable_named_items(direct_for(capabilities))
+        return legacy_tools
 
     async def _prepare_components(self):
         if "_component_revision" not in self.__dict__:
@@ -462,7 +456,6 @@ class FrontierCognitive:
         else:
             # Take the latest tool snapshot each turn; MCP recovery does not rebuild models.
             self.tools = _stable_named_items(agent_tools.direct_tools)
-            self.ptc_tools = _stable_named_items(agent_tools.ptc_tools)
 
     @staticmethod
     def load_system_prompt(
@@ -559,13 +552,9 @@ class FrontierCognitive:
             # No model or tool has run: retire this lease rather than restore an
             # old state schema with a newly configured graph.
             raise SessionInterruptedError("configuration changed before session execution")
-        selected_tools, selected_ptc_tools = self._tools_for_capabilities(capabilities)
+        selected_tools = self._tools_for_capabilities(capabilities)
         if tool_overrides:
-            ptc_names = {_named_item_key(item) for item in selected_ptc_tools}
-            selected_tools = _merge_named_items(
-                selected_tools,
-                [item for item in tool_overrides if _named_item_key(item) not in ptc_names],
-            )
+            selected_tools = _merge_named_items(selected_tools, tool_overrides)
         # Keep construction synchronous until the graph is ready: a Dashboard reload
         # may run during the awaits above, but cannot split model/capability selection.
         workspace_key = normalize_workspace_key(
