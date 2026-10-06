@@ -4,7 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frontier Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Front-end assets are local-first: run `uv run python scripts/vendor_dashboard_assets.py`
+         once to drop the pinned files into /dashboard/vendor/, and the Dashboard stops
+         contacting any CDN. Each pinned CDN copy remains as the fallback so an unvendored
+         deployment keeps working exactly as before. -->
+    <script src="/dashboard/vendor/tailwindcss.js"></script>
+    <script>window.tailwind||document.write('<script src="https://cdn.tailwindcss.com/3.4.17"><\/script>')</script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -17,8 +22,10 @@
             }
         }
     </script>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script src="https://unpkg.com/vue-router@4/dist/vue-router.global.prod.js"></script>
+    <script src="/dashboard/vendor/vue.global.prod.js"></script>
+    <script>window.Vue||document.write('<script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"><\/script>')</script>
+    <script src="/dashboard/vendor/vue-router.global.prod.js"></script>
+    <script>window.VueRouter||document.write('<script src="https://unpkg.com/vue-router@4.5.0/dist/vue-router.global.prod.js"><\/script>')</script>
     <style>
         [v-cloak] { display: none; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; }
