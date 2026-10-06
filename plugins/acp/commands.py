@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from langchain.messages import AIMessage
 from nonebot import logger, on_command
 from nonebot.adapters.milky.event import MessageEvent
+from nonebot.permission import SUPERUSER
 
 from utils.agents import ProgressEvent, ProgressReporter
 from utils.alconna import UniMessage
@@ -26,7 +27,7 @@ from utils.message import (
 from .agent import AcpAgent
 from .service import AcpConfigurationError, AcpInputMedia, acp_service
 
-acp_command = on_command("acp", priority=2, block=True)
+acp_command = on_command("acp", priority=2, block=True, permission=SUPERUSER)
 acp_agent = AcpAgent()
 
 _USAGE = (

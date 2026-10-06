@@ -1,4 +1,5 @@
-import secrets
+import functools
+import logging
 import time
 from collections import defaultdict
 
@@ -9,6 +10,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from utils.configs import EnvConfig
 
+logger = logging.getLogger(__name__)
+
 security = HTTPBearer(auto_error=False)
 SECURITY_DEPENDENCY = Depends(security)
 
@@ -16,6 +19,9 @@ SECURITY_DEPENDENCY = Depends(security)
 _login_attempts = defaultdict(list)
 MAX_ATTEMPTS = 5
 WINDOW_SECONDS = 300  # 5 分钟
+
+# bcrypt 只接受前 72 字节的输入，超长会直接抛 ValueError；统一按库的限制截断。
+_BCRYPT_MAX_BYTES = 72
 
 
 def create_token(subject: str = "admin") -> str:
@@ -38,16 +44,48 @@ def verify_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="无效的 Token") from exc
 
 
+def _password_bytes(value: str) -> bytes:
+    """按 bcrypt 的 72 字节上限截断候选口令，避免超长输入触发 ValueError。"""
+    return value.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+
+
+@functools.lru_cache(maxsize=8)
+def _derive_legacy_hash(stored: str) -> bytes:
+    """把明文配置在内存中派生为 bcrypt 哈希。
+
+    缓存键就是配置值本身，所以 ``EnvConfig.reload()`` 换掉明文口令后会重新派生，
+    不会把旧口令的派生结果继续用于新配置。
+    """
+    return bcrypt.hashpw(_password_bytes(stored), bcrypt.gensalt())
+
+
+@functools.lru_cache(maxsize=8)
+def _warn_legacy_password(stored: str) -> None:
+    """对每个明文配置值只提示一次；日志不包含口令内容。"""
+    logger.warning(
+        "Dashboard 口令仍以明文保存在 env.toml；请在 [dashboard].password 改用 bcrypt 哈希"
+        "（以 $2 开头）。当前仅在内存中派生哈希完成校验，明文配置已弃用。"
+    )
+    if len(stored.encode("utf-8")) > _BCRYPT_MAX_BYTES:
+        logger.warning(
+            f"Dashboard 明文口令超过 bcrypt 的 {_BCRYPT_MAX_BYTES} 字节上限，"
+            f"比较只使用前 {_BCRYPT_MAX_BYTES} 字节；请改用 bcrypt 哈希。"
+        )
+
+
 def verify_password(password: str) -> bool:
-    """验证密码，支持 bcrypt 哈希和明文（向后兼容）。"""
+    """验证密码：支持 bcrypt 哈希；明文配置在内存中派生哈希后校验。
+
+    明文配置（旧部署）不再参与字符串比较，而是临时派生 bcrypt 哈希后用
+    ``bcrypt.checkpw`` 校验，既保持可登录，又避免直接比较明文。
+    """
     stored = EnvConfig.DASHBOARD_PASSWORD
 
     if stored.startswith("$2"):
-        # bcrypt hash
-        return bcrypt.checkpw(password.encode(), stored.encode())
+        return bcrypt.checkpw(_password_bytes(password), stored.encode("utf-8"))
 
-    # 明文回退 — 向后兼容旧配置
-    return secrets.compare_digest(password, stored)
+    _warn_legacy_password(stored)
+    return bcrypt.checkpw(_password_bytes(password), _derive_legacy_hash(stored))
 
 
 async def require_auth(

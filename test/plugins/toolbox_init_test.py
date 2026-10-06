@@ -9,6 +9,7 @@ from nonebot.adapters.milky.event import MessageEvent
 from nonebot.adapters.milky.message import Message
 from nonebot.adapters.milky.model.common import Group, Member
 from nonebot.adapters.milky.model.message import IncomingMessage
+from nonebot.permission import SUPERUSER
 from nonebug import App
 
 from plugins.toolbox import settings as toolbox
@@ -184,9 +185,31 @@ async def test_handle_model_default(monkeypatch, paint_enabled, video_enabled, e
         )
 
         ctx.receive_event(bot, event)
+        # /model 现在仅超级用户可用；输出内容由本用例覆盖，权限由专门用例覆盖。
+        ctx.should_ignore_permission(toolbox.model_cmd)
         ctx.should_finished()
 
     assert sent == ["🤖 当前模型配置\n" + "\n".join(expected_lines)]
+
+
+def test_model_command_requires_superuser():
+    # nonebot 的 on() 会用 ``Permission() | permission`` 重建 Permission 对象，
+    # 因此比较 checker 集合，而不是对象身份。
+    assert toolbox.model_cmd.permission is not None
+    assert toolbox.model_cmd.permission.checkers == SUPERUSER.checkers
+
+
+@pytest.mark.asyncio
+async def test_model_command_rejects_non_superuser(monkeypatch):
+    sent = _capture_unimessage_text(monkeypatch)
+
+    async with App().test_matcher(toolbox.model_cmd) as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, _group_message_event("/model", sender_id=456))
+        ctx.should_not_pass_permission(toolbox.model_cmd)
+
+    assert sent == []
 
 
 def test_set_menu_filters_group_admin_commands_by_context():

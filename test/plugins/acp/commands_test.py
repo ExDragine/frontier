@@ -3,6 +3,12 @@
 from types import SimpleNamespace
 
 import pytest
+from nonebot.adapters.milky.event import MessageEvent
+from nonebot.adapters.milky.message import Message
+from nonebot.adapters.milky.model.common import Group, Member
+from nonebot.adapters.milky.model.message import IncomingMessage
+from nonebot.permission import SUPERUSER
+from nonebug import App
 
 from plugins.acp import commands as acp
 from utils.delivery import DeliveryResult
@@ -13,6 +19,51 @@ def _event():
         data=SimpleNamespace(segments=[], group=None, message_seq=9),
         get_user_id=lambda: "42",
     )
+
+
+def _group_message_event(text: str, *, sender_id: int = 456) -> MessageEvent:
+    incoming = IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=1,
+        sender_id=sender_id,
+        time=0,
+        segments=[{"type": "text", "data": {"text": text}}],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=sender_id,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+    return MessageEvent(
+        data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message()
+    )
+
+
+def test_acp_command_requires_superuser():
+    # nonebot 的 on() 会用 ``Permission() | permission`` 重建 Permission 对象，
+    # 因此比较 checker 集合，而不是对象身份。
+    assert acp.acp_command.permission is not None
+    assert acp.acp_command.permission.checkers == SUPERUSER.checkers
+
+
+@pytest.mark.asyncio
+async def test_acp_command_rejects_non_superuser():
+    async with App().test_matcher(acp.acp_command) as ctx:
+        adapter = ctx.create_adapter()
+        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
+        ctx.receive_event(bot, _group_message_event("/acp --list"))
+        ctx.should_not_pass_permission(acp.acp_command)
 
 
 def test_parse_acp_command_supports_agent_and_control_actions():
