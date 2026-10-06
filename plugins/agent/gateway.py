@@ -200,17 +200,17 @@ def _get_laya_candidate_provider() -> LayaDecisionProvider | None:
     """Build the optional Laya candidate provider after configuration is loaded."""
 
     global _laya_candidate_provider, _laya_candidate_provider_revision
-    if not getattr(EnvConfig, "LAYA_CANDIDATE_ENABLED", False):
+    if not EnvConfig.LAYA_CANDIDATE_ENABLED:
         return None
-    revision = getattr(EnvConfig, "REVISION", 0)
+    revision = EnvConfig.REVISION
     if _laya_candidate_provider is None or _laya_candidate_provider_revision != revision:
-        api_key = getattr(EnvConfig, "LAYA_CANDIDATE_API_KEY", None)
+        api_key = EnvConfig.LAYA_CANDIDATE_API_KEY
         _laya_candidate_provider = LayaDecisionProvider(
-            model=getattr(EnvConfig, "LAYA_CANDIDATE_MODEL", "auto"),
-            device=getattr(EnvConfig, "LAYA_CANDIDATE_DEVICE", "cpu"),
-            base_url=getattr(EnvConfig, "LAYA_CANDIDATE_BASE_URL", "") or None,
+            model=EnvConfig.LAYA_CANDIDATE_MODEL,
+            device=EnvConfig.LAYA_CANDIDATE_DEVICE,
+            base_url=EnvConfig.LAYA_CANDIDATE_BASE_URL or None,
             api_key=api_key.get_secret_value() if api_key else None,
-            timeout=getattr(EnvConfig, "LAYA_CANDIDATE_TIMEOUT_SECONDS", 5.0),
+            timeout=EnvConfig.LAYA_CANDIDATE_TIMEOUT_SECONDS,
         )
         _laya_candidate_provider_revision = revision
     return _laya_candidate_provider
@@ -227,7 +227,7 @@ async def _laya_candidate_should_reply(plaintext: str, messages: list) -> bool:
             provider,
             plaintext,
             messages,
-            threshold=getattr(EnvConfig, "LAYA_CANDIDATE_THRESHOLD", 0.5),
+            threshold=EnvConfig.LAYA_CANDIDATE_THRESHOLD,
         )
     except Exception as error:  # noqa: BLE001 - candidate failures must fall back to lexical rules
         from nonebot import logger

@@ -54,7 +54,10 @@ def pytest_configure(config):
 def pytest_sessionstart(session):
     # Collection imports application modules before per-test fixtures run.
     # Keep their config/database/cache initialization outside the real workspace.
-    temporary_dir = tempfile.TemporaryDirectory(prefix="frontier-test-collection-")
+    # Windows keeps SQLite handles open past the session, so cleanup is
+    # best-effort: a failed unlink must not turn a green run into an
+    # INTERNALERROR.
+    temporary_dir = tempfile.TemporaryDirectory(prefix="frontier-test-collection-", ignore_cleanup_errors=True)
     monkeypatch = pytest.MonkeyPatch()
     session.config.stash[_collection_env] = monkeypatch, temporary_dir
     monkeypatch.delenv("FRONTIER_CONFIG", raising=False)

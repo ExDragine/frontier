@@ -106,11 +106,6 @@ class QuotePart(MessagePart):
     parts: tuple[MessagePart, ...] = ()
 
 
-type MessagePartType = (
-    TextPart | ImagePart | AudioPart | VideoPart | FilePart | MentionPart | QuotePart
-)
-
-
 @dataclass(frozen=True, slots=True)
 class InboundMessage:
     """A platform-neutral message received by the application layer."""
@@ -138,12 +133,6 @@ class ChatMessage:
     metadata: Mapping[str, object] = field(default_factory=dict)
 
 
-# A stored message has the same neutral shape as a history message for now.
-# Keeping the alias lets a future persistence adapter introduce a richer model
-# without changing the ports in this first migration step.
-type StoredMessage = ChatMessage
-
-
 @dataclass(frozen=True, slots=True)
 class HistoryQuery:
     """Scope and bounds for loading an Agent history snapshot."""
@@ -151,7 +140,6 @@ class HistoryQuery:
     conversation: ConversationRef
     limit: int = 50
     before: datetime | None = None
-    after: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,12 +148,6 @@ class GateDecision:
 
     should_reply: bool
     reason: str | None = None
-
-    @property
-    def allowed(self) -> bool:
-        """Compatibility spelling for callers that express a gate as access."""
-
-        return self.should_reply
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,11 +225,9 @@ __all__ = [
     "MediaPart",
     "MentionPart",
     "MessagePart",
-    "MessagePartType",
     "MessageRef",
     "Participant",
     "QuotePart",
-    "StoredMessage",
     "TextPart",
     "VideoPart",
 ]

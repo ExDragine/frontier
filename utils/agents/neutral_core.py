@@ -60,10 +60,6 @@ def _part_text(part: MessagePart) -> str:
     return ""
 
 
-def _parts_text(parts: Sequence[MessagePart]) -> str:
-    return "".join(_part_text(part) for part in parts)
-
-
 def _prompt_part_text(part: MessagePart) -> str:
     """Return only textual input for legacy intent/capture hooks.
 
@@ -203,16 +199,10 @@ def _current_media(request: AgentRequest) -> tuple[
     return tuple(images), tuple(audio), tuple(videos)
 
 
-def _response_text(value: object) -> str:
-    """Compatibility wrapper that excludes Responses reasoning blocks."""
-
-    return _message_text(value)
-
-
 def _mapping_result(result: Mapping[str, Any]) -> AgentRuntimeResult:
     response = result.get("response")
     messages = response.get("messages", []) if isinstance(response, Mapping) else []
-    text = _response_text(messages[-1]) if messages else str(result.get("text", ""))
+    text = _message_text(messages[-1]) if messages else str(result.get("text", ""))
     raw_artifacts = result.get("artifacts", result.get("uni_messages", ()))
     artifacts = list(_runtime_artifacts(raw_artifacts))
     status = str(result.get("status", "failed" if result.get("error") else "success"))

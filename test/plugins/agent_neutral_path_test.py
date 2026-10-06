@@ -46,34 +46,35 @@ def agent(monkeypatch):
 
 def test_neutral_path_accepts_all_normalized_message_shapes(agent, monkeypatch):
     context = _context(agent)
-    assert agent._qq_neutral_eligible(context, None) is True
-    assert agent._qq_neutral_eligible(_context(agent, group_id=None), None) is True
-    assert agent._qq_neutral_eligible(_context(agent, images=[b"image"]), None) is True
-    assert agent._qq_neutral_eligible(_context(agent, audio=[b"audio"]), None) is True
-    assert agent._qq_neutral_eligible(_context(agent, videos=[b"video"]), None) is True
+    assert agent._qq_neutral_eligible(context) is True
+    assert agent._qq_neutral_eligible(_context(agent, group_id=None)) is True
+    assert agent._qq_neutral_eligible(_context(agent, images=[b"image"])) is True
+    assert agent._qq_neutral_eligible(_context(agent, audio=[b"audio"])) is True
+    assert agent._qq_neutral_eligible(_context(agent, videos=[b"video"])) is True
     assert agent._qq_neutral_eligible(
-        _context(agent, images=[b"image"], attachments=[{"kind": "image", "path": "/memory/image.png"}]), None
+        _context(agent, images=[b"image"], attachments=[{"kind": "image", "path": "/memory/image.png"}])
     ) is True
     assert agent._qq_neutral_eligible(
-        _context(agent, current_attachments=[{"kind": "file", "path": "/memory/file.txt"}]), None
+        _context(agent, current_attachments=[{"kind": "file", "path": "/memory/file.txt"}])
     ) is True
     assert agent._qq_neutral_eligible(
-        _context(agent, recent_attachments=[{"kind": "file", "path": "/memory/recent.txt"}]), None
+        _context(agent, recent_attachments=[{"kind": "file", "path": "/memory/recent.txt"}])
     ) is True
     assert agent._qq_neutral_eligible(
-        _context(agent, recent_attachments=[{"path": "/memory/unknown.bin"}]), None
+        _context(agent, recent_attachments=[{"path": "/memory/unknown.bin"}])
     ) is True
-    assert agent._qq_neutral_eligible(_context(agent, recent_images=[b"recent-image"]), None) is True
-    assert agent._qq_neutral_eligible(_context(agent, reply_to={"message_id": "1"}), None) is True
-    assert agent._qq_neutral_eligible(_context(agent, reply_seq=17), None) is True
+    assert agent._qq_neutral_eligible(_context(agent, recent_images=[b"recent-image"])) is True
+    assert agent._qq_neutral_eligible(_context(agent, reply_to={"message_id": "1"})) is True
+    assert agent._qq_neutral_eligible(_context(agent, reply_seq=17)) is True
     assert agent._qq_neutral_eligible(
-        _context(agent, reply_seq=17, reply_to={"message_id": "17", "content": "quoted"}), None
+        _context(agent, reply_seq=17, reply_to={"message_id": "17", "content": "quoted"})
     ) is True
-    assert agent._qq_neutral_eligible(_context(agent, reply_to={"message_id": "1"}, attachments=[{"path": "x"}]), None) is True
-    assert agent._qq_neutral_eligible(context, object()) is True
+    assert agent._qq_neutral_eligible(
+        _context(agent, reply_to={"message_id": "1"}, attachments=[{"path": "x"}])
+    ) is True
 
     monkeypatch.setattr(agent.EnvConfig, "SESSIONS", SimpleNamespace(enabled=True))
-    assert agent._qq_neutral_eligible(_context(agent, message_id=11), None) is True
+    assert agent._qq_neutral_eligible(_context(agent, message_id=11)) is True
 
 
 @pytest.mark.asyncio
@@ -96,8 +97,8 @@ async def test_agent_failure_sends_one_notice_without_legacy_retry(agent, monkey
 
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_neutral(_context(agent), [])
-    assert (handled, result) == (True, True)
+    result = await agent._run_qq_neutral(_context(agent), [])
+    assert result is True
     assert len(sent) == 1
     assert "boom" not in sent[0][0][2]["messages"][0].content
 
@@ -123,8 +124,8 @@ async def test_private_neutral_uses_neutral_delivery_scope(agent, monkeypatch):
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_neutral(_context(agent, group_id=None), [])
-    assert (handled, result) == (True, True)
+    result = await agent._run_qq_neutral(_context(agent, group_id=None), [])
+    assert result is True
     assert len(sent) == 1
     assert sent[0][0:2] == (None, None)
 
@@ -162,9 +163,9 @@ async def test_neutral_path_wires_the_qq_progress_reporter(agent, monkeypatch):
     monkeypatch.setattr(agent, "messages_db", Database())
     monkeypatch.setattr(UniMessage, "text", classmethod(lambda cls, text: DummyMessage("text", text)))
 
-    handled, _ = await agent._run_qq_neutral(_context(agent, group_id=None), [])
+    result = await agent._run_qq_neutral(_context(agent, group_id=None), [])
 
-    assert handled is True
+    assert result is True
     reporter = seen[0]
     assert reporter is not None
     # The private path reports tool activity directly, so the wiring is
@@ -199,9 +200,9 @@ async def test_session_neutral_forwards_lease_and_settles_after_delivery(agent, 
     monkeypatch.setattr(agent, "messages_db", Database())
     monkeypatch.setattr(agent, "_settle_session", settle)
 
-    handled, result = await agent._run_qq_neutral(_context(agent, message_id=9), [], session_turn=session)
+    result = await agent._run_qq_neutral(_context(agent, message_id=9), [], session_turn=session)
 
-    assert (handled, result) == (True, True)
+    assert result is True
     assert seen == [session]
     assert settled[0][0] is session
     assert settled[0][1]["delivered"] is True
@@ -229,10 +230,10 @@ async def test_media_neutral_passes_current_downloads_through_neutral_message(ag
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_neutral(
+    result = await agent._run_qq_neutral(
         _context(agent, images=[b"image"], audio=[b"audio"], videos=[b"video"]), []
     )
-    assert (handled, result) == (True, True)
+    assert result is True
     assert [type(part).__name__ for part in seen[0]] == [
         "TextPart",
         "ImagePart",
@@ -261,12 +262,12 @@ async def test_file_neutral_passes_current_staged_ref_through_neutral_message(ag
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_neutral(
+    result = await agent._run_qq_neutral(
         _context(agent, current_attachments=[{"kind": "file", "path": "/memory/report.txt", "file_name": "report.txt"}]),
         [],
     )
 
-    assert (handled, result) == (True, True)
+    assert result is True
     assert [type(part).__name__ for part in seen[0]] == ["TextPart", "FilePart"]
     assert seen[0][1].url == "/memory/report.txt"
 
@@ -291,7 +292,7 @@ async def test_recent_media_neutral_preserves_source_marker_and_parts(agent, mon
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_neutral(
+    result = await agent._run_qq_neutral(
         _context(
             agent,
             recent_images=[b"recent-image"],
@@ -300,7 +301,7 @@ async def test_recent_media_neutral_preserves_source_marker_and_parts(agent, mon
         [],
     )
 
-    assert (handled, result) == (True, True)
+    assert result is True
     assert [type(part).__name__ for part in seen[0]] == ["TextPart", "TextPart", "ImagePart", "FilePart"]
     assert seen[0][1].text == "[以下媒体来自用户刚才发送的历史消息]"
 
@@ -325,7 +326,7 @@ async def test_quote_neutral_maps_resolved_snapshot_and_media(agent, monkeypatch
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_neutral(
+    result = await agent._run_qq_neutral(
         _context(
             agent,
             text="",
@@ -336,7 +337,7 @@ async def test_quote_neutral_maps_resolved_snapshot_and_media(agent, monkeypatch
         [],
     )
 
-    assert (handled, result) == (True, True)
+    assert result is True
     assert [type(part).__name__ for part in seen[0].parts] == ["TextPart", "QuotePart"]
     quote = seen[0].parts[1]
     assert [type(part).__name__ for part in quote.parts] == ["TextPart", "ImagePart"]
@@ -370,8 +371,8 @@ async def test_history_failure_is_handled_without_legacy_retry(agent, monkeypatc
 
     monkeypatch.setattr(agent, "send_messages", send_notice)
 
-    handled, result = await agent._run_qq_neutral(_context(agent), [])
-    assert (handled, result) == (True, True)
+    result = await agent._run_qq_neutral(_context(agent), [])
+    assert result is True
     assert core_calls == []
 
 
@@ -398,8 +399,8 @@ async def test_delivery_failure_is_handled_without_retry(agent, monkeypatch):
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_neutral(_context(agent), [])
-    assert (handled, result) == (True, False)
+    result = await agent._run_qq_neutral(_context(agent), [])
+    assert result is False
     assert len(sent) == 1
 
 
@@ -423,8 +424,8 @@ async def test_empty_success_response_is_not_persisted(agent, monkeypatch):
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_neutral(_context(agent), [])
-    assert (handled, result) == (True, False)
+    result = await agent._run_qq_neutral(_context(agent), [])
+    assert result is False
     assert sent == []
 
 
@@ -449,7 +450,7 @@ async def test_artifact_response_is_handled_without_legacy_retry(agent, monkeypa
 
     monkeypatch.setattr(agent, "FrontierAgentCore", lambda *_args, **_kwargs: Core())
     monkeypatch.setattr(agent, "send_messages", send_messages)
-    monkeypatch.setattr(agent, "send_artifacts", send_artifacts)
+    monkeypatch.setattr("utils.message.send_artifacts", send_artifacts)
 
     class Database:
         async def insert(self, **kwargs):
@@ -457,28 +458,9 @@ async def test_artifact_response_is_handled_without_legacy_retry(agent, monkeypa
 
     monkeypatch.setattr(agent, "messages_db", Database())
 
-    handled, result = await agent._run_qq_neutral(_context(agent), [])
-    assert (handled, result) == (True, True)
+    result = await agent._run_qq_neutral(_context(agent), [])
+    assert result is True
     assert len(sent) == 2
     assert sent[0][0] == "artifacts"
     assert sent[1][0][2]["messages"][0].content == "generated image"
 
-
-@pytest.mark.asyncio
-async def test_neutral_artifact_sender_maps_file_artifacts(agent, monkeypatch):
-    captured = []
-
-    async def send_artifacts(artifacts):
-        captured.extend(artifacts)
-        return DeliveryResult(attempted=1, sent=1)
-
-    monkeypatch.setattr(agent, "send_artifacts", send_artifacts)
-    result = await agent._send_qq_neutral_artifacts(
-        SimpleNamespace(platform="qq"),
-        (AgentArtifact(kind="file", data=b"file", mime_type="text/plain", name="notes.txt"),),
-    )
-
-    assert result.successful
-    assert len(captured) == 1
-    assert captured[0][0].type == "file"
-    assert captured[0][0].name == "notes.txt"

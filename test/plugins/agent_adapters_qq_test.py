@@ -379,7 +379,7 @@ def test_qq_tool_provider_requires_platform_capability_and_filters_modules():
     unrelated = Tool("weather")
 
     class Registry:
-        main_tools = (qq_tool, group_tool, unrelated)
+        direct_tools = (qq_tool, group_tool, unrelated)
         tool_metadata = {
             "send_message": {"module": "milky_message"},
             "ban_member": {"module": "milky_group"},

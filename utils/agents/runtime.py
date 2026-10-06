@@ -2,7 +2,6 @@
 
 import asyncio
 import hashlib
-import inspect
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -38,28 +37,24 @@ _agent_locks: dict[tuple[asyncio.AbstractEventLoop, str], _LockEntry] = {}
 
 async def run_serialized(
     thread_id: str,
-    operation: Awaitable | Callable[[], Awaitable],
+    operation: Callable[[], Awaitable],
     *,
     timeout: float | None = None,
 ):
     """Serialize a scope, counting queue time in the optional deadline.
 
-    A factory avoids creating work that might be cancelled while still queued.
+    ``operation`` must be a factory: it is called only after the lock is held,
+    so cancelled queue entries never create work that has to be disposed.
     Idle entries are released, and locks are never reused across event loops.
     """
     key = (asyncio.get_running_loop(), str(thread_id))
     entry = _agent_locks.setdefault(key, _LockEntry(asyncio.Lock()))
     entry.users += 1
-    started = False
     try:
         async with asyncio.timeout(timeout):
             async with entry.lock:
-                started = True
-                awaitable = operation() if callable(operation) else operation
-                return await cast(Awaitable[Any], awaitable)
+                return await cast(Awaitable[Any], operation())
     finally:
-        if not started and inspect.iscoroutine(operation):
-            operation.close()
         entry.users -= 1
         if not entry.users:
             _agent_locks.pop(key, None)

@@ -14,7 +14,6 @@ from .models import (
     GateDecision,
     HistoryQuery,
     InboundMessage,
-    StoredMessage,
 )
 
 if TYPE_CHECKING:
@@ -57,7 +56,7 @@ class HistoryStore(Protocol):
 
     async def load(self, query: HistoryQuery) -> list[ChatMessage]: ...
 
-    async def append(self, message: StoredMessage) -> None: ...
+    async def append(self, message: ChatMessage) -> None: ...
 
 
 @runtime_checkable

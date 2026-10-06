@@ -15,6 +15,7 @@ from io import BytesIO
 sys.path.insert(0, sys.argv[1])
 from PIL import Image
 from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import tool
@@ -43,7 +44,22 @@ async def main():
         AIMessage(content="", tool_calls=[{"name": "read_test_image", "args": {}, "id": "read-1"}]),
         AIMessage(content="done"),
     ])
-    graph = create_agent(model, tools=[read_test_image], middleware=[inputs.ModelMediaMiddleware("test")])
+
+    class CapabilityFilter(AgentMiddleware):
+        """Apply the project's boundary normalization inside a real graph."""
+
+        def _request(self, request):
+            return request.override(
+                messages=inputs.filter_messages_for_model_capabilities(request.messages, "test")
+            )
+
+        def wrap_model_call(self, request, handler):
+            return handler(self._request(request))
+
+        async def awrap_model_call(self, request, handler):
+            return await handler(self._request(request))
+
+    graph = create_agent(model, tools=[read_test_image], middleware=[CapabilityFilter()])
     result = await graph.ainvoke({"messages": [{"role": "user", "content": "read the image"}]})
     assert result["messages"][-1].content == "done"
     assert len(seen) == 2

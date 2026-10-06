@@ -32,7 +32,6 @@ from .agent_protocol import (
     InboundMessage,
     PlatformToolProvider,
     ReplyPolicy,
-    StoredMessage,
     normalize_workspace_key,
 )
 
@@ -67,12 +66,6 @@ class TurnOutcome:
     history_appended: bool = False
     error: str | None = None
 
-    @property
-    def delivered(self) -> bool:
-        """Whether the platform acknowledged delivery for this turn."""
-
-        return self.receipt is not None and self.receipt.status == DeliveryStatus.DELIVERED
-
 
 def workspace_key_for(conversation: ConversationRef) -> str:
     """Build a collision-resistant default workspace key.
@@ -106,7 +99,7 @@ def _assistant_message(
     message: InboundMessage,
     response: AgentResponse,
     receipt: DeliveryReceipt,
-) -> StoredMessage:
+) -> ChatMessage:
     """Convert a delivered neutral response to the history representation."""
 
     # A response may produce multiple platform messages (for example an

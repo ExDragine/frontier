@@ -3,7 +3,6 @@
 import logging
 from typing import Literal
 
-from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import BaseMessage
 
 from utils.llm_factory import model_supports
@@ -152,27 +151,3 @@ def filter_messages_for_model_capabilities(
             filtered_messages.append(message)
     return filtered_messages
 
-
-class ModelMediaMiddleware(AgentMiddleware):
-    """Compatibility middleware for standalone graphs.
-
-    The main Frontier graph no longer installs this class: DeepAgents'
-    ``UnsupportedContentMiddleware`` owns capability filtering there, while
-    the initial message boundary keeps the project-specific normalization and
-    notices above.
-    """
-
-    def __init__(self, model: str, *, role=None):
-        self.model = model
-        self.role = role
-
-    def _request(self, request):
-        return request.override(messages=filter_messages_for_model_capabilities(
-            request.messages, self.model, role=self.role,
-        ))
-
-    def wrap_model_call(self, request, handler):
-        return handler(self._request(request))
-
-    async def awrap_model_call(self, request, handler):
-        return await handler(self._request(request))

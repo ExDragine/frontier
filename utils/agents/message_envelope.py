@@ -57,10 +57,15 @@ def serialize_agent_payload(payload: dict[str, object]) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
+def _is_image_marker(line: str) -> bool:
+    """Whether one stripped line is a standalone structured-image marker."""
+    return line == "[图片]" or (line.startswith("[图片:") and line.endswith("]"))
+
+
 def count_image_placeholders(content: str) -> int:
     """Count standalone markers emitted for structured image segments."""
     return sum(
-        marker == "[图片]" or (marker.startswith("[图片:") and marker.endswith("]"))
+        _is_image_marker(marker)
         for line in content.splitlines()
         if (marker := line.strip())
     )
@@ -86,9 +91,7 @@ def content_for_persisted_images(content: str, persisted_image_count: int) -> st
 
     lines: list[str] = []
     for line in content.splitlines():
-        marker = line.strip()
-        is_image_marker = marker == "[图片]" or (marker.startswith("[图片:") and marker.endswith("]"))
-        if is_image_marker:
+        if _is_image_marker(line.strip()):
             continue
         lines.append(line)
     return "\n".join(lines).strip()

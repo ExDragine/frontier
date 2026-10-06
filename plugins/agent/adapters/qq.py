@@ -31,7 +31,6 @@ from utils.agent_protocol import (
     MessageRef,
     Participant,
     QuotePart,
-    StoredMessage,
     TextPart,
     VideoPart,
 )
@@ -386,7 +385,7 @@ class QqHistoryStore:
         database: object | None = None,
         *,
         loader: Callable[[HistoryQuery], Awaitable[Sequence[object]] | Sequence[object]] | None = None,
-        appender: Callable[[StoredMessage], Awaitable[object] | object] | None = None,
+        appender: Callable[[ChatMessage], Awaitable[object] | object] | None = None,
     ) -> None:
         if database is None and loader is None and appender is None:
             raise ValueError("QqHistoryStore requires database or injected callbacks")
@@ -420,15 +419,9 @@ class QqHistoryStore:
                 for message in messages
                 if message.created_at is None or message.created_at < query.before
             ]
-        if query.after is not None:
-            messages = [
-                message
-                for message in messages
-                if message.created_at is None or message.created_at >= query.after
-            ]
         return messages[: query.limit]
 
-    async def append(self, message: StoredMessage) -> None:
+    async def append(self, message: ChatMessage) -> None:
         if self._appender is not None:
             result = self._appender(message)
             if inspect.isawaitable(result):
@@ -491,6 +484,13 @@ def _message_refs(target: ConversationRef, result: object) -> tuple[MessageRef, 
 
 
 def _legacy_receipt(target: ConversationRef, result: object) -> DeliveryReceipt:
+    """Map a sender result to a neutral receipt.
+
+    ``QqDelivery`` accepts injected senders, so the result contract is wider
+    than the production one: built-in senders return :class:`DeliveryResult`,
+    while a test double or an integration may return a receipt, a bool or a
+    mapping with ``successful``/``errors``/``message_ids`` keys.
+    """
     if isinstance(result, DeliveryReceipt):
         return result
     if isinstance(result, bool):
@@ -688,7 +688,7 @@ class QqToolProvider:
         if not has_qq_capability:
             return ()
         registry = self._registry or self._default_registry()
-        raw_tools = getattr(registry, "main_tools", None)
+        raw_tools = getattr(registry, "direct_tools", None)
         if raw_tools is None:
             groups = getattr(registry, "subagent_tools", {})
             raw_tools = groups.get("main", ()) if isinstance(groups, Mapping) else ()

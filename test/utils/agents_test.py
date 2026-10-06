@@ -272,7 +272,7 @@ async def test_extract_artifacts_supports_all_native_media_kinds_without_platfor
 async def test_extract_uni_messages_includes_native_media_from_final_ai_message(monkeypatch):
     monkeypatch.setattr(
         cognitive_mod,
-        "_native_media_message",
+        "_native_media_artifact",
         lambda block: f"native:{block['type']}" if block.get("type") in {"image", "audio"} else None,
     )
     response = {
@@ -1308,7 +1308,6 @@ async def test_chat_agent_injects_native_web_search_when_supported(monkeypatch, 
 
     assert {"type": "web_search"} not in captured["tools"]
     assert any(isinstance(item, cognitive_mod.NativeWebSearchMiddleware) for item in captured["middleware"])
-    assert not any(type(item).__name__ == "ModelMediaMiddleware" for item in captured["middleware"])
     filesystem = next(item for item in captured["middleware"] if type(item).__name__ == "FilesystemMiddleware")
     assert filesystem.offload_binary_content is True
     assert "web_search" in captured["system_prompt"]
@@ -1320,7 +1319,6 @@ async def test_chat_agent_skips_web_search_when_route_unsupported(monkeypatch, t
 
     assert {"type": "web_search"} not in captured["tools"]
     assert not any(isinstance(item, cognitive_mod.NativeWebSearchMiddleware) for item in captured["middleware"])
-    assert not any(type(item).__name__ == "ModelMediaMiddleware" for item in captured["middleware"])
     assert cognitive_mod.WEB_SEARCH_PROMPT_HINT not in captured["system_prompt"]
 
 

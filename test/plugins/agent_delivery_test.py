@@ -134,7 +134,7 @@ async def test_artifact_only_failure_is_not_retried_or_persisted(monkeypatch):
 
     monkeypatch.setattr(agent, "f_cognitive", Cognitive())
     monkeypatch.setattr(agent, "messages_db", Database())
-    monkeypatch.setattr(agent, "send_artifacts", send_artifacts)
+    monkeypatch.setattr("utils.message.send_artifacts", send_artifacts)
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
@@ -300,7 +300,8 @@ async def test_processing_deadline_cancels_work_and_releases_delivery_lock(monke
     assert cancelled.is_set()
     assert notices == ["本轮处理超时，请稍后重试。"]
     assert (
-        await agent.run_serialized("delivery:group-4", asyncio.sleep(0, result="released"), timeout=0.1) == "released"
+        await agent.run_serialized("delivery:group-4", lambda: asyncio.sleep(0, result="released"), timeout=0.1)
+        == "released"
     )
 
 

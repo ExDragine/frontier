@@ -201,6 +201,8 @@ class SessionConfig(_FrozenConfig):
 
 
 class NotificationConfig(_FrozenConfig):
+    # 保留（当前无读取者）：历史 env.toml 仍写入该键，而配置模型是 extra=forbid，
+    # 删除字段会让既有配置文件在启动时校验失败。
     test_group_id: tuple[int | str, ...] = ()
     announce_group_id: tuple[int | str, ...] = ()
     apod_group_id: tuple[int | str, ...] = ()

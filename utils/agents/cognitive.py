@@ -145,12 +145,6 @@ def _native_media_artifact(block: object) -> AgentArtifact | None:
     return _artifact_from_mapping(block)
 
 
-def _native_media_message(block: object) -> AgentArtifact | None:
-    """Compatibility name for callers that used the old native-media helper."""
-
-    return _native_media_artifact(block)
-
-
 def _segment_value(segment: object, *names: str) -> object:
     if isinstance(segment, Mapping):
         for name in names:
@@ -504,7 +498,7 @@ class FrontierCognitive:
                 artifacts.extend(
                     artifact
                     for block in blocks
-                    if (artifact := _native_media_message(block)) is not None
+                    if (artifact := _native_media_artifact(block)) is not None
                 )
 
         logger.info("📨 总共提取到 %s 个中性媒体工件", len(artifacts))

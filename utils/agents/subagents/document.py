@@ -10,8 +10,6 @@ from utils.llm_factory import create_llm
 
 from ..tool_errors import tool_error_middleware
 
-DOCUMENT_SUBAGENT_NAME = "document-agent"
-
 
 def build_document_subagent() -> SubAgent:
     """Build a read-only agent that inherits the active workspace backend."""
@@ -29,7 +27,7 @@ def build_document_subagent() -> SubAgent:
         ModelCallLimitMiddleware(run_limit=6, exit_behavior="end"),
     ]
     return SubAgent(
-        name=DOCUMENT_SUBAGENT_NAME,
+        name="document-agent",
         description=(
             "定位、分段读取并总结当前会话 workspace 或 memory 中的文档和附件。"
             "用户要求阅读、比较、提取或总结本地文件时委托本代理；网络资料和媒体生成不要委托。"

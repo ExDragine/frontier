@@ -802,7 +802,6 @@ async def test_message_gateway_test_group_reply_check_does_not_mutate_messages(m
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module.EnvConfig, "TEST_GROUP_ID", [5])
     monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
     patch_reply_check_prompt(monkeypatch, "{name}")
     messages = [{"role": "user", "content": "history"}]
@@ -825,7 +824,6 @@ async def test_message_gateway_test_group_reply_check_strips_image_data(monkeypa
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module.EnvConfig, "TEST_GROUP_ID", [5])
     monkeypatch.setattr(gateway_module.EnvConfig, "BOT_NAME", "Frontier")
     monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
     patch_reply_check_prompt(monkeypatch, "bot={name}")
@@ -861,7 +859,6 @@ async def test_message_gateway_test_group_skips_casual_messages(monkeypatch):
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module.EnvConfig, "TEST_GROUP_ID", [5])
     monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
     patch_reply_check_prompt(monkeypatch, "{name}")
 
@@ -927,7 +924,6 @@ async def test_message_gateway_test_group_reply_check_has_group_cooldown(monkeyp
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module.EnvConfig, "TEST_GROUP_ID", [5])
     monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
     monkeypatch.setattr(gateway_module.time, "monotonic", lambda: 1000.0)
     patch_reply_check_prompt(monkeypatch, "{name}")
@@ -973,7 +969,6 @@ async def test_message_gateway_test_group_active_group_requires_strong_signal(mo
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module.EnvConfig, "TEST_GROUP_ID", [5])
     monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
     monkeypatch.setattr(
         gateway_module,
@@ -1002,7 +997,6 @@ async def test_message_gateway_test_group_does_not_use_assistant_reply_cooldown(
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module.EnvConfig, "TEST_GROUP_ID", [5])
     monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
     monkeypatch.setattr(gateway_module.time, "time", lambda: 2000.0)
     patch_reply_check_prompt(monkeypatch, "{name}")

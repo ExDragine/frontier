@@ -42,7 +42,6 @@ from utils.agents.sessions import HistoryBoundary, SessionKey, TurnLease, sessio
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
 from utils.database import MessageDatabase
-from utils.delivery import DeliveryResult
 from utils.media import resolve_media
 from utils.message import (
     download_media,
@@ -50,10 +49,10 @@ from utils.message import (
     message_extract,
     outgoing_message_content,  # noqa: F401  # re-exported: tests and callers read it from this module
     sanitize_outgoing_text,
-    send_artifacts,
     send_messages,
 )
 from utils.signal_llm import signal_structured
+from utils.timeutil import add_daily_job
 
 from .adapters import (
     QqDelivery,
@@ -336,13 +335,12 @@ async def _settle_session(lease: TurnLease | None, **kwargs) -> None:
         logger.warning("会话状态结算失败: {}", type(exc).__name__)
 
 
-def _qq_neutral_eligible(context: AgentRequestContext, _session_turn: TurnLease | None = None) -> bool:
+def _qq_neutral_eligible(context: AgentRequestContext) -> bool:
     """Return whether the normalized QQ event contains an Agent turn.
 
-    Media, files, quotes, and session leases are all represented by the
-    neutral message contract.  The old canary-only restrictions are gone; an
-    unresolved quote is still represented by its opaque message reference so
-    the Agent can decide how to handle it.
+    Media, files and quotes are carried by the neutral message contract, so a
+    turn exists as soon as the event has text, a resolved quote or a direct
+    mention.
     """
 
     return bool(context.text.strip() or context.reply_seq is not None or context.direct_mention)
@@ -380,38 +378,6 @@ class _QqNeutralDelivery(QqDelivery):
         if not response.text.strip() and not response.artifacts:
             return DeliveryReceipt(DeliveryStatus.FAILED, errors=("empty_response",))
         return await super().send(target, response)
-
-
-async def _send_qq_neutral_artifacts(_target: ConversationRef, artifacts) -> DeliveryResult:
-    """Convert neutral media to QQ messages at the platform boundary."""
-
-    messages = []
-    for artifact in artifacts:
-        source = {}
-        if getattr(artifact, "data", None):
-            source["raw"] = artifact.data
-        elif getattr(artifact, "url", None):
-            source["url"] = artifact.url
-        elif getattr(artifact, "path", None):
-            source["path"] = artifact.path
-        else:
-            return DeliveryResult(attempted=1, errors=("neutral_artifact",))
-        media_kwargs = {"mimetype": artifact.mime_type} if getattr(artifact, "mime_type", None) else {}
-        name = getattr(artifact, "name", None)
-        if artifact.kind == "image":
-            messages.append(UniMessage.image(**source, **media_kwargs))
-        elif artifact.kind == "audio":
-            messages.append(UniMessage.audio(**source, **media_kwargs))
-        elif artifact.kind == "video":
-            messages.append(UniMessage.video(**source, **media_kwargs))
-        elif artifact.kind == "file":
-            kwargs = {**source, **media_kwargs}
-            if name:
-                kwargs["name"] = name
-            messages.append(UniMessage.file(**kwargs))
-        else:
-            return DeliveryResult(attempted=1, errors=("neutral_artifact",))
-    return await send_artifacts(messages)
 
 
 async def _qq_reply_id_for_context(context: AgentRequestContext) -> int | None:
@@ -480,12 +446,11 @@ async def _run_qq_neutral(
     context: AgentRequestContext,
     history_messages: list[dict[str, Any]],
     session_turn: TurnLease | None = None,
-) -> tuple[bool, bool]:
+) -> bool:
     """Run one QQ turn through the platform-neutral application boundary.
 
-    The tuple is ``(handled, result)`` for compatibility with the staged
-    caller.  The final path never retries the legacy Agent after the neutral
-    boundary has been entered.
+    Returns whether the turn is considered handled.  Every path goes through
+    the neutral boundary, so the legacy Agent is never retried afterwards.
     """
 
     adapter = QqMessageAdapter(getattr(context.event, "self_id", ""))
@@ -533,7 +498,7 @@ async def _run_qq_neutral(
         message,
         policy=QqReplyPolicy(allow_gateway_result),
         history=QqHistoryStore(database=messages_db, loader=load_history),
-        delivery=_QqNeutralDelivery(text_sender=send_text, artifact_sender=_send_qq_neutral_artifacts),
+        delivery=_QqNeutralDelivery(text_sender=send_text),
         tools=QqToolProvider(),
         workspace_key=_agent_workspace_key(context.user_id, context.group_id),
         capabilities=frozenset({"platform:qq", "qq:tools"}),
@@ -544,34 +509,33 @@ async def _run_qq_neutral(
     )
     if outcome.status in {TurnStatus.DELIVERED, TurnStatus.HISTORY_APPEND_FAILED}:
         await _settle_qq_neutral_session(session_turn, outcome)
-        return True, outcome.receipt is not None and outcome.receipt.status == DeliveryStatus.DELIVERED
+        return outcome.receipt is not None and outcome.receipt.status == DeliveryStatus.DELIVERED
     if outcome.status == TurnStatus.SILENT:
         await _settle_qq_neutral_session(session_turn, outcome)
-        return True, False
+        return False
     if outcome.status == TurnStatus.GATED:
         await _settle_session(session_turn, silent=True)
-        return True, outcome.status == TurnStatus.DELIVERED
+        return outcome.status == TurnStatus.DELIVERED
     if outcome.status in {TurnStatus.HISTORY_FAILED, TurnStatus.GATE_FAILED}:
         # History and gate are already prepared by the QQ entry point.  If a
         # port still fails here, report it once instead of retrying the legacy
         # Agent and risking duplicate side effects.
         logger.warning("QQ 中立路径前置阶段失败: {}", outcome.error or outcome.status)
-        return True, await _send_qq_neutral_notice(context, "本轮上下文准备失败，请稍后重试。")
+        return await _send_qq_neutral_notice(context, "本轮上下文准备失败，请稍后重试。")
     if outcome.status == TurnStatus.AGENT_FAILED:
-        # The legacy runtime normally exposes a fixed user-facing error
-        # message.  Deliver it once after the neutral call fails; rerunning the
-        # old graph could duplicate a tool side effect.
+        # The runtime normally exposes a fixed user-facing error message.
+        # Deliver it once after the neutral call fails.
         notice = (
             outcome.response.text.strip()
             if outcome.response is not None and outcome.response.text.strip()
             else "本轮处理失败，请稍后重试。"
         )
-        return True, await _send_qq_neutral_notice(context, notice)
+        return await _send_qq_neutral_notice(context, notice)
     # A transport failure is already the failed user-facing operation.  Do
     # not issue a second message through the same failing channel; the queue
     # caller records the failure and the next inbound turn can retry normally.
     logger.warning("QQ 中立路径投递失败: {}", outcome.error or outcome.status)
-    return True, False
+    return False
 
 
 async def _process_agent_request(
@@ -619,26 +583,20 @@ async def _execute_agent_request(
 ) -> bool:
     """Execute every QQ turn through the neutral application boundary.
 
-    The legacy implementation remains available as an explicit compatibility
-    helper for isolated integrations, but the production QQ handler no longer
-    selects it based on a canary flag or a media/session subset.
+    The neutral runner owns the request as soon as it is called: no path
+    reruns a graph after a model or tool call, so one message can never be
+    executed twice.
     """
 
     if not _qq_neutral_eligible(context):
         logger.info("忽略没有文本、引用或直接提及的 QQ 消息: event_id={}", context.event_id)
         await _settle_session(session_turn, silent=True)
         return False
-    handled, result = await _run_qq_neutral(
+    return await _run_qq_neutral(
         context,
         list(history_messages or []),
         session_turn=session_turn,
     )
-    if handled:
-        return result
-    # The neutral runner owns the request once called.  This branch is kept
-    # defensive for injected test doubles and must never rerun the legacy
-    # graph after a model/tool call.
-    return False
 
 
 async def _process_queued_agent_request(context: AgentRequestContext, history_messages: list[dict[str, Any]]) -> None:
@@ -655,7 +613,7 @@ async def _process_queued_agent_request(context: AgentRequestContext, history_me
         delivery_key = f"delivery:{_agent_workspace_key(context.user_id, context.group_id)}"
         await run_serialized(
             delivery_key,
-            process(),
+            process,
             timeout=EnvConfig.AGENT_JOB_TIMEOUT_SECONDS,
         )
     except TimeoutError:
@@ -715,11 +673,9 @@ async def _run_agent_turn(
         except Exception as exc:
             logger.warning("发送群消息处理反应失败: {}: {}", type(exc).__name__, exc)
 
-    from utils.ens_gate import _ens_caller_allowed, _ens_prefix
+    from utils.ens_gate import _ens_prefix
 
     cleaned = original_text.strip().lstrip("/")
-    is_ens_msg = cleaned[:3].lower() == "vep" or cleaned[:2].lower() == "ve"
-    _ens_caller_allowed.set(is_ens_msg)
     if cleaned[:3].lower() == "vep":
         _ens_prefix.set("vep")
     elif cleaned[:2].lower() == "ve":
@@ -771,18 +727,7 @@ async def on_startup():
         except Exception as exc:
             logger.warning("消息附件维护失败: {}: {}", type(exc).__name__, exc)
 
-    scheduler.add_job(
-        run_daily_cache_cleanup,
-        "cron",
-        id=CACHE_CLEANUP_JOB_ID,
-        hour=4,
-        minute=0,
-        timezone="Asia/Shanghai",
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
-        misfire_grace_time=3600,
-    )
+    add_daily_job(scheduler, CACHE_CLEANUP_JOB_ID, run_daily_cache_cleanup)
 
 
 async def run_daily_cache_cleanup() -> None:
@@ -961,7 +906,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     persisted_media.extend(resolve_media(item, "audio") for item in audio)
     persisted_media.extend(resolve_media(item, "video") for item in videos)
     persisted_attachments = []
-    if persisted_media and hasattr(messages_db, "insert_media"):
+    if persisted_media:
         try:
             persisted_attachments = await messages_db.insert_media(
                 msg_time=msg_time,
@@ -973,17 +918,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             )
         except Exception as e:
             logger.warning(f"⚠️ 媒体保存失败（不影响主流程）: {e}")
-    elif images and EnvConfig.IMAGE_ENABLED and hasattr(messages_db, "insert_images"):
-        try:
-            await messages_db.insert_images(
-                msg_time=msg_time,
-                **message_identity,
-                user_id=int(user_id),
-                group_id=group_id,
-                images=images,
-            )
-        except Exception as e:
-            logger.warning(f"⚠️ 图片保存失败（不影响主流程）: {e}")
 
     persisted_image_count = sum(
         1 for attachment in persisted_attachments if getattr(attachment, "kind", None) == "image"

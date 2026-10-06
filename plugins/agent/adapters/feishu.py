@@ -30,7 +30,6 @@ from utils.agent_protocol import (
     InboundMessage,
     MessageRef,
     Participant,
-    StoredMessage,
     TextPart,
 )
 
@@ -367,7 +366,7 @@ class FeishuMessageAdapter:
 
 
 HistoryLoader = Callable[[HistoryQuery], Awaitable[Sequence[object]] | Sequence[object]]
-HistoryAppender = Callable[[StoredMessage], Awaitable[object] | object]
+HistoryAppender = Callable[[ChatMessage], Awaitable[object] | object]
 
 
 class FeishuHistoryStore:
@@ -389,7 +388,7 @@ class FeishuHistoryStore:
         self.adapter = adapter or FeishuMessageAdapter("history")
         self._loader = loader
         self._appender = appender
-        self._records: defaultdict[ConversationRef, list[StoredMessage]] = defaultdict(list)
+        self._records: defaultdict[ConversationRef, list[ChatMessage]] = defaultdict(list)
         for conversation, values in (records or {}).items():
             self._records[conversation].extend(
                 self.adapter.chat_message(value, conversation=conversation) for value in values
@@ -409,14 +408,12 @@ class FeishuHistoryStore:
             messages = list(self._records.get(query.conversation, ()))
         if query.before is not None:
             messages = [message for message in messages if message.created_at is None or message.created_at < query.before]
-        if query.after is not None:
-            messages = [message for message in messages if message.created_at is None or message.created_at >= query.after]
         # A callback owns its ordering and may already apply the database
         # limit.  The local smoke store keeps chronological rows, so return
         # the newest bounded suffix there.
         return messages[: query.limit] if loaded_from_callback else messages[-query.limit :]
 
-    async def append(self, message: StoredMessage) -> None:
+    async def append(self, message: ChatMessage) -> None:
         if message.conversation is None:
             raise ValueError("Feishu history messages require a conversation")
         if message.conversation.platform.lower() != FEISHU_PLATFORM:
@@ -446,6 +443,12 @@ def _message_refs(target: ConversationRef, value: object) -> tuple[MessageRef, .
 
 
 def _delivery_receipt(target: ConversationRef, result: object) -> DeliveryReceipt:
+    """Map a sender result to a neutral receipt.
+
+    The Feishu delivery accepts injected senders, so the tolerated result
+    contract is wider than production: a receipt, a bool, a message-id string
+    or a mapping with ``status``/``successful``/``errors`` keys.
+    """
     if isinstance(result, DeliveryReceipt):
         return result
     if isinstance(result, bool):

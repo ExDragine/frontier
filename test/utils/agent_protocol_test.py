@@ -164,4 +164,3 @@ def test_port_protocols_are_usable_without_platform_sdk(conversation: Conversati
     assert isinstance(Tools(), PlatformToolProvider)
     assert Policy().decide is not None
     assert HistoryQuery(conversation=message.conversation).limit == 50
-    assert GateDecision(should_reply=False).allowed is False

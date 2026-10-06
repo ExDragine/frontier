@@ -174,7 +174,6 @@ def install_all_third_party_stubs():
 
     install_stub(
         "tools.agent_tools",
-        main_tools=[],
         direct_tools=[],
         mcp_tools=[],
         restricted_tools=[],

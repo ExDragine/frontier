@@ -2,7 +2,6 @@
 
 import base64
 from io import BytesIO
-from types import SimpleNamespace
 
 import pytest
 from langchain_core.messages import HumanMessage, ToolMessage
@@ -24,15 +23,9 @@ async def test_boundary_normalizes_tool_and_restored_messages_without_mutation(m
     raw = encoded("BMP")
     content = [{"type": "input_image", "image_url": "data:image/png;base64," + base64.b64encode(raw).decode()}]
     messages = [HumanMessage(content=content, id="restored"), ToolMessage(content=content, tool_call_id="read-image", id="tool")]
-    request = SimpleNamespace(messages=messages, override=lambda **kwargs: SimpleNamespace(**kwargs))
-    captured = []
 
-    async def handler(updated):
-        captured.extend(updated.messages)
-        return "ok"
+    captured = inputs.filter_messages_for_model_capabilities(messages, "test")
 
-    middleware = inputs.ModelMediaMiddleware("test")
-    assert await middleware.awrap_model_call(request, handler) == "ok"
     assert captured[1].tool_call_id == "read-image"
     assert [message.id for message in captured] == ["restored", "tool"]
     for message in captured:

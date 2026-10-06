@@ -78,7 +78,7 @@ async def test_session_lease_covers_qq_delivery_and_failure_cleanup(monkeypatch,
     monkeypatch.setattr(agent, "f_cognitive", Cognitive())
     monkeypatch.setattr(agent, "sanitize_outgoing_text", sanitize)
     monkeypatch.setattr(agent, "send_messages", send)
-    monkeypatch.setattr(agent, "send_artifacts", artifacts)
+    monkeypatch.setattr("utils.message.send_artifacts", artifacts)
     context = agent.AgentRequestContext(
         event=SimpleNamespace(self_id="99", data=SimpleNamespace(group_member=SimpleNamespace(role="member"))),
         user_id="10", user_name="User", event_id=2, group_id=20, msg_time=2000,

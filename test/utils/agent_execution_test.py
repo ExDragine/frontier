@@ -111,7 +111,7 @@ async def test_configuration_revision_rebuilds_model_dependent_components(monkey
     builds = []
 
     def document():
-        builds.append(EnvConfig.REVISION)
+        builds.append(cognitive.EnvConfig.REVISION)
         return {"name": "document-agent"}
 
     monkeypatch.setattr(cognitive, "build_document_subagent", document)
@@ -119,7 +119,10 @@ async def test_configuration_revision_rebuilds_model_dependent_components(monkey
     await agent._prepare_components()
     await agent._prepare_components()
     assert len(builds) == 1
-    monkeypatch.setattr(EnvConfig, "REVISION", EnvConfig.REVISION + 1)
+    # Patch the class object that the module under test actually holds: the
+    # session-scoped configuration reload can replace ``utils.configs.EnvConfig``
+    # after this module imported it at collection time.
+    monkeypatch.setattr(cognitive.EnvConfig, "REVISION", cognitive.EnvConfig.REVISION + 1)
     await agent._prepare_components()
     assert len(builds) == 2
 
