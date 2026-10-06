@@ -1,7 +1,7 @@
 """Playwright 浏览器截图与录屏模块。
 
 为 Agent 工具提供网页截图和视频录制能力，自动管理浏览器生命周期：
-- 检测浏览器进程是否存活，若无则自动初始化
+- 浏览器实例与探活/重启逻辑统一由 utils.browser_runtime 提供（与 markdown 渲染共用同一进程）
 - 执行前自动检测浏览器存活状态
 - 浏览器崩溃时自动重启并重试一次
 """
@@ -11,19 +11,15 @@ import os
 import subprocess
 import tempfile
 import time
-from asyncio import Lock
 from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
 
 import imageio_ffmpeg
-from playwright.async_api import async_playwright
+
+from utils import browser_runtime
 
 logger = logging.getLogger(__name__)
-
-_browser: Any = None
-_playwright: Any = None
-_browser_lock = Lock()
 
 # 浏览器崩溃相关的错误消息特征
 _CRASH_MSG_SNIPPETS = (
@@ -50,56 +46,13 @@ def _is_crash_error(error: Exception) -> bool:
 
 
 async def _get_browser():
-    """返回持久化浏览器实例（延迟初始化，线程安全）。"""
-    global _browser, _playwright
-    async with _browser_lock:
-        connected = False
-        if _browser is not None:
-            try:
-                connected = _browser.is_connected()
-            except Exception:
-                connected = False
-        if not connected:
-            if _playwright is not None:
-                with suppress(Exception):
-                    await _playwright.stop()
-                _playwright = None
-            _browser = None
-            _playwright = await async_playwright().start()
-            _browser = await _playwright.chromium.launch(
-                headless=True,
-                args=[
-                    "--use-gl=angle",
-                    "--enable-webgl",
-                    "--ignore-gpu-blocklist",
-                ],
-            )
-            logger.info("Playwright 浏览器已初始化")
-        return _browser
+    """返回共享浏览器实例（延迟初始化，探活失败时自动重启）。"""
+    return await browser_runtime.get_browser()
 
 
 async def _restart_browser():
-    """强制重启浏览器进程。"""
-    global _browser, _playwright
-    async with _browser_lock:
-        if _browser is not None:
-            with suppress(Exception):
-                await _browser.close()
-            _browser = None
-        if _playwright is not None:
-            with suppress(Exception):
-                await _playwright.stop()
-            _playwright = None
-        _playwright = await async_playwright().start()
-        _browser = await _playwright.chromium.launch(
-            headless=True,
-            args=[
-                "--use-gl=angle",
-                "--enable-webgl",
-                "--ignore-gpu-blocklist",
-            ],
-        )
-        logger.info("Playwright 浏览器已重新启动")
+    """强制重启共享浏览器进程。"""
+    await browser_runtime.restart_browser()
 
 
 async def _wait_for_page_ready(
@@ -435,15 +388,5 @@ async def fetch_data_only(
 
 
 async def close_browser():
-    """清理全局浏览器实例（进程退出时调用）。"""
-    global _browser, _playwright
-    async with _browser_lock:
-        if _browser is not None:
-            with suppress(Exception):
-                await _browser.close()
-            _browser = None
-            logger.info("Playwright 浏览器已关闭")
-        if _playwright is not None:
-            with suppress(Exception):
-                await _playwright.stop()
-            _playwright = None
+    """清理共享浏览器实例（进程退出时调用）。"""
+    await browser_runtime.close_browser()

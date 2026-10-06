@@ -2,7 +2,7 @@
 
 import pytest
 
-from utils import markdown_render
+from utils import browser_runtime, markdown_render
 
 
 class _MarkdownDummyPage:
@@ -47,6 +47,13 @@ class _MarkdownDummyPage:
 class _MarkdownDummyBrowser:
     def __init__(self):
         self.page = None
+        self.connected = True
+
+    def is_connected(self):
+        return self.connected
+
+    async def close(self):
+        self.connected = False
 
     async def new_page(self, viewport=None):
         self.page = _MarkdownDummyPage()
@@ -56,8 +63,12 @@ class _MarkdownDummyBrowser:
 class _MarkdownDummyChromium:
     def __init__(self):
         self.browser = None
+        self.launch_kwargs = None
+        self.launch_calls = 0
 
-    async def launch(self, headless=True):
+    async def launch(self, **kwargs):
+        self.launch_calls += 1
+        self.launch_kwargs = kwargs
         self.browser = _MarkdownDummyBrowser()
         return self.browser
 
@@ -70,8 +81,10 @@ class _MarkdownDummyPlaywright:
 class _MarkdownDummyPlaywrightFactory:
     def __init__(self):
         self.playwright = None
+        self.start_calls = 0
 
     async def start(self):
+        self.start_calls += 1
         self.playwright = _MarkdownDummyPlaywright()
         return self.playwright
 
@@ -100,8 +113,8 @@ async def test_markdown_to_image_calls(monkeypatch, tmp_path):
     (tmp_path / "cache").mkdir()
 
     factory = _MarkdownDummyPlaywrightFactory()
-    monkeypatch.setattr(markdown_render, "async_playwright", lambda: factory)
-    monkeypatch.setattr(markdown_render, "_browser", None)
+    monkeypatch.setattr(browser_runtime, "async_playwright", lambda: factory)
+    monkeypatch.setattr(browser_runtime, "_browser", None)
     monkeypatch.setattr(markdown_render, "TEMPLATES_DIR", tmp_path / "templates")
     monkeypatch.setattr(markdown_render, "CACHE_DIR", tmp_path / "cache")
 
@@ -111,11 +124,39 @@ async def test_markdown_to_image_calls(monkeypatch, tmp_path):
 
     assert factory.playwright is not None
     assert factory.playwright.chromium.browser is not None
+    # markdown 渲染与 browser_capture 共用同一浏览器入口，GPU/WebGL 启动参数必须保留
+    assert factory.playwright.chromium.launch_kwargs["headless"] is True
+    assert "--enable-webgl" in factory.playwright.chromium.launch_kwargs["args"]
     page = factory.playwright.chromium.browser.page
     assert page is not None
     assert "html[data-frontier-ready='true']" in page.selectors
     assert len(page.routes) == 1
     assert "https?" in page.routes[0][0].pattern
+
+
+@pytest.mark.asyncio
+async def test_shared_browser_is_reused_and_restarted_after_disconnect(monkeypatch):
+    """markdown/capture 共用同一浏览器入口：存活时复用，探活失败后重启。"""
+    factory = _MarkdownDummyPlaywrightFactory()
+    monkeypatch.setattr(browser_runtime, "async_playwright", lambda: factory)
+    monkeypatch.setattr(browser_runtime, "_browser", None)
+
+    first = await browser_runtime.get_browser()
+    assert await browser_runtime.get_browser() is first
+    assert factory.start_calls == 1
+
+    first.connected = False  # 模拟浏览器进程崩溃
+    restarted = await browser_runtime.get_browser()
+
+    assert restarted is not first
+    assert restarted.is_connected() is True
+    assert factory.start_calls == 2  # 重启会重建 playwright driver 并重新 launch
+    assert factory.playwright.chromium.launch_calls == 1
+    assert "--enable-webgl" in factory.playwright.chromium.launch_kwargs["args"]
+
+    await browser_runtime.close_browser()
+    assert browser_runtime._browser is None
+    assert browser_runtime._playwright is None
 
 
 def test_markdown_renderer_uses_only_local_bundled_assets():
