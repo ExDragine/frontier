@@ -71,8 +71,8 @@ async def test_group_disband_passes_nudge_matcher_and_is_handled_without_reply(m
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins import playground
     from plugins.agent import handlers as agent
+    from plugins.playground import commands as playground
 
     event = GroupDisbandEvent(time=123, self_id=999, data={"group_id": 123, "operator_id": 456})
     assert not await playground._is_nudge(event)

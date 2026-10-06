@@ -1,0 +1,114 @@
+from nonebot import get_driver, logger, require
+
+from utils.configs import EnvConfig
+from utils.database import get_engine
+
+require("nonebot_plugin_apscheduler")
+require("nonebot_plugin_alconna")
+from nonebot_plugin_apscheduler import scheduler  # noqa: E402
+
+from .task_manager import TaskExecutor, TaskManager  # noqa: E402
+from .task_models import ScheduledTaskMetadata, TaskConfig, TaskExecutionHistory, TaskGroupMapping  # noqa: E402
+
+# 初始化任务管理系统
+engine = get_engine()
+task_manager_instance = TaskManager(scheduler, engine)
+task_executor = TaskExecutor(task_manager_instance)
+task_manager_instance.set_job_func(task_executor.execute)
+
+driver = get_driver()
+
+# 导入命令和处理器（必须在 task_manager 创建之后）
+from . import agent_task_handler, task_commands, task_handlers  # noqa: E402, F401, I001
+
+# Importing ``plugins.clockwork.task_manager`` installs the submodule on the
+# package under the same name. Re-export the manager instance only after the
+# imports above so callers keep the established public API without leaving the
+# internal name ambiguous to type checkers.
+task_manager: TaskManager = task_manager_instance
+
+
+# ==================== 任务管理系统初始化 ====================
+
+
+@driver.on_startup
+async def init_task_system():
+    """启动时初始化任务系统"""
+    logger.info("正在初始化定时任务管理系统...")
+
+    # 1. 创建数据库表
+    TaskConfig.metadata.create_all(engine)
+    TaskGroupMapping.metadata.create_all(engine)
+    TaskExecutionHistory.metadata.create_all(engine)
+    ScheduledTaskMetadata.metadata.create_all(engine)
+    task_manager.ensure_schema()
+    logger.info("数据库表创建完成")
+
+    # 2. 读取所有任务配置
+    tasks = await task_manager.list_tasks()
+    logger.info(f"发现 {len(tasks)} 个已存在的任务配置")
+
+    # 3. 注册所有任务到 APScheduler（每次启动都执行）
+    for task in tasks:
+        try:
+            task_manager.add_job_to_scheduler(task)
+            status = "已暂停" if not task.enabled else "已启用"
+            logger.info(f"任务 {task.job_id} ({task.name}) 已注册到调度器（{status}）")
+        except Exception as e:
+            logger.error(f"注册任务 {task.job_id} 到调度器失败: {e}")
+
+    # 4. 同步群组配置到 EnvConfig
+    await task_manager.initialize()
+
+    # 5. 注册 NRC 远行商人商品提醒推送（每天 8:10、12:10、16:10、20:10）
+    try:
+        await task_manager.register_task(
+            job_id="nrc_merchant_alert",
+            name="远行商人商品提醒推送",
+            handler_module="plugins.clockwork.task_handlers",
+            handler_function="nrc_merchant_alert",
+            trigger_type="cron",
+            trigger_args={"hour": "8,12,16,20", "minute": "10"},
+            group_ids=[int(group_id) for group_id in EnvConfig.NRC_MERCHANT_GROUP_ID],
+            description="每天定时检测远行商人是否上架目标商品（国王球、棱镜球、炫彩精灵蛋、祝福项坠、首领血脉秘药），有则推送提醒",
+            metadata=ScheduledTaskMetadata(
+                job_id="nrc_merchant_alert",
+                owner_user_id="system",
+                target_type="group",
+                target_id=",".join(str(g) for g in EnvConfig.NRC_MERCHANT_GROUP_ID)
+                if EnvConfig.NRC_MERCHANT_GROUP_ID
+                else "0",
+                prompt="",
+                created_from="system",
+            ),
+        )
+        logger.info("NRC 远行商人商品提醒推送已注册（cron: 8,12,16,20:10 Asia/Shanghai）")
+    except Exception as exc:
+        logger.warning(f"注册 NRC 远行商人任务失败（可能已存在）: {exc}")
+
+    # 5. Ensure the standalone news job exists; migrate only its handler when it already exists.
+    try:
+        existing_news = await task_manager.get_task("daily_news")
+        if existing_news is None:
+            await task_manager.register_task(
+                job_id="daily_news", name="每日新闻", handler_module="plugins.news.scheduler",
+                handler_function="daily_news", trigger_type="cron",
+                trigger_args={"hour": "9,21", "minute": "0", "timezone": "Asia/Shanghai"},
+                group_ids=[int(group_id) for group_id in EnvConfig.NEWS_SUMMARY_GROUP_ID],
+                description="独立新闻插件：真实检索、证据校验、归档后逐目标投递",
+                misfire_grace_time=900,
+            )
+        elif (existing_news.handler_module, existing_news.handler_function) != ("plugins.news.scheduler", "daily_news"):
+            await task_manager.update_task_handler("daily_news", "plugins.news.scheduler", "daily_news")
+        logger.info("每日新闻任务已接入 plugins.news；已有时间、启停状态和群组保持不变")
+    except Exception as exc:
+        logger.warning(f"初始化每日新闻任务失败: {exc}")
+
+    logger.info("定时任务管理系统初始化完成！")
+
+
+@driver.on_shutdown
+async def shutdown_task_system():
+    from utils.http_client import aclose_all
+
+    await aclose_all()

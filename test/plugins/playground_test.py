@@ -10,7 +10,7 @@ from nonebot.adapters.milky.model.message import IncomingMessage
 from nonebot_plugin_alconna import UniMessage
 from nonebug import App
 
-from plugins import playground
+from plugins.playground import commands as playground
 
 
 class AllowLimiter:
