@@ -9,10 +9,26 @@ from nonebot.adapters.milky.event import FriendNudgeEvent, GroupNudgeEvent, Mess
 require("nonebot_plugin_alconna")
 
 from utils.alconna import UniMessage
+from utils.command_text import strip_command_prefix
 from utils.configs import EnvConfig
 from utils.message import download_media, message_extract
 from utils.paint_service import PaintRateLimiter, paint
 from utils.video_service import generate_video
+
+PAINT_COMMAND = "paint"
+PAINT_ALIASES = ("画图", "绘图")
+VIDEO_COMMAND = "video"
+VIDEO_ALIASES = ("视频", "生成视频")
+
+
+def _command_prefixes(command: str, aliases: tuple[str, ...]) -> tuple[str, ...]:
+    """Derive the accepted text prefixes from the names registered with the matcher."""
+    return tuple(prefix for name in (command, *aliases) for prefix in (f"/{name}", name))
+
+
+PAINT_PREFIXES = _command_prefixes(PAINT_COMMAND, PAINT_ALIASES)
+VIDEO_PREFIXES = _command_prefixes(VIDEO_COMMAND, VIDEO_ALIASES)
+MEDIA_ACCESS_DENIED = "没有权限使用媒体生成功能"
 
 
 async def _is_nudge(event) -> bool:
@@ -20,15 +36,11 @@ async def _is_nudge(event) -> bool:
 
 
 notice = on_notice(rule=_is_nudge, priority=0, block=True)
-paint_entry = on_command("paint", priority=3, block=True, aliases={"画图", "绘图"})
-video_entry = on_command("video", priority=3, block=True, aliases={"视频", "生成视频"})
+paint_entry = on_command(PAINT_COMMAND, priority=3, block=True, aliases=set(PAINT_ALIASES))
+video_entry = on_command(VIDEO_COMMAND, priority=3, block=True, aliases=set(VIDEO_ALIASES))
 
 paint_rate_limiter = PaintRateLimiter()
 video_rate_limiter = PaintRateLimiter()
-
-PAINT_PREFIXES = ("/paint", "paint", "/画图", "画图", "/绘图", "绘图")
-VIDEO_PREFIXES = ("/video", "video", "/视频", "视频", "/生成视频", "生成视频")
-MEDIA_ACCESS_DENIED = "没有权限使用媒体生成功能"
 
 
 @notice.handle()
@@ -67,14 +79,6 @@ def _has_media_permission(event: MessageEvent) -> bool:
     )
 
 
-def _strip_command_prefix(text: str, prefixes: tuple[str, ...]) -> str:
-    stripped = text.strip()
-    for prefix in sorted(prefixes, key=len, reverse=True):
-        if stripped.lower().startswith(prefix.lower()):
-            return stripped[len(prefix) :].strip()
-    return stripped
-
-
 @paint_entry.handle()
 async def handle_paint_entry(event: MessageEvent):
     if EnvConfig.PAINT_MODULE_ENABLED is False:
@@ -85,7 +89,7 @@ async def handle_paint_entry(event: MessageEvent):
         return
 
     text, image_items, audio_items, video_items = await message_extract(event.data.segments)
-    prompt = _strip_command_prefix(text, PAINT_PREFIXES)
+    prompt = strip_command_prefix(text, PAINT_PREFIXES)
     if not prompt:
         await UniMessage.text("用法: /paint <提示词>，可附带图片进行编辑").send()
         return
@@ -118,7 +122,7 @@ async def handle_video_entry(event: MessageEvent):
         return
 
     text, image_items, audio_items, video_items = await message_extract(event.data.segments)
-    prompt = _strip_command_prefix(text, VIDEO_PREFIXES)
+    prompt = strip_command_prefix(text, VIDEO_PREFIXES)
     if not prompt:
         await UniMessage.text("用法: /video <提示词>，可附带图片或视频作为输入").send()
         return

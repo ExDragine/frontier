@@ -2,7 +2,6 @@
 
 import asyncio
 import datetime
-import zoneinfo
 from io import BytesIO
 
 from nonebot import get_bot, logger
@@ -14,36 +13,13 @@ from utils.configs import EnvConfig
 from utils.database import EventDatabase
 from utils.http_client import HTTPError, get_http_client
 from utils.markdown_render import html_to_image, playwright_render
+from utils.timeutil import SHANGHAI
 
 from .task_models import TaskRunResult
 
 # 共享的资源
 event_database = EventDatabase()
 httpx_client = get_http_client("task_handlers")
-
-
-async def github_post_news(**kwargs):
-    """GitHub 新闻推送（未启用）"""
-    GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
-    query = """
-    query {
-        repository(owner:"UnrealUpdateTracker", name:"UnrealEngine") {
-            discussions(first: 5) {
-                node {
-                    title
-                    createdAt
-                    body
-                }
-            }
-        }
-    }
-    """
-    response = await httpx_client.post(
-        GITHUB_GRAPHQL_URL,
-        headers={"Authorization": f"Bearer {EnvConfig.GITHUB_PAT.get_secret_value()}"},
-        json={"query": query},
-    )
-    logger.debug("GitHub GraphQL response: {}", response.text)
 
 
 async def apod_everyday(**kwargs):
@@ -131,7 +107,7 @@ async def eq_usgs(**kwargs):
         {
             "label": "⏱️发震时间",
             "value": datetime.datetime.fromtimestamp(properties["time"] / 1000)
-            .astimezone(zoneinfo.ZoneInfo("Asia/Shanghai"))
+            .astimezone(SHANGHAI)
             .strftime("%Y-%m-%d %H:%M:%S"),
         },
         {"label": "🗺️震中位置", "value": properties["place"]},
@@ -217,8 +193,7 @@ async def nrc_merchant_alert(**kwargs):
         fetch_merchant_data_with_fallback,
     )
 
-    tz = zoneinfo.ZoneInfo("Asia/Shanghai")
-    now = datetime.datetime.now(tz)
+    now = datetime.datetime.now(SHANGHAI)
 
     period_end = _merchant_period_end(now)
     if period_end is None:
@@ -228,7 +203,7 @@ async def nrc_merchant_alert(**kwargs):
     first_failure_notified = False
 
     while True:
-        now = datetime.datetime.now(tz)
+        now = datetime.datetime.now(SHANGHAI)
         if now >= period_end:
             logger.debug(f"NRC 商人提醒：已超出时段 {period_end.strftime('%H:%M')}，停止重试")
             break
@@ -262,7 +237,7 @@ async def nrc_merchant_alert(**kwargs):
                 except Exception as e:
                     logger.error(f"NRC 商人失联消息推送到群 {group} 失败: {e}")
 
-        next_retry = datetime.datetime.now(tz) + datetime.timedelta(minutes=30)
+        next_retry = datetime.datetime.now(SHANGHAI) + datetime.timedelta(minutes=30)
         if next_retry >= period_end:
             logger.debug(
                 f"NRC 商人提醒：下次重试 {next_retry.strftime('%H:%M')} 超出时段 {period_end.strftime('%H:%M')}，停止"
@@ -271,6 +246,6 @@ async def nrc_merchant_alert(**kwargs):
 
         logger.info(
             f"NRC 商人提醒：30分钟后重试 "
-            f"(当前 {datetime.datetime.now(tz).strftime('%H:%M:%S')}, 时段结束 {period_end.strftime('%H:%M')})"
+            f"(当前 {datetime.datetime.now(SHANGHAI).strftime('%H:%M:%S')}, 时段结束 {period_end.strftime('%H:%M')})"
         )
         await asyncio.sleep(30 * 60)

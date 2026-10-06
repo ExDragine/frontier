@@ -74,10 +74,6 @@ class CencWebSocketService:
     def is_connected(self) -> bool:
         return self._connected
 
-    @property
-    def last_error(self) -> str | None:
-        return self._last_error
-
     def start(self, handler: CencEventHandler) -> bool:
         """Start the listener once; return whether a new task was created."""
         if self.is_running:

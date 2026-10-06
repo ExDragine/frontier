@@ -51,25 +51,6 @@ def _group_message_event(text: str, *, role: str = "member", sender_id: int = 45
     )
 
 
-def _capture_unimessage_text(monkeypatch) -> list[str]:
-    sent: list[str] = []
-
-    class DummyMessage:
-        def __init__(self, text):
-            self.text = text
-
-        async def send(self, *_args, **_kwargs):
-            sent.append(self.text)
-
-    class DummyUniMessage:
-        @classmethod
-        def text(cls, text):
-            return DummyMessage(text)
-
-    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
-    return sent
-
-
 @pytest.mark.asyncio
 async def test_on_startup_creates_files(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
@@ -126,22 +107,8 @@ async def test_on_startup_creates_files(monkeypatch, tmp_path):
         ),
     ],
 )
-async def test_handle_model_default(monkeypatch, paint_enabled, video_enabled, expected_lines):
-    sent = []
-
-    class DummyMessage:
-        def __init__(self, text):
-            self.text = text
-
-        async def send(self, *_args, **_kwargs):
-            sent.append(self.text)
-
-    class DummyUniMessage:
-        @classmethod
-        def text(cls, text):
-            return DummyMessage(text)
-
-    monkeypatch.setattr(toolbox, "UniMessage", DummyUniMessage)
+async def test_handle_model_default(monkeypatch, unimessage_text_sends, paint_enabled, video_enabled, expected_lines):
+    sent = unimessage_text_sends(toolbox)
     monkeypatch.setattr(toolbox.EnvConfig, "ADVAN_MODEL", "advanced-test")
     monkeypatch.setattr(toolbox.EnvConfig, "ADVAN_MODEL_PROVIDER", "advanced-provider")
     monkeypatch.setattr(toolbox.EnvConfig, "BASIC_MODEL", "basic-test")
@@ -200,8 +167,8 @@ def test_model_command_requires_superuser():
 
 
 @pytest.mark.asyncio
-async def test_model_command_rejects_non_superuser(monkeypatch):
-    sent = _capture_unimessage_text(monkeypatch)
+async def test_model_command_rejects_non_superuser(unimessage_text_sends):
+    sent = unimessage_text_sends(toolbox)
 
     async with App().test_matcher(toolbox.model_cmd) as ctx:
         adapter = ctx.create_adapter()
@@ -254,8 +221,8 @@ def test_set_menu_filters_group_admin_commands_by_context():
 
 
 @pytest.mark.asyncio
-async def test_set_root_routes_to_context_menu(monkeypatch):
-    sent = _capture_unimessage_text(monkeypatch)
+async def test_set_root_routes_to_context_menu(unimessage_text_sends):
+    sent = unimessage_text_sends(toolbox)
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -280,10 +247,10 @@ async def test_set_root_routes_to_context_menu(monkeypatch):
         ("/set --help", 466),
     ],
 )
-async def test_set_invalid_subcommand_routes_to_context_menu(monkeypatch, command, sender_id):
-    sent = _capture_unimessage_text(monkeypatch)
+async def test_set_invalid_subcommand_routes_to_context_menu(monkeypatch, unimessage_text_sends, command, sender_id):
+    sent = unimessage_text_sends(toolbox)
 
-    async def fail_route(*_args, **_kwargs):
+    def fail_route(*_args, **_kwargs):
         raise AssertionError("invalid commands must not execute a settings action")
 
     monkeypatch.setattr(toolbox, "_send_current_model_summary", fail_route)
@@ -305,8 +272,8 @@ async def test_set_invalid_subcommand_routes_to_context_menu(monkeypatch, comman
 
 
 @pytest.mark.asyncio
-async def test_set_model_routes_to_shared_model_summary(monkeypatch):
-    sent = _capture_unimessage_text(monkeypatch)
+async def test_set_model_routes_to_shared_model_summary(monkeypatch, unimessage_text_sends):
+    sent = unimessage_text_sends(toolbox)
     monkeypatch.setattr(toolbox, "_current_model_summary", lambda: "model summary")
 
     async with App().test_matcher() as ctx:
@@ -319,11 +286,11 @@ async def test_set_model_routes_to_shared_model_summary(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_set_wake_routes_to_group_lookup(monkeypatch):
-    sent = _capture_unimessage_text(monkeypatch)
+async def test_set_wake_routes_to_group_lookup(monkeypatch, unimessage_text_sends):
+    sent = unimessage_text_sends(toolbox)
     requested_group_ids = []
 
-    async def fake_set_wake_show(group_id):
+    def fake_set_wake_show(group_id):
         requested_group_ids.append(group_id)
         return "wake summary"
 
@@ -340,11 +307,11 @@ async def test_set_wake_routes_to_group_lookup(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_set_wake_add_routes_all_words_for_admin(monkeypatch):
-    sent = _capture_unimessage_text(monkeypatch)
+async def test_set_wake_add_routes_all_words_for_admin(monkeypatch, unimessage_text_sends):
+    sent = unimessage_text_sends(toolbox)
     additions = []
 
-    async def fake_set_wake_add(group_id, word):
+    def fake_set_wake_add(group_id, word):
         additions.append((group_id, word))
         return "wake added"
 
@@ -364,10 +331,10 @@ async def test_set_wake_add_routes_all_words_for_admin(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_set_wake_add_rejects_group_member(monkeypatch):
-    sent = _capture_unimessage_text(monkeypatch)
+async def test_set_wake_add_rejects_group_member(monkeypatch, unimessage_text_sends):
+    sent = unimessage_text_sends(toolbox)
 
-    async def fail_set_wake_add(*_args, **_kwargs):
+    def fail_set_wake_add(*_args, **_kwargs):
         raise AssertionError("group members must not modify wake words")
 
     monkeypatch.setattr(toolbox, "_set_wake_add", fail_set_wake_add)
@@ -468,20 +435,8 @@ async def test_summarize_update_commits_returns_none_on_llm_failure(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_handle_updater_persists_update_context_for_startup_changelog(monkeypatch):
-    sent_texts = []
-
-    class DummyMessage:
-        def __init__(self, text):
-            self.text = text
-
-        async def send(self, *args, **kwargs):
-            sent_texts.append(self.text)
-
-    class DummyUniMessage:
-        @classmethod
-        def text(cls, text):
-            return DummyMessage(text)
+async def test_handle_updater_persists_update_context_for_startup_changelog(monkeypatch, unimessage_text_sends):
+    sent_texts = unimessage_text_sends(toolbox_update)
 
     class DummyGit:
         def __init__(self, repo):
@@ -503,7 +458,6 @@ async def test_handle_updater_persists_update_context_for_startup_changelog(monk
     event = types.SimpleNamespace(data=types.SimpleNamespace(group=types.SimpleNamespace(group_id=123)))
 
     monkeypatch.setattr(toolbox_update, "Repo", DummyRepo)
-    monkeypatch.setattr(toolbox_update, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(toolbox_update.os, "kill", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(toolbox_update, "exit", lambda code: (_ for _ in ()).throw(SystemExit(code)), raising=False)
 
@@ -684,20 +638,8 @@ async def test_handle_updater_skips_changelog_when_no_new_commits(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_updater_skips_changelog_when_update_fails(monkeypatch):
-    sent_texts = []
-
-    class DummyMessage:
-        def __init__(self, text):
-            self.text = text
-
-        async def send(self, *args, **kwargs):
-            sent_texts.append(self.text)
-
-    class DummyUniMessage:
-        @classmethod
-        def text(cls, text):
-            return DummyMessage(text)
+async def test_handle_updater_skips_changelog_when_update_fails(monkeypatch, unimessage_text_sends):
+    sent_texts = unimessage_text_sends(toolbox_update)
 
     class DummyGit:
         def checkout(self):
@@ -717,7 +659,6 @@ async def test_handle_updater_skips_changelog_when_update_fails(monkeypatch):
     event = types.SimpleNamespace(data=types.SimpleNamespace(group=types.SimpleNamespace(group_id=123)))
 
     monkeypatch.setattr(toolbox_update, "Repo", DummyRepo)
-    monkeypatch.setattr(toolbox_update, "UniMessage", DummyUniMessage)
     monkeypatch.setattr(toolbox_update, "send_update_changelog", fail_send_update_changelog)
 
     await toolbox_update.handle_updater(event)

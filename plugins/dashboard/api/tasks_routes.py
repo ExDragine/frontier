@@ -1,6 +1,7 @@
 # ruff: noqa: B008, B904
 
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -19,6 +20,15 @@ class GroupsUpdate(BaseModel):
     group_ids: list[int]
 
 
+def task_manager_dependency() -> Any:
+    """FastAPI dependency: resolve the clockwork task manager or report it as unavailable."""
+    try:
+        from plugins.clockwork import task_manager
+    except ImportError:
+        raise HTTPException(status_code=503, detail="任务管理系统未加载")
+    return task_manager
+
+
 def _metadata_payload(metadata):
     if not metadata:
         return None
@@ -34,66 +44,9 @@ def _metadata_payload(metadata):
     }
 
 
-@router.get("/")
-async def list_tasks(
-    enabled: bool | None = None,
-    keyword: str | None = None,
-    include_archived: bool = False,
-    user: dict = Depends(require_auth),
-):
-    """列出所有任务"""
-    try:
-        from plugins.clockwork import task_manager
-    except ImportError:
-        raise HTTPException(status_code=503, detail="任务管理系统未加载")
-
-    tasks = await task_manager.list_tasks(enabled=enabled, keyword=keyword, include_archived=include_archived)
-    metadata_map = await task_manager.get_task_metadata_map([task.job_id for task in tasks])
-
-    result = []
-    for task in tasks:
-        groups = await task_manager.get_task_groups(task.job_id)
-        metadata = metadata_map.get(task.job_id)
-        result.append(
-            {
-                "job_id": task.job_id,
-                "name": task.name,
-                "description": task.description,
-                "trigger_type": task.trigger_type,
-                "trigger_args": json.loads(task.trigger_args),
-                "enabled": task.enabled,
-                "total_runs": task.total_runs,
-                "success_runs": task.success_runs,
-                "failed_runs": task.failed_runs,
-                "last_run_time": task.last_run_time,
-                "next_run_time": task.next_run_time,
-                "groups": groups,
-                "created_at": task.created_at,
-                "updated_at": task.updated_at,
-                "task_type": "automatic" if metadata else "system",
-                "metadata": _metadata_payload(metadata),
-            }
-        )
-
-    return {"tasks": result, "count": len(result)}
-
-
-@router.get("/{job_id}")
-async def get_task(job_id: str, user: dict = Depends(require_auth)):
-    """获取单个任务详情"""
-    try:
-        from plugins.clockwork import task_manager
-    except ImportError:
-        raise HTTPException(status_code=503, detail="任务管理系统未加载")
-
-    task = await task_manager.get_task(job_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-
-    groups = await task_manager.get_task_groups(job_id)
-    metadata = await task_manager.get_task_metadata(job_id)
-
-    return {
+def task_payload(task, groups, metadata, *, detailed: bool = False) -> dict:
+    """Serialize one task; ``detailed`` adds the fields only the detail route exposes."""
+    payload = {
         "job_id": task.job_id,
         "name": task.name,
         "description": task.description,
@@ -114,16 +67,57 @@ async def get_task(job_id: str, user: dict = Depends(require_auth)):
         "task_type": "automatic" if metadata else "system",
         "metadata": _metadata_payload(metadata),
     }
+    if not detailed:
+        for key in ("handler_module", "handler_function", "misfire_grace_time"):
+            payload.pop(key)
+    return payload
+
+
+@router.get("/")
+async def list_tasks(
+    enabled: bool | None = None,
+    keyword: str | None = None,
+    include_archived: bool = False,
+    user: dict = Depends(require_auth),
+    task_manager: Any = Depends(task_manager_dependency),
+):
+    """列出所有任务"""
+    tasks = await task_manager.list_tasks(enabled=enabled, keyword=keyword, include_archived=include_archived)
+    metadata_map = await task_manager.get_task_metadata_map([task.job_id for task in tasks])
+
+    result = []
+    for task in tasks:
+        groups = await task_manager.get_task_groups(task.job_id)
+        metadata = metadata_map.get(task.job_id)
+        result.append(task_payload(task, groups, metadata))
+
+    return {"tasks": result, "count": len(result)}
+
+
+@router.get("/{job_id}")
+async def get_task(
+    job_id: str,
+    user: dict = Depends(require_auth),
+    task_manager: Any = Depends(task_manager_dependency),
+):
+    """获取单个任务详情"""
+    task = await task_manager.get_task(job_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    groups = await task_manager.get_task_groups(job_id)
+    metadata = await task_manager.get_task_metadata(job_id)
+
+    return task_payload(task, groups, metadata, detailed=True)
 
 
 @router.put("/{job_id}/enable")
-async def enable_task(job_id: str, user: dict = Depends(require_auth)):
+async def enable_task(
+    job_id: str,
+    user: dict = Depends(require_auth),
+    task_manager: Any = Depends(task_manager_dependency),
+):
     """启用任务"""
-    try:
-        from plugins.clockwork import task_manager
-    except ImportError:
-        raise HTTPException(status_code=503, detail="任务管理系统未加载")
-
     # 先检查任务是否存在
     task = await task_manager.get_task(job_id)
     if not task:
@@ -137,13 +131,12 @@ async def enable_task(job_id: str, user: dict = Depends(require_auth)):
 
 
 @router.put("/{job_id}/disable")
-async def disable_task(job_id: str, user: dict = Depends(require_auth)):
+async def disable_task(
+    job_id: str,
+    user: dict = Depends(require_auth),
+    task_manager: Any = Depends(task_manager_dependency),
+):
     """禁用任务"""
-    try:
-        from plugins.clockwork import task_manager
-    except ImportError:
-        raise HTTPException(status_code=503, detail="任务管理系统未加载")
-
     # 先检查任务是否存在
     task = await task_manager.get_task(job_id)
     if not task:
@@ -157,13 +150,12 @@ async def disable_task(job_id: str, user: dict = Depends(require_auth)):
 
 
 @router.post("/{job_id}/run")
-async def run_task(job_id: str, user: dict = Depends(require_auth)):
+async def run_task(
+    job_id: str,
+    user: dict = Depends(require_auth),
+    task_manager: Any = Depends(task_manager_dependency),
+):
     """立即运行任务"""
-    try:
-        from plugins.clockwork import task_manager
-    except ImportError:
-        raise HTTPException(status_code=503, detail="任务管理系统未加载")
-
     task = await task_manager.get_task(job_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -176,13 +168,12 @@ async def run_task(job_id: str, user: dict = Depends(require_auth)):
 
 
 @router.delete("/{job_id}")
-async def cancel_task(job_id: str, user: dict = Depends(require_auth)):
+async def cancel_task(
+    job_id: str,
+    user: dict = Depends(require_auth),
+    task_manager: Any = Depends(task_manager_dependency),
+):
     """取消/归档任务"""
-    try:
-        from plugins.clockwork import task_manager
-    except ImportError:
-        raise HTTPException(status_code=503, detail="任务管理系统未加载")
-
     task = await task_manager.get_task(job_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -195,13 +186,13 @@ async def cancel_task(job_id: str, user: dict = Depends(require_auth)):
 
 
 @router.put("/{job_id}/trigger")
-async def update_trigger(job_id: str, body: TriggerUpdate, user: dict = Depends(require_auth)):
+async def update_trigger(
+    job_id: str,
+    body: TriggerUpdate,
+    user: dict = Depends(require_auth),
+    task_manager: Any = Depends(task_manager_dependency),
+):
     """修改任务触发器"""
-    try:
-        from plugins.clockwork import task_manager
-    except ImportError:
-        raise HTTPException(status_code=503, detail="任务管理系统未加载")
-
     success = await task_manager.update_task_trigger(job_id, body.trigger_type, body.trigger_args)
     if not success:
         raise HTTPException(status_code=400, detail="更新触发器失败")
@@ -210,13 +201,13 @@ async def update_trigger(job_id: str, body: TriggerUpdate, user: dict = Depends(
 
 
 @router.put("/{job_id}/groups")
-async def update_groups(job_id: str, body: GroupsUpdate, user: dict = Depends(require_auth)):
+async def update_groups(
+    job_id: str,
+    body: GroupsUpdate,
+    user: dict = Depends(require_auth),
+    task_manager: Any = Depends(task_manager_dependency),
+):
     """修改任务推送群组"""
-    try:
-        from plugins.clockwork import task_manager
-    except ImportError:
-        raise HTTPException(status_code=503, detail="任务管理系统未加载")
-
     success = await task_manager.update_task_groups(job_id, body.group_ids)
     if not success:
         raise HTTPException(status_code=400, detail="更新群组失败")
@@ -225,13 +216,13 @@ async def update_groups(job_id: str, body: GroupsUpdate, user: dict = Depends(re
 
 
 @router.get("/{job_id}/history")
-async def get_history(job_id: str, limit: int = Query(default=50, ge=1, le=500), user: dict = Depends(require_auth)):
+async def get_history(
+    job_id: str,
+    limit: int = Query(default=50, ge=1, le=500),
+    user: dict = Depends(require_auth),
+    task_manager: Any = Depends(task_manager_dependency),
+):
     """获取任务执行历史"""
-    try:
-        from plugins.clockwork import task_manager
-    except ImportError:
-        raise HTTPException(status_code=503, detail="任务管理系统未加载")
-
     history = await task_manager.get_execution_history(job_id=job_id, limit=limit)
 
     return {
@@ -254,13 +245,12 @@ async def get_history(job_id: str, limit: int = Query(default=50, ge=1, le=500),
 
 
 @router.get("/{job_id}/stats")
-async def get_stats(job_id: str, user: dict = Depends(require_auth)):
+async def get_stats(
+    job_id: str,
+    user: dict = Depends(require_auth),
+    task_manager: Any = Depends(task_manager_dependency),
+):
     """获取任务统计信息"""
-    try:
-        from plugins.clockwork import task_manager
-    except ImportError:
-        raise HTTPException(status_code=503, detail="任务管理系统未加载")
-
     stats = await task_manager.get_task_statistics(job_id)
     if not stats:
         raise HTTPException(status_code=404, detail="任务不存在")

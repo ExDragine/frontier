@@ -136,13 +136,6 @@ const DashboardPage = {
                                 {{ overview.features?.paint_module_enabled ? '已启用' : '已禁用' }}
                             </span>
                         </div>
-                        <div class="flex justify-between items-center">
-                            <span class="text-gray-600">记忆系统</span>
-                            <span :class="overview.features?.memory_enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'"
-                                  class="px-2 py-1 rounded text-sm">
-                                {{ overview.features?.memory_enabled ? '已启用' : '已禁用' }}
-                            </span>
-                        </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Agent 能力</span>
                             <span class="font-medium">{{ overview.features?.agent_capability }}</span>

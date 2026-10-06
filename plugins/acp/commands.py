@@ -12,6 +12,7 @@ from nonebot.permission import SUPERUSER
 
 from utils.agents import ProgressEvent, ProgressReporter
 from utils.alconna import UniMessage
+from utils.command_text import strip_command_prefix
 from utils.configs import EnvConfig
 from utils.delivery import DeliveryResult
 from utils.media import resolve_media
@@ -48,11 +49,7 @@ class _ParsedCommand:
 
 
 def _strip_prefix(text: str) -> str:
-    value = text.strip()
-    for prefix in ("/acp", "acp"):
-        if value.lower().startswith(prefix):
-            return value[len(prefix) :].strip()
-    return value
+    return strip_command_prefix(text, ("/acp", "acp"))
 
 
 def _parse_command(text: str) -> _ParsedCommand:

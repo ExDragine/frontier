@@ -44,9 +44,8 @@ class NewsRepository:
             database.execute(
                 """CREATE TABLE IF NOT EXISTS news_deliveries(
                 report_id TEXT, target TEXT, state TEXT DEFAULT 'pending',
-                attempts INTEGER DEFAULT 0, next_attempt REAL DEFAULT 0, deadline REAL,
-                lease TEXT, lease_until REAL DEFAULT 0, receipt TEXT, error TEXT,
-                updated_at REAL, PRIMARY KEY(report_id,target))"""
+                attempts INTEGER DEFAULT 0, lease TEXT, lease_until REAL DEFAULT 0,
+                error TEXT, updated_at REAL, PRIMARY KEY(report_id,target))"""
             )
 
         await self._run(create)

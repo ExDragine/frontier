@@ -125,11 +125,6 @@ class NewsPayload(BaseModel):
         return self.top_stories + self.worth_reading
 
 
-class Verification(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    supported_indices: list[int] = Field(max_length=18)
-
-
 def validate_evidence(payload: NewsPayload, articles: list[Article]) -> NewsPayload:
     """Check references and exact quotes; this is NOT a proof of factual truth."""
     known = {item.article_id: item for item in articles}

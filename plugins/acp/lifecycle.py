@@ -3,6 +3,8 @@
 from nonebot import get_driver, logger
 from nonebot_plugin_apscheduler import scheduler
 
+from utils.timeutil import add_daily_job
+
 from .service import acp_service
 
 driver = get_driver()
@@ -20,18 +22,7 @@ async def run_daily_cache_cleanup() -> None:
 
 @driver.on_startup
 async def startup_acp() -> None:
-    scheduler.add_job(
-        run_daily_cache_cleanup,
-        "cron",
-        id=CACHE_CLEANUP_JOB_ID,
-        hour=4,
-        minute=0,
-        timezone="Asia/Shanghai",
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
-        misfire_grace_time=3600,
-    )
+    add_daily_job(scheduler, CACHE_CLEANUP_JOB_ID, run_daily_cache_cleanup)
 
 
 @driver.on_shutdown

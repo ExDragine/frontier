@@ -162,8 +162,7 @@ async def test_messages_pagination_keeps_equal_timestamps_distinct(tmp_path, mon
     assert all(page["total"] == 3 for page in pages)
 
 
-@pytest.mark.asyncio
-async def test_tasks_routes_missing_plugin(monkeypatch):
+def test_tasks_routes_missing_plugin(monkeypatch):
     import builtins
 
     original_import = builtins.__import__
@@ -174,8 +173,50 @@ async def test_tasks_routes_missing_plugin(monkeypatch):
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    with pytest.raises(HTTPException):
-        await tasks_routes.list_tasks(user={})
+    with pytest.raises(HTTPException) as excinfo:
+        tasks_routes.task_manager_dependency()
+    assert excinfo.value.status_code == 503
+    assert excinfo.value.detail == "任务管理系统未加载"
+
+
+def test_tasks_payload_shares_one_builder():
+    task = types.SimpleNamespace(
+        job_id="j1",
+        name="n",
+        description="d",
+        handler_module="m",
+        handler_function="f",
+        trigger_type="cron",
+        trigger_args='{"hour": 4}',
+        enabled=True,
+        misfire_grace_time=60,
+        total_runs=1,
+        success_runs=2,
+        failed_runs=3,
+        last_run_time=None,
+        next_run_time=None,
+        created_at=None,
+        updated_at=None,
+    )
+    metadata = types.SimpleNamespace(
+        owner_user_id="1",
+        target_type="group",
+        target_id="2",
+        prompt="p",
+        archived=False,
+        archived_at=None,
+        created_from="chat",
+        delivery_mode="broadcast",
+    )
+
+    listed = tasks_routes.task_payload(task, [2], metadata)
+    detailed = tasks_routes.task_payload(task, [2], metadata, detailed=True)
+
+    assert set(listed) == set(detailed) - {"handler_module", "handler_function", "misfire_grace_time"}
+    assert listed["task_type"] == "automatic"
+    assert detailed["trigger_args"] == {"hour": 4}
+    assert tasks_routes.task_payload(task, [], None)["task_type"] == "system"
+    assert tasks_routes.task_payload(task, [], None)["metadata"] is None
 
 
 def test_settings_mask_value():

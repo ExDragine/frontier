@@ -3,17 +3,17 @@
 import asyncio
 import datetime as dt
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from jinja2 import Environment, FileSystemLoader
 
 from utils.markdown_render import html_to_image
+from utils.timeutil import SHANGHAI
 
 HERE = Path(__file__).resolve().parent
 
 
 def edition_time(report):
-    return dt.datetime.fromtimestamp(report["scheduled_at"], ZoneInfo("Asia/Shanghai"))
+    return dt.datetime.fromtimestamp(report["scheduled_at"], SHANGHAI)
 
 
 def render_html(report):

@@ -2,10 +2,12 @@
 
 import datetime
 import json
-import zoneinfo
 
 from nonebot import get_driver, on_command
 from nonebot.adapters.milky.event import MessageEvent
+
+from utils.command_text import strip_command_prefix
+from utils.timeutil import SHANGHAI
 
 
 # 延迟导入避免循环依赖
@@ -26,17 +28,13 @@ def _is_superuser(user_id: str) -> bool:
 
 def _strip_task_prefix(text: str) -> str:
     """移除命令前缀"""
-    stripped = text.strip()
-    for prefix in ("/task", "task", "/任务", "任务", "/定时任务", "定时任务"):
-        if stripped.lower().startswith(prefix.lower()):
-            return stripped[len(prefix) :].strip()
-    return stripped
+    return strip_command_prefix(text, ("/task", "task", "/任务", "任务", "/定时任务", "定时任务"))
 
 
 def _format_time(ts: int | None, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
     if not ts:
         return "无"
-    return datetime.datetime.fromtimestamp(ts).astimezone(zoneinfo.ZoneInfo("Asia/Shanghai")).strftime(fmt)
+    return datetime.datetime.fromtimestamp(ts).astimezone(SHANGHAI).strftime(fmt)
 
 
 async def _can_access_task(job_id: str, user_id: str, is_superuser: bool) -> bool:

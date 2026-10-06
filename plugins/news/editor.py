@@ -1,6 +1,5 @@
 """Single-pass editing with local evidence checks."""
 
-import asyncio
 import json
 
 from utils.structured_llm import structured_call
@@ -18,12 +17,12 @@ class NewsEditor:
         self.cfg = cfg
 
     async def call(self, schema, system, user):
-        async with asyncio.timeout(self.cfg.model_timeout):
-            return await structured_call(
-                model=self.cfg.model, provider=self.cfg.provider, schema=schema,
-                system_prompt=system, user_prompt=user, timeout=self.cfg.model_timeout,
-                extra_body=self.cfg.model_extra_body,
-            )
+        # The timeout is enforced once, by the LLM client inside structured_call.
+        return await structured_call(
+            model=self.cfg.model, provider=self.cfg.provider, schema=schema,
+            system_prompt=system, user_prompt=user, timeout=self.cfg.model_timeout,
+            extra_body=self.cfg.model_extra_body,
+        )
 
     async def edit(self, edition, articles):
         data = json.dumps(

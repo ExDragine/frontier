@@ -98,6 +98,39 @@ async def _receive(event: MessageEvent):
         ctx.should_finished()
 
 
+def test_command_prefixes_derive_from_one_alias_source():
+    assert playground.PAINT_PREFIXES == (
+        "/paint",
+        "paint",
+        "/画图",
+        "画图",
+        "/绘图",
+        "绘图",
+    )
+    assert playground.VIDEO_PREFIXES == (
+        "/video",
+        "video",
+        "/视频",
+        "视频",
+        "/生成视频",
+        "生成视频",
+    )
+    assert playground.PAINT_PREFIXES == playground._command_prefixes(
+        playground.PAINT_COMMAND, playground.PAINT_ALIASES
+    )
+    assert playground.VIDEO_PREFIXES == playground._command_prefixes(
+        playground.VIDEO_COMMAND, playground.VIDEO_ALIASES
+    )
+
+
+def test_strip_command_prefix_handles_aliases_and_case():
+    assert playground.strip_command_prefix("/paint a cat", playground.PAINT_PREFIXES) == "a cat"
+    assert playground.strip_command_prefix("画图 一只猫", playground.PAINT_PREFIXES) == "一只猫"
+    assert playground.strip_command_prefix("/PAINT a cat", playground.PAINT_PREFIXES) == "a cat"
+    assert playground.strip_command_prefix("paint", playground.PAINT_PREFIXES) == ""
+    assert playground.strip_command_prefix("hello", playground.PAINT_PREFIXES) == "hello"
+
+
 @pytest.mark.asyncio
 async def test_paint_command_generates_image(monkeypatch):
     sent = _install_message_spies(monkeypatch)

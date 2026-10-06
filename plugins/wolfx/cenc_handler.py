@@ -4,7 +4,6 @@ import asyncio
 import datetime
 import json
 import traceback
-import zoneinfo
 from dataclasses import dataclass
 
 from nonebot import logger
@@ -14,12 +13,13 @@ from utils.alconna import Target, UniMessage
 from utils.configs import EnvConfig
 from utils.database import EventDatabase
 from utils.markdown_render import playwright_render
+from utils.timeutil import SHANGHAI
 
 CENC_EVENT_NAME = "eq_cenc"
 CENC_MINIMUM_MAGNITUDE = 3.0
 CENC_SNAPSHOT_MAX_AGE = datetime.timedelta(minutes=10)
 CENC_SNAPSHOT_MAX_FUTURE = datetime.timedelta(minutes=5)
-CENC_TIMEZONE = zoneinfo.ZoneInfo("Asia/Shanghai")
+CENC_TIMEZONE = SHANGHAI
 
 event_database = EventDatabase()
 _cenc_event_lock = asyncio.Lock()

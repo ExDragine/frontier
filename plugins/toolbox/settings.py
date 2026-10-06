@@ -49,12 +49,6 @@ settings = on_alconna(
 )
 
 
-_WAKE_ADD_WORDS_QUERY = AlconnaQuery("wake.add.word")
-
-
-_WAKE_REMOVE_WORDS_QUERY = AlconnaQuery("wake.remove.word")
-
-
 @dataclass(frozen=True, slots=True)
 class SetMenuItem:
     command: str
@@ -156,18 +150,38 @@ async def _is_plain_wake(_event, _bot, _state, result: Arparma) -> bool:
     return wake is not None and not wake.subcommands
 
 
+async def _require_group(event: MessageEvent) -> int | None:
+    """Return the group id or send the group-only notice and return ``None``."""
+    group_id = _event_group_id(event)
+    if group_id is None:
+        await UniMessage.text("⚠️ 此命令仅支持群聊。").send()
+        return None
+    return group_id
+
+
+async def _require_group_admin(event: MessageEvent) -> int | None:
+    """Group-only plus admin-only guard for the wake-word write commands."""
+    group_id = await _require_group(event)
+    if group_id is None:
+        return None
+    if not _is_group_admin_or_owner(event):
+        await UniMessage.text("⚠️ 只有群主或管理员才能修改唤醒词。").send()
+        return None
+    return group_id
+
+
 def _group_settings() -> GroupSettingsManager:
     return GroupSettingsManager(get_engine())
 
 
-async def _set_wake_show(group_id: int) -> str:
+def _set_wake_show(group_id: int) -> str:
     words = _group_settings().get(group_id, SET_WAKE_KEY)
     if not words:
         return f"当前群未设置唤醒词，使用默认唤醒词「{EnvConfig.BOT_NAME}」。"
     return f"当前群唤醒词：{', '.join(words)}"
 
 
-async def _set_wake_add(group_id: int, word: str) -> str:
+def _set_wake_add(group_id: int, word: str) -> str:
     if not word.strip():
         return "⚠️ 唤醒词不能为空。"
     word = word.strip()
@@ -179,7 +193,7 @@ async def _set_wake_add(group_id: int, word: str) -> str:
     return f"✅ 唤醒词「{word}」已添加。当前唤醒词：{', '.join(updated)}"
 
 
-async def _set_wake_remove(group_id: int, word: str) -> str:
+def _set_wake_remove(group_id: int, word: str) -> str:
     word = word.strip()
     if not word:
         return "⚠️ 要移除的唤醒词不能为空。"
@@ -195,7 +209,7 @@ async def _set_wake_remove(group_id: int, word: str) -> str:
     return f"✅ 唤醒词「{word}」已移除。将使用默认唤醒词「{EnvConfig.BOT_NAME}」。"
 
 
-async def _set_wake_clear(group_id: int) -> str:
+def _set_wake_clear(group_id: int) -> str:
     count = _group_settings().clear(group_id, SET_WAKE_KEY)
     if count == 0:
         return f"当前群未设置唤醒词，无需清空。使用默认唤醒词「{EnvConfig.BOT_NAME}」。"
@@ -214,61 +228,48 @@ async def handle_set_model():
 
 @settings.assign("wake", additional=_is_plain_wake)
 async def handle_set_wake_show(event: MessageEvent):
-    group_id = _event_group_id(event)
+    group_id = await _require_group(event)
     if group_id is None:
-        await UniMessage.text("⚠️ 此命令仅支持群聊。").send()
         return
-    await UniMessage.text(await _set_wake_show(group_id)).send()
+    await UniMessage.text(_set_wake_show(group_id)).send()
 
 
 @settings.assign("wake.add")
 async def handle_set_wake_add(
     event: MessageEvent,
-    words: Query[tuple[str, ...]] = _WAKE_ADD_WORDS_QUERY,
+    words: Query[tuple[str, ...]] = AlconnaQuery("wake.add.word"),  # noqa: B008
 ):
-    group_id = _event_group_id(event)
+    group_id = await _require_group_admin(event)
     if group_id is None:
-        await UniMessage.text("⚠️ 此命令仅支持群聊。").send()
-        return
-    if not _is_group_admin_or_owner(event):
-        await UniMessage.text("⚠️ 只有群主或管理员才能修改唤醒词。").send()
         return
     word = " ".join(words.result)
     if not word:
         await UniMessage.text("⚠️ 用法：/set wake add <唤醒词>").send()
         return
-    await UniMessage.text(await _set_wake_add(group_id, word)).send()
+    await UniMessage.text(_set_wake_add(group_id, word)).send()
 
 
 @settings.assign("wake.remove")
 async def handle_set_wake_remove(
     event: MessageEvent,
-    words: Query[tuple[str, ...]] = _WAKE_REMOVE_WORDS_QUERY,
+    words: Query[tuple[str, ...]] = AlconnaQuery("wake.remove.word"),  # noqa: B008
 ):
-    group_id = _event_group_id(event)
+    group_id = await _require_group_admin(event)
     if group_id is None:
-        await UniMessage.text("⚠️ 此命令仅支持群聊。").send()
-        return
-    if not _is_group_admin_or_owner(event):
-        await UniMessage.text("⚠️ 只有群主或管理员才能修改唤醒词。").send()
         return
     word = " ".join(words.result)
     if not word:
         await UniMessage.text("⚠️ 用法：/set wake remove <唤醒词>").send()
         return
-    await UniMessage.text(await _set_wake_remove(group_id, word)).send()
+    await UniMessage.text(_set_wake_remove(group_id, word)).send()
 
 
 @settings.assign("wake.clear")
 async def handle_set_wake_clear(event: MessageEvent):
-    group_id = _event_group_id(event)
+    group_id = await _require_group_admin(event)
     if group_id is None:
-        await UniMessage.text("⚠️ 此命令仅支持群聊。").send()
         return
-    if not _is_group_admin_or_owner(event):
-        await UniMessage.text("⚠️ 只有群主或管理员才能修改唤醒词。").send()
-        return
-    await UniMessage.text(await _set_wake_clear(group_id)).send()
+    await UniMessage.text(_set_wake_clear(group_id)).send()
 
 
 @model_cmd.handle()
