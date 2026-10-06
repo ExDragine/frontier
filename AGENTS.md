@@ -32,7 +32,6 @@ Milky MessageEvent → NoneBot on_message(priority=10)
   ├─ Phase 3: 媒体下载和附件索引
   │    download_media 并行解析 lazy 媒体
   │    insert_media 将图片/语音/视频写入 cache/sandbox/memory/{workspace}/...
-  │    insert_images 只在后端不支持 insert_media 时作为回退
   │
   ├─ Phase 4: 内容安全和群反应
   │    message_check 返回 Safe / Controversial / Unsafe

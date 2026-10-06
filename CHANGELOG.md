@@ -49,6 +49,44 @@
   optional progress reporter, so private `assistant_preamble`, thinking and
   tool-call messages plus the single group status message are emitted again.
   Callers that pass no reporter keep the plain request/response shape.
+- Pruned dead code, dead configuration and compatibility shims across the
+  repository (net −2.3k lines): removed the `StoredMessage` and
+  `MessagePartType` aliases, `GateDecision.allowed`, `HistoryQuery.after` plus
+  its two dead adapter filters, `TurnOutcome.delivered`, the leftovers in
+  `neutral_core` (`_parts_text`, `_response_text`), the test-only
+  `ModelMediaMiddleware`, `utils/ens_gate._ens_caller_allowed`, the clockwork
+  `reminder_handler` module and `github_post_news` handler, the news
+  `Verification` model and three unused delivery columns, the dashboard
+  "memory" card that read a field the API never returned, and the
+  `insert_images` fallback branch in the QQ handler. `EnvConfig.TEST_GROUP_ID`
+  stays: it has no reader, but the configuration model forbids extra inputs, so
+  dropping the field would stop existing `env.toml` files from loading.
+- `utils/database/__init__.py` is now a plain 21-name re-export facade: the
+  module-subclass `__setattr__` forwarding shim is gone and the single test
+  that relied on package-wide monkeypatching patches the owning submodule.
+- `_run_qq_neutral()` returns a single bool (the old `handled` flag was always
+  True), `_qq_neutral_eligible()` lost its unused parameter, and QQ artifact
+  delivery reuses the adapter's `send_qq_artifacts` instead of a second
+  converter in the handler. `run_serialized()` accepts factories only, so the
+  coroutine-disposal branch is gone.
+- Shared helpers replace duplicated implementations: `utils/command_text.py`
+  (command-prefix stripping, three call sites), `utils/timeutil.py`
+  (`SHANGHAI` plus `add_daily_job`, used by the ACP lifecycle and the QQ daily
+  cache cleanup), `utils/ens_common.py` (ENS wait, formatting, capture options
+  and URL builders), `tools/_nrc_common.py` (NRC headers, templates, DANZU
+  tables, CSS loading) and a single browser runtime behind `browser_capture`
+  and `markdown_render`.
+- The `radar` area table and the four `ens_normal` lookup tables moved to
+  `data/radar_areas.json` and `data/ens/*.json`; `tools/iching.py` keeps only
+  its three tools, with the reader in `tools/_iching_reader.py`.
+- The suite dropped self-asserting cases, parametrised isomorphic ones and
+  shares plugin/tool doubles through `test/plugins/conftest.py` and
+  `test/tools/conftest.py`. `test/conftest.py` now ignores temp-database
+  cleanup errors, so a Windows run needs no external plugin.
+- `test/utils/agent_execution_test.py` no longer depends on module import
+  order: its revision-rebuild case patched the configuration class object that
+  the session-scoped reload had already replaced, so it only passed when
+  another module imported the Agent graph first.
 
 Earlier implementation notes live in `docs/` and are retained as design
 history. They are not a promise that every historical experiment remains

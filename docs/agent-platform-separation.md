@@ -236,7 +236,7 @@ class ReplyPolicy(Protocol):
 
 class HistoryStore(Protocol):
     async def load(self, query: HistoryQuery) -> list[ChatMessage]: ...
-    async def append(self, message: StoredMessage) -> None: ...
+    async def append(self, message: ChatMessage) -> None: ...
 
 
 class DeliveryPort(Protocol):
@@ -278,7 +278,7 @@ class QqHistoryStore:
     async def load(self, query: HistoryQuery) -> list[ChatMessage]:
         ...
 
-    async def append(self, message: StoredMessage) -> None:
+    async def append(self, message: ChatMessage) -> None:
         ...
 ```
 
@@ -544,7 +544,7 @@ QqDelivery
 QqToolProvider
 ```
 
-当前已包装现有实现，并增加 `ConversationOrchestrator`。Milky 事件解析和下载编排仍由 `handlers.py` 承担；`QqMessageAdapter` 已接管中性身份、当前/近期已解析媒体、文件和引用的 `InboundMessage` 构造，以及 history→`ChatMessage` 转换。QQ 入口已完成生产切换，旧执行函数只作为显式兼容 helper 保留，不参与正常路由。
+当前已包装现有实现，并增加 `ConversationOrchestrator`。Milky 事件解析和下载编排仍由 `handlers.py` 承担；`QqMessageAdapter` 已接管中性身份、当前/近期已解析媒体、文件和引用的 `InboundMessage` 构造，以及 history→`ChatMessage` 转换。QQ 入口已完成生产切换，旧版执行函数已删除，每轮请求只经过中立编排一条路径。
 
 ### P3：工具能力注入
 
