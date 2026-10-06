@@ -25,6 +25,8 @@ from utils.database import (
     MessageDatabase,
     TimeStamp,
 )
+from utils.database import attachments as db_attachments
+from utils.database import rows as db_rows
 from utils.media import resolve_media
 
 
@@ -356,7 +358,10 @@ async def test_insert_media_removes_new_files_when_database_indexing_fails(
     def fail_refresh(*_args, **_kwargs):
         raise RuntimeError("database unavailable")
 
-    monkeypatch.setattr(db_module, "_refresh_message_model_states", fail_refresh)
+    # The helper lives in its own module now, so patch the call sites that hold
+    # a direct reference instead of the package facade.
+    monkeypatch.setattr(db_attachments, "_refresh_message_model_states", fail_refresh)
+    monkeypatch.setattr(db_rows, "_refresh_message_model_states", fail_refresh)
 
     with pytest.raises(RuntimeError, match="database unavailable"):
         await database.insert_media(
