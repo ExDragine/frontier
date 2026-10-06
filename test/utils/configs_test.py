@@ -49,8 +49,6 @@ def test_env_config_defaults(monkeypatch):
     assert EnvConfig.LAYA_CANDIDATE_MODEL == "auto"
     assert EnvConfig.LAYA_CANDIDATE_DEVICE == "cpu"
     assert EnvConfig.LAYA_CANDIDATE_THRESHOLD == 0.5
-    assert EnvConfig.ANSWER_RUBRIC_ENABLED is True
-    assert EnvConfig.ANSWER_RUBRIC_MAX_ITERATIONS == 2
     assert EnvConfig.FEISHU_ENABLED is False
     assert EnvConfig.FEISHU_APP_ID == ""
     assert EnvConfig.FEISHU_BOT_OPEN_ID == ""
@@ -79,8 +77,6 @@ def test_env_config_reload_updates_runtime_sections():
             "laya_candidate_enabled": True,
             "laya_candidate_model": "multilingual",
             "laya_candidate_threshold": 0.2,
-            "answer_rubric_enabled": False,
-            "answer_rubric_max_iterations": 1,
         },
         "models": {"signal_model_provider": "deepseek_responses"},
     })
@@ -93,8 +89,6 @@ def test_env_config_reload_updates_runtime_sections():
     assert EnvConfig.LAYA_CANDIDATE_ENABLED is True
     assert EnvConfig.LAYA_CANDIDATE_MODEL == "multilingual"
     assert EnvConfig.LAYA_CANDIDATE_THRESHOLD == 0.2
-    assert EnvConfig.ANSWER_RUBRIC_ENABLED is False
-    assert EnvConfig.ANSWER_RUBRIC_MAX_ITERATIONS == 1
     assert EnvConfig.FEISHU_ENABLED is False
     assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is True
     assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_GROUP_LIST == [1001]
@@ -108,8 +102,7 @@ def test_env_config_reload_updates_runtime_sections():
     assert EnvConfig.SIGNAL_MODEL_PROVIDER == "deepseek"
     assert EnvConfig.QQ_TEXT_CANARY_ENABLED is False
     assert EnvConfig.LAYA_CANDIDATE_ENABLED is False
-    assert EnvConfig.ANSWER_RUBRIC_ENABLED is True
-    assert EnvConfig.ANSWER_RUBRIC_MAX_ITERATIONS == 2
+    assert EnvConfig.LAYA_CANDIDATE_MODEL == "auto"
 
 
 def test_decision_model_fields_are_canonical_and_old_aliases_follow():

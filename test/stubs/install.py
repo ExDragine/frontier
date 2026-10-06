@@ -86,11 +86,6 @@ def install_all_third_party_stubs():
             (),
             {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
         ),
-        RubricMiddleware=type(
-            "RubricMiddleware",
-            (),
-            {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
-        ),
         register_harness_profile=lambda *_args, **_kwargs: None,
         create_deep_agent=lambda **_kwargs: types.SimpleNamespace(ainvoke=lambda *a, **k: {}),
     )
@@ -178,14 +173,9 @@ def install_all_third_party_stubs():
     install_stub("langchain_core.documents", Document=object)
 
     install_stub(
-        "langchain_quickjs",
-        CodeInterpreterMiddleware=type("CodeInterpreterMiddleware", (), {"__init__": lambda self, *_a, **_kw: None}),
-    )
-    install_stub(
         "tools.agent_tools",
         main_tools=[],
         direct_tools=[],
-        ptc_tools=[],
         mcp_tools=[],
         restricted_tools=[],
         tool_metadata={},

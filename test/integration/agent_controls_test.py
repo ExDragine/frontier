@@ -16,12 +16,12 @@ sys.path.insert(0, sys.argv[1])
 
 from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool, ToolException
+from langchain_core.tools import tool
 from langgraph.errors import GraphInterrupt
 from utils.agents import cognitive
-from utils.agents.tool_errors import prepare_ptc_tools
+from utils.agents.tool_errors import WEB_SEARCH_TOOL_NAMES, tool_error_middleware
 from utils.configs import EnvConfig
 
 class ContractModel(FakeMessagesListChatModel):
@@ -70,7 +70,7 @@ async def run(responses, tools):
     EnvConfig.ADVAN_MODEL = 'contract-model'
     EnvConfig.AGENT_JOB_TIMEOUT_SECONDS = 20
     agent = object.__new__(cognitive.FrontierCognitive)
-    agent.tools, agent.ptc_tools = tools, []
+    agent.tools = tools
     agent.document_subagent = None
     agent.working_dir = str(Path.cwd() / 'sandbox')
     agent.load_system_prompt = lambda group_id: 'Answer the current request.'
@@ -121,34 +121,38 @@ async def main():
     assert len(calls) <= 1, calls
     EnvConfig.AGENT_TOOL_CALL_LIMIT = 10
 
-    # The PTC bridge calls .arun directly; its copied tool must sanitize there too.
-    prepared = prepare_ptc_tools([get_recent_conversation])[0]
-    assert prepared is not get_recent_conversation
-    try:
-        await prepared.arun({})
-    except ToolException as exc:
-        assert 'secret' not in str(exc)
-        assert '查询工具暂时不可用' in str(exc)
-    else:
-        raise AssertionError('PTC failure was not surfaced')
+    # Read-only tool errors are sanitized by the real middleware chain before
+    # they can reach the model, and langgraph control-flow signals pass through.
+    middleware = tool_error_middleware(read_only_tools=[*WEB_SEARCH_TOOL_NAMES, 'get_recent_conversation'])
 
-    @tool
-    def interrupt_sync() -> str:
-        """Interrupt a synthetic synchronous query."""
+    async def fail_read(_request):
+        raise RuntimeError('secret-api-key and private-user-content')
+
+    error = await middleware.awrap_tool_call(
+        SimpleNamespace(tool=None, tool_call={'name': 'get_recent_conversation', 'id': 'read-1', 'args': {}}),
+        fail_read,
+    )
+    assert isinstance(error, ToolMessage), error
+    assert error.status == 'error', error
+    assert 'secret' not in error.content, error
+    assert '查询工具暂时不可用' in error.content, error
+
+    def interrupt_sync(_request):
         raise GraphInterrupt(())
 
-    @tool
-    async def interrupt_async() -> str:
-        """Interrupt a synthetic asynchronous query."""
+    async def interrupt_async(_request):
         raise GraphInterrupt(())
 
-    for prepared in prepare_ptc_tools([interrupt_sync, interrupt_async]):
+    for name, handler in (('interrupt_sync', interrupt_sync), ('interrupt_async', interrupt_async)):
         try:
-            await prepared.arun({})
+            await middleware.awrap_tool_call(
+                SimpleNamespace(tool=None, tool_call={'name': name, 'id': 'read-2', 'args': {}}),
+                handler,
+            )
         except GraphInterrupt:
             pass
         else:
-            raise AssertionError('PTC swallowed a graph interrupt')
+            raise AssertionError('tool error middleware swallowed a graph interrupt')
 
     child = create_agent(model=ContractModel(responses=[message('child', tokens=7)], tags=['frontier:document']))
     @tool
