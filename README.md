@@ -19,6 +19,10 @@ message_gateway 门控（黑白名单 / @ / 唤醒词 / Decision LLM）
   ↓
 媒体下载 + 内容安全检查
   ↓
+ConversationOrchestrator（平台中性编排）
+  ↓
+FrontierAgentCore → FrontierAgentRuntime.run
+  ↓
 FrontierCognitive.chat_agent()
   ↓
 deepagents.create_deep_agent()
@@ -30,7 +34,7 @@ UniMessage 文本、图片、视频或文件回复
 
 主要设计点：
 - **先存储、后门控、再下载媒体**：未触发回复的图片/视频不会被下载。
-- **会话串行**：同一用户/群聊线程通过 `asyncio.Lock` 串行执行，不同线程可并发。
+- **会话串行**：QQ 使用两级命名锁——`delivery:{workspace_key}` 覆盖模型生成、工件发送、最终回复和送达落库，`workspace:{workspace_key}` 覆盖同一 workspace 的 Agent 执行；固定顺序是先取 delivery 锁再取 workspace 锁，不可反向嵌套。不同群和不同私聊可并发。
 - **多模型路由**：OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek 统一由 `utils/llm_factory.py` 创建。
 - **文件系统工作区**：群聊使用 `group-{group_id}`、私聊使用 `dm-{user_id}`，同一个裸数字不会共享 workspace 或 memory。
 - **分层提示词**：`env.toml` 定义基础人设，`prompts/AGENTS.md` 定义常驻全局规范，workspace `SOUL.md` 由 Memory middleware 注入动态人设；详细渲染与平台操作流程保存在 Skills 中按需加载。
@@ -38,14 +42,20 @@ UniMessage 文本、图片、视频或文件回复
 
 ## 功能模块
 
+`plugins/` 下由 NoneBot 加载 8 个插件包：
+
 | 插件 | 功能 |
 |------|------|
 | `plugins/agent` | 核心对话引擎：消息处理、回复门控、内容安全、Deep Agent 调度、回复渲染 |
 | `plugins/acp` | ACP v1/v2 客户端与服务端、`/acp` 命令、子代理桥接及进程维护 |
-| `plugins/clockwork` | APScheduler 定时任务：提醒、用户自动任务、每日新闻、APOD、地震/NRC 等推送 |
+| `plugins/clockwork` | APScheduler 定时任务：提醒、用户自动任务、APOD、地震/NRC 等推送；`daily_news` 只注册任务，处理器位于 `plugins.news` |
 | `plugins/dashboard` | Web 管理面板：JWT 登录、状态、消息浏览、配置管理、任务管理 |
+| `plugins/news` | 独立新闻管线：检索 → 证据约束编辑 → `news.db` 归档 → 渲染 → 逐目标投递 |
 | `plugins/playground` | `/paint` 图片生成、`/video` 视频生成、戳一戳响应 |
 | `plugins/toolbox` | `/update`、`/restart`、`/model`、`/set wake`、`/vehelp` 等管理命令 |
+| `plugins/wolfx` | Wolfx CENC 地震预警：WebSocket 长连接监听、去重、渲染并推送 |
+
+管理命令中 `/update`、`/restart`、`/model`、`/news` 和 `/acp` 仅超级用户可用；`/task` 在 handler 内按超级用户或任务属主判断。
 
 ## Agent 工具能力
 
@@ -71,7 +81,7 @@ QQ 已支持有界会话缓存、空闲过期与历史重建，默认关闭；�
 
 Agent 与平台解耦的目标架构、统一消息协议、端口和迁移阶段见 [Agent 与平台解耦设计](docs/agent-platform-separation.md)。
 QQ 消息现在默认经过平台中立的 Conversation Orchestrator，覆盖群聊/私聊文本、已下载媒体、已暂存文件、引用、近期媒体和 session。`qq_text_canary_enabled` 仅作为旧配置兼容字段保留，不再控制路由。
-飞书接入方案已记录在 [Agent 与平台解耦设计](docs/agent-platform-separation.md)；仓库中的无 SDK facade、webhook 和 API 客户端仅作为隔离参考，`plugins.agent` 不会自动注册飞书 lifecycle，当前开发主线先推进 QQ 的统一编排层。重新启用飞书前仍需补持久化 history、durable queue、加密解码和真实平台验证。
+飞书接入方案已记录在 [Agent 与平台解耦设计](docs/agent-platform-separation.md)；仓库中的无 SDK facade、webhook 和 API 客户端仅作为隔离参考，`plugins.agent` 不会自动注册飞书 lifecycle，当前开发主线先推进 QQ 的统一编排层。`plugins/agent/__init__.py` 与 `plugins/agent/adapters/__init__.py` 的注释明确说明不挂载第二个平台，`register_feishu_lifecycle` 目前只有测试引用。重新启用飞书前仍需补持久化 history、durable queue、加密解码和真实平台验证。
 
 工具执行分为三层：媒体工件、平台写操作、聊天记忆和 MCP 联网搜索工具由主 Agent 直接调用；本地文档分析可交给有独立调用预算的文档子代理。联网搜索、网页读取和多来源核验统一使用主 Agent 的模型与工具调用预算。
 
@@ -127,8 +137,7 @@ cp plugins/acp/acp.json.example acp.json
 
 在 `acp.json` 中配置一个或多个通过 stdio 提供 ACP v1 或 v2 Draft 的 Agent 后，可使用
 `/acp <任务>`，或通过 `/acp --agent <名称> <任务>` 选择 Agent。`/acp --list`、
-`/acp --cancel` 和 `/acp --reset` 分别用于查看、取消当前 turn 和重建会话；命令访问
-沿用 `env.toml` 的 `[agent_policy]`。
+`/acp --cancel` 和 `/acp --reset` 分别用于查看、取消当前 turn 和重建会话；`/acp` 仅超级用户可用。
 每个群聊或私聊 scope 使用 `cache/acp/workspaces/` 下的独立工作区。ACP Agent 是本地
 子进程，工作区并非操作系统 sandbox；它仍可能访问 Frontier 进程有权限读取的其他路径。
 `permission_policy` 默认为 `deny`，只有明确将其改为 `allow_once` 或 `allow_always` 时，
@@ -325,12 +334,16 @@ frontier/
 ├── plugins/
 │   ├── agent/          # QQ 事件、引用、归一化、门控、附件和上下文
 │   ├── acp/            # ACP 客户端、v1/v2 服务端、QQ 命令与子代理桥接
-│   ├── clockwork/      # 定时任务系统
-│   ├── dashboard/      # FastAPI Dashboard
+│   ├── clockwork/      # 定时任务系统（daily_news 处理器位于 plugins/news）
+│   ├── dashboard/      # FastAPI Dashboard 和静态前端
+│   ├── news/           # 独立新闻检索、编辑、归档和投递
 │   ├── playground/     # /paint 和 /video
-│   └── toolbox/        # 管理命令
+│   ├── toolbox/        # 管理命令
+│   └── wolfx/          # CENC 地震预警 WebSocket 监听与推送
 ├── tools/              # LangChain Agent 工具
-├── utils/              # agents/ 包、消息、DB、LLM、渲染、HTTP、Milky helper
+├── utils/              # agents/ 包、agent_protocol/、消息、DB、LLM、渲染、HTTP、Milky helper
+├── models/             # 供应商模型目录与 lobehub 名称表
+├── skills/             # 只读内置 Skill，运行时挂载到 /skills
 ├── prompts/            # 共享 Agent 提示词；插件专属提示词随插件保存
 ├── renderer/           # Markdown 本地图表/公式/代码高亮前端源码
 ├── templates/          # 共享渲染模板；插件专属模板随插件保存
@@ -352,7 +365,7 @@ uv sync --locked --group dev
 uv run --locked pytest --collect-only -q
 uv run --locked pytest test/ -q
 uv run --locked ruff check .
-uv run --locked ty check utils/agent_context.py utils/harness_profiles.py utils/mcp.py utils/agents/inputs.py utils/agents/execution.py utils/agents/runtime.py utils/agents/runtime_gateway.py plugins/agent/chat_context.py utils/delivery.py plugins/dashboard/api/settings_routes.py
+uv run --locked ty check utils/agent_context.py utils/harness_profiles.py utils/mcp.py utils/agents/inputs.py utils/agents/execution.py utils/agents/runtime.py utils/agents/runtime_gateway.py utils/delivery.py plugins/dashboard/api/settings_routes.py
 ```
 
 数据库维护脚本：

@@ -7,7 +7,7 @@
 - P0 已落地：`utils/agent_protocol/` 提供平台无关值对象、Agent 请求/结果和应用端口，并有导入边界测试。
 - P1 已落地：`AgentRuntimeRequest`、`FrontierRuntimeContext` 和 `FrontierCognitive` 接受中性会话、参与者、能力和 workspace key；旧 QQ/ACP 调用保持兼容。
 - P2 已落地：`ConversationOrchestrator` 定义中立的历史→门控→Agent→投递生命周期；`plugins/agent/adapters/qq.py` 提供可注入的 QQ message、history、reply policy、delivery 和 tool facade，并已接入 QQ 生产入口。
-- P3 已落地：工具注册器为 QQ/Milky 模块声明 capability，`FrontierCognitive` 按显式能力筛选 direct/PTC 工具；QQ 入口声明中性会话、参与者、workspace 和 `platform:qq` 能力。`FrontierAgentCore` 将中性 `AgentRequest` 桥接到现有 runtime；群聊和私聊的文本、已下载媒体、当前已暂存文件、已解析引用、已完成 hydration 的近期媒体和 session 统一进入编排层。旧 `qq_text_canary_enabled` 字段只保留配置兼容性，不再控制路由。
+- P3 已落地：工具注册器为 QQ/Milky 模块声明 capability，`FrontierCognitive` 按显式能力筛选 direct 工具快照（原 direct/PTC 双通道已随 quickjs 解释器一同移除）；QQ 入口声明中性会话、参与者、workspace 和 `platform:qq` 能力。`FrontierAgentCore` 将中性 `AgentRequest` 桥接到现有 runtime；群聊和私聊的文本、已下载媒体、当前已暂存文件、已解析引用、已完成 hydration 的近期媒体和 session 统一进入编排层。旧 `qq_text_canary_enabled` 字段只保留配置兼容性，不再控制路由。
 - 飞书方案已单独文档化：`plugins/agent/adapters/feishu*.py` 保留为无 SDK 的边界参考和契约测试，`plugins.agent` 不会自动注册它，当前不把它作为生产接入主线。后续若重新启动飞书工作，再由独立宿主显式注册 lifecycle，并按本文 P4/P5 补持久化 history、durable queue、加密解码和媒体能力。
 
 目标：在保留 QQ/Milky 现有行为的前提下，把 Agent 执行和平台接入拆开，使飞书等新平台可以复用同一套 Agent、工具编排、workspace、memory、session 和执行控制。
@@ -483,7 +483,7 @@ plugins/agent/feishu/
 | `utils/agents/runtime_gateway.py` | Agent Service 的兼容入口 |
 | `utils/agent_context.py` | 通用 `AgentRuntimeContext` |
 | `tools/milky_*` | QQ `PlatformToolProvider` |
-| `utils/database.py` | QQ `HistoryStore` 的底层实现 |
+| `utils/database/` | QQ `HistoryStore` 的底层实现 |
 
 ## 10. 配置边界
 
@@ -547,7 +547,7 @@ QqToolProvider
 
 ### P3：工具能力注入
 
-已完成第一步：`tools/__init__.py` 为 QQ/Milky 模块提供 capability 元数据和按能力筛选的 direct/PTC 快照；显式传入 `qq`、`platform:qq` 或 `qq:tools` 时开放完整 QQ 工具，细分能力可只开放消息、文件、好友、群管理或系统工具。空 capability 仍保持旧调用的全量行为。
+已完成第一步：`tools/__init__.py` 为 QQ/Milky 模块提供 capability 元数据和按能力筛选的 direct 快照；显式传入 `qq`、`platform:qq` 或 `qq:tools` 时开放完整 QQ 工具，细分能力可只开放消息、文件、好友、群管理或系统工具。空 capability 仍保持旧调用的全量行为。
 
 QQ `handlers.py` 已通过 `AgentRuntimeRequest` 注入中性身份和 `platform:qq` 能力；群聊和私聊的当前文本、已下载媒体、当前已暂存文件、解析中的引用、已完成 hydration 的近期媒体和 session 统一进入 `ConversationOrchestrator`，session 租约在中性投递成功或静默结果后结算。网关仍在媒体下载前执行，编排器复用已准备的历史快照和延迟群回复策略；近期附件按独立字段传入，不会误混入当前请求；Agent 执行后不重跑旧 Agent，避免重复工具副作用或重复投递。平台工具提供器选出的工具会继续传入 runtime，和能力快照中的同名工具只保留一份。
 

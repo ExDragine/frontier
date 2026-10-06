@@ -31,14 +31,17 @@ Milky MessageEvent → NoneBot on_message(priority=10)
   │
   ├─ Phase 3: 媒体下载和附件索引
   │    download_media 并行解析 lazy 媒体
-  │    insert_images 将图片写入 cache/sandbox/memory/{workspace}/images
+  │    insert_media 将图片/语音/视频写入 cache/sandbox/memory/{workspace}/...
+  │    insert_images 只在后端不支持 insert_media 时作为回退
   │
   ├─ Phase 4: 内容安全和群反应
   │    message_check 返回 Safe / Controversial / Unsafe
   │
   └─ Agent 执行
        run_serialized(delivery:workspace) 按群/私聊排队，覆盖执行与发送
-       _process_agent_request → FrontierAgentRuntime.run → FrontierCognitive.chat_agent
+       _process_agent_request 申请会话租约并准备历史 → _execute_agent_request
+       → ConversationOrchestrator（平台中性编排）→ FrontierAgentCore
+       → FrontierAgentRuntime.run → FrontierCognitive.chat_agent
        managed_agent_turn 在 workspace 锁内管理初始化、超时、取消和结果
        create_deep_agent → 工具调用 → extract_uni_messages → send_artifacts/send_messages
 ```
@@ -49,7 +52,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - 同一群的不同成员共享 workspace 锁；不同群和不同私聊可并发。QQ 锁顺序是 `delivery:` → `workspace:`，不可反向嵌套。
 - 平台消息按机器人和会话去重；当前消息/引用/历史分别分配媒体预算，当前输入优先。
 - QQ 最终文本确认发送成功后才写入 assistant 历史；队列与投递失败规则见 `docs/message_flow.md`。
-- 私聊会消费 Agent progress 事件并发送“正在思考/调用工具”等进度消息；群聊不发进度消息。
+- 私聊会持续消费 Agent progress 事件：`assistant_preamble` 最多发 2 条，`thinking`/`tool_call`/`subagent_start` 逐条发送。群聊最多发 1 条状态消息，由一次轻量 Signal 调用把首个进度事件分类为网页检索/记忆/一般处理（分类整体 0.35s、Signal 调用 2.5s 超时；`thinking` 先等 0.08s 看是否出现更有用的工具事件）。
 
 ---
 
@@ -60,23 +63,33 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | 模块 | 职责 |
 |------|------|
 | `plugins/agent` | 核心对话入口：消息提取、引用上下文、文件暂存、DB 写入、回复门控、内容安全、Agent 调度、回复发送 |
-| `plugins/clockwork` | APScheduler 定时任务系统：内置任务、用户自动任务、任务命令、执行历史 |
+| `plugins/acp` | ACP v1/v2 客户端与服务端、`/acp` 命令、子代理桥接和进程维护；`/acp` 仅超级用户可用 |
+| `plugins/clockwork` | APScheduler 定时任务系统：内置任务、用户自动任务、任务命令、执行历史；只负责注册 `daily_news` 任务，处理器位于 `plugins.news` |
 | `plugins/dashboard` | FastAPI Dashboard：`/api/dashboard/*` API、`/dashboard` 静态前端、JWT 鉴权、状态/消息/设置/任务管理 |
+| `plugins/news` | 独立新闻管线：Exa MCP 或 Exa/Tavily REST 检索 → 证据约束编辑 → `news.db` 归档 → 渲染 → 逐目标投递；`/news` 仅超级用户可用 |
 | `plugins/playground` | `/paint`、`/video` 命令和戳一戳响应；直接调用共享图片/视频服务 |
-| `plugins/toolbox` | 管理命令：`/update`、`/restart`、`/model`、`/set wake`、`/vehelp`，以及技能沙箱初始化 |
+| `plugins/toolbox` | 管理命令：`/update`、`/restart`、`/model`、`/set wake`、`/vehelp`，以及技能沙箱初始化；`/update`、`/restart`、`/model` 仅超级用户可用 |
+| `plugins/wolfx` | Wolfx CENC 地震预警：`cenc_client.py` 维护 WebSocket 长连接与重连，`cenc_handler.py` 去重、渲染并推送 |
 
 `plugins/agent` 的 `handlers.py` 负责事件编排；`message_normalizer.py`、`reply_context.py`、
 `chat_context.py`、`gateway.py`、`attachments.py` 分别负责归一化、引用、媒体预算、回复门控和附件暂存。
+`plugins/agent/adapters/` 提供 QQ 与飞书适配器；`adapters/__init__.py` 只加载纯 facade，不注册 matcher，
+`plugins/agent/__init__.py` 也明确不挂载飞书 lifecycle（`register_feishu_lifecycle` 目前只有测试引用）。
 `plugins/toolbox` 分为 `settings.py`、`update.py`、`menu.py`，专属菜单位于其 `templates/`。
-`plugins/clockwork` 的日报模板和提示词位于插件自己的 `templates/`、`prompts/`。
+`plugins/news` 的日报模板位于插件自己的 `templates/`（`daily_news.html` / `daily_news.css`），编辑提示词是 `editor.py` 中的常量。
+`plugins/news` 由 Clockwork 的 `daily_news` 任务驱动：任务不存在时注册，已存在时只把处理器迁移到
+`plugins.news.scheduler:daily_news`，保留原有时间、启停状态和目标群。
 插件包入口只在 NoneBot 加载时注册事件；引用纯组件不应触发注册。
 
 ### `utils/` — 共享基础设施
 
 | 文件 | 职责 |
 |------|------|
-| `agents/` | Agent 包：主 Deep Agent 编排、轻量 Agent、输入适配、进度流、Prompt、workspace、运行时与 Subagent |
-| `database.py` | SQLite/SQLModel、消息/附件/群设置模型、WAL/FTS/索引、历史上下文构造、检索和维护 |
+| `agents/` | Agent 包：主 Deep Agent 装配（`cognitive.py`）、中性桥接（`neutral_core.py`）、运行时入口（`runtime_gateway.py`）、消息信封（`message_envelope.py`）、执行与超时（`execution.py`）、用量统计（`usage.py`）、工具错误（`tool_errors.py`）、进度流（`progress.py`）、浏览器意图（`capture.py`）、Prompt、workspace 与 Subagent |
+| `agent_protocol/` | 平台无关契约：`models.py` 值对象（消息段、参与者、会话、请求/响应、投递回执）、`ports.py` 的 `AgentCore`/`ReplyPolicy`/`HistoryStore`/`DeliveryPort`/`PlatformToolProvider`、`identity.py` 的 workspace key 归一化 |
+| `agent_orchestration.py` | `ConversationOrchestrator`：历史 → 门控 → Agent → 投递的平台中性单轮生命周期；QQ 生产入口已接入 |
+| `decision/` | 平台无关 Decision provider：`llm.py`（LLM 决策）、`laya.py`（Laya 候选预筛，默认关闭）、`reply_gate.py`（回复门控打分）、`models.py`；导入不加载 torch/transformers 权重 |
+| `database/` | SQLite/SQLModel 包：`engine`（连接、线程调度）、`models`（表模型）、`schema`（索引与结构校验）、`fts`（FTS5）、`rows`/`store`（历史构造与 `MessageDatabase`）、`attachments`、`search`、`settings`、`events`、`maintenance`；公开 API 由 `__init__.py` 再导出 |
 | `agents/execution.py` / `agents/runtime_gateway.py` | 内置 Agent 的统一请求/结果、运行 ID、超时和取消边界 |
 | `delivery.py` | 不可变投递结果 |
 | `agents/sessions.py` / `agents/checkpoints.py` / `agents/session_context.py` | QQ 进程级有界会话、投递租约、官方 saver 适配与跨轮历史预算，默认关闭 |
@@ -91,6 +104,12 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `http_client.py` | 命名 httpx2 AsyncClient 注册表，统一关闭生命周期 |
 | `tool_helpers.py` | LangChain tool state/config 解析，提取用户、群、图片/视频输入 |
 | `ens_gate.py` | ENS 气象工具上下文门控 |
+
+### `models/` — 模型目录
+
+`models/catalog.py` 读取 `models/data/catalog.json`、`models/data/providers/*.json` 和 lobehub 名称表，
+提供供应商/模型的规范化查询与显示名。`utils/llm_factory.py` 把命中的条目转换为 LangChain
+`ModelProfile` 注入模型实例，为 Deep Agents 提供上下文窗口、输出上限和能力元数据；目录外模型按未知模型降级。
 
 ### `tools/` — Agent 可调用工具
 
@@ -121,7 +140,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 - 使用 `EnvConfig.ADVAN_MODEL` 创建主对话模型；`assistant_agent()` 默认使用 `EnvConfig.BASIC_MODEL`，决策判断使用 `EnvConfig.DECISION_MODEL`。
 - 当模型引用的供应商 `api_mode` 为 `responses` 时，主 Agent 会传 `reasoning_effort` 和 `verbosity`；其他协议路径会跳过这些参数。
 - 根据模型自身的 `capabilities` 判断是否保留视觉输入；不支持 vision 时会移除图片并追加“图片已省略”提示。
-- 主 Agent 默认接收当前消息以及 `[storage].query_message_numbers` 控制的最近历史，并直接持有当前会话的最近对话、聊天搜索和平台历史工具；超出窗口的前文按需调用工具获取。Exa / Tavily 联网搜索、网页读取和多来源核验由主 Agent 直接执行并共享主图调用预算，`document-agent` 继承当前 backend 并仅读分析 workspace / memory 文件。一次性本地/API 只读查询工具通过 PTC 交给主 Agent，联网搜索、媒体工件与平台写操作保留为主 Agent 直接工具。
+- 主 Agent 默认接收当前消息以及 `[storage].query_message_numbers` 控制的最近历史，并直接持有当前会话的最近对话、聊天搜索和平台历史工具；超出窗口的前文按需调用工具获取。所有本地/API 只读查询工具、Exa / Tavily 联网搜索、网页读取、多来源核验、媒体工件与平台写操作都由主 Agent 直接调用（原 PTC 执行通道已随 quickjs 解释器移除），共享主图调用预算；`document-agent` 继承当前 backend 并仅读分析 workspace / memory 文件。
 - 文档子代理定义位于 `utils/agents/subagents/`，以声明式配置继承当前 backend，只读访问 workspace / memory 文件；不反向依赖工具注册器。
 - Frontier 为四类模型 provider 注册统一 Harness Profile，关闭 Deep Agents 自动添加且工具面重复的 `general-purpose` subagent。
 - 模型目录会转换为 LangChain `ModelProfile` 注入模型实例，为 Deep Agents 提供上下文窗口、输出上限和能力元数据；目录外模型继续按未知模型降级。
@@ -131,8 +150,8 @@ Milky MessageEvent → NoneBot on_message(priority=10)
   - `/skills/`: 仓库内置 `skills/`，Agent 只读
   - `/memory/{workspace_key}/`: `cache/sandbox/memory/{workspace_key}`
 - 对每个 workspace，如果缺少 memory `SOUL.md`，会创建零字节空文件；群聊按 `group_id` 共享，私聊按 `user_id` 隔离。
-- 核心 middleware 顺序是 `PII → ToolRetry → ToolError → ModelCallLimit → ToolCallLimit → ModelRetry → FilesystemFileSearch → Memory`，随后按需追加静默回复、工具搜索和原生网页搜索。
-- 主模型 SDK 重试关闭，由 ModelRetry 控制模型重试。图工具错误由 ToolError 统一处理；PTC 直接调用工具，使用独立的异常脱敏包装。平台写操作或未分类工具异常会结束当前轮次，不自动重复。
+- 核心 middleware 顺序是 `PII → ToolError → ModelCallLimit → ToolCallLimit → ModelRetry → Filesystem → FilesystemFileSearch → Memory`；随后按需追加 `SilentReply`（仅 frontier 档）、`ProviderToolSearch`（主模型名含 `gpt`/`claude` 时）、`NativeWebSearch`（供应商原生 web_search 可用时）和 `SessionHistory`（会话缓存开启时最后追加）。没有独立的 `ToolRetryMiddleware` 层。
+- 主模型 SDK 重试关闭，由 ModelRetry 控制模型重试。图工具错误由 ToolError 统一处理：已确认的只读工具异常转换为脱敏的可读结果，写入或未分类工具异常结束当前轮次。平台写操作或未分类工具异常不会自动重复。
 - 主图模型/工具预算由 `[limits].agent_model_call_limit / agent_tool_call_limit` 控制；子代理保留独立预算。
 - QQ 的 `[sessions]` 开关开启后，同一机器人同一群共享 checkpoint，图仍按请求构建；配置修订不兼容、快照冲突、过期或容量轮换后从 DB 重建。ACP 和定时任务不接入该缓存。运行与投递租约不能被清理器回收，最终内容按实际送达文本校准；媒体轮次结算后释放整代。详见 `docs/agent-sessions.md`。
 - `managed_agent_turn` 收集 LangChain 用量，成功/失败返回 `usage`，取消也保留进程内统计；Dashboard `/api/dashboard/status/usage` 返回最近 100 轮无正文记录。详见 `docs/agent-execution-controls.md`。
@@ -143,14 +162,14 @@ Prompt 加载链：
 - 自定义 `MemoryMiddleware` 从当前 workspace 的 `/memory/{workspace_key}/SOUL.md` 注入动态人设，并同时提供 SOUL 的写入边界与优先级约束。
 - 完整的图表、指标卡和时间线渲染契约位于只读内置 Skill `/skills/rich-markdown/SKILL.md`，仅在需要增强 Markdown 时按需加载。
 - `plugins/agent/prompts/reply_check.md` 用于群聊是否应主动回复的 Decision LLM 判断。
-- `plugins/clockwork/prompts/daily_news.md` 用于每日新闻任务。
+- 每日新闻不使用独立的 prompt 文件：编辑提示词是 `plugins/news/editor.py` 中的 `PROMPT` 常量，模板位于 `plugins/news/templates/daily_news.html` 和 `daily_news.css`。
 - ENS 详细工作流位于只读内置 Skill `/skills/ens-weather/SKILL.md`；主提示词只保留加载入口。
 
 ---
 
 ## Data & Persistence
 
-默认数据库是 `sqlite:///frontier.db`。`utils/database.py` 会：
+默认数据库是 `sqlite:///frontier.db`。`utils/database/` 包会：
 - 开启 SQLite WAL、busy timeout、cache/mmap、FTS5 支持和面向查询形状的索引。
 - 将同步 DB 操作包进 `asyncio.to_thread()`，避免阻塞事件循环；内存库例外。
 - 存储普通消息、合并转发 derived messages、图片/附件索引、群级 key-value 设置。
@@ -216,7 +235,7 @@ Agent 提取工件时延迟从 `utils.alconna` 加载 `UniMessage`，只接受�
 }
 ```
 
-`_process_agent_request()` 负责内容安全清洗、发送媒体工件和最终文本/图片回复，并在最终回复发送成功后落库。发送函数返回 `DeliveryResult`，生成成功和送达成功分别判断。
+`_process_agent_request()` 申请并结算 QQ 会话租约、准备会话历史，然后把请求交给 `_execute_agent_request()`；内容安全清洗由中性 `_QqNeutralCore` 完成，媒体工件和最终文本/图片回复由 `QqDelivery` 经中立投递端口发送，最终回复发送成功后才落库；生产路径不再经过任何旧版执行函数。发送函数返回 `DeliveryResult`，生成成功和送达成功分别判断。
 
 ### 输出发送规则
 
@@ -233,7 +252,7 @@ Milky 群管理工具会读取 `RunnableConfig.configurable.group_member_role` �
 
 ## Gotchas
 
-1. `utils/database.py` 仍包含索引、FTS、附件文件、derived messages 和线程调度；历史迁移已移除，启动时检查当前表结构。修改前先读相关测试，避免破坏历史注入和搜索性能。
+1. `utils/database/` 仍包含索引、FTS、附件文件、derived messages 和线程调度；历史迁移已移除，启动时检查当前表结构。修改前先读相关测试，避免破坏历史注入和搜索性能。
 
 2. `EnvConfig` 在 import 时读取 `env.toml`。运行时 Dashboard 能调用 `EnvConfig.reload()` 更新部分配置，但普通代码不要假设配置文件变更会自动生效。
 
