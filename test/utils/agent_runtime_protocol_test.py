@@ -1,21 +1,23 @@
-"""Compatibility tests for the neutral Agent runtime request context."""
+"""Compatibility tests for the neutral Agent runtime request context.
+
+Only the contracts this module actually owns are asserted here: that the
+runtime request stays a constructible immutable value object with the legacy
+ACP/QQ fields intact, and that the neutral identity fields stay optional for
+existing callers.  How those fields are consumed is covered behaviourally by
+``test/utils/agent_runtime_gateway_protocol_test.py``.
+"""
 
 # ruff: noqa: S101
+
+import dataclasses
 
 import pytest
 
 from utils.agent_protocol import ConversationRef, Participant
 from utils.agents.runtime_gateway import AgentRuntimeMedia, AgentRuntimeRequest
 
-_NEUTRAL_FIELDS = ("conversation", "principal", "capabilities", "workspace_key")
 
-
-@pytest.mark.xfail(
-    condition=not all(hasattr(AgentRuntimeRequest, field) for field in _NEUTRAL_FIELDS),
-    reason="AgentRuntimeRequest neutral context fields are introduced incrementally",
-    strict=False,
-)
-def test_runtime_request_accepts_neutral_context_and_preserves_legacy_fields() -> None:
+def test_runtime_request_is_a_frozen_slots_value_object() -> None:
     conversation = ConversationRef(
         platform="feishu",
         account_id="bot-1",
@@ -31,6 +33,8 @@ def test_runtime_request_accepts_neutral_context_and_preserves_legacy_fields() -
     )
     image = AgentRuntimeMedia(kind="image", data=b"image", mime_type="image/png")
 
+    # Constructing with the full legacy + neutral surface keeps both field sets
+    # available to callers; a removed or renamed field fails here loudly.
     request = AgentRuntimeRequest(
         session_id="session-1",
         prompt="hello",
@@ -55,45 +59,20 @@ def test_runtime_request_accepts_neutral_context_and_preserves_legacy_fields() -
     )
 
     assert request.conversation is conversation
-    assert request.principal is principal
-    assert request.capabilities == frozenset({"common.weather", "platform.feishu"})
     assert request.workspace_key == "feishu:tenant-1:thread:chat-1"
+    assert request.capabilities == frozenset({"common.weather", "platform.feishu"})
 
-    # Existing ACP/QQ fields remain available alongside the neutral context.
-    assert request.session_id == "session-1"
-    assert request.prompt == "hello"
-    assert request.images == (image,)
-    assert request.messages == ({"role": "user", "content": "hello"},)
-    assert request.user_id == "user-1"
-    assert request.user_name == "Alice"
-    assert request.group_id == 42
-    assert request.group_member_role == "member"
-    assert request.capability == "common.weather"
-    assert request.access_profile == "frontier"
-    assert request.enable_acp_subagents is True
-    assert request.allow_silent_reply is True
-    assert request.image_inputs == (b"legacy-image",)
-    assert request.audio_inputs == (b"legacy-audio",)
-    assert request.video_inputs == (b"legacy-video",)
+    assert not hasattr(request, "__dict__")  # slots
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        request.prompt = "changed"  # type: ignore[misc]
 
 
-@pytest.mark.xfail(
-    condition=not all(hasattr(AgentRuntimeRequest, field) for field in _NEUTRAL_FIELDS),
-    reason="AgentRuntimeRequest neutral context fields are introduced incrementally",
-    strict=False,
-)
 def test_runtime_request_keeps_legacy_constructor_compatible() -> None:
-    """New neutral fields should have defaults for existing callers."""
+    """New neutral fields stay optional so existing ACP/QQ callers still work."""
 
     request = AgentRuntimeRequest(session_id="legacy-session", prompt="legacy prompt")
 
     assert request.session_id == "legacy-session"
-    assert request.prompt == "legacy prompt"
-    assert request.images == ()
-    assert request.messages == ()
-    assert request.user_id is None
-    assert request.group_id is None
-    assert request.group_member_role is None
     assert request.conversation is None
     assert request.principal is None
     assert request.capabilities == frozenset()

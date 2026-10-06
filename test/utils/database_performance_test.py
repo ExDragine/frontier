@@ -11,6 +11,19 @@ from utils import database as db_module
 from utils.database import Message, MessageAttachment, MessageDatabase
 
 
+@pytest.fixture(scope="module")
+def requires_fts5():
+    """Skip when the SQLite runtime was built without FTS5.
+
+    FTS5 availability is a property of the interpreter's SQLite library, not of
+    any single per-test database, so it is probed once per module instead of
+    inside every FTS test.
+    """
+
+    if not db_module.sqlite_supports_fts5(db_module.get_engine("sqlite://")):
+        pytest.skip("SQLite runtime does not support FTS5")
+
+
 def test_get_engine_configures_sqlite_for_concurrent_bot_workload(tmp_path: Path):
     db_url = f"sqlite:///{tmp_path / 'frontier-test.db'}"
 
@@ -140,13 +153,10 @@ async def test_insert_images_keeps_one_attachment_per_image_path(tmp_path: Path,
     assert attachments[0].file_size == len(b"new")
 
 
-def test_message_database_creates_fts_table_and_triggers_when_supported(tmp_path: Path, monkeypatch):
+def test_message_database_creates_fts_table_and_triggers_when_supported(tmp_path: Path, monkeypatch, requires_fts5):
     monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
 
     database = MessageDatabase()
-
-    if not db_module.sqlite_supports_fts5(database.engine):
-        pytest.skip("SQLite runtime does not support FTS5")
 
     with database.engine.connect() as conn:
         tables = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_schema WHERE type='table'")}
@@ -159,12 +169,9 @@ def test_message_database_creates_fts_table_and_triggers_when_supported(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_search_messages_uses_fts_for_content_query_and_preserves_scope(tmp_path: Path, monkeypatch):
+async def test_search_messages_uses_fts_for_content_query_and_preserves_scope(tmp_path: Path, monkeypatch, requires_fts5):
     monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
     database = MessageDatabase()
-
-    if not db_module.sqlite_supports_fts5(database.engine):
-        pytest.skip("SQLite runtime does not support FTS5")
 
     await database.insert(1000, 10, 1, 123, "Alice", "user", "今天讨论 Python 搜索")
     await database.insert(2000, 11, 2, 123, "Bob", "user", "Python 在同群不同人")
@@ -220,12 +227,9 @@ def test_run_database_maintenance_reports_optimize_and_checkpoint(tmp_path: Path
     assert "wal_checkpoint" in result
 
 
-def test_check_message_fts_repairs_a_missing_external_content_index(tmp_path: Path, monkeypatch):
+def test_check_message_fts_repairs_a_missing_external_content_index(tmp_path: Path, monkeypatch, requires_fts5):
     monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
     database = MessageDatabase()
-
-    if not db_module.sqlite_supports_fts5(database.engine):
-        pytest.skip("SQLite runtime does not support FTS5")
 
     with database.engine.begin() as conn:
         conn.exec_driver_sql("DROP TABLE message_fts")
@@ -241,12 +245,9 @@ def test_check_message_fts_repairs_a_missing_external_content_index(tmp_path: Pa
     assert after["repaired"] is True
 
 
-def test_database_maintenance_recreates_missing_external_content_index(tmp_path: Path, monkeypatch):
+def test_database_maintenance_recreates_missing_external_content_index(tmp_path: Path, monkeypatch, requires_fts5):
     monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
     database = MessageDatabase()
-
-    if not db_module.sqlite_supports_fts5(database.engine):
-        pytest.skip("SQLite runtime does not support FTS5")
 
     with database.engine.begin() as conn:
         conn.exec_driver_sql("DROP TABLE message_fts")
@@ -259,12 +260,9 @@ def test_database_maintenance_recreates_missing_external_content_index(tmp_path:
 
 
 @pytest.mark.asyncio
-async def test_message_search_details_returns_fts_score_and_snippet(tmp_path: Path, monkeypatch):
+async def test_message_search_details_returns_fts_score_and_snippet(tmp_path: Path, monkeypatch, requires_fts5):
     monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
     database = MessageDatabase()
-
-    if not db_module.sqlite_supports_fts5(database.engine):
-        pytest.skip("SQLite runtime does not support FTS5")
 
     await database.insert(1000, 10, 1, 123, "Alice", "user", "Python 搜索结果应该包含摘要")
 
@@ -310,12 +308,9 @@ def test_message_fts_initialization_logs_rebuild(tmp_path: Path, monkeypatch, ca
 
 
 @pytest.mark.asyncio
-async def test_search_messages_can_sort_fts_results_by_relevance(tmp_path: Path, monkeypatch):
+async def test_search_messages_can_sort_fts_results_by_relevance(tmp_path: Path, monkeypatch, requires_fts5):
     monkeypatch.setattr(db_module, "DATABASE_FILE", f"sqlite:///{tmp_path / 'frontier-test.db'}")
     database = MessageDatabase()
-
-    if not db_module.sqlite_supports_fts5(database.engine):
-        pytest.skip("SQLite runtime does not support FTS5")
 
     await database.insert(1000, 10, 1, 123, "Alice", "user", "Python Python Python")
     await database.insert(

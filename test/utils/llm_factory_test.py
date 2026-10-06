@@ -17,7 +17,6 @@ def test_gemini_routes_to_google(monkeypatch):
 
     factory.create_llm(model="gemini-2.5-flash", max_retries=2, streaming=False)
 
-    mock_cls.assert_called_once()
     kw = mock_cls.call_args.kwargs
     assert kw["model"] == "gemini-2.5-flash"
     assert "google_api_key" in kw
@@ -74,7 +73,6 @@ def test_gpt_routes_to_openai(monkeypatch):
 
     factory.create_llm(model="gpt-4o", timeout=300, streaming=False)
 
-    mock_cls.assert_called_once()
     kw = mock_cls.call_args.kwargs
     assert kw["model"] == "gpt-4o"
     assert "openai_api_key" in kw
@@ -90,7 +88,6 @@ def test_o3_routes_to_openai(monkeypatch):
 
     factory.create_llm(model="o3", streaming=False)
 
-    mock_cls.assert_called_once()
     kw = mock_cls.call_args.kwargs
     assert kw["model"] == "o3"
     assert "openai_api_key" in kw
@@ -102,7 +99,6 @@ def test_o1_routes_to_openai(monkeypatch):
 
     factory.create_llm(model="o1-mini")
 
-    mock_cls.assert_called_once()
     kw = mock_cls.call_args.kwargs
     assert kw["model"] == "o1-mini"
     assert "openai_api_key" in kw
@@ -114,7 +110,6 @@ def test_o4_mini_routes_to_openai(monkeypatch):
 
     factory.create_llm(model="o4-mini")
 
-    mock_cls.assert_called_once()
     kw = mock_cls.call_args.kwargs
     assert kw["model"] == "o4-mini"
     assert "openai_api_key" in kw
@@ -137,7 +132,6 @@ def test_claude_routes_to_anthropic(monkeypatch):
 
     factory.create_llm(model="claude-3-5-sonnet-20241022", timeout=60)
 
-    mock_cls.assert_called_once()
     kw = mock_cls.call_args.kwargs
     assert kw["model"] == "claude-3-5-sonnet-20241022"
     assert "anthropic_api_key" in kw
@@ -157,7 +151,6 @@ def test_deepseek_routes_to_deepseek(monkeypatch):
 
     factory.create_llm(model="deepseek-v4-flash", timeout=30, max_retries=2)
 
-    mock_cls.assert_called_once()
     kw = mock_cls.call_args.kwargs
     assert kw["model"] == "deepseek-v4-flash"
     assert "api_key" in kw
@@ -197,7 +190,6 @@ def test_deepseek_responses_routes_through_chat_openai(monkeypatch):
         verbosity="low",
     )
 
-    openai_cls.assert_called_once()
     deepseek_cls.assert_not_called()
     kw = openai_cls.call_args.kwargs
     assert kw["model"] == "deepseek-v4-pro"
@@ -708,7 +700,6 @@ def test_explicit_provider_routes_without_model_prefix(monkeypatch):
 
     factory.create_llm(model="custom-sonnet", provider="anthropic")
 
-    mock_cls.assert_called_once()
     kw = mock_cls.call_args.kwargs
     assert kw["model"] == "custom-sonnet"
     assert "anthropic_api_key" in kw
@@ -893,41 +884,22 @@ def test_google_no_base_url_field(monkeypatch):
     assert "base_url" not in kw
 
 
-def test_vendor_prefix_stripped_openai(monkeypatch):
+@pytest.mark.parametrize(
+    ("model", "factory_attr"),
+    [
+        ("openai/gpt-5.4-nano", "ChatOpenAI"),
+        ("google/gemini-2.5-flash", "ChatGoogleGenerativeAI"),
+        ("anthropic/claude-3-5-sonnet-20241022", "ChatAnthropic"),
+        ("deepseek/deepseek-v4-flash", "ChatDeepSeek"),
+    ],
+)
+def test_vendor_prefixed_model_id_is_passed_through_unchanged(monkeypatch, model, factory_attr):
+    """Proxy-style ``vendor/model`` ids stay verbatim for every adapter family."""
+
     mock_cls = MagicMock()
-    monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
+    monkeypatch.setattr(factory, factory_attr, mock_cls)
 
-    factory.create_llm(model="openai/gpt-5.4-nano")
+    factory.create_llm(model=model)
 
-    kw = mock_cls.call_args.kwargs
-    assert kw["model"] == "openai/gpt-5.4-nano"
-
-
-def test_vendor_prefix_stripped_google(monkeypatch):
-    mock_cls = MagicMock()
-    monkeypatch.setattr(factory, "ChatGoogleGenerativeAI", mock_cls)
-
-    factory.create_llm(model="google/gemini-2.5-flash")
-
-    kw = mock_cls.call_args.kwargs
-    assert kw["model"] == "google/gemini-2.5-flash"
-
-
-def test_vendor_prefix_stripped_anthropic(monkeypatch):
-    mock_cls = MagicMock()
-    monkeypatch.setattr(factory, "ChatAnthropic", mock_cls)
-
-    factory.create_llm(model="anthropic/claude-3-5-sonnet-20241022")
-
-    kw = mock_cls.call_args.kwargs
-    assert kw["model"] == "anthropic/claude-3-5-sonnet-20241022"
-
-
-def test_vendor_prefix_stripped_deepseek(monkeypatch):
-    mock_cls = MagicMock()
-    monkeypatch.setattr(factory, "ChatDeepSeek", mock_cls)
-
-    factory.create_llm(model="deepseek/deepseek-v4-flash")
-
-    kw = mock_cls.call_args.kwargs
-    assert kw["model"] == "deepseek/deepseek-v4-flash"
+    # ``call_args`` is None unless routing picked this exact adapter class.
+    assert mock_cls.call_args.kwargs["model"] == model

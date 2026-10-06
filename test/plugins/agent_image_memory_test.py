@@ -1,6 +1,7 @@
 # ruff: noqa: S101
 
 import asyncio
+import dataclasses
 import json
 import types
 from typing import Any, cast
@@ -13,6 +14,7 @@ from nonebot.adapters.milky.model.message import IncomingMessage
 from nonebug import App
 
 from utils.delivery import DeliveryResult
+from utils.timeutil import SHANGHAI
 
 
 async def _noop(*_args, **_kwargs):
@@ -27,6 +29,94 @@ def _first_text(content) -> str:
     if isinstance(content, str):
         return content
     return str(content[0]["text"])
+
+
+class _NoopBot:
+    """Bot double for tests whose assertions never touch the bot API."""
+
+    async def send_group_message_reaction(self, **_kwargs):
+        return None
+
+
+class _InertMessagesDb:
+    """Message store double whose writes are all discarded."""
+
+    async def insert(self, **_kwargs):
+        return None
+
+    async def insert_media(self, **_kwargs):
+        return []
+
+    async def prepare_message(self, *_args, **_kwargs):
+        return []
+
+
+def _recording_unimessage(sink: list[str]):
+    """Build a UniMessage double whose ``send()`` records text into ``sink``."""
+
+    class RecordingUniMessage:
+        def __init__(self, content):
+            self.content = content
+
+        @classmethod
+        def text(cls, text):
+            return cls(text)
+
+        async def send(self):
+            sink.append(self.content)
+
+    return RecordingUniMessage
+
+
+def _incoming_group_message(text: str, *, message_seq: int = 1) -> IncomingMessage:
+    return IncomingMessage(
+        message_scene="group",
+        peer_id=123,
+        message_seq=message_seq,
+        sender_id=456,
+        time=0,
+        segments=[{"type": "text", "data": {"text": text}}],
+        friend=None,
+        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
+        group_member=Member(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            group_id=123,
+            card="",
+            title="",
+            level="0",
+            role="member",
+            join_time=0,
+            last_sent_time=0,
+            shut_up_end_time=0,
+        ),
+    )
+
+
+def _incoming_private_message(text: str) -> IncomingMessage:
+    return IncomingMessage(
+        message_scene="friend",
+        peer_id=456,
+        message_seq=1,
+        sender_id=456,
+        time=0,
+        segments=[{"type": "text", "data": {"text": text}}],
+        friend=Friend(
+            user_id=456,
+            nickname="u",
+            sex="unknown",
+            qid="",
+            remark="",
+            category=FriendCategory(category_id=0, category_name="default"),
+        ),
+        group=None,
+        group_member=None,
+    )
+
+
+def _gateway_message_event(incoming: IncomingMessage) -> MessageEvent:
+    return MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
 
 
 def test_attached_image_placeholders_are_removed_only_when_all_images_persist(monkeypatch):
@@ -68,24 +158,13 @@ async def test_group_progress_reporter_sends_one_signal_status(monkeypatch):
 
     sent: list[str] = []
 
-    class DummyUniMessage:
-        def __init__(self, content: str):
-            self.content = content
-
-        @classmethod
-        def text(cls, content: str):
-            return cls(content)
-
-        async def send(self):
-            sent.append(self.content)
-
     async def allow_text(content: str):
         return content
 
     async def signal_status(_event):
         return "我先查一下相关资料，核对后告诉你。"
 
-    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(agent, "UniMessage", _recording_unimessage(sent))
     monkeypatch.setattr(agent, "_group_progress_message", signal_status)
     reporter = agent._chat_progress_reporter(group_id=123)
 
@@ -108,21 +187,10 @@ async def test_private_progress_reporter_keeps_templates_and_two_preambles(monke
 
     sent: list[str] = []
 
-    class DummyUniMessage:
-        def __init__(self, content: str):
-            self.content = content
-
-        @classmethod
-        def text(cls, content: str):
-            return cls(content)
-
-        async def send(self):
-            sent.append(self.content)
-
     async def allow_text(content: str):
         return content
 
-    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(agent, "UniMessage", _recording_unimessage(sent))
     monkeypatch.setattr(agent, "sanitize_outgoing_text", allow_text)
     reporter = agent._chat_progress_reporter(group_id=None)
 
@@ -188,10 +256,6 @@ async def test_agent_image_placeholders_follow_persistence(  # noqa: C901
             captured["user_text"] = kwargs.get("user_text")
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
 
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
     async def fake_message_extract(_segments):
         return "hi", [b"image-bytes"], [b"audio-bytes"], [b"video-bytes"]
 
@@ -209,11 +273,11 @@ async def test_agent_image_placeholders_follow_persistence(  # noqa: C901
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "get_bot", lambda: _NoopBot())
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "send_messages", fake_send_messages)
-    monkeypatch.setattr(agent, "send_artifacts", fake_send_artifacts)
+    monkeypatch.setattr("utils.message.send_artifacts", fake_send_artifacts)
     monkeypatch.setattr(agent, "schedule_image_summary_write", fake_schedule_summary, raising=False)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
@@ -297,10 +361,6 @@ async def test_agent_lazily_hydrates_recent_media_followup(monkeypatch):  # noqa
             captured["image_inputs"] = kwargs["image_inputs"]
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
 
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
     async def fake_message_gateway(_event, _messages):
         return True
 
@@ -320,11 +380,11 @@ async def test_agent_lazily_hydrates_recent_media_followup(monkeypatch):  # noqa
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "get_bot", lambda: _NoopBot())
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "hydrate_recent_media_context", fake_hydrate)
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
@@ -405,7 +465,7 @@ async def test_agent_injects_staged_file_memory_path_even_if_indexing_fails(  # 
         async def insert(self, **_kwargs):
             return None
 
-        async def insert_images(self, **_kwargs):
+        async def insert_media(self, **_kwargs):
             return []
 
         async def prepare_message(self, *_args, **_kwargs):
@@ -422,10 +482,6 @@ async def test_agent_injects_staged_file_memory_path_even_if_indexing_fails(  # 
         async def chat_agent(self, messages, *_args, **_kwargs):
             captured["messages"] = messages
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
-
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
 
     async def fake_message_gateway(_event, _messages):
         return True
@@ -451,11 +507,11 @@ async def test_agent_injects_staged_file_memory_path_even_if_indexing_fails(  # 
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "get_bot", lambda: _NoopBot())
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "stage_message_files", fake_stage_message_files)
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
@@ -669,7 +725,7 @@ async def test_agent_stores_expanded_forward_message_and_derived_nodes(monkeypat
         async def replace_derived_messages(self, **kwargs):
             captured["derived"] = kwargs
 
-        async def insert_images(self, **_kwargs):
+        async def insert_media(self, **_kwargs):
             return []
 
         async def prepare_message(self, *_args, **_kwargs):
@@ -721,7 +777,7 @@ async def test_agent_stores_expanded_forward_message_and_derived_nodes(monkeypat
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
@@ -787,7 +843,7 @@ async def test_agent_does_not_duplicate_normalized_video_marker(monkeypatch):  #
             if kwargs["role"] == "user":
                 captured["stored_content"] = kwargs["content"]
 
-        async def insert_images(self, **_kwargs):
+        async def insert_media(self, **_kwargs):
             return []
 
         async def prepare_message(self, *_args, **_kwargs):
@@ -799,10 +855,6 @@ async def test_agent_does_not_duplicate_normalized_video_marker(monkeypatch):  #
             captured["video_inputs"] = kwargs.get("video_inputs")
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
 
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
     async def fake_message_gateway(_event, _messages):
         return True
 
@@ -812,11 +864,11 @@ async def test_agent_does_not_duplicate_normalized_video_marker(monkeypatch):  #
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
+    monkeypatch.setattr(agent, "get_bot", lambda: _NoopBot())
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "download_media", fake_download_media)
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
@@ -882,7 +934,7 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
                 captured["stored_content"] = kwargs["content"]
                 captured["stored_reply_context"] = kwargs["reply_context_json"]
 
-        async def insert_images(self, **_kwargs):
+        async def insert_media(self, **_kwargs):
             return []
 
         async def prepare_message(self, *_args, **_kwargs):
@@ -912,10 +964,7 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
             captured["messages"] = messages
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
 
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
+    class DummyBot(_NoopBot):
         async def get_message(self, **_kwargs):
             return types.SimpleNamespace(segments=[{"type": "text", "data": {"text": "原始消息内容"}}])
 
@@ -923,7 +972,7 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
@@ -1113,10 +1162,7 @@ async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # 
             captured["messages"] = messages
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
 
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
+    class DummyBot(_NoopBot):
         async def get_message(self, **kwargs):
             assert kwargs == {"message_scene": "group", "peer_id": 123, "message_seq": 900}
             return IncomingMessage(
@@ -1168,7 +1214,7 @@ async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # 
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setitem(agent.build_reply_context.__globals__, "_httpx_client", types.SimpleNamespace(get=fake_get))
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
@@ -1247,7 +1293,7 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
@@ -1325,7 +1371,7 @@ async def test_process_agent_request_honors_silent_group_result(monkeypatch):
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "messages_db", RejectingMessagesDb())
     monkeypatch.setattr(agent, "send_messages", reject_send)
-    monkeypatch.setattr(agent, "send_artifacts", reject_send)
+    monkeypatch.setattr("utils.message.send_artifacts", reject_send)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
 
     context = agent.AgentRequestContext(
@@ -1374,7 +1420,7 @@ async def test_process_agent_request_inlines_recent_history_image(monkeypatch):
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
     context = agent.AgentRequestContext(
@@ -1415,7 +1461,7 @@ async def test_process_agent_request_interprets_empty_text_as_user_calling_bot(m
 
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
 
     context = agent.AgentRequestContext(
@@ -1449,16 +1495,6 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
     first_started = asyncio.Event()
     release_first = asyncio.Event()
 
-    class DummyMessagesDb:
-        async def insert(self, **_kwargs):
-            return None
-
-        async def insert_images(self, **_kwargs):
-            return []
-
-        async def prepare_message(self, *_args, **_kwargs):
-            return []
-
     class DummyCognitive:
         async def chat_agent(self, *_args, **_kwargs):
             index = sum(call.startswith("start-") for call in calls)
@@ -1469,10 +1505,10 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
             calls.append(f"end-{index}")
             return {"response": {"messages": [types.SimpleNamespace(text=f"ok-{index}")]}, "uni_messages": []}
 
-    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
+    monkeypatch.setattr(agent, "messages_db", _InertMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "none")
 
     context_a = agent.AgentRequestContext(
@@ -1501,9 +1537,9 @@ async def test_run_serialized_blocks_same_thread_concurrent_requests(monkeypatch
     )
     thread_id = "delivery:group-123"
 
-    task_a = asyncio.create_task(run_serialized(thread_id, agent._process_agent_request(context_a)))
+    task_a = asyncio.create_task(run_serialized(thread_id, lambda: agent._process_agent_request(context_a)))
     await first_started.wait()
-    task_b = asyncio.create_task(run_serialized(thread_id, agent._process_agent_request(context_b)))
+    task_b = asyncio.create_task(run_serialized(thread_id, lambda: agent._process_agent_request(context_b)))
     await asyncio.sleep(0)
 
     assert calls == ["start-0"]
@@ -1551,7 +1587,7 @@ async def test_gateway_approved_message_routes_directly_to_agent(monkeypatch):  
                 stored_messages.append(kwargs["content"])
             return None
 
-        async def insert_images(self, **_kwargs):
+        async def insert_media(self, **_kwargs):
             return []
 
         async def prepare_message(self, *_args, **_kwargs):
@@ -1561,21 +1597,6 @@ async def test_gateway_approved_message_routes_directly_to_agent(monkeypatch):  
         async def chat_agent(self, *_args, **_kwargs):
             calls["agent"] += 1
             return {"response": {"messages": [types.SimpleNamespace(text="ok")]}, "uni_messages": []}
-
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
-    class DummyUniMessage:
-        def __init__(self, content):
-            self.content = content
-
-        @classmethod
-        def text(cls, text):
-            return cls(text)
-
-        async def send(self):
-            sent_messages.append(self.content)
 
     async def fake_message_extract(_segments):
         return "这个算法怎么优化", [], [], []
@@ -1589,42 +1610,19 @@ async def test_gateway_approved_message_routes_directly_to_agent(monkeypatch):  
 
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(agent, "get_bot", lambda: _NoopBot())
+    monkeypatch.setattr(agent, "UniMessage", _recording_unimessage(sent_messages))
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
 
-    incoming = IncomingMessage(
-        message_scene="group",
-        peer_id=123,
-        message_seq=1,
-        sender_id=456,
-        time=0,
-        segments=[{"type": "text", "data": {"text": "这个算法怎么优化"}}],
-        friend=None,
-        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
-        group_member=Member(
-            user_id=456,
-            nickname="u",
-            sex="unknown",
-            group_id=123,
-            card="",
-            title="",
-            level="0",
-            role="member",
-            join_time=0,
-            last_sent_time=0,
-            shut_up_end_time=0,
-        ),
-    )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
+    event = _gateway_message_event(_incoming_group_message("这个算法怎么优化"))
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
@@ -1638,95 +1636,141 @@ async def test_gateway_approved_message_routes_directly_to_agent(monkeypatch):  
     assert stored_messages == ["ok"]
 
 
+@dataclasses.dataclass(frozen=True)
+class _GatewayQueueCase:
+    """One gateway verdict plus the terminal expectations it must produce."""
+
+    text: str
+    gateway_allows: bool
+    capability: str | None
+    history: list[dict[str, Any]]
+    expected_queue: int
+    private_chat: bool = False
+    expect_assistant_write: bool = False
+    expect_no_reaction: bool = False
+
+
+_PRIOR_ASSISTANT_HISTORY = [{"role": "assistant", "content": "{'content': '前一个问题已经回答完毕'}"}]
+
+
 @pytest.mark.asyncio
-async def test_gateway_approved_weather_request_routes_directly_to_agent(monkeypatch):  # noqa: C901
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            _GatewayQueueCase(
+                text="帮我查一下今天北京天气",
+                gateway_allows=True,
+                capability=None,
+                history=[],
+                expected_queue=1,
+            ),
+            id="approved_weather_request_routes_directly_to_agent",
+        ),
+        pytest.param(
+            _GatewayQueueCase(
+                text="早",
+                gateway_allows=True,
+                capability=None,
+                history=[],
+                expected_queue=1,
+                expect_assistant_write=True,
+            ),
+            id="approved_greeting_runs_agent",
+        ),
+        pytest.param(
+            _GatewayQueueCase(
+                text="早",
+                gateway_allows=False,
+                capability=None,
+                history=[],
+                expected_queue=0,
+            ),
+            id="rejected_message_finishes_before_queue",
+        ),
+        pytest.param(
+            _GatewayQueueCase(
+                text="谢谢",
+                gateway_allows=True,
+                capability="high",
+                history=_PRIOR_ASSISTANT_HISTORY,
+                expected_queue=1,
+            ),
+            id="approved_closing_message_runs_agent",
+        ),
+        pytest.param(
+            _GatewayQueueCase(
+                text="谢谢",
+                gateway_allows=True,
+                capability="high",
+                history=_PRIOR_ASSISTANT_HISTORY,
+                expected_queue=1,
+                private_chat=True,
+                expect_no_reaction=True,
+            ),
+            id="approved_private_chat_routes_to_agent_without_group_reaction",
+        ),
+    ],
+)
+async def test_gateway_queue_routing(case, monkeypatch):  # noqa: C901
     import nonebot
 
     monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
     from plugins.agent import handlers as agent
 
     calls = {"queue": 0}
-    sent_messages = []
+    sent_messages: list[str] = []
+    assistant_messages: list[str] = []
+    reactions: list[dict[str, Any]] = []
 
-    async def fake_run_serialized(_key, coro, **_kwargs):
+    async def fake_run_serialized(_key, _operation, **_kwargs):
         calls["queue"] += 1
-        coro.close()
         return None
 
-    class DummyMessagesDb:
-        async def insert(self, **_kwargs):
-            return None
-
-        async def insert_images(self, **_kwargs):
-            return []
+    class CaseMessagesDb(_InertMessagesDb):
+        async def insert(self, **kwargs):
+            if kwargs["role"] == "assistant":
+                assistant_messages.append(kwargs["content"])
 
         async def prepare_message(self, *_args, **_kwargs):
-            return []
+            return list(case.history)
 
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
-    class DummyUniMessage:
-        def __init__(self, content):
-            self.content = content
-
-        @classmethod
-        def text(cls, text):
-            return cls(text)
-
-        async def send(self):
-            sent_messages.append(self.content)
+    class CaseBot(_NoopBot):
+        async def send_group_message_reaction(self, **kwargs):
+            reactions.append(kwargs)
 
     async def fake_message_extract(_segments):
-        return "帮我查一下今天北京天气", [], [], []
+        return case.text, [], [], []
 
     async def fake_message_gateway(_event, _messages):
-        return True
+        return case.gateway_allows
 
     monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
-    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
+    monkeypatch.setattr(agent, "messages_db", CaseMessagesDb())
+    monkeypatch.setattr(agent, "get_bot", lambda: CaseBot())
+    monkeypatch.setattr(agent, "UniMessage", _recording_unimessage(sent_messages))
     monkeypatch.setattr(agent, "message_extract", fake_message_extract)
     monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
     monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+    if case.capability is not None:
+        monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", case.capability)
 
-    incoming = IncomingMessage(
-        message_scene="group",
-        peer_id=123,
-        message_seq=1,
-        sender_id=456,
-        time=0,
-        segments=[{"type": "text", "data": {"text": "帮我查一下今天北京天气"}}],
-        friend=None,
-        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
-        group_member=Member(
-            user_id=456,
-            nickname="u",
-            sex="unknown",
-            group_id=123,
-            card="",
-            title="",
-            level="0",
-            role="member",
-            join_time=0,
-            last_sent_time=0,
-            shut_up_end_time=0,
-        ),
-    )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
+    incoming = _incoming_private_message(case.text) if case.private_chat else _incoming_group_message(case.text)
 
     async with App().test_matcher() as ctx:
         adapter = ctx.create_adapter()
         bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
-        ctx.receive_event(bot, event)
+        ctx.receive_event(bot, _gateway_message_event(incoming))
         ctx.should_finished()
 
-    assert calls["queue"] == 1
+    assert calls["queue"] == case.expected_queue
     assert sent_messages == []
+    if case.expect_assistant_write:
+        assert assistant_messages == []
+    if case.expect_no_reaction:
+        assert reactions == []
 
 
 @pytest.mark.asyncio
@@ -1753,7 +1797,7 @@ async def test_process_agent_request_passes_configured_capability_directly(monke
     monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "send_messages", _delivered)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
 
     context = agent.AgentRequestContext(
@@ -1807,7 +1851,7 @@ async def test_process_agent_request_sanitizes_final_response(monkeypatch):
     monkeypatch.setattr(agent, "f_cognitive", DummyCognitive())
     monkeypatch.setattr(agent, "sanitize_outgoing_text", fake_sanitize)
     monkeypatch.setattr(agent, "send_messages", fake_send_messages)
-    monkeypatch.setattr(agent, "send_artifacts", _delivered)
+    monkeypatch.setattr("utils.message.send_artifacts", _delivered)
     monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
 
     context = agent.AgentRequestContext(
@@ -1828,344 +1872,6 @@ async def test_process_agent_request_sanitizes_final_response(monkeypatch):
     assert captured["checked"] == "unsafe final"
     assert captured["sent"] == "这段回复被拦住了"
     assert captured["stored"] == "这段回复被拦住了"
-
-
-@pytest.mark.asyncio
-async def test_gateway_approved_greeting_runs_agent(monkeypatch):  # noqa: C901
-    import nonebot
-
-    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins.agent import handlers as agent
-
-    calls = {"queue": 0}
-    assistant_messages = []
-    sent_messages = []
-
-    async def fake_run_serialized(_key, coro, **_kwargs):
-        calls["queue"] += 1
-        coro.close()
-        return None
-
-    class DummyMessagesDb:
-        async def insert(self, **kwargs):
-            if kwargs["role"] == "assistant":
-                assistant_messages.append(kwargs["content"])
-
-        async def insert_images(self, **_kwargs):
-            return []
-
-        async def prepare_message(self, *_args, **_kwargs):
-            return []
-
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
-    async def fake_message_extract(_segments):
-        return "早", [], [], []
-
-    async def fake_message_gateway(_event, _messages):
-        return True
-
-    class DummyUniMessage:
-        def __init__(self, content):
-            self.content = content
-
-        @classmethod
-        def text(cls, text):
-            return cls(text)
-
-        async def send(self):
-            sent_messages.append(self.content)
-
-    monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
-    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
-    monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
-    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
-
-    incoming = IncomingMessage(
-        message_scene="group",
-        peer_id=123,
-        message_seq=1,
-        sender_id=456,
-        time=0,
-        segments=[{"type": "text", "data": {"text": "早"}}],
-        friend=None,
-        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
-        group_member=Member(
-            user_id=456,
-            nickname="u",
-            sex="unknown",
-            group_id=123,
-            card="",
-            title="",
-            level="0",
-            role="member",
-            join_time=0,
-            last_sent_time=0,
-            shut_up_end_time=0,
-        ),
-    )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
-
-    async with App().test_matcher() as ctx:
-        adapter = ctx.create_adapter()
-        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
-        ctx.receive_event(bot, event)
-        ctx.should_finished()
-
-    assert calls["queue"] == 1
-    assert sent_messages == []
-    assert assistant_messages == []
-
-
-@pytest.mark.asyncio
-async def test_gateway_rejected_message_finishes_before_queue(monkeypatch):  # noqa: C901
-    import nonebot
-
-    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins.agent import handlers as agent
-
-    calls = {"queue": 0}
-
-    async def fake_run_serialized(_key, coro, **_kwargs):
-        calls["queue"] += 1
-        coro.close()
-        return None
-
-    class DummyMessagesDb:
-        async def insert(self, **_kwargs):
-            return None
-
-        async def insert_images(self, **_kwargs):
-            return []
-
-        async def prepare_message(self, *_args, **_kwargs):
-            return []
-
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
-    async def fake_message_extract(_segments):
-        return "早", [], [], []
-
-    async def fake_message_gateway(_event, _messages):
-        return False
-
-    sent_messages = []
-
-    class DummyUniMessage:
-        def __init__(self, content):
-            self.content = content
-
-        @classmethod
-        def text(cls, text):
-            return cls(text)
-
-        async def send(self):
-            sent_messages.append(self.content)
-
-    monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
-    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(agent, "UniMessage", DummyUniMessage)
-    monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
-    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
-
-    incoming = IncomingMessage(
-        message_scene="group",
-        peer_id=123,
-        message_seq=1,
-        sender_id=456,
-        time=0,
-        segments=[{"type": "text", "data": {"text": "早"}}],
-        friend=None,
-        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
-        group_member=Member(
-            user_id=456,
-            nickname="u",
-            sex="unknown",
-            group_id=123,
-            card="",
-            title="",
-            level="0",
-            role="member",
-            join_time=0,
-            last_sent_time=0,
-            shut_up_end_time=0,
-        ),
-    )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
-
-    async with App().test_matcher() as ctx:
-        adapter = ctx.create_adapter()
-        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
-        ctx.receive_event(bot, event)
-        ctx.should_finished()
-
-    assert calls["queue"] == 0
-    assert sent_messages == []
-
-
-@pytest.mark.asyncio
-async def test_gateway_approved_closing_message_runs_agent(monkeypatch):  # noqa: C901
-    import nonebot
-
-    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins.agent import handlers as agent
-
-    calls = {"queue": 0}
-
-    async def fake_run_serialized(_key, coro, **_kwargs):
-        calls["queue"] += 1
-        coro.close()
-        return None
-
-    class DummyMessagesDb:
-        async def insert(self, **_kwargs):
-            return None
-
-        async def insert_images(self, **_kwargs):
-            return []
-
-        async def prepare_message(self, *_args, **_kwargs):
-            return [{"role": "assistant", "content": "{'content': '前一个问题已经回答完毕'}"}]
-
-    class DummyBot:
-        async def send_group_message_reaction(self, **_kwargs):
-            return None
-
-    async def fake_message_extract(_segments):
-        return "谢谢", [], [], []
-
-    async def fake_message_gateway(_event, _messages):
-        return True
-
-    monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
-    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
-    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
-
-    incoming = IncomingMessage(
-        message_scene="group",
-        peer_id=123,
-        message_seq=1,
-        sender_id=456,
-        time=0,
-        segments=[{"type": "text", "data": {"text": "谢谢"}}],
-        friend=None,
-        group=Group(group_id=123, group_name="g", member_count=1, max_member_count=1),
-        group_member=Member(
-            user_id=456,
-            nickname="u",
-            sex="unknown",
-            group_id=123,
-            card="",
-            title="",
-            level="0",
-            role="member",
-            join_time=0,
-            last_sent_time=0,
-            shut_up_end_time=0,
-        ),
-    )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
-
-    async with App().test_matcher() as ctx:
-        adapter = ctx.create_adapter()
-        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
-        ctx.receive_event(bot, event)
-        ctx.should_finished()
-
-    assert calls["queue"] == 1
-
-
-@pytest.mark.asyncio
-async def test_gateway_approved_private_chat_routes_to_agent_without_group_reaction(monkeypatch):  # noqa: C901
-    import nonebot
-
-    monkeypatch.setattr(nonebot, "require", lambda *_args, **_kwargs: None)
-    from plugins.agent import handlers as agent
-
-    calls: dict[str, Any] = {"queue": 0, "reactions": []}
-
-    async def fake_run_serialized(_key, coro, **_kwargs):
-        calls["queue"] += 1
-        coro.close()
-        return None
-
-    class DummyMessagesDb:
-        async def insert(self, **_kwargs):
-            return None
-
-        async def insert_images(self, **_kwargs):
-            return []
-
-        async def prepare_message(self, *_args, **_kwargs):
-            return [{"role": "assistant", "content": "{'content': '前一个问题已经回答完毕'}"}]
-
-    class DummyBot:
-        async def send_group_message_reaction(self, **kwargs):
-            calls["reactions"].append(kwargs)
-
-    async def fake_message_extract(_segments):
-        return "谢谢", [], [], []
-
-    async def fake_message_gateway(_event, _messages):
-        return True
-
-    monkeypatch.setattr(agent, "run_serialized", fake_run_serialized)
-    monkeypatch.setattr(agent, "messages_db", DummyMessagesDb())
-    monkeypatch.setattr(agent, "get_bot", lambda: DummyBot())
-    monkeypatch.setattr(agent, "message_extract", fake_message_extract)
-    monkeypatch.setattr(agent, "message_gateway", fake_message_gateway)
-    monkeypatch.setattr(agent.EnvConfig, "IMAGE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "AGENT_MODULE_ENABLED", True)
-    monkeypatch.setattr(agent.EnvConfig, "AGENT_CAPABILITY", "high")
-    monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
-
-    incoming = IncomingMessage(
-        message_scene="friend",
-        peer_id=456,
-        message_seq=1,
-        sender_id=456,
-        time=0,
-        segments=[{"type": "text", "data": {"text": "谢谢"}}],
-        friend=Friend(
-            user_id=456,
-            nickname="u",
-            sex="unknown",
-            qid="",
-            remark="",
-            category=FriendCategory(category_id=0, category_name="default"),
-        ),
-        group=None,
-        group_member=None,
-    )
-    event = MessageEvent(data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message())
-
-    async with App().test_matcher() as ctx:
-        adapter = ctx.create_adapter()
-        bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
-        ctx.receive_event(bot, event)
-        ctx.should_finished()
-
-    assert calls["queue"] == 1
-    assert calls["reactions"] == []
 
 
 @pytest.mark.asyncio
@@ -2197,7 +1903,7 @@ async def test_agent_startup_cleans_cached_files_and_schedules_daily_job(monkeyp
     assert trigger == "cron"
     assert kwargs["id"] == agent.CACHE_CLEANUP_JOB_ID
     assert kwargs["hour"] == 4
-    assert kwargs["timezone"] == "Asia/Shanghai"
+    assert kwargs["timezone"] is SHANGHAI
     assert len(calls) == 2
 
 
