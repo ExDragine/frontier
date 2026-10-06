@@ -304,7 +304,14 @@ async def test_concurrent_image_cache_writes_share_one_attachment_row(monkeypatc
     with Session(engine) as session:
         rows = session.exec(select(MessageAttachment)).all()
     assert len(rows) == 1
-    assert rows[0].physical_path == "cache/sandbox/memory/group-123/images/1000-m1_0.jpg"
+    assert Path(rows[0].physical_path).parts == (
+        "cache",
+        "sandbox",
+        "memory",
+        "group-123",
+        "images",
+        "1000-m1_0.jpg",
+    )
 
 
 @pytest.mark.asyncio

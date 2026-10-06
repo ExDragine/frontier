@@ -130,7 +130,6 @@ async def main():
     manager = SessionManager()
     agent = object.__new__(cognitive.FrontierCognitive)
     agent.tools = [get_recent_conversation, create_picture]
-    agent.ptc_tools = []
     agent.document_subagent = None
     agent.working_dir = str(Path.cwd() / 'sandbox')
     agent.load_system_prompt = lambda _: 'Answer only the current request.'
@@ -294,8 +293,12 @@ async def main():
         manager.sweep(settings)
         assert not manager.entries and manager.saver.size() == 0
         gc.collect()
-        rss = next(int(line.split()[1]) for line in Path('/proc/self/status').read_text().splitlines() if line.startswith('VmRSS:'))
-        samples.append(rss)
+        # VmRSS only exists on Linux; the storage assertions stay cross-platform.
+        status = Path('/proc/self/status')
+        if status.exists():
+            samples.append(next(
+                int(line.split()[1]) for line in status.read_text().splitlines() if line.startswith('VmRSS:')
+            ))
     assert manager.metrics['rotated'] == 48, manager.metrics
     assert manager.metrics['expired'] == 24, manager.metrics
     assert manager.metrics['evicted'] == 24, manager.metrics
