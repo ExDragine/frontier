@@ -131,10 +131,8 @@ async def test_private_neutral_uses_neutral_delivery_scope(agent, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_neutral_path_wires_the_qq_progress_reporter(agent, monkeypatch):
-    from utils.agents import ProgressEvent
-    from utils.alconna import UniMessage
-
+@pytest.mark.parametrize("group_id", [pytest.param(None, id="private"), pytest.param(100, id="group")])
+async def test_neutral_path_delivers_only_final_reply(agent, monkeypatch, group_id):
     seen = []
     sent = []
 
@@ -143,35 +141,23 @@ async def test_neutral_path_wires_the_qq_progress_reporter(agent, monkeypatch):
             seen.append(progress_reporter)
             return AgentResponse(text="ok")
 
-    async def send_messages(*_args, **_kwargs):
+    async def send_messages(target_group_id, _reply_id, response):
+        sent.append((target_group_id, agent.outgoing_message_content(response["messages"][-1])))
         return DeliveryResult(attempted=1, sent=1)
 
     class Database:
         async def insert(self, **kwargs):
             return None
 
-    class DummyMessage:
-        def __init__(self, kind, payload):
-            self.kind = kind
-            self.payload = payload
-
-        async def send(self, *_args, **_kwargs):
-            sent.append((self.kind, self.payload))
-
     monkeypatch.setattr(agent, "FrontierAgentCore", lambda *_args, **_kwargs: Core())
     monkeypatch.setattr(agent, "send_messages", send_messages)
     monkeypatch.setattr(agent, "messages_db", Database())
-    monkeypatch.setattr(UniMessage, "text", classmethod(lambda cls, text: DummyMessage("text", text)))
 
-    result = await agent._run_qq_neutral(_context(agent, group_id=None), [])
+    result = await agent._run_qq_neutral(_context(agent, group_id=group_id), [])
 
     assert result is True
-    reporter = seen[0]
-    assert reporter is not None
-    # The private path reports tool activity directly, so the wiring is
-    # observable without waiting on the group Signal task.
-    await reporter(ProgressEvent(type="tool_call", message="正在查询天气…"))
-    assert sent == [("text", "正在查询天气…")]
+    assert seen == [None]
+    assert sent == [(group_id, "ok")]
 
 
 @pytest.mark.asyncio
@@ -463,4 +449,3 @@ async def test_artifact_response_is_handled_without_legacy_retry(agent, monkeypa
     assert len(sent) == 2
     assert sent[0][0] == "artifacts"
     assert sent[1][0][2]["messages"][0].content == "generated image"
-
