@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Removed QQ private and group progress messages (also for `/acp` tasks), including thinking, tool
+  calls, subagent activity and assistant preambles, plus the group status
+  classifier and its background task. Final replies, artifacts and failure
+  notices retain their existing delivery behavior; ACP progress remains
+  available through the optional runtime reporter.
 - Added repository maintenance documentation and a local Markdown-link check.
 - CI now checks Python formatting, local documentation links, and the bundled
   Markdown renderer in addition to lint, type, and test checks.
@@ -17,7 +22,7 @@
 - Aligned the documentation with the current code: the eight loaded plugins
   (including `plugins/news` and `plugins/wolfx`), the platform-neutral QQ path
   through `ConversationOrchestrator` and `FrontierAgentCore`, the real
-  middleware chain, group and private progress messages, media persistence
+  middleware chain, group and private final replies, media persistence
   through `insert_media`, and the `models/` catalog.
 - Hardened Dashboard authentication: passwords are no longer compared as
   plaintext, a plaintext `[dashboard].password` is derived to a bcrypt hash in
@@ -44,11 +49,9 @@
   so the one-shot read-only tools (`weather`, `earthquake`, `radar`, `iching`,
   `tarot`, `deepseek_balance`, the `milky_*` getters and the `scheduled_task`
   listings) are visible to the main Agent again instead of being dropped.
-- Wire QQ progress messages back through the neutral boundary: the
-  orchestrator, the `AgentCore` port and `AgentRuntimeRequest` now carry an
-  optional progress reporter, so private `assistant_preamble`, thinking and
-  tool-call messages plus the single group status message are emitted again.
-  Callers that pass no reporter keep the plain request/response shape.
+- The orchestrator, the `AgentCore` port and the runtime gateway support an
+  optional progress reporter. QQ turns use the plain request/response shape;
+  consumers that require streaming progress can still supply a reporter.
 - Pruned dead code, dead configuration and compatibility shims across the
   repository (net −2.3k lines): removed the `StoredMessage` and
   `MessagePartType` aliases, `GateDecision.allowed`, `HistoryQuery.after` plus

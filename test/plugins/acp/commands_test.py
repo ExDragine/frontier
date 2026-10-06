@@ -11,6 +11,7 @@ from nonebot.permission import SUPERUSER
 from nonebug import App
 
 from plugins.acp import commands as acp
+from utils.agents.progress import ProgressEvent, emit_progress
 from utils.delivery import DeliveryResult
 
 
@@ -83,8 +84,11 @@ def test_acp_command_reuses_agent_access_policy(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_group_acp_progress_reporter_blocks_intermediate_messages(monkeypatch):
+@pytest.mark.parametrize("group_id", [pytest.param(None, id="private"), pytest.param(123, id="group")])
+async def test_acp_command_does_not_send_progress_messages(monkeypatch, group_id):
     sent: list[str] = []
+    final_responses = []
+    reporters = []
 
     class DummyUniMessage:
         def __init__(self, content: str):
@@ -97,14 +101,40 @@ async def test_group_acp_progress_reporter_blocks_intermediate_messages(monkeypa
         async def send(self):
             sent.append(self.content)
 
+    async def fake_extract(_segments):
+        return "/acp 帮我查一下资料", [], [], []
+
+    async def fake_download(*_args):
+        return [], [], []
+
+    async def fake_chat(_prompt, *, progress_reporter=None, **_kwargs):
+        reporters.append(progress_reporter)
+        for event in (
+            ProgressEvent(type="thinking", message="正在思考…"),
+            ProgressEvent(type="tool_call", message="正在调用工具…"),
+            ProgressEvent(type="tool_result", message="工具执行完成"),
+            ProgressEvent(type="assistant_preamble", message="我先查一下资料。"),
+        ):
+            await emit_progress(progress_reporter, event)
+        return {"response": {"messages": [SimpleNamespace(content="最终回答")]}, "uni_messages": []}
+
+    async def fake_send(target_group_id, message_seq, response):
+        final_responses.append((target_group_id, message_seq, acp.outgoing_message_content(response["messages"][-1])))
+        return DeliveryResult(attempted=1, sent=1)
+
     monkeypatch.setattr(acp, "UniMessage", DummyUniMessage)
-    reporter = acp._progress_reporter(group_id=123)
+    monkeypatch.setattr(acp, "message_extract", fake_extract)
+    monkeypatch.setattr(acp, "download_media", fake_download)
+    monkeypatch.setattr(acp.acp_agent, "chat_agent", fake_chat)
+    monkeypatch.setattr(acp, "send_messages", fake_send)
 
-    await reporter(acp.ProgressEvent(type="thinking", message="raw thought"))
-    await reporter(acp.ProgressEvent(type="tool_call", message="running tool"))
-    await reporter(acp.ProgressEvent(type="assistant_preamble", message="working on it"))
+    event = _event()
+    event.data.group = SimpleNamespace(group_id=group_id) if group_id is not None else None
+    await acp.handle_acp(event)
 
+    assert reporters == [None]
     assert sent == []
+    assert final_responses == [(group_id, 9, "最终回答")]
 
 
 @pytest.mark.asyncio
