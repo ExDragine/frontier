@@ -268,7 +268,10 @@ async def test_group_essence_reaction_and_nudge_tools(group_bot):
 
 
 @pytest.mark.asyncio
-async def test_group_notification_and_invitation_tools(group_bot):
+async def test_group_notification_and_invitation_tools(group_bot, monkeypatch):
+    from nonebot import get_driver
+
+    monkeypatch.setattr(get_driver().config, "superusers", {"456"})
     group, bot = group_bot
 
     notifications = await group.get_group_notifications(start_notification_seq=9010, is_filtered=True, limit=5)
@@ -286,8 +289,8 @@ async def test_group_notification_and_invitation_tools(group_bot):
         reason="不符合要求",
         config=_group_config(),
     )
-    invite_accepted = await group.accept_group_invitation(group_id=123, invitation_seq=77)
-    invite_rejected = await group.reject_group_invitation(group_id=123, invitation_seq=78)
+    invite_accepted = await group.accept_group_invitation(group_id=123, invitation_seq=77, config={"configurable": {"user_id": "456"}})
+    invite_rejected = await group.reject_group_invitation(group_id=123, invitation_seq=78, config={"configurable": {"user_id": "456"}})
 
     assert "群通知" in notifications
     assert "next_notification_seq=8999" in notifications

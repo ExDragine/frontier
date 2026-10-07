@@ -4,7 +4,7 @@ from typing import Any
 
 from nonebot import logger
 
-NORMALIZED_VERSION = 3
+NORMALIZED_VERSION = 4
 FORWARD_MAX_DEPTH = 3
 FORWARD_MAX_NODES = 80
 

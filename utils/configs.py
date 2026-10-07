@@ -12,6 +12,8 @@ from typing import Any, ClassVar, Literal
 import dotenv
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from utils.event_policy import EventConfig
+
 dotenv.load_dotenv()
 
 CONFIG_VERSION = 2
@@ -250,6 +252,7 @@ class FrontierSettings(_FrozenConfig):
     paint_policy: AccessPolicy = Field(default_factory=AccessPolicy)
     limits: LimitConfig = Field(default_factory=LimitConfig)
     sessions: SessionConfig = Field(default_factory=SessionConfig)
+    events: EventConfig = Field(default_factory=EventConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     debug: DebugConfig = Field(default_factory=DebugConfig)

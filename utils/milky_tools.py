@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
+from utils.card_message import card_message_text
+
 MISSING_GROUP_ID = "缺少群号：请在群聊中使用，或显式传入 group_id。"
 MISSING_USER_ID = "缺少用户号：请显式传入 user_id，或在用户上下文中使用。"
 SCENES = {"friend", "group", "temp"}
@@ -263,9 +265,12 @@ def segments_to_text(segments: list[dict] | None) -> str:
             parts.append(str(data.get("text", "")))
         elif segment_type == "markdown":
             parts.append(str(data.get("content", "")))
+        elif segment_type in {"light_app", "xml"}:
+            parts.append(card_message_text(segment_type, data))
         else:
             parts.append(f"[不支持的消息段:{segment_type or 'unknown'}]")
-    return truncate_text("".join(parts), 120)
+    limit = 4096 if any(segment.get("type") in {"light_app", "xml"} for segment in segments) else 120
+    return truncate_text("".join(parts), limit)
 
 
 def format_message(message: Any) -> str:

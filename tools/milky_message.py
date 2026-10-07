@@ -7,6 +7,8 @@ from nonebot.adapters.milky.message import Message, MessageSegment
 from pydantic import BaseModel, Field
 
 from utils.milky_tools import (
+    ToolInputError,
+    configurable,
     format_forwarded_messages,
     format_message,
     input_error_text,
@@ -65,6 +67,45 @@ async def send_forwarded_message(
 
 def _format_message_response(response) -> str:
     return f"message_seq={response.message_seq} time={response.time}"
+
+
+@tool(response_format="content")
+@input_error_text
+async def send_plain_text(
+    text: str,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+) -> str:
+    """立即向当前 QQ 会话发送纯文本，不渲染 Markdown、不转图片。
+
+    用于用户要求可复制的文字、代码、链接或明确要求不要图片的最终内容。
+    保留原文和换行，Markdown 标记也按文字发送；不要用来发送思考或过程状态。
+    目标由运行时会话决定，不能指定其他群或用户。成功后不要在最终回复中重复正文。
+    平台拒绝超长消息时不会转图或自动重试。
+
+    Args:
+        text: 要发送的完整纯文本正文
+    """
+    if not text.strip():
+        raise ToolInputError("纯文本消息不能为空。")
+    context = configurable(config)
+    is_group = context.get("group_id") not in (None, "", 0, "0")
+    target = require_group_id(config=config) if is_group else require_user_id(config=config)
+    if target <= 0:
+        raise ToolInputError("当前会话 ID 必须为正整数。")
+
+    from utils.message import sanitize_outgoing_text
+
+    content = await sanitize_outgoing_text(text)
+    if not content or not content.strip():
+        raise ToolInputError("纯文本消息经内容检查后为空，未发送。")
+    message = [MessageSegment.text(content)]
+    bot = get_bot()
+    response = (
+        await bot.send_group_message(group_id=target, message=message)
+        if is_group
+        else await bot.send_private_message(user_id=target, message=message)
+    )
+    return f"已向当前会话发送纯文本消息，{_format_message_response(response)}。不要重复发送正文。"
 
 
 @tool(response_format="content")

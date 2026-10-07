@@ -10,6 +10,7 @@ from nonebot import logger
 from PIL import Image as PILImage
 
 from utils.alconna import Image, UniMessage, Video
+from utils.card_message import card_message_text
 from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
 from utils.delivery import DeliveryResult
@@ -259,13 +260,8 @@ async def message_extract(  # noqa: C901
                 summary = msg_data.get("summary", "")
                 text_parts.append(f"[市场表情:{summary}]")
 
-            case "light_app":
-                app_name = msg_data.get("app_name", "")
-                text_parts.append(f"[小程序:{app_name}]")
-
-            case "xml":
-                service_id = msg_data.get("service_id", "")
-                text_parts.append(f"[XML消息:{service_id}]")
+            case "light_app" | "xml":
+                text_parts.append(card_message_text(msg_type, msg_data))
 
             case _:
                 # Milky's forward-compatibility rule requires unknown

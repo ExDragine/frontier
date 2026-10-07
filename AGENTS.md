@@ -62,6 +62,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | 模块 | 职责 |
 |------|------|
 | `plugins/agent` | 核心对话入口：消息提取、引用上下文、文件暂存、DB 写入、回复门控、内容安全、Agent 调度、回复发送 |
+| `plugins/events` | 四类 Milky 申请事件：独立持久化收件箱、规则/受限决策、执行校验与恢复；默认只记录，`/events` 仅超级用户私聊管理，详见 `docs/platform-events.md` |
 | `plugins/acp` | ACP v1/v2 客户端与服务端、`/acp` 命令、子代理桥接和进程维护；`/acp` 仅超级用户可用 |
 | `plugins/clockwork` | APScheduler 定时任务系统：内置任务、用户自动任务、任务命令、执行历史；只负责注册 `daily_news` 任务，处理器位于 `plugins.news` |
 | `plugins/dashboard` | FastAPI Dashboard：`/api/dashboard/*` API、`/dashboard` 静态前端、JWT 鉴权、状态/消息/设置/任务管理 |
@@ -72,6 +73,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 
 `plugins/agent` 的 `handlers.py` 负责事件编排；`message_normalizer.py`、`reply_context.py`、
 `chat_context.py`、`gateway.py`、`attachments.py` 分别负责归一化、引用、媒体预算、回复门控和附件暂存。
+Milky `light_app` / `xml` 卡片通过 `utils/card_message.py` 本地解析常见展示字段，提取来源、标题、摘要和 HTTP(S) 链接并标记为未核实用户数据；当前消息、引用、转发和平台历史工具共用此解析，不自动下载封面或链接正文，失败保留未解析提示。
 `plugins/agent/adapters/` 提供 QQ 与飞书适配器；`adapters/__init__.py` 只加载纯 facade，不注册 matcher，
 `plugins/agent/__init__.py` 也明确不挂载飞书 lifecycle（`register_feishu_lifecycle` 目前只有测试引用）。
 `plugins/toolbox` 分为 `settings.py`、`update.py`、`menu.py`，专属菜单位于其 `templates/`。

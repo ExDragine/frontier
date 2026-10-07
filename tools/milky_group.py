@@ -15,6 +15,7 @@ from utils.milky_tools import (
     require_group_id,
     truncate_text,
 )
+from utils.platform_authorization import require_bot_owner
 
 _GROUP_REQUEST_TYPES = {"join_request", "invited_join_request"}
 _REACTION_TYPES = {"face", "emoji"}
@@ -592,22 +593,32 @@ async def reject_group_request(
 
 
 @tool(response_format="content")
-async def accept_group_invitation(group_id: int, invitation_seq: int) -> str:
+@input_error_text
+async def accept_group_invitation(
+    group_id: int, invitation_seq: int, config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
+) -> str:
     """同意他人邀请自身入群。
     Args:
         group_id: 群号
         invitation_seq: 邀请序列号
     """
+    require_bot_owner(config, runtime)
     await get_bot().accept_group_invitation(group_id=group_id, invitation_seq=invitation_seq)
     return f"已同意加入群 {group_id} 的邀请 {invitation_seq}"
 
 
 @tool(response_format="content")
-async def reject_group_invitation(group_id: int, invitation_seq: int) -> str:
+@input_error_text
+async def reject_group_invitation(
+    group_id: int, invitation_seq: int, config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
+) -> str:
     """拒绝他人邀请自身入群。
     Args:
         group_id: 群号
         invitation_seq: 邀请序列号
     """
+    require_bot_owner(config, runtime)
     await get_bot().reject_group_invitation(group_id=group_id, invitation_seq=invitation_seq)
     return f"已拒绝加入群 {group_id} 的邀请 {invitation_seq}"

@@ -29,10 +29,12 @@ import plugins.clockwork
 import plugins.dashboard
 import plugins.playground
 import plugins.wolfx
+import plugins.events
 
 assert 'plugins.agent.handlers' not in sys.modules
 assert 'plugins.playground.commands' not in sys.modules
 assert 'plugins.clockwork.runtime' not in sys.modules
+assert 'plugins.events.runtime' not in sys.modules
 assert not hasattr(plugins.playground, 'paint_entry')
 assert not hasattr(plugins.playground, 'notice')
 assert not hasattr(plugins.clockwork, 'task_manager')
@@ -50,7 +52,7 @@ else:
 """)
 
 
-@pytest.mark.parametrize("plugin", ["playground", "wolfx", "dashboard", "clockwork"])
+@pytest.mark.parametrize("plugin", ["playground", "wolfx", "dashboard", "clockwork", "events"])
 def test_nonebot_loader_registers_each_package_entry(tmp_path, plugin):
     _run(tmp_path, f"""
 import os
@@ -74,6 +76,11 @@ elif {plugin!r} == 'wolfx':
 elif {plugin!r} == 'dashboard':
     from plugins.dashboard import mount_dashboard
     assert callable(mount_dashboard)
+elif {plugin!r} == 'events':
+    from plugins.events import runtime
+    registered = nonebot.get_plugin('events').matcher
+    assert runtime.requests in registered and runtime.command in registered
+    assert runtime.requests.type == 'request'
 else:
     from plugins.clockwork import runtime, task_manager
     assert task_manager is runtime.task_manager_instance
