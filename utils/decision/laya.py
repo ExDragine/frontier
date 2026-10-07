@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 from .models import DecisionQuestions, DecisionResult, DecisionState
+from .validation import validate_answers, validate_questions
 
 
 class LayaProviderError(RuntimeError):
@@ -27,12 +28,26 @@ def _as_mapping(value: object, *, name: str) -> Mapping[str, Any]:
     return value
 
 
-def _normalize_payload(payload: object, *, provider: str, latency_ms: float) -> DecisionResult:
+def _normalize_payload(payload: object, *, questions: DecisionQuestions, provider: str, latency_ms: float) -> DecisionResult:
     body = _as_mapping(payload, name="response")
     answers = _as_mapping(body.get("answers", {}), name="answers")
     normalized_answers: dict[str, Mapping[str, Any]] = {}
     for question_id, answer in answers.items():
-        normalized_answers[str(question_id)] = _as_mapping(answer, name=f"answers.{question_id}")
+        item = dict(_as_mapping(answer, name=f"answers.{question_id}"))
+        if item.get("type") != "refusal":
+            expected = questions.get(question_id, {}).get("type")
+            item.setdefault("type", "noul" if expected == "predicate" else expected)
+            if item["type"] == "noul":
+                item["type"] = "predicate"
+                value = item.pop("noul", None)
+                item["probability"] = float(value) if isinstance(value, bool) else value
+            if "answer_confidence" in item:
+                item["confidence"] = item.pop("answer_confidence")
+        normalized_answers[question_id] = item
+    try:
+        normalized_answers = validate_answers(normalized_answers, questions)
+    except ValueError as error:
+        raise LayaProviderError(str(error)) from error
     routing = body.get("routing", {})
     usage = body.get("usage", {})
     return DecisionResult(
@@ -84,17 +99,21 @@ class LayaDecisionProvider:
     async def decide(self, state: DecisionState, questions: DecisionQuestions) -> DecisionResult:
         """Answer ``questions`` and normalize the SDK or HTTP response."""
 
-        if not isinstance(questions, Mapping):
-            raise TypeError("questions must be a mapping")
+        validate_questions(questions)
+        wire_questions = {
+            name: {**question, "type": "noul" if question["type"] == "predicate" else question["type"]}
+            for name, question in questions.items()
+        }
         started = time.perf_counter()
         if self.base_url:
-            payload = await self._decide_http(state, questions)
+            payload = await self._decide_http(state, wire_questions)
             provider = "laya-http"
         else:
-            payload = await self._decide_local(state, questions)
+            payload = await self._decide_local(state, wire_questions)
             provider = "laya-local"
         return _normalize_payload(
             payload,
+            questions=questions,
             provider=provider,
             latency_ms=(time.perf_counter() - started) * 1000.0,
         )

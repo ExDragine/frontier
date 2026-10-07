@@ -42,13 +42,15 @@ async def test_agent_reads_its_reply_prompt_from_another_directory(monkeypatch, 
         async def latest_group_role_message_time(self, **kwargs):
             return None
 
-    async def signal(system, messages, schema):
-        assert system
+    async def decide(self, messages, questions):
+        from utils.decision import DecisionResult
+
+        assert questions["should_reply"]["instructions"]
         assert "帮我" in messages
-        return schema(should_reply="true", confidence=1.0)
+        return DecisionResult(answers={"should_reply": {"type": "predicate", "probability": 1.0}}, provider="test", latency_ms=0)
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(gateway, "messages_db", History())
-    monkeypatch.setattr(gateway, "signal_structured", signal)
+    monkeypatch.setattr(gateway.LLMDecisionProvider, "decide", decide)
     monkeypatch.setattr(gateway, "_reply_check_last_checked_at", {})
     assert await gateway._reply_check_should_reply(123, "帮我解释这条报错", [{"content": "帮我解释这条报错"}])

@@ -56,7 +56,7 @@ async def test_laya_provider_auto_mode_lets_router_choose_language():
     router = FakeRouter({"answers": {"should_reply": {"noul": 0.5}}})
     provider = LayaDecisionProvider(model="auto", router=router)
 
-    await provider.decide("你好", {"should_reply": {"type": "noul"}})
+    await provider.decide("你好", {"should_reply": {"type": "predicate"}})
 
     assert router.calls[0][2] is None
 
@@ -114,7 +114,7 @@ async def test_laya_provider_rejects_invalid_response_shape():
     provider = LayaDecisionProvider(router=FakeRouter({"answers": {"should_reply": []}}))
 
     with pytest.raises(LayaProviderError, match="answers.should_reply"):
-        await provider.decide("hello", {"should_reply": {"type": "noul"}})
+        await provider.decide("hello", {"should_reply": {"type": "predicate"}})
 
 
 def test_build_reply_gate_state_is_bounded_and_normalizes_content():
@@ -142,7 +142,7 @@ async def test_llm_decision_provider_adapts_structured_answers(monkeypatch):
         async def structured(self, system_prompt, user_prompt, schema, **kwargs):
             captured.update({"system": system_prompt, "user": user_prompt, "schema": schema, "options": kwargs})
             return DecisionEnvelope(
-                answers={"should_reply": {"noul": 0.8, "answer_confidence": 0.9}}
+                answers={"should_reply": {"type": "predicate", "probability": 0.8, "confidence": 0.9}}
             )
 
     monkeypatch.setattr(decision_llm, "DecisionLLM", FakeDecisionLLM)
@@ -168,8 +168,8 @@ async def test_llm_decision_provider_rejects_out_of_range_probability(monkeypatc
             pass
 
         async def structured(self, *_args, **_kwargs):
-            return DecisionEnvelope(answers={"should_reply": {"noul": 2}})
+            return DecisionEnvelope(answers={"should_reply": {"type": "predicate", "probability": 2}})
 
     monkeypatch.setattr(decision_llm, "DecisionLLM", FakeDecisionLLM)
     with pytest.raises(ValueError, match="between 0 and 1"):
-        await LLMDecisionProvider().decide("hello", {"should_reply": {"type": "noul"}})
+        await LLMDecisionProvider().decide("hello", {"should_reply": {"type": "predicate"}})

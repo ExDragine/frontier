@@ -7,10 +7,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from .models import DecisionProvider, DecisionResult
+from .validation import validate_answers
 
 REPLY_GATE_QUESTIONS: dict[str, dict[str, Any]] = {
     "should_reply": {
-        "type": "noul",
+        "type": "predicate",
         "instructions": (
             "Does the latest message ask the AI assistant for help or an answer? "
             "Return true for a direct question, request, or problem report. Return "
@@ -30,8 +31,8 @@ class ReplyGateScore:
     """One provider's reply-gate score."""
 
     should_reply: bool
-    probability: float
-    confidence: float
+    probability: float | None
+    confidence: float | None
     decision: DecisionResult
 
 
@@ -64,44 +65,30 @@ def build_reply_gate_state(plaintext: str, history: Sequence[object] = (), *, li
     return "\n".join(rows)
 
 
-def _noul_probability(answer: Mapping[str, Any]) -> float:
-    value = answer.get("noul")
-    if isinstance(value, bool):
-        return float(value)
-    try:
-        probability = float(value)
-    except (TypeError, ValueError) as error:
-        raise ValueError("reply-gate answer does not contain a numeric 'noul' probability") from error
-    if not 0 <= probability <= 1:
-        raise ValueError("reply-gate probability must be between 0 and 1")
-    return probability
-
-
 async def score_reply_gate(
     provider: DecisionProvider,
     plaintext: str,
     history: Sequence[object] = (),
     *,
     threshold: float = 0.5,
+    instructions: str | None = None,
 ) -> ReplyGateScore:
     """Ask a provider for the reply probability and apply a local threshold."""
 
     if not 0 <= threshold <= 1:
         raise ValueError("threshold must be between 0 and 1")
-    decision = await provider.decide(build_reply_gate_state(plaintext, history), REPLY_GATE_QUESTIONS)
-    answer = decision.answers.get("should_reply")
-    if answer is None:
-        raise ValueError("reply-gate provider omitted the 'should_reply' answer")
-    probability = _noul_probability(answer)
-    confidence = answer.get("answer_confidence", answer.get("confidence", max(probability, 1 - probability)))
-    try:
-        normalized_confidence = float(confidence)
-    except (TypeError, ValueError) as error:
-        raise ValueError("reply-gate answer confidence must be numeric") from error
+    questions = {name: dict(question) for name, question in REPLY_GATE_QUESTIONS.items()}
+    if instructions is not None:
+        questions["should_reply"]["instructions"] = instructions
+    decision = await provider.decide(build_reply_gate_state(plaintext, history), questions)
+    answer = validate_answers(decision.answers, questions)["should_reply"]
+    if answer["type"] == "refusal":
+        return ReplyGateScore(False, None, None, decision)
+    probability = answer["probability"]
     return ReplyGateScore(
-        should_reply=probability >= threshold,
+        should_reply=probability > threshold,
         probability=probability,
-        confidence=normalized_confidence,
+        confidence=answer.get("confidence"),
         decision=decision,
     )
 

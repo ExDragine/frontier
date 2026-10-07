@@ -79,6 +79,9 @@ async def _evaluate(cases: list[dict[str, Any]], *, model: str, threshold: float
         except Exception as error:  # noqa: BLE001 - report per-case evaluation failures
             errors.append({"text": case["text"], "error": f"{type(error).__name__}: {error}"})
             continue
+        if score.probability is None:
+            errors.append({"text": case["text"], "error": "Decision provider refused"})
+            continue
         laya_predictions.append(score.should_reply)
         laya_labels.append(bool(case["label"]))
         probabilities.append(score.probability)
@@ -95,7 +98,7 @@ async def _evaluate(cases: list[dict[str, Any]], *, model: str, threshold: float
             "threshold_sweep": {
                 f"{candidate:.1f}": _metrics(
                     laya_labels,
-                    [probability >= candidate for probability in probabilities],
+                    [probability > candidate for probability in probabilities],
                 )
                 for candidate in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
             },

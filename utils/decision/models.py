@@ -14,9 +14,9 @@ DecisionQuestions = Mapping[str, Mapping[str, Any]]
 class DecisionResult:
     """Normalized result returned by a decision provider.
 
-    ``answers`` intentionally preserves the backend's typed answer shape.  A
-    caller can use a ``choice``, ``score`` or ``noul`` answer without knowing
-    whether it came from an in-process model or an HTTP service.
+    Answers use predicate/probability, choice or score, or an explicit refusal.
+    Confidence is optional and independent of predicate probability. Backend
+    wire formats are translated by adapters before validation.
     """
 
     answers: Mapping[str, Mapping[str, Any]]

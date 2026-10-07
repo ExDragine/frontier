@@ -6,16 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from nonebot.adapters.milky.event import MessageEvent
-from pydantic import BaseModel, Field
 
 from utils.configs import EnvConfig
 from utils.database import GroupSettingsManager, MessageDatabase, get_engine
-from utils.decision import LayaDecisionProvider, score_reply_gate
-from utils.decision_llm import decision_structured
-
-# Keep the old module-level name as an injection hook for existing tests and
-# plugins; all runtime requests use the canonical decision model underneath.
-signal_structured = decision_structured
+from utils.decision import LayaDecisionProvider, LLMDecisionProvider, score_reply_gate
 
 messages_db = MessageDatabase()
 
@@ -113,13 +107,6 @@ ACTIVE_TRIGGER_STRIP_CHARS = " \t\r\n:：,，.。!！?？~～…、/\\|[]()（�
 _reply_check_last_checked_at: dict[int, float] = {}
 _laya_candidate_provider: LayaDecisionProvider | None = None
 _laya_candidate_provider_revision: int | None = None
-
-
-class ReplyCheck(BaseModel):
-    should_reply: str = Field(
-        description="Should or not reply message. If should, reply with true, either reply with false"
-    )
-    confidence: float = Field(description="The confidence of the decision, a float number between 0 and 1")
 
 
 def _reply_check_content_text(content: Any) -> str:
@@ -252,16 +239,22 @@ async def _reply_check_should_reply(group_id: int, plaintext: str, messages: lis
         return False
     _reply_check_last_checked_at[group_id] = now
 
-    reply_check_messages = [
-        *messages,
-        {"role": "user", "content": str({"metadata": {}, "content": plaintext})},
+    history = [
+        {"role": conv.get("role", "user"), "content": _reply_check_content_text(conv.get("content", ""))}
+        for conv in messages[-4:]
     ]
-    temp_conv: list[dict] = reply_check_messages[-5:]
-    plain_conv = "\n".join(_reply_check_content_text(conv.get("content", "")) for conv in temp_conv)
     with open(Path(__file__).resolve().parent / "prompts" / "reply_check.md", encoding="utf-8") as f:
-        system_prompt = f.read().format(name=EnvConfig.BOT_NAME)
-    reply_check: ReplyCheck = await signal_structured(system_prompt, plain_conv, ReplyCheck)
-    return reply_check.should_reply == "true" and reply_check.confidence > 0.5
+        instructions = f.read().format(name=EnvConfig.BOT_NAME)
+    try:
+        score = await score_reply_gate(
+            LLMDecisionProvider(), plaintext, history, instructions=instructions,
+        )
+    except Exception as error:  # noqa: BLE001 - unsolicited replies must fail closed
+        from nonebot import logger
+
+        logger.warning("Reply decision failed, staying silent: {}", type(error).__name__)
+        return False
+    return score.should_reply
 
 
 async def _active_trigger_should_reply(plaintext: str, wake_words: list[str]) -> bool:

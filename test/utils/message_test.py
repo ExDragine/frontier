@@ -85,13 +85,37 @@ class DummyDmEvent:
 
 
 class DummyReplyCheckFalse:
-    should_reply = "false"
-    confidence = 0.0
+    answers = {"should_reply": {"type": "predicate", "probability": 0.0}}
 
 
 class DummyReplyCheckTrue:
-    should_reply = "true"
-    confidence = 0.9
+    answers = {"should_reply": {"type": "predicate", "probability": 0.9}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("answer", [
+    {},
+    {"should_reply": {"type": "refusal", "reason": "Cannot decide"}},
+    {"should_reply": {"type": "predicate", "probability": float("nan")}},
+    {"should_reply": {"type": "predicate", "probability": 0.5}},
+])
+async def test_final_reply_gate_fails_closed_on_invalid_or_ambiguous_answers(monkeypatch, answer):
+    from utils.decision import DecisionResult
+
+    async def decide(self, state, questions):
+        return DecisionResult(answer, "test", 0)
+
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", decide)
+    assert not await gateway_module._reply_check_should_reply(123, "帮我解释这个报错", [])
+
+
+@pytest.mark.asyncio
+async def test_final_reply_gate_stays_silent_on_provider_failure(monkeypatch):
+    async def decide(*_args):
+        raise TimeoutError("provider timed out")
+
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", decide)
+    assert not await gateway_module._reply_check_should_reply(123, "帮我解释这个报错", [])
 
 
 class DummyReplyCheckDb:
@@ -666,7 +690,7 @@ async def test_message_gateway_group_active_trigger_can_stay_silent_for_low_info
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module, "signal_structured", fail_if_called)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fail_if_called)
 
     result = await _message_gateway(DummyTestGroupEvent("哈哈哈", is_tome=True, to_me=True), [])
 
@@ -682,7 +706,7 @@ async def test_message_gateway_group_wake_word_only_is_treated_as_a_call(monkeyp
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     monkeypatch.setattr(gateway_module, "_get_wake_words", lambda _group_id: ["Frontier"])
-    monkeypatch.setattr(gateway_module, "signal_structured", fail_if_called)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fail_if_called)
 
     result = await _message_gateway(DummyTestGroupEvent("Frontier"), [])
 
@@ -697,7 +721,7 @@ async def test_message_gateway_group_empty_mention_is_treated_as_a_call(monkeypa
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module, "signal_structured", fail_if_called)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fail_if_called)
 
     result = await _message_gateway(DummyTestGroupEvent("", is_tome=True, to_me=True), [])
 
@@ -712,7 +736,7 @@ async def test_message_gateway_group_active_trigger_allows_clear_request(monkeyp
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module, "signal_structured", fail_if_called)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fail_if_called)
 
     result = await _message_gateway(
         DummyTestGroupEvent("这个报错怎么解决？", is_tome=True, to_me=True),
@@ -734,7 +758,7 @@ async def test_message_gateway_group_active_trigger_allows_short_image_edit_requ
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fake_signal_structured)
 
     result = await _message_gateway(DummyTestGroupEvent("P一下", is_tome=True, to_me=True), [])
 
@@ -755,7 +779,7 @@ async def test_message_gateway_group_active_trigger_allows_non_low_info_without_
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     monkeypatch.setattr(gateway_module, "_get_wake_words", lambda _group_id: ["Frontier"])
-    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fake_signal_structured)
 
     result = await _message_gateway(DummyTestGroupEvent("Frontier 那个"), [])
 
@@ -772,7 +796,7 @@ async def test_message_gateway_group_active_trigger_blocks_stop_intent(monkeypat
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     monkeypatch.setattr(gateway_module, "_get_wake_words", lambda _group_id: ["Frontier"])
-    monkeypatch.setattr(gateway_module, "signal_structured", fail_if_called)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fail_if_called)
 
     result = await _message_gateway(DummyTestGroupEvent("Frontier 别回了"), [])
 
@@ -787,7 +811,7 @@ async def test_message_gateway_private_active_trigger_is_not_silenced(monkeypatc
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module, "signal_structured", fail_if_called)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fail_if_called)
 
     result = await _message_gateway(DummyDmEvent("哈哈哈"), [])
 
@@ -802,7 +826,7 @@ async def test_message_gateway_test_group_reply_check_does_not_mutate_messages(m
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fake_signal_structured)
     patch_reply_check_prompt(monkeypatch, "{name}")
     messages = [{"role": "user", "content": "history"}]
 
@@ -816,8 +840,8 @@ async def test_message_gateway_test_group_reply_check_does_not_mutate_messages(m
 async def test_message_gateway_test_group_reply_check_strips_image_data(monkeypatch):
     captured = {}
 
-    async def fake_signal_structured(system_prompt, user_prompt, *_args, **_kwargs):
-        captured["system_prompt"] = system_prompt
+    async def fake_signal_structured(self, user_prompt, questions):
+        captured["system_prompt"] = questions["should_reply"]["instructions"]
         captured["user_prompt"] = user_prompt
         return DummyReplyCheckFalse()
 
@@ -825,7 +849,7 @@ async def test_message_gateway_test_group_reply_check_strips_image_data(monkeypa
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "BOT_NAME", "Frontier")
-    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fake_signal_structured)
     patch_reply_check_prompt(monkeypatch, "bot={name}")
     messages = [
         {
@@ -859,7 +883,7 @@ async def test_message_gateway_test_group_skips_casual_messages(monkeypatch):
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fake_signal_structured)
     patch_reply_check_prompt(monkeypatch, "{name}")
 
     result = await _message_gateway(DummyTestGroupEvent("哈哈确实"), [])
@@ -884,7 +908,7 @@ async def test_laya_candidate_prefilter_expands_lexical_candidates(monkeypatch):
 
     monkeypatch.setattr(gateway_module.EnvConfig, "LAYA_CANDIDATE_ENABLED", True)
     monkeypatch.setattr(gateway_module, "_laya_candidate_should_reply", fake_laya)
-    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fake_signal_structured)
     patch_reply_check_prompt(monkeypatch, "{name}")
 
     result = await gateway_module._reply_check_should_reply(5, "这段输入需要助手处理", [{"role": "user", "content": "历史"}])
@@ -904,7 +928,7 @@ async def test_laya_candidate_prefilter_does_not_bypass_signal(monkeypatch):
 
     monkeypatch.setattr(gateway_module.EnvConfig, "LAYA_CANDIDATE_ENABLED", True)
     monkeypatch.setattr(gateway_module, "_laya_candidate_should_reply", fake_laya)
-    monkeypatch.setattr(gateway_module, "signal_structured", reject_signal)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", reject_signal)
     patch_reply_check_prompt(monkeypatch, "{name}")
 
     result = await gateway_module._reply_check_should_reply(5, "这段输入需要助手处理", [])
@@ -924,7 +948,7 @@ async def test_message_gateway_test_group_reply_check_has_group_cooldown(monkeyp
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fake_signal_structured)
     monkeypatch.setattr(gateway_module.time, "monotonic", lambda: 1000.0)
     patch_reply_check_prompt(monkeypatch, "{name}")
 
@@ -946,7 +970,7 @@ async def test_group_cooldown_skips_laya_candidate_prefilter(monkeypatch):
 
     monkeypatch.setattr(gateway_module.EnvConfig, "LAYA_CANDIDATE_ENABLED", True)
     monkeypatch.setattr(gateway_module, "_laya_candidate_should_reply", fail_if_laya_called)
-    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fake_signal_structured)
     monkeypatch.setattr(gateway_module.time, "monotonic", lambda: 1000.0)
     patch_reply_check_prompt(monkeypatch, "{name}")
 
@@ -969,7 +993,7 @@ async def test_message_gateway_test_group_active_group_requires_strong_signal(mo
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fake_signal_structured)
     monkeypatch.setattr(
         gateway_module,
         "messages_db",
@@ -997,7 +1021,7 @@ async def test_message_gateway_test_group_does_not_use_assistant_reply_cooldown(
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", False)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
-    monkeypatch.setattr(gateway_module, "signal_structured", fake_signal_structured)
+    monkeypatch.setattr(gateway_module.LLMDecisionProvider, "decide", fake_signal_structured)
     monkeypatch.setattr(gateway_module.time, "time", lambda: 2000.0)
     patch_reply_check_prompt(monkeypatch, "{name}")
 
