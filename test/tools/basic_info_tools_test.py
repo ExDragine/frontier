@@ -328,6 +328,14 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
 
     # The registry exposes a fresh snapshot without mutating local tools or old views.
     registry = module.agent_tools
+    queries = {
+        "get_china_earthquake", "get_usgs_significant_earthquakes",
+        "get_available_china_radar_areas", "get_deepseek_api_balance",
+        "get_message", "get_login_info", "iching_divination",
+    }
+    assert {tool.name for tool in registry.direct_tools if registry.is_read_only_tool(tool)} == queries
+    # A same-name replacement/MCP object must not inherit a local query's policy.
+    assert not registry.is_read_only_tool(FakeBaseTool("get_china_earthquake", "content"))
     previous = registry.direct_tools
     recovered = FakeBaseTool("web_search_exa", "content")
     monkeypatch.setattr(module, "mcp_get_tools_async", AsyncMock(return_value=[recovered]))

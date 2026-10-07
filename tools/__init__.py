@@ -15,6 +15,21 @@ _DOMAIN_GROUPS = ("astro", "earth", "memory", "divination", "external")
 _RESTRICTED_GROUPS = ("restricted",)
 _ALL_TOOL_GROUPS = ("main", *_DOMAIN_GROUPS, *_RESTRICTED_GROUPS)
 
+# Preserve the former PTC query classification for direct-tool error handling.
+# Artifact-producing tools and unknown modules are deliberately excluded.
+_READ_ONLY_MODULES = {
+    "comet", "deepseek_balance", "earthquake", "iching", "radar",
+    "rocket", "space_weather", "tarot", "weather",
+}
+_READ_ONLY_PREFIXES = {
+    "milky_file": ("get_",),
+    "milky_friend": ("get_",),
+    "milky_group": ("get_",),
+    "milky_message": ("get_",),
+    "milky_system": ("get_",),
+    "scheduled_task": ("list_",),
+}
+
 # Platform tools stay in the legacy ``main`` group during the migration, but
 # are tagged here so neutral runtime callers can opt into only the tools their
 # adapter can actually execute.  An empty capability set deliberately means
@@ -149,6 +164,15 @@ class ModuleTools:
     def direct_tools(self):
         """Return regular Agent tools, including network search and page reading."""
         return [*self.subagent_tools["main"], *self.mcp_tools]
+
+    def is_read_only_tool(self, tool: BaseTool) -> bool:
+        """Classify registered query objects without trusting name prefixes alone."""
+        if not any(tool is registered for registered in self.subagent_tools["main"]):
+            return False
+        if getattr(tool, "response_format", None) != "content":
+            return False
+        module = self.tool_metadata.get(tool.name, {}).get("module", "")
+        return module in _READ_ONLY_MODULES or tool.name.startswith(_READ_ONLY_PREFIXES.get(module, ()))
 
 
 _AGENT_TOOLS = None

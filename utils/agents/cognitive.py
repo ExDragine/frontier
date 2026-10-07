@@ -662,6 +662,11 @@ class FrontierCognitive:
                 mode="deny",
             )
         ]
+        is_read_only_tool = getattr(agent_tools, "is_read_only_tool", None)
+        read_only_tools = [
+            tool for tool in effective_tools
+            if callable(is_read_only_tool) and is_read_only_tool(tool)
+        ]
         middleware: list[Any] = [
             PIIMiddleware(
                 "api_key",
@@ -669,6 +674,7 @@ class FrontierCognitive:
                 strategy="mask",
             ),
             tool_error_middleware(read_only_tools=[
+                *read_only_tools,
                 *WEB_SEARCH_TOOL_NAMES, "ls", "glob", "grep", "read_file",
                 "get_recent_conversation", "search_messages", "get_history_messages",
             ]),

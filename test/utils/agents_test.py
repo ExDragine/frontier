@@ -2039,6 +2039,7 @@ async def test_components_refresh_when_mcp_recovers_without_config_change(monkey
 async def test_main_agent_owns_network_tools_with_read_only_errors(monkeypatch, tmp_path, access_profile):
     captured = {}
     network_tools = [types.SimpleNamespace(name=name) for name in sorted(cognitive_mod.WEB_SEARCH_TOOL_NAMES)]
+    query_tool = types.SimpleNamespace(name="get_china_earthquake")
 
     class DummyAgent:
         async def astream_events(self, input=None, **kwargs):
@@ -2051,9 +2052,11 @@ async def test_main_agent_owns_network_tools_with_read_only_errors(monkeypatch, 
     monkeypatch.setattr(cognitive_mod, "create_deep_agent", create)
     monkeypatch.setattr(cognitive_mod, "create_llm", lambda **kwargs: object())
     monkeypatch.setattr(cognitive_mod, "model_supports_native_web_search", lambda *_args: False)
-    monkeypatch.setattr(cognitive_mod, "agent_tools", types.SimpleNamespace(restricted_tools=[]))
+    monkeypatch.setattr(cognitive_mod, "agent_tools", types.SimpleNamespace(
+        restricted_tools=[], is_read_only_tool=lambda tool: tool is query_tool,
+    ))
     agent = object.__new__(cognitive_mod.FrontierCognitive)
-    agent.tools = network_tools
+    agent.tools = [*network_tools, query_tool]
     agent.document_subagent = {"name": "document-agent", "tools": []}
     agent.working_dir = str(tmp_path / "sandbox")
     result = await agent.chat_agent(
@@ -2061,7 +2064,7 @@ async def test_main_agent_owns_network_tools_with_read_only_errors(monkeypatch, 
         access_profile=access_profile, enable_acp_subagents=False,
     )
     assert result["status"] == "success"
-    assert captured["tools"] == (network_tools if access_profile == "frontier" else [])
+    assert captured["tools"] == (sorted(agent.tools, key=lambda tool: tool.name) if access_profile == "frontier" else [])
     assert captured["subagents"] == [agent.document_subagent]
     errors = next(item for item in captured["middleware"] if type(item).__name__ == "ToolErrorMiddleware")
     attempts = []
@@ -2077,3 +2080,21 @@ async def test_main_agent_owns_network_tools_with_read_only_errors(monkeypatch, 
         assert "停止继续搜索" in reply.content
         assert "private-credential" not in reply.content
     assert attempts == [tool.name for tool in network_tools]
+
+    from utils.agents.tool_errors import ToolExecutionUncertainError
+
+    async def unavailable(request):
+        raise TimeoutError("private-credential")
+
+    request = types.SimpleNamespace(tool=query_tool, tool_call={"name": query_tool.name, "id": "query", "args": {}})
+    if access_profile == "frontier":
+        reply = await errors.awrap_tool_call(request, unavailable)
+        assert reply.status == "error"
+        assert "private-credential" not in reply.content
+    else:
+        with pytest.raises(ToolExecutionUncertainError):
+            await errors.awrap_tool_call(request, unavailable)
+    for name in ("send_message", "unknown_tool"):
+        request.tool_call["name"] = name
+        with pytest.raises(ToolExecutionUncertainError):
+            await errors.awrap_tool_call(request, unavailable)

@@ -477,6 +477,11 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
         for key in FrontierSettings.model_fields
         if key not in {"config_version", "models", "providers", "keys"}
     }
+    # These v2 settings belonged to removed middleware. Ignore only the known
+    # retired keys; unrelated typos still fail strict schema validation.
+    for key in ("answer_rubric_enabled", "answer_rubric_max_iterations"):
+        normalized["features"].pop(key, None)
+    normalized["limits"].pop("agent_ptc_call_limit", None)
     # Preserve the documented defaults for omitted current-format fields.
     normalized["features"].setdefault("video_enabled", normalized["features"].get("paint_enabled", True))
     normalized["storage"].setdefault("media_ttl_days", normalized["storage"].get("image_ttl_days", 30))

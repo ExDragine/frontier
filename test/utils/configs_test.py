@@ -7,6 +7,31 @@ import pytest
 from pydantic import ValidationError
 
 
+def test_retired_middleware_settings_are_ignored_without_mutating_input():
+    from utils.configs import parse_config
+
+    config = {
+        "config_version": 2,
+        "features": {"answer_rubric_enabled": True, "answer_rubric_max_iterations": 2},
+        "limits": {"agent_ptc_call_limit": 20, "agent_tool_call_limit": 17},
+    }
+    settings = parse_config(config)
+    assert "answer_rubric_enabled" not in settings.features.model_dump()
+    assert "answer_rubric_max_iterations" not in settings.features.model_dump()
+    assert "agent_ptc_call_limit" not in settings.limits.model_dump()
+    assert settings.limits.agent_tool_call_limit == 17
+    assert config["features"]["answer_rubric_enabled"] is True
+    assert config["limits"]["agent_ptc_call_limit"] == 20
+
+
+@pytest.mark.parametrize("section", ["features", "limits"])
+def test_retired_middleware_compatibility_keeps_unknown_fields_strict(section):
+    from utils.configs import parse_config
+
+    with pytest.raises(ValidationError, match="extra_forbidden"):
+        parse_config({"config_version": 2, section: {"unknown_setting": True}})
+
+
 def test_env_config_defaults(monkeypatch):
     from utils.configs import EnvConfig
 
