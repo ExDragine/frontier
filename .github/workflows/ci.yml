@@ -58,6 +58,10 @@ jobs:
         continue-on-error: true
         timeout-minutes: 2
         run: uv run --locked python scripts/check_message_renderer.py --live-media --fake-ip-dns --output-dir "${{ runner.temp }}/frontier-ui/fake-ip"
+      - name: Check Wikipedia frame (optional external availability check)
+        continue-on-error: true
+        timeout-minutes: 2
+        run: uv run --locked python scripts/check_message_renderer.py --live-media --iframe-url "https://zh.wikipedia.org/wiki/%E6%9D%8E%E5%AD%90" --output-dir "${{ runner.temp }}/frontier-ui/wikipedia"
       - name: Upload renderer screenshots and checks
         if: always()
         uses: actions/upload-artifact@v4

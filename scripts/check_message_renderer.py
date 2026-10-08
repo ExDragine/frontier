@@ -247,7 +247,9 @@ def configure_fake_dns(enabled, original_address):
         markdown_media.public_address = fake_address
 
 
-async def verify(output_dir: Path, *, live_media: bool = False, fake_ip_dns: bool = False) -> None:
+async def verify(
+    output_dir: Path, *, live_media: bool = False, fake_ip_dns: bool = False, iframe_url: str = "https://example.com/"
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     original_wait = markdown_render._wait_for_renderer_ready
     original_logging = markdown_render._attach_page_logging
@@ -274,7 +276,7 @@ async def verify(output_dir: Path, *, live_media: bool = False, fake_ip_dns: boo
                         "height": 420,
                         "caption": "网络展示测试，坐标为示例地点",
                     },
-                    {"type": "iframe", "title": "公开网页快照", "url": "https://example.com/", "height": 420},
+                    {"type": "iframe", "title": "公开网页快照", "url": iframe_url, "height": 420},
                 ],
             }
         }
@@ -419,6 +421,7 @@ def main() -> None:
     parser.add_argument(
         "--fake-ip-dns", action="store_true", help="Exercise real DoH fallback with simulated Fake-IP DNS"
     )
+    parser.add_argument("--iframe-url", default="https://example.com/", help="Public frame URL for --live-media")
     args = parser.parse_args()
     if args.fake_ip_dns and not args.live_media:
         parser.error("--fake-ip-dns requires --live-media")
@@ -433,7 +436,11 @@ def main() -> None:
         os.environ["FRONTIER_CONFIG"] = str(config)
         os.environ["NICKNAME"] = '["Renderer QA"]'
         markdown_render.CACHE_DIR = Path(directory) / "cache"
-        asyncio.run(verify(args.output_dir, live_media=args.live_media, fake_ip_dns=args.fake_ip_dns))
+        asyncio.run(
+            verify(
+                args.output_dir, live_media=args.live_media, fake_ip_dns=args.fake_ip_dns, iframe_url=args.iframe_url
+            )
+        )
 
 
 if __name__ == "__main__":

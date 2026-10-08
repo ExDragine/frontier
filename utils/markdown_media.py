@@ -8,15 +8,18 @@ import hashlib
 import io
 import ipaddress
 import json
+import logging
 import math
 import socket
 import time
+import zlib
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
 import httpx2
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageOps
+from playwright.async_api import TimeoutError as BrowserTimeoutError
 
 from utils.http_client import AsyncClient
 
@@ -24,6 +27,29 @@ MAX_MEDIA = 6
 MAX_BYTES = 20_000_000
 USER_AGENT = "Frontier-message-media/1.0 (+https://github.com/ExDragine/frontier)"
 FAKE_IP_NETWORK = ipaddress.ip_network("198.18.0.0/15")
+logger = logging.getLogger(__name__)
+
+
+class MediaFailure(ValueError):
+    pass
+
+
+def failure_reason(exc: Exception) -> str:
+    if isinstance(exc, ExceptionGroup):
+        return failure_reason(exc.exceptions[0])
+    if isinstance(exc, MediaFailure):
+        return str(exc)
+    if isinstance(exc, httpx2.HTTPStatusError):
+        return f"来源返回 HTTP {exc.response.status_code}"
+    if isinstance(exc, (TimeoutError, httpx2.TimeoutException, BrowserTimeoutError)):
+        return "网络或网页加载超时"
+    if isinstance(exc, socket.gaierror):
+        return "域名解析失败"
+    if isinstance(exc, FakeIPAddress):
+        return "代理返回 Fake-IP，兼容模式未开启"
+    if isinstance(exc, httpx2.ConnectError):
+        return "网络连接或 TLS 校验失败"
+    return "地址校验、网页加载或素材格式错误"
 
 
 class FakeIPAddress(ValueError):
@@ -152,24 +178,39 @@ class PublicFetcher:
                     raise PublicRedirect(location)
                 return await self.get(location, limit=limit, redirects=redirects + 1)
             response.raise_for_status()
-            if response.headers.get("content-encoding", "identity") != "identity":
-                raise ValueError("Compressed resource not supported")
-            chunks = []
-            size = 0
-            async for chunk in response.aiter_raw(chunk_size=65536):
-                size += len(chunk)
-                self.bytes += len(chunk)
-                if size > limit or self.bytes > MAX_BYTES:
-                    raise ValueError("Resource size limit")
-                chunks.append(chunk)
-            body = b"".join(chunks)
+            body = await self.read_body(response, limit)
             mime = response.headers.get("content-type", "application/octet-stream")
             if tile and mime.startswith("image/png"):
                 self.cache_dir.mkdir(parents=True, exist_ok=True)
                 cached.write_bytes(body)
             return body, mime
 
-    async def route(self, route):
+    async def read_body(self, response, limit: int) -> bytes:
+        encoding = response.headers.get("content-encoding", "identity").strip().lower()
+        if encoding not in {"identity", "gzip", "deflate"}:
+            raise MediaFailure("来源使用暂不支持的压缩编码")
+        decoder = zlib.decompressobj(31 if encoding == "gzip" else 15) if encoding != "identity" else None
+        chunks = []
+        size = 0
+        async for chunk in response.aiter_raw(chunk_size=65536):
+            self.bytes += len(chunk)
+            if self.bytes > MAX_BYTES:
+                raise MediaFailure("素材超过大小限制")
+            if decoder:
+                try:
+                    chunk = decoder.decompress(chunk, min(limit - size, MAX_BYTES - self.bytes) + 1)
+                except zlib.error as exc:
+                    raise MediaFailure("来源压缩数据损坏") from exc
+                self.bytes += len(chunk)
+            size += len(chunk)
+            if size > limit or self.bytes > MAX_BYTES:
+                raise MediaFailure("素材超过大小限制")
+            chunks.append(chunk)
+        if decoder and (not decoder.eof or decoder.unused_data):
+            raise MediaFailure("来源压缩数据不完整或格式不支持")
+        return b"".join(chunks)
+
+    async def route(self, route, *, on_document_error=None):
         request = route.request
         if request.method != "GET" or request.resource_type in {"media", "websocket", "eventsource"}:
             await route.abort()
@@ -179,7 +220,9 @@ class PublicFetcher:
             await route.fulfill(status=200, content_type=mime, body=body)
         except PublicRedirect as redirect:
             await route.fulfill(status=302, headers={"location": redirect.url}, body="")
-        except Exception:
+        except Exception as exc:
+            if on_document_error and request.resource_type == "document":
+                on_document_error(exc)
             await route.abort()
 
 
@@ -233,23 +276,42 @@ async def capture_frame(
         viewport={"width": width, "height": height}, service_workers="block", accept_downloads=False
     )
     try:
-        await context.route("**/*", fetcher.route)
+        document_errors = []
+
+        async def route_resource(route):
+            await fetcher.route(route, on_document_error=document_errors.append)
+
+        await context.route("**/*", route_resource)
         await context.route_web_socket("**/*", lambda ws: ws.close())
         page = await context.new_page()
         page.on("popup", lambda popup: popup.close())
-        await page.goto(url, wait_until="domcontentloaded", timeout=12_000)
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=12_000)
+        except Exception:
+            if document_errors:
+                raise document_errors[0] from None
+            raise
         await page.wait_for_function(
-            "document.body && (document.body.innerText.trim().length > 0 || document.querySelector('canvas,svg,img')) && "
-            "[...document.images].every(i => i.complete)",
+            "document.body && (document.body.innerText.trim().length > 0 || document.querySelector('canvas,svg,img'))",
             timeout=8000,
         )
-        await page.evaluate("document.fonts.ready")
-        await page.wait_for_timeout(600)
+        try:
+            await asyncio.wait_for(page.evaluate("document.fonts.ready"), timeout=1)
+        except TimeoutError:
+            pass
         if full_page:
             content_height = await page.evaluate(
                 "Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)"
             )
             await page.set_viewport_size({"width": width, "height": min(max(height, int(content_height)), 1200)})
+        try:
+            await page.wait_for_function(
+                "[...document.images].filter(i => {const r=i.getBoundingClientRect(); return r.bottom>0 && r.top<innerHeight;}).every(i => i.complete)",
+                timeout=2000,
+            )
+        except BrowserTimeoutError:
+            pass
+        await page.wait_for_timeout(400)
         return await page.screenshot(type="png", animations="disabled")
     finally:
         await context.close()
@@ -275,9 +337,11 @@ async def load_media(node: dict, browser, fetcher: PublicFetcher, width: int) ->
             if node.get("full_page") and node["media_height"] >= 1200:
                 node["capture_note"] = "网页较长，此处展示前 1200 像素，请通过原链接查看完整页面。"
             node.pop("media_error", None)
-    except Exception:
+    except Exception as exc:
         # Do not disclose network errors or internal addresses in QQ content/logs.
-        node["media_error"] = "素材未能加载，请查看原链接。"
+        reason = failure_reason(exc)
+        logger.warning("Message media failed: type=%s reason=%s", node["type"], reason)
+        node["media_error"] = f"素材未能加载：{reason}，请查看原链接。"
 
 
 def media_nodes(node: dict):

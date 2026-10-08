@@ -1,13 +1,16 @@
 # ruff: noqa: S101
+import gzip
 import io
 import json
 import socket
+import zlib
 from types import SimpleNamespace
 
 import httpx2
 import pytest
 from bs4 import BeautifulSoup
 from PIL import Image, UnidentifiedImageError
+from playwright.async_api import TimeoutError as BrowserTimeoutError
 
 from utils import markdown_media as media
 from utils.markdown_rich import UIBlock
@@ -17,6 +20,102 @@ def png():
     buffer = io.BytesIO()
     Image.new("RGB", (640, 320), "#60a5fa").save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("encoding,compress", [("gzip", gzip.compress), ("deflate", zlib.compress)])
+async def test_compressed_body_is_decoded_with_expansion_limit(tmp_path, encoding, compress):
+    body = b"<html><body>page content</body></html>"
+    async with httpx2.AsyncClient(
+        transport=httpx2.MockTransport(
+            lambda r: httpx2.Response(
+                200, headers={"content-encoding": encoding}, stream=httpx2.ByteStream(compress(body))
+            )
+        )
+    ) as client:
+        fetcher = media.PublicFetcher(client, tmp_path)
+        async with client.stream("GET", "https://public.example") as response:
+            assert await fetcher.read_body(response, 1000) == body
+        async with client.stream("GET", "https://public.example") as response:
+            with pytest.raises(media.MediaFailure, match="大小限制"):
+                await fetcher.read_body(response, 5)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [gzip.compress(b"x" * 1_000_000), gzip.compress(b"html")[:-4], b"invalid"])
+async def test_compression_bombs_and_damaged_streams_are_rejected(tmp_path, body):
+    async with httpx2.AsyncClient(
+        transport=httpx2.MockTransport(
+            lambda r: httpx2.Response(200, headers={"content-encoding": "gzip"}, stream=httpx2.ByteStream(body))
+        )
+    ) as client:
+        async with client.stream("GET", "https://public.example") as response:
+            with pytest.raises(media.MediaFailure):
+                await media.PublicFetcher(client, tmp_path).read_body(response, 1024)
+
+
+@pytest.mark.asyncio
+async def test_frame_slow_images_do_not_discard_loaded_document(tmp_path):  # noqa: C901 - browser test doubles
+    waits = []
+
+    class Page:
+        def on(self, *args):
+            pass
+
+        async def goto(self, *args, **kwargs):
+            pass
+
+        async def wait_for_function(self, script, **kwargs):
+            waits.append(script)
+            if "document.images" in script:
+                raise BrowserTimeoutError("slow private URL should not leak")
+
+        async def evaluate(self, script):
+            return None
+
+        async def wait_for_timeout(self, *args):
+            pass
+
+        async def screenshot(self, **kwargs):
+            return png()
+
+    class Context:
+        closed = False
+
+        async def route(self, *args):
+            pass
+
+        async def route_web_socket(self, *args):
+            pass
+
+        async def new_page(self):
+            return Page()
+
+        async def close(self):
+            self.closed = True
+
+    context = Context()
+
+    class Browser:
+        async def new_context(self, **kwargs):
+            return context
+
+    class Fetcher:
+        async def address(self, url):
+            return "8.8.8.8", "public.example"
+
+    assert await media.capture_frame(Browser(), Fetcher(), "https://public.example", 500, 420) == png()
+    assert "document.images" not in waits[0] and context.closed
+
+
+def test_failure_reason_reports_status_without_private_urls():
+    error = httpx2.HTTPStatusError(
+        "secret http://127.0.0.1/private",
+        request=httpx2.Request("GET", "https://example.com"),
+        response=httpx2.Response(403),
+    )
+    assert media.failure_reason(error) == "来源返回 HTTP 403"
+    assert media.failure_reason(ExceptionGroup("secret", [error])) == "来源返回 HTTP 403"
 
 
 @pytest.mark.asyncio
