@@ -10,6 +10,8 @@ import argparse
 import asyncio
 import io
 import json
+import os
+import secrets
 import sys
 import tempfile
 from pathlib import Path
@@ -235,7 +237,17 @@ async def fixture_get(self, url, **kwargs):
     return page.encode(), "text/html; charset=utf-8"
 
 
-async def verify(output_dir: Path, *, live_media: bool = False) -> None:
+def configure_fake_dns(enabled, original_address):
+    if enabled:
+
+        async def fake_address(url):
+            _, host = await original_address(url)
+            raise markdown_media.FakeIPAddress(host)
+
+        markdown_media.public_address = fake_address
+
+
+async def verify(output_dir: Path, *, live_media: bool = False, fake_ip_dns: bool = False) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     original_wait = markdown_render._wait_for_renderer_ready
     original_logging = markdown_render._attach_page_logging
@@ -272,6 +284,7 @@ async def verify(output_dir: Path, *, live_media: bool = False) -> None:
         widths = (1000, 390)
         markdown_media.PublicFetcher.get = fixture_get
         markdown_media.public_address = fixture_address
+    configure_fake_dns(fake_ip_dns, original_address)
     try:
         for name, case in cases.items():
             for width in widths:
@@ -403,8 +416,23 @@ def main() -> None:
     parser.add_argument(
         "--live-media", action="store_true", help="Verify real public sources (requires public network access)"
     )
+    parser.add_argument(
+        "--fake-ip-dns", action="store_true", help="Exercise real DoH fallback with simulated Fake-IP DNS"
+    )
     args = parser.parse_args()
-    asyncio.run(verify(args.output_dir, live_media=args.live_media))
+    if args.fake_ip_dns and not args.live_media:
+        parser.error("--fake-ip-dns requires --live-media")
+    with tempfile.TemporaryDirectory(prefix="frontier-render-config-") as directory:
+        config = Path(directory) / "env.toml"
+        config.write_text(
+            'config_version = 2\n[dashboard]\npassword = "renderer-qa"\njwt_secret = '
+            + json.dumps(secrets.token_hex(32))
+            + "\n",
+            encoding="utf-8",
+        )
+        os.environ["FRONTIER_CONFIG"] = str(config)
+        markdown_render.CACHE_DIR = Path(directory) / "cache"
+        asyncio.run(verify(args.output_dir, live_media=args.live_media, fake_ip_dns=args.fake_ip_dns))
 
 
 if __name__ == "__main__":

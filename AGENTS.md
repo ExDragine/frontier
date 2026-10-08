@@ -188,6 +188,8 @@ Prompt 加载链：
 
 ## Config Notes
 
+消息媒体默认兼容 Clash TUN 的 Fake-IP DNS：仅域名解析结果全部位于 `198.18.0.0/15` 时，通过固定公网引导的 DoH 查询真实公网 IP，再校验并固定连接。`[agent].message_media_fake_ip_fallback` 可关闭；不能直接放行 Fake-IP 或真实内网地址。详见 [消息媒体网络](docs/message-media-network.md)。
+
 `env.toml.example` 是配置项参考；仅接受显式 `config_version = 2`，旧配置分区、provider 别名、`use_responses_api` 和绘图尺寸迁移已移除。代码中不要硬编码模型名、provider、base URL 或 API key，使用 `EnvConfig`。
 
 模型路由规则：

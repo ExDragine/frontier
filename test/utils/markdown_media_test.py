@@ -69,6 +69,113 @@ async def test_fetch_rejects_oversize_content(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_fake_ip_fallback_uses_real_public_ip_and_coalesces_dns(monkeypatch, tmp_path):
+    async def dns(*args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("198.18.0.7", 443))]
+
+    monkeypatch.setattr(media.asyncio.get_running_loop(), "getaddrinfo", dns)
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        if request.url.host == "1.1.1.1":
+            payload = {"Status": 0, "Answer": [{"type": 5, "data": "cdn.example"}, {"type": 1, "data": "8.8.8.8"}]}
+            return httpx2.Response(200, stream=httpx2.ByteStream(json.dumps(payload).encode()))
+        return httpx2.Response(200, stream=httpx2.ByteStream(b"loaded"))
+
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handler)) as client:
+        fetcher = media.PublicFetcher(client, tmp_path, fake_ip_fallback=True)
+        results = await media.asyncio.gather(*(fetcher.get(f"https://public.example/{i}") for i in range(3)))
+    assert all(body == b"loaded" for body, _ in results)
+    assert len(seen) == 4
+    assert seen[0].url.host == "1.1.1.1" and seen[0].url.params["name"] == "public.example"
+    assert seen[0].headers["host"] == seen[0].extensions["sni_hostname"] == "cloudflare-dns.com"
+    assert all(r.url.host == "8.8.8.8" and r.headers["host"] == "public.example" for r in seen[1:])
+    assert all(r.extensions["sni_hostname"] == "public.example" for r in seen[1:])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "answers", [[], ["127.0.0.1"], ["10.0.0.1"], ["169.254.169.254"], ["198.18.0.8"], ["8.8.8.8", "192.168.1.1"]]
+)
+async def test_fake_ip_resolver_cannot_authorize_private_targets(monkeypatch, tmp_path, answers):
+    async def address(url):
+        raise media.FakeIPAddress("public.example")
+
+    monkeypatch.setattr(media, "public_address", address)
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx2.Response(
+            200,
+            stream=httpx2.ByteStream(
+                json.dumps({"Status": 0, "Answer": [{"type": 1, "data": ip} for ip in answers]}).encode()
+            ),
+        )
+
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handler)) as client:
+        with pytest.raises(ValueError):
+            await media.PublicFetcher(client, tmp_path, fake_ip_fallback=True).get("https://public.example/x")
+    assert len(seen) == 1 and seen[0].url.host == "1.1.1.1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url,ips,enabled",
+    [
+        ("https://public.example/x", ["198.18.0.1"], False),
+        ("https://198.18.0.1/x", ["198.18.0.1"], True),
+        ("https://public.example/x", ["198.18.0.1", "127.0.0.1"], True),
+        ("https://private.example/x", ["192.168.1.1"], True),
+    ],
+)
+async def test_fake_ip_mode_preserves_local_address_restrictions(monkeypatch, tmp_path, url, ips, enabled):
+    async def dns(*args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 443)) for ip in ips]
+
+    monkeypatch.setattr(media.asyncio.get_running_loop(), "getaddrinfo", dns)
+    seen = []
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(lambda r: seen.append(r))) as client:
+        with pytest.raises(ValueError):
+            await media.PublicFetcher(client, tmp_path, fake_ip_fallback=enabled).get(url)
+    assert seen == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"Status": 3},
+        {"Status": 0, "TC": True},
+        {"Status": 0, "Answer": [{"type": 1, "data": "not-an-ip"}]},
+    ],
+)
+async def test_fake_ip_resolver_rejects_invalid_answers(tmp_path, response):
+    async with httpx2.AsyncClient(
+        transport=httpx2.MockTransport(
+            lambda r: httpx2.Response(200, stream=httpx2.ByteStream(json.dumps(response).encode()))
+        )
+    ) as client:
+        with pytest.raises(ValueError):
+            await media.PublicFetcher(client, tmp_path).public_dns("public.example")
+
+
+@pytest.mark.asyncio
+async def test_fake_ip_resolver_does_not_follow_redirects(tmp_path):
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx2.Response(302, headers={"location": "http://127.0.0.1/"})
+
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handler)) as client:
+        with pytest.raises((ValueError, httpx2.HTTPStatusError)):
+            await media.PublicFetcher(client, tmp_path).public_dns("public.example")
+    assert len(seen) == 1
+
+
+@pytest.mark.asyncio
 async def test_media_route_aborts_writes_and_local_files(monkeypatch, tmp_path):
     class Route:
         request = SimpleNamespace(method="POST", resource_type="document", url="https://example.com")

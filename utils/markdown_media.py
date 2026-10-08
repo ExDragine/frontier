@@ -23,6 +23,18 @@ from utils.http_client import AsyncClient
 MAX_MEDIA = 6
 MAX_BYTES = 20_000_000
 USER_AGENT = "Frontier-message-media/1.0 (+https://github.com/ExDragine/frontier)"
+FAKE_IP_NETWORK = ipaddress.ip_network("198.18.0.0/15")
+
+
+class FakeIPAddress(ValueError):
+    def __init__(self, host: str):
+        self.host = host
+        super().__init__("Fake-IP DNS answer")
+
+
+def check_public_ips(ips):
+    if not ips or any(not ip.is_global or ip.is_multicast or getattr(ip, "ipv4_mapped", None) for ip in ips):
+        raise ValueError("Non-public network address")
 
 
 async def public_address(url: str) -> tuple[str, str]:
@@ -35,8 +47,14 @@ async def public_address(url: str) -> tuple[str, str]:
         parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM
     )
     ips = [ipaddress.ip_address(entry[4][0]) for entry in addresses]
-    if not ips or any(not ip.is_global or ip.is_multicast or getattr(ip, "ipv4_mapped", None) for ip in ips):
-        raise ValueError("Non-public network address")
+    try:
+        ipaddress.ip_address(parsed.hostname)
+        literal = True
+    except ValueError:
+        literal = False
+    if not literal and ips and all(ip.version == 4 and ip in FAKE_IP_NETWORK for ip in ips):
+        raise FakeIPAddress(parsed.hostname)
+    check_public_ips(ips)
     return str(ips[0]), parsed.hostname
 
 
@@ -48,11 +66,60 @@ class PublicRedirect(Exception):
 class PublicFetcher:
     """Pin every connection to validated DNS, including redirects and browser subresources."""
 
-    def __init__(self, client: AsyncClient, cache_dir: Path):
+    def __init__(self, client: AsyncClient, cache_dir: Path, *, fake_ip_fallback: bool = False):
         self.client = client
         self.cache_dir = cache_dir
         self.bytes = 0
         self.requests = 0
+        self.fake_ip_fallback = fake_ip_fallback
+        self.dns_cache = {}
+        self.dns_lock = asyncio.Lock()
+
+    async def address(self, url: str) -> tuple[str, str]:
+        try:
+            return await public_address(url)
+        except FakeIPAddress as exc:
+            if not self.fake_ip_fallback:
+                raise
+            host = exc.host
+        async with self.dns_lock:
+            if host not in self.dns_cache:
+                self.dns_cache[host] = await self.public_dns(host)
+            return self.dns_cache[host], host
+
+    async def public_dns(self, host: str) -> str:
+        # Bootstrap by a fixed public IP: the resolver's hostname may itself
+        # resolve to Fake-IP. Preserve TLS hostname verification and Host.
+        target = httpx2.URL("https://cloudflare-dns.com/dns-query").copy_with(host="1.1.1.1")
+        headers = {
+            "Host": "cloudflare-dns.com",
+            "Accept": "application/dns-json",
+            "Accept-Encoding": "identity",
+            "User-Agent": USER_AGENT,
+        }
+        async with self.client.stream(
+            "GET",
+            target,
+            params={"name": host, "type": "A"},
+            headers=headers,
+            extensions={"sni_hostname": "cloudflare-dns.com"},
+            follow_redirects=False,
+        ) as response:
+            response.raise_for_status()
+            if response.is_redirect or response.headers.get("content-encoding", "identity") != "identity":
+                raise ValueError("Unexpected public DNS response")
+            data = bytearray()
+            async for chunk in response.aiter_raw(chunk_size=8192):
+                data.extend(chunk)
+                self.bytes += len(chunk)
+                if len(data) > 65536 or self.bytes > MAX_BYTES:
+                    raise ValueError("Public DNS response size limit")
+            answer = json.loads(data)
+            if answer.get("Status") != 0 or answer.get("TC"):
+                raise ValueError("Public DNS query failed")
+            ips = [ipaddress.ip_address(record["data"]) for record in answer.get("Answer", []) if record["type"] == 1]
+            check_public_ips(ips)
+            return str(ips[0])
 
     async def get(self, url: str, *, limit: int = 3_000_000, redirects: int = 0, follow_redirects: bool = True):
         if redirects > 4 or self.requests >= 100:
@@ -71,7 +138,7 @@ class PublicFetcher:
             if len(body) > limit or self.bytes > MAX_BYTES:
                 raise ValueError("Resource size limit")
             return body, "image/png"
-        ip, host = await public_address(url)
+        ip, host = await self.address(url)
         target = httpx2.URL(url)
         pinned = target.copy_with(host=ip)
         headers = {"Host": target.netloc.decode(), "User-Agent": USER_AGENT, "Accept-Encoding": "identity"}
@@ -81,7 +148,7 @@ class PublicFetcher:
             if response.is_redirect:
                 location = urljoin(url, response.headers["location"])
                 if not follow_redirects:
-                    await public_address(location)
+                    await self.address(location)
                     raise PublicRedirect(location)
                 return await self.get(location, limit=limit, redirects=redirects + 1)
             response.raise_for_status()
@@ -161,7 +228,7 @@ async def render_map(node: dict, fetcher: PublicFetcher, width: int) -> bytes:
 async def capture_frame(
     browser, fetcher: PublicFetcher, url: str, width: int, height: int, *, full_page=False
 ) -> bytes:
-    await public_address(url)
+    await fetcher.address(url)
     context = await browser.new_context(
         viewport={"width": width, "height": height}, service_workers="block", accept_downloads=False
     )
@@ -221,6 +288,8 @@ def media_nodes(node: dict):
 
 
 async def prepare_media(html_content: str, browser, *, width: int, cache_dir: Path) -> str:
+    from utils.configs import EnvConfig
+
     soup = BeautifulSoup(html_content, "html.parser")
     documents = []
     nodes = []
@@ -233,7 +302,7 @@ async def prepare_media(html_content: str, browser, *, width: int, cache_dir: Pa
     async with AsyncClient(
         trust_env=False, timeout=8, limits=httpx2.Limits(max_keepalive_connections=0, max_connections=12)
     ) as client:
-        fetcher = PublicFetcher(client, cache_dir)
+        fetcher = PublicFetcher(client, cache_dir, fake_ip_fallback=EnvConfig.MESSAGE_MEDIA_FAKE_IP_FALLBACK)
         slots = asyncio.Semaphore(3)
 
         async def load(node):
