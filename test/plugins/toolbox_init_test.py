@@ -7,9 +7,8 @@ from pathlib import Path
 import pytest
 from nonebot.adapters.milky.event import MessageEvent
 from nonebot.adapters.milky.message import Message
-from nonebot.adapters.milky.model.common import Group, Member
+from nonebot.adapters.milky.model.common import Friend, FriendCategory, Group, Member
 from nonebot.adapters.milky.model.message import IncomingMessage
-from nonebot.permission import SUPERUSER
 from nonebug import App
 
 from plugins.toolbox import settings as toolbox
@@ -152,31 +151,53 @@ async def test_handle_model_default(monkeypatch, unimessage_text_sends, paint_en
         )
 
         ctx.receive_event(bot, event)
-        # /model 现在仅超级用户可用；输出内容由本用例覆盖，权限由专门用例覆盖。
-        ctx.should_ignore_permission(toolbox.model_cmd)
         ctx.should_finished()
 
     assert sent == ["🤖 当前模型配置\n" + "\n".join(expected_lines)]
 
 
-def test_model_command_requires_superuser():
-    # nonebot 的 on() 会用 ``Permission() | permission`` 重建 Permission 对象，
-    # 因此比较 checker 集合，而不是对象身份。
+def test_model_command_is_public():
     assert toolbox.model_cmd.permission is not None
-    assert toolbox.model_cmd.permission.checkers == SUPERUSER.checkers
+    assert not toolbox.model_cmd.permission.checkers
 
 
 @pytest.mark.asyncio
-async def test_model_command_rejects_non_superuser(unimessage_text_sends):
+@pytest.mark.parametrize("command", ["/model", "/模型", "/模型设置"])
+@pytest.mark.parametrize("message_scene", ["group", "friend"])
+async def test_model_command_accepts_non_superuser(monkeypatch, unimessage_text_sends, command, message_scene):
     sent = unimessage_text_sends(toolbox)
+    monkeypatch.setattr(toolbox, "_current_model_summary", lambda: "model summary")
+    if message_scene == "group":
+        event = _group_message_event(command, sender_id=456)
+    else:
+        incoming = IncomingMessage(
+            message_scene="friend",
+            peer_id=456,
+            message_seq=1,
+            sender_id=456,
+            time=0,
+            segments=[{"type": "text", "data": {"text": command}}],
+            friend=Friend(
+                user_id=456,
+                nickname="u",
+                sex="unknown",
+                qid="",
+                remark="",
+                category=FriendCategory(category_id=1, category_name="friends"),
+            ),
+        )
+        event = MessageEvent(
+            data=incoming, to_me=True, time=0, self_id="1", message=Message(), original_message=Message()
+        )
 
     async with App().test_matcher(toolbox.model_cmd) as ctx:
         adapter = ctx.create_adapter()
         bot = ctx.create_bot(adapter=adapter, self_id="1", auto_connect=False)
-        ctx.receive_event(bot, _group_message_event("/model", sender_id=456))
-        ctx.should_not_pass_permission(toolbox.model_cmd)
+        assert event.get_user_id() not in bot.config.superusers
+        ctx.receive_event(bot, event)
+        ctx.should_finished()
 
-    assert sent == []
+    assert sent == ["model summary"]
 
 
 def test_set_menu_filters_group_admin_commands_by_context():

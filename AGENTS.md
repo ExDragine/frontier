@@ -68,7 +68,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `plugins/dashboard` | FastAPI Dashboard：`/api/dashboard/*` API、`/dashboard` 静态前端、JWT 鉴权、状态/消息/设置/任务管理 |
 | `plugins/news` | 独立新闻管线：Exa MCP 或 Exa/Tavily REST 检索 → 证据约束编辑 → `news.db` 归档 → 渲染 → 逐目标投递；`/news` 仅超级用户可用 |
 | `plugins/playground` | `/paint`、`/video` 命令和戳一戳响应；直接调用共享图片/视频服务 |
-| `plugins/toolbox` | 管理命令：`/update`、`/restart`、`/model`、`/set wake`、`/vehelp`，以及技能沙箱初始化；`/update`、`/restart`、`/model` 仅超级用户可用 |
+| `plugins/toolbox` | 工具箱命令：`/update`、`/restart`、`/model`、`/set wake`、`/vehelp`，以及技能沙箱初始化；`/update`、`/restart` 仅超级用户可用，`/model` 向所有用户开放以查看当前模型配置 |
 | `plugins/wolfx` | Wolfx CENC 地震预警：`cenc_client.py` 维护 WebSocket 长连接与重连，`cenc_handler.py` 去重、渲染并推送 |
 
 `plugins/agent` 的 `handlers.py` 负责事件编排；`message_normalizer.py`、`reply_context.py`、
