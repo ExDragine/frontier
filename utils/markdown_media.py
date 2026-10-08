@@ -120,7 +120,7 @@ def raster_data(body: bytes) -> tuple[str, int, int]:
     with Image.open(io.BytesIO(body)) as source:
         if source.width * source.height > 20_000_000:
             raise ValueError("Image pixel limit")
-        image = ImageOps.exif_transpose(source).convert("RGB")
+        image = ImageOps.exif_transpose(source).convert("RGBA")
         image.thumbnail((2000, 2000))
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")

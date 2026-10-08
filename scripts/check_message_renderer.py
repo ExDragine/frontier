@@ -183,11 +183,19 @@ def case_checks(name, observed, width, image):
         checks.update(
             {
                 "media_images": len(observed["mediaImages"]) == 2 and all(observed["mediaImages"]),
-                "isolated_frame": observed["frame"] and 0.4 < observed["frameRatio"] < 1.4,
+                "isolated_frame": observed["frame"] and observed["frameImage"] and 0.4 < observed["frameRatio"] < 1.4,
                 "card_colors": len(set(observed["colored"])) == 2,
                 "failure_fallback": observed["fallback"],
                 "badges_fit": len(observed["badgeWidths"]) == 4 and max(observed["badgeWidths"]) < 100,
                 "trailing_spacing": observed["trailingGap"] >= 25,
+            }
+        )
+    if name == "live":
+        checks.update(
+            {
+                "public_images_and_map": len(observed["mediaImages"]) == 2 and all(observed["mediaImages"]),
+                "public_frame": observed["frame"] and observed["frameImage"],
+                "no_media_fallback": not observed["fallback"],
             }
         )
     return checks
@@ -223,17 +231,45 @@ async def fixture_get(self, url, **kwargs):
     return page.encode(), "text/html; charset=utf-8"
 
 
-async def verify(output_dir: Path) -> None:
+async def verify(output_dir: Path, *, live_media: bool = False) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     original_wait = markdown_render._wait_for_renderer_ready
     original_logging = markdown_render._attach_page_logging
     original_fetch = markdown_media.PublicFetcher.get
     original_address = markdown_media.public_address
-    markdown_media.PublicFetcher.get = fixture_get
-    markdown_media.public_address = fixture_address
+    if live_media:
+        cases = {
+            "live": {
+                "title": "公开媒体加载验证",
+                "children": [
+                    {
+                        "type": "image",
+                        "url": "https://www.python.org/static/community_logos/python-logo.png",
+                        "alt": "Python 官网标志",
+                        "caption": "公开图片加载测试",
+                    },
+                    {
+                        "type": "map",
+                        "title": "真实 OpenStreetMap 底图",
+                        "latitude": 31.2304,
+                        "longitude": 121.4737,
+                        "zoom": 13,
+                        "height": 420,
+                        "caption": "网络展示测试，坐标为示例地点",
+                    },
+                    {"type": "iframe", "title": "公开网页快照", "url": "https://example.com/", "height": 420},
+                ],
+            }
+        }
+        widths = (1000,)
+    else:
+        cases = load_cases()
+        widths = (1000, 390)
+        markdown_media.PublicFetcher.get = fixture_get
+        markdown_media.public_address = fixture_address
     try:
-        for name, case in load_cases().items():
-            for width in (1000, 390):
+        for name, case in cases.items():
+            for width in widths:
                 observed = {}
                 page_errors = []
                 remote_requests = []
@@ -296,6 +332,14 @@ async def verify(output_dir: Path) -> None:
                     }""")
                     )
 
+                    observed["frameImage"] = False
+                    frame_node = await page.query_selector("iframe.md-ui-frame")
+                    if frame_node:
+                        frame = await frame_node.content_frame()
+                        observed["frameImage"] = await frame.evaluate(
+                            "!!document.querySelector('img')?.complete && document.querySelector('img').naturalWidth > 100"
+                        )
+
                 def logging(page, page_errors=page_errors, remote_requests=remote_requests):
                     original_logging(page)
                     page.on("pageerror", lambda error: page_errors.append(str(error)))
@@ -351,8 +395,11 @@ async def verify(output_dir: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=Path(tempfile.mkdtemp(prefix="frontier-ui-")))
+    parser.add_argument(
+        "--live-media", action="store_true", help="Verify real public sources (requires public network access)"
+    )
     args = parser.parse_args()
-    asyncio.run(verify(args.output_dir))
+    asyncio.run(verify(args.output_dir, live_media=args.live_media))
 
 
 if __name__ == "__main__":
