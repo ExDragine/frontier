@@ -2,6 +2,144 @@
   "provider": "anthropic",
   "models": [
     {
+      "id": "claude-opus-5-5",
+      "display_name": "Claude Opus 5.5",
+      "description": {
+        "en": "Anthropic's Opus 5.5 model for demanding reasoning and long-running agent tasks, with always-on adaptive thinking.",
+        "zh-CN": "Anthropic 面向高难度推理与长时间运行智能体任务的 Opus 5.5 模型，自适应思考始终开启。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-06",
+      "released_at": "2026-09-22",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/models/overview",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
+      "id": "claude-sonnet-5-5",
+      "display_name": "Claude Sonnet 5.5",
+      "description": {
+        "en": "Anthropic's Sonnet 5.5 model for coding and agent workflows, with adaptive thinking enabled by default.",
+        "zh-CN": "Anthropic 面向编程与智能体工作流的 Sonnet 5.5 模型，默认开启自适应思考。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-06",
+      "released_at": "2026-09-28",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/models/overview",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
+      "id": "claude-haiku-5-5",
+      "display_name": "Claude Haiku 5.5",
+      "description": {
+        "en": "Anthropic's Haiku 5.5 model for fast, cost-efficient chat, coding, and agent tasks, with adaptive thinking enabled by default.",
+        "zh-CN": "Anthropic 面向快速、高性价比对话、编程与智能体任务的 Haiku 5.5 模型，默认开启自适应思考。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "parallel_tool_calling",
+          "structured_output",
+          "web_search"
+        ],
+        "api_modes": [
+          "messages"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-06",
+      "released_at": "2026-10-07",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://platform.claude.com/docs/en/models/haiku-5-5/overview",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/models/overview",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
       "id": "claude-fable-5-1",
       "display_name": "Claude Fable 5.1",
       "description": {

@@ -55,6 +55,29 @@ def test_catalog_profile_accepts_proxy_prefixed_model_id(monkeypatch):
     assert mock_cls.call_args.kwargs["profile"]["max_input_tokens"] == 1_048_576
 
 
+@pytest.mark.parametrize(
+    ("model_id", "context", "output", "audio", "video", "status"),
+    [
+        ("gpt-6.1-sol", 1_050_000, 128_000, False, False, "active"),
+        ("mimo-v2.6-pro", 1_048_576, 131_072, True, True, "active"),
+        ("qwen3.8-omni-flash", 1_000_000, 131_072, True, True, "active"),
+        ("step-5-preview", 1_000_000, 64_000, False, True, "preview"),
+        ("mistral-large-4", 1_000_000, None, False, False, "preview"),
+    ],
+)
+def test_new_model_profiles_preserve_modalities_limits_and_status(model_id, context, output, audio, video, status):
+    profile = factory.get_langchain_model_profile(f"gateway/{model_id}", "openai")
+
+    assert profile is not None
+    assert profile["max_input_tokens"] == context
+    assert profile.get("max_output_tokens") == output
+    assert profile["image_inputs"] is True
+    assert profile["audio_inputs"] is audio
+    assert profile["video_inputs"] is video
+    assert profile["tool_calling"] is True
+    assert profile["status"] == status
+
+
 def test_gpt_routes_to_openai(monkeypatch):
     mock_cls = MagicMock()
     monkeypatch.setattr(factory, "ChatOpenAI", mock_cls)
@@ -199,7 +222,7 @@ def test_deepseek_responses_routes_through_chat_openai(monkeypatch):
     assert kw["request_timeout"] == 30
     assert kw["reasoning_effort"] == "medium"
     assert kw["verbosity"] == "low"
-    assert kw["profile"]["max_input_tokens"] == 1_000_000
+    assert kw["profile"]["max_input_tokens"] == 1_048_576
     assert factory.provider_uses_responses_api("deepseek-v4-pro", "deepseek_responses") is True
     assert factory.model_supports_native_web_search("deepseek-v4-pro", "deepseek_responses") is False
     assert factory.provider_is_official_openai("deepseek-v4-pro", "deepseek_responses") is False
@@ -639,7 +662,8 @@ EnvConfig.LLM_PROVIDERS = {
 }
 catalog_model = create_llm(model="deepseek-flash", provider="deepseek", streaming=False)
 assert catalog_model.profile["image_inputs"] is True, catalog_model.profile
-assert catalog_model.profile["max_input_tokens"] == 1000000, catalog_model.profile
+assert catalog_model.profile["max_input_tokens"] == 1048576, catalog_model.profile
+assert catalog_model.profile["max_output_tokens"] == 393216, catalog_model.profile
 
 # 有名和无名的 DeepSeek 模型都按路由判断，不依赖能力卡片。
 for model_id in ("deepseek-flash", "deepseek-nonexistent-alias"):

@@ -2,11 +2,110 @@
   "provider": "internlm",
   "models": [
     {
+      "id": "intern-s2",
+      "display_name": "Intern-S2",
+      "description": {
+        "en": "InternLM's released 397B scientific multimodal reasoning model for discovery and complex long-running agent tasks, with deep thinking enabled by default.",
+        "zh-CN": "书生浦语正式发布的 397B 科学多模态推理模型，面向科学发现与复杂长时间运行智能体任务，默认开启深度思考。"
+      },
+      "capabilities": {
+        "input": ["text", "image"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": 32000,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Models/",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Chat/index.html",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://internlm.intern-ai.org.cn/doc/docs/API_DOCUMENTATION_ZH/",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
+      "id": "intern-s2-preview-35b",
+      "display_name": "Intern-S2 Preview 35B",
+      "description": {
+        "en": "InternLM's 35B-A3B preview multimodal reasoning model for scientific discovery and general agent tasks.",
+        "zh-CN": "书生浦语面向科学发现与通用智能体任务的 35B-A3B 多模态推理预览模型。"
+      },
+      "capabilities": {
+        "input": ["text", "image"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": 32000,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Models/",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Chat/index.html",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://internlm.intern-ai.org.cn/doc/docs/API_DOCUMENTATION_ZH/",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
+      "id": "intern-s2-preview-397b",
+      "display_name": "Intern-S2 Preview 397B",
+      "description": {
+        "en": "The earlier 397B Intern-S2 preview, scheduled for decommissioning on October 31, 2026. Migrate to the released intern-s2 model.",
+        "zh-CN": "较早的 397B Intern-S2 预览模型，官方计划于 2026 年 10 月 31 日下线，应迁移至正式版 intern-s2。"
+      },
+      "capabilities": {
+        "input": ["text", "image"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 262144,
+      "max_output_tokens": 32000,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "deprecated",
+      "sources": [
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Models/",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Chat/index.html",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://internlm.intern-ai.org.cn/doc/docs/API_DOCUMENTATION_ZH/",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
       "id": "intern-s2-preview",
       "display_name": "Intern-S2 Preview",
       "description": {
-        "en": "InternLM's preview scientific multimodal reasoning model for discovery and general agent tasks.",
-        "zh-CN": "书生浦语面向科学发现与通用智能体任务的多模态推理预览模型。"
+        "en": "A legacy compatibility model ID that temporarily points to intern-s2-preview-35b. New integrations should use an explicit Intern-S2 model ID.",
+        "zh-CN": "暂时保留的旧版兼容模型 ID，当前指向 intern-s2-preview-35b；新接入应使用明确的 Intern-S2 模型 ID。"
       },
       "capabilities": {
         "input": ["text", "image"],
@@ -18,15 +117,15 @@
       "max_output_tokens": 32000,
       "knowledge_cutoff": null,
       "released_at": "2026-05-09",
-      "status": "preview",
+      "status": "legacy",
       "sources": [
         {
           "url": "https://internlm.intern-ai.org.cn/docEn/docs/Models/",
-          "verified_at": "2026-07-15"
+          "verified_at": "2026-10-08"
         },
         {
-          "url": "https://internlm.intern-ai.org.cn/docEn/docs/Chat/index.html",
-          "verified_at": "2026-07-15"
+          "url": "https://internlm.intern-ai.org.cn/doc/docs/API_DOCUMENTATION_ZH/",
+          "verified_at": "2026-10-08"
         }
       ]
     },

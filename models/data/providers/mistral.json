@@ -2,6 +2,45 @@
   "provider": "mistral",
   "models": [
     {
+      "id": "mistral-large-4",
+      "display_name": "Mistral Large 4",
+      "description": {
+        "en": "Mistral AI's public-preview general-purpose multimodal model with a 1M-token context window, image understanding, function calling, and structured output.",
+        "zh-CN": "Mistral AI 公开预览版通用多模态模型，支持百万 token 上下文、图像理解、函数调用和结构化输出。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "tool_calling",
+          "structured_output"
+        ],
+        "api_modes": [
+          "chat_completions"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": null,
+      "knowledge_cutoff": null,
+      "released_at": "2026-10-06",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://docs.mistral.ai/models/mistral-large-4-0",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://docs.mistral.ai/resources/changelogs",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
       "id": "mistral-medium-3-5",
       "display_name": "Mistral Medium 3.5",
       "description": {

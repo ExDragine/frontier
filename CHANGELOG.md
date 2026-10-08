@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Updated the official model catalog to the October 8, 2026 snapshot with 18 new
+  model cards, refreshed LobeHub display names, corrected DeepSeek token limits,
+  and recorded the Intern-S2 and MiMo V2.5 lifecycle transitions.
 - Removed QQ private and group progress messages (also for `/acp` tasks), including thinking, tool
   calls, subagent activity and assistant preambles, plus the group status
   classifier and its background task. Final replies, artifacts and failure

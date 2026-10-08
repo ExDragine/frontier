@@ -2,11 +2,134 @@
   "provider": "xiaomimimo",
   "models": [
     {
+      "id": "mimo-v2.6-pro",
+      "display_name": "MiMo V2.6 Pro",
+      "description": {
+        "en": "Xiaomi MiMo's omni-modal flagship reasoning model for complex projects, long-running agents, and research, accepting text, images, audio, and video.",
+        "zh-CN": "小米 MiMo 面向复杂项目、长时间运行智能体与研究任务的全模态旗舰推理模型，支持文本、图像、音频和视频输入。"
+      },
+      "capabilities": {
+        "input": ["text", "image", "audio", "video"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "responses", "messages"]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": "2026-09-22",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://mimo.mi.com/models/en-US/mimo-v2.6-pro",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/quick-start/model",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/tokenplan/integration/opencode",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/api/chat/responses",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/updates/model",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
+      "id": "mimo-v2.6-flash",
+      "display_name": "MiMo V2.6 Flash",
+      "description": {
+        "en": "Xiaomi MiMo's efficient omni-modal reasoning model for high-frequency professional and agent workflows, accepting text, images, audio, and video.",
+        "zh-CN": "小米 MiMo 面向高频专业任务与智能体工作流的高效全模态推理模型，支持文本、图像、音频和视频输入。"
+      },
+      "capabilities": {
+        "input": ["text", "image", "audio", "video"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "responses", "messages"]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": "2026-09-22",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://mimo.mi.com/models/en-US/mimo-v2.6-flash",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/quick-start/model",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/tokenplan/integration/opencode",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/api/chat/responses",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/updates/model",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
+      "id": "mimo-v2.6-pro-ultraspeed",
+      "display_name": "MiMo V2.6 Pro UltraSpeed",
+      "description": {
+        "en": "A low-latency MiMo V2.6 Pro variant retaining the flagship's omni-modal and reasoning capabilities. API access is offered through customized services.",
+        "zh-CN": "MiMo V2.6 Pro 的低延迟版本，保留旗舰模型的全模态与推理能力，API 接入通过定制服务提供。"
+      },
+      "capabilities": {
+        "input": ["text", "image", "audio", "video"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling", "structured_output", "web_search"],
+        "api_modes": ["chat_completions", "responses", "messages"]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": "2026-09-22",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://mimo.mi.com/models/en-US/mimo-v2.6-pro-ultraspeed",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/quick-start/model",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/tokenplan/integration/opencode",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/api/chat/responses",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/en-US/updates/model",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
       "id": "mimo-v2.5-pro",
       "display_name": "MiMo V2.5 Pro",
       "description": {
-        "en": "Xiaomi MiMo's professional text model for demanding reasoning and agentic tasks, with a one-million-token context window.",
-        "zh-CN": "小米 MiMo 面向高要求推理与智能体任务的专业文本模型，支持百万 token 上下文。"
+        "en": "An earlier MiMo V2.5 professional text reasoning model. Scheduled to go offline on October 21, 2026 at 10:00 Beijing time; migrate to MiMo V2.6.",
+        "zh-CN": "较早的 MiMo V2.5 专业文本推理模型。官方计划于北京时间 2026 年 10 月 21 日 10:00 下线，建议迁移至 MiMo V2.6。"
       },
       "capabilities": {
         "input": ["text"],
@@ -18,19 +141,23 @@
       "max_output_tokens": 131072,
       "knowledge_cutoff": null,
       "released_at": "2026-04-23",
-      "status": "active",
+      "status": "deprecated",
       "sources": [
         {
-          "url": "https://mimo.mi.com/docs/en-US/quick-start/summary/model",
-          "verified_at": "2026-09-17"
+          "url": "https://mimo.mi.com/docs/en-US/quick-start/model",
+          "verified_at": "2026-10-08"
         },
         {
           "url": "https://mimo.mi.com/docs/en-US/api/chat/responses",
-          "verified_at": "2026-09-17"
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/tokenplan/subscription",
+          "verified_at": "2026-10-08"
         },
         {
           "url": "https://mimo.mi.com/docs/en-US/updates/model",
-          "verified_at": "2026-09-17"
+          "verified_at": "2026-10-08"
         }
       ]
     },
@@ -38,8 +165,8 @@
       "id": "mimo-v2.5",
       "display_name": "MiMo V2.5",
       "description": {
-        "en": "Xiaomi MiMo's current omni-modal general model, accepting text, images, audio, and video with a one-million-token context window.",
-        "zh-CN": "小米 MiMo 当前的全模态通用模型，支持文本、图像、音频、视频输入及百万 token 上下文。"
+        "en": "An earlier MiMo V2.5 omni-modal reasoning model. Scheduled to go offline on October 21, 2026 at 10:00 Beijing time; migrate to MiMo V2.6.",
+        "zh-CN": "较早的 MiMo V2.5 全模态推理模型。官方计划于北京时间 2026 年 10 月 21 日 10:00 下线，建议迁移至 MiMo V2.6。"
       },
       "capabilities": {
         "input": ["text", "image", "audio", "video"],
@@ -51,19 +178,23 @@
       "max_output_tokens": 131072,
       "knowledge_cutoff": null,
       "released_at": "2026-04-23",
-      "status": "active",
+      "status": "deprecated",
       "sources": [
         {
-          "url": "https://mimo.mi.com/docs/en-US/quick-start/summary/model",
-          "verified_at": "2026-09-17"
+          "url": "https://mimo.mi.com/docs/en-US/quick-start/model",
+          "verified_at": "2026-10-08"
         },
         {
           "url": "https://mimo.mi.com/docs/en-US/api/chat/responses",
-          "verified_at": "2026-09-17"
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://mimo.mi.com/docs/tokenplan/subscription",
+          "verified_at": "2026-10-08"
         },
         {
           "url": "https://mimo.mi.com/docs/en-US/updates/model",
-          "verified_at": "2026-09-17"
+          "verified_at": "2026-10-08"
         }
       ]
     }

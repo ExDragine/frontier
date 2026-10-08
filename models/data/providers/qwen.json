@@ -2,6 +2,45 @@
   "provider": "qwen",
   "models": [
     {
+      "id": "qwen3.8-omni-flash",
+      "display_name": "Qwen3.8 Omni Flash",
+      "description": {
+        "en": "Alibaba's non-realtime omni-modal reasoning model for mixed text, image, audio, and video input, with a 1M-token context window, tool calling, and hosted web search through Responses.",
+        "zh-CN": "阿里云支持文本、图像、音频和视频混合输入的非实时全模态推理模型，具备百万 token 上下文、工具调用及 Responses 接口的内置联网搜索能力。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "web_search"
+        ],
+        "api_modes": [
+          "chat_completions",
+          "responses"
+        ]
+      },
+      "context_window": 1000000,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": null,
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://help.aliyun.com/zh/model-studio/qwen3-8-omni-flash",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
       "id": "qwen3.8-max",
       "display_name": "Qwen3.8 Max",
       "description": {

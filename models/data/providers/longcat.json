@@ -2,6 +2,43 @@
   "provider": "longcat",
   "models": [
     {
+      "id": "LongCat-2.5-Preview",
+      "display_name": "LongCat 2.5 Preview",
+      "description": {
+        "en": "LongCat's preview agentic model with image understanding, coding and tool-use capabilities, a one-million-token context window, and thinking enabled by default.",
+        "zh-CN": "LongCat 预览版智能体模型，支持图像理解、编程与工具调用、百万 token 上下文，默认开启思考模式。"
+      },
+      "capabilities": {
+        "input": ["text", "image"],
+        "output": ["text"],
+        "features": ["reasoning", "tool_calling"],
+        "api_modes": ["chat_completions", "messages"]
+      },
+      "context_window": 1048576,
+      "max_output_tokens": 131072,
+      "knowledge_cutoff": null,
+      "released_at": "2026-09-25",
+      "status": "preview",
+      "sources": [
+        {
+          "url": "https://longcat.chat/platform/docs/",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://longcat.chat/platform/docs/change-log",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://longcat.chat/platform/docs/OpenCode.html",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://longcat.chat/platform/docs/OpenClaw.html",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
       "id": "LongCat-2.0",
       "display_name": "LongCat 2.0",
       "description": {
