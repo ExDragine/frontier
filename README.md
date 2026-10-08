@@ -55,7 +55,8 @@ UniMessage 文本、图片、视频或文件回复
 | `plugins/toolbox` | `/update`、`/restart`、`/model`、`/set wake`、`/vehelp` 等管理命令 |
 | `plugins/wolfx` | Wolfx CENC 地震预警：WebSocket 长连接监听、去重、渲染并推送 |
 
-管理命令中 `/update`、`/restart`、`/model`、`/news` 和 `/acp` 仅超级用户可用；`/task` 在 handler 内按超级用户或任务属主判断。
+`/model`（含 `/模型`、`/模型设置` 别名）和 `/set model` 向所有用户开放，用于查看当前模型配置。
+管理命令中 `/update`、`/restart`、`/news` 和 `/acp` 仅超级用户可用；`/task` 在 handler 内按超级用户或任务属主判断。
 
 ## Agent 工具能力
 

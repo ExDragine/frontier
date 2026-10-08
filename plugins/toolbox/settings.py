@@ -5,16 +5,13 @@ from dataclasses import dataclass
 from arclet.alconna import Alconna, Args, Arparma, MultiVar, Subcommand
 from nonebot import on_command
 from nonebot.adapters.milky.event import MessageEvent
-from nonebot.permission import SUPERUSER
 
 from models import get_model_display_name
 from utils.alconna import AlconnaQuery, Query, UniMessage, on_alconna
 from utils.configs import EnvConfig, get_provider_profile
 from utils.database import GroupSettingsManager, get_engine
 
-model_cmd = on_command(
-    "model", priority=2, block=True, aliases={"模型", "模型设置"}, permission=SUPERUSER
-)
+model_cmd = on_command("model", priority=2, block=True, aliases={"模型", "模型设置"})
 
 
 settings = on_alconna(

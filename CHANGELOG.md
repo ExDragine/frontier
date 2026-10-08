@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Opened `/model` and its Chinese aliases to all users in private and group chats
+  for viewing the current model configuration.
 - Updated the official model catalog to the October 8, 2026 snapshot with 18 new
   model cards, refreshed LobeHub display names, corrected DeepSeek token limits,
   and recorded the Intern-S2 and MiMo V2.5 lifecycle transitions.
@@ -30,7 +32,7 @@
 - Hardened Dashboard authentication: passwords are no longer compared as
   plaintext, a plaintext `[dashboard].password` is derived to a bcrypt hash in
   memory with a one-time warning, and bcrypt's 72-byte input limit is enforced.
-- Restricted `/model` and `/acp` to superusers, and removed unused imports and
+- Restricted `/acp` to superusers, and removed unused imports and
   three dead helpers from the QQ handler module.
 - Finished the QQ handler cleanup: the dead `_execute_legacy_agent_request()`
   path and its three exclusive helpers are gone.
