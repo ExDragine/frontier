@@ -100,7 +100,12 @@ def _remove_temp_file(path: Path) -> None:
 
 async def markdown_to_text(markdown_text):
     md_html = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"]).render(markdown_text)
-    return BeautifulSoup(md_html, "html.parser").get_text()
+    document = BeautifulSoup(md_html, "html.parser")
+    for link in document.find_all("a", href=True):
+        label = link.get_text()
+        url = str(link["href"])
+        link.replace_with(label if label == url else f"{label}（{url}）")
+    return document.get_text()
 
 
 def _markdown_asset_paths() -> tuple[Path, Path]:

@@ -46,8 +46,7 @@ _DETECTOR_LOCKS = {"text": _text_det_lock, "image": _image_det_lock}
 OUTPUT_RISK_BLOCKED_MESSAGE = "这段回复刚才试图表演高危动作，已经被我按住了。换个问法，我们继续。"
 MESSAGE_IMAGE_RENDER_MAX_ATTEMPTS = 3
 MESSAGE_IMAGE_RENDER_RETRY_DELAY_SECONDS = 0.5
-MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD = 500
-_RICH_MARKDOWN_FENCE_RE = re.compile(r"(?im)^\s*```+\s*(?:chart|stats|timeline)\b")
+_RICH_MARKDOWN_FENCE_RE = re.compile(r"(?im)^\s*```+\s*(?:chart|stats|timeline|ui)\b")
 _BLOCK_MATH_RE = re.compile(r"(?<!\\)\$\$(?!\$).+?(?<!\\)\$\$", re.DOTALL)
 _INLINE_MATH_RE = re.compile(r"(?<!\\)\$(?![\s\d$])[^$\n]+?(?<!\\)\$(?!\w)")
 _LATEX_DELIMITED_MATH_RE = re.compile(r"\\\[(.|\n)+?\\\]|\\\((.|\n)+?\\\)")
@@ -116,7 +115,7 @@ def _message_has_hard_to_text_content(content: str) -> bool:
 def _message_should_render_as_image(content: str) -> bool:
     if _message_has_hard_to_text_content(content):
         return True
-    return len(content) >= MESSAGE_IMAGE_RENDER_TEXT_LENGTH_THRESHOLD
+    return len(content) >= EnvConfig.MESSAGE_IMAGE_TEXT_THRESHOLD
 
 
 MediaItem = bytes | bytearray | Callable[[], Awaitable[bytes | None]]

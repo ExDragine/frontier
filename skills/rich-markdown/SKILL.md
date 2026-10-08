@@ -1,6 +1,6 @@
 ---
 name: rich-markdown
-description: Use when a reply is clearer as a Mermaid diagram, numeric chart, metric summary, or timeline rendered through Frontier Markdown.
+description: Use when a reply benefits from comparisons, cards, steps, composed layouts, Mermaid diagrams, numeric charts, metric summaries, or timelines rendered as a QQ long image.
 ---
 
 # Rich Markdown output
@@ -12,6 +12,45 @@ JavaScript 或 CSS。普通聊天优先短文本；仅当图形明显比文字�
 - 有明确数值的柱状图、折线图、饼图：使用 `chart` 代码块。
 - 一组关键指标：使用 `stats` 代码块。
 - 事件发展过程：使用 `timeline` 代码块。
+- 多个内容模块需要组合排版：使用 `ui` 代码块。
+
+QQ 支持点开长图和放大。把核心结论和分区标题做得醒目，保留完整细节，沿纵向展开；
+不要为了缩略图能读完而删减必要内容，也不要为了装饰使用卡片。普通文字达到配置的
+长度阈值（默认 500 字符）也会转图。短文字不会因为有标题或列表就转图。
+
+## Composed UI
+
+`ui` 内部使用严格 JSON。顶层只允许可选 `title` 和非空 `children`。
+每个组件使用 `type` 选择类型；由渲染器提供固定样式，不传 HTML、CSS、JavaScript、
+函数或任意样式字段。组件中的文字是纯文字，不解析 Markdown。
+
+| 组件 type | 字段 |
+| --- | --- |
+| `row` / `column` | `children`：组件列表；row 自动换行，column 纵向排列 |
+| `grid` | `children`；可选 `columns`：1–3，默认 2 |
+| `card` | `children`；可选 `title` |
+| `heading` / `text` | `text` |
+| `badge` | `text`；可选 `status` |
+| `callout` | `text`；可选 `title`、`status` |
+| `steps` | `items`：1–20 条步骤文字 |
+| `table` | `columns`：1–8 个列名；`rows`：1–50 行，每行与列数一致 |
+| `link` | `label`、`url`：完整 HTTP(S) 地址 |
+| `code` / `mermaid` | `text`：代码或 Mermaid 源码 |
+| `chart` / `stats` / `timeline` | `config`：下方对应增强块的完整 JSON 契约 |
+
+`status` 只能为 `neutral`、`success`、`warning`、`danger`，默认 `neutral`。
+每个 `children` 最多 12 项；整块最多 80 个组件，最多 6 层嵌套。
+文字最多 2000 字符，标题最多 200 字符，标签最多 80 字符。
+比较通常用 2 列；多张图表或长说明优先纵向排列，避免挤压标签。
+不要在截图中画不可点击的按钮、输入框、滚动区域或折叠区域。
+
+```ui
+{"title":"两种部署方案","children":[{"type":"callout","title":"选择依据","text":"先确认是否需要离线运行，再比较维护成本。"},{"type":"grid","columns":2,"children":[{"type":"card","title":"本地部署","children":[{"type":"badge","text":"可离线","status":"success"},{"type":"text","text":"需要自行维护硬件、模型和服务。"}]},{"type":"card","title":"托管 API","children":[{"type":"badge","text":"依赖网络"},{"type":"text","text":"无需维护推理服务，按实际使用计费。"}]}]},{"type":"steps","items":["确认网络和数据要求","核对预算与硬件","用实际任务验证效果"]}]}
+```
+
+模型负责选择并组合模块，渲染器负责排版。缺少数据时直接说明；不要虚构数值、
+来源、排名或推荐标记。链接可以在图中展示，但需要复制代码或点击链接时，
+按主提示词使用 `send_plain_text` 发送原文。图片/视频继续通过媒体工具发送。
 
 `chart`、`stats` 和 `timeline` 块内部必须是严格 JSON：双引号、无注释、无尾逗号，
 并且不得包含下方契约之外的字段。不要虚构缺失数据；无法满足格式时使用普通 Markdown。
