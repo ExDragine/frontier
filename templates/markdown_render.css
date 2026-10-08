@@ -356,6 +356,7 @@ hr {
 .md-ui-steps li::marker { color: #365f91; font-weight: 700; }
 .md-ui-table { margin: 0; table-layout: auto; font-size: 21px; line-height: 1.65; }
 .md-ui-table th, .md-ui-table td { padding: 14px 16px; overflow-wrap: anywhere; vertical-align: top; }
+.md-ui-table th:first-child, .md-ui-table td:first-child { min-width: 4.5em; }
 .md-ui-data { min-width: 0; }
 .md-ui-data .md-chart-canvas { height: 380px; }
 .md-ui-data .md-stats-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
