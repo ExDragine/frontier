@@ -194,6 +194,66 @@ function renderTimeline(container, config) {
   container.append(timeline);
 }
 
+function renderUIComponent(config, pendingCharts) {
+  const type = config.type;
+  let node;
+  if (["row", "column", "grid", "card"].includes(type)) {
+    node = element(type === "card" ? "section" : "div", `md-ui-${type}`);
+    if (type === "grid") node.style.setProperty("--md-ui-columns", String(config.columns));
+    if (config.title) node.append(element("h3", "md-ui-card-title", config.title));
+    node.append(...config.children.map((child) => renderUIComponent(child, pendingCharts)));
+  } else if (type === "heading" || type === "text") {
+    node = element(type === "heading" ? "h3" : "p", `md-ui-${type}`, config.text);
+  } else if (type === "badge") {
+    node = element("span", `md-ui-badge md-status-${config.status}`, config.text);
+  } else if (type === "callout") {
+    node = element("aside", `md-ui-callout md-status-${config.status}`);
+    if (config.title) node.append(element("strong", "md-ui-callout-title", config.title));
+    node.append(element("p", "md-ui-text", config.text));
+  } else if (type === "link") {
+    node = element("div", "md-ui-link");
+    node.append(element("strong", null, config.label), element("div", "md-ui-url", config.url));
+  } else if (type === "code") {
+    node = element("pre", "md-ui-code");
+    node.append(element("code", null, config.text));
+  } else if (type === "mermaid") {
+    node = element("div", "mermaid", config.text);
+  } else if (type === "steps") {
+    node = element("ol", "md-ui-steps");
+    node.append(...config.items.map((item) => element("li", null, item)));
+  } else if (type === "table") {
+    node = element("table", "md-ui-table");
+    const head = element("thead");
+    const row = element("tr");
+    row.append(...config.columns.map((label) => element("th", null, label)));
+    head.append(row);
+    const body = element("tbody");
+    config.rows.forEach((values) => {
+      const item = element("tr");
+      item.append(...values.map((value) => element("td", null, value)));
+      body.append(item);
+    });
+    node.append(head, body);
+  } else if (["chart", "stats", "timeline"].includes(type)) {
+    node = element("div", "md-ui-data");
+    if (type === "chart") pendingCharts.push(() => renderChart(node, config.config));
+    else if (type === "stats") renderStats(node, config.config);
+    else renderTimeline(node, config.config);
+  } else {
+    throw new Error(`Unsupported UI component: ${type}`);
+  }
+  return node;
+}
+
+function renderUI(container, config) {
+  container.classList.add("md-ui-document");
+  if (config.title) container.append(element("h2", "md-ui-title", config.title));
+  const pendingCharts = [];
+  container.append(...config.children.map((child) => renderUIComponent(child, pendingCharts)));
+  // ECharts needs attached layout dimensions; detached nodes produce empty SVGs.
+  pendingCharts.forEach((render) => render());
+}
+
 function renderRichBlocks() {
   document.querySelectorAll(".md-rich-block").forEach((container) => {
     try {
@@ -202,6 +262,7 @@ function renderRichBlocks() {
       if (kind === "chart") renderChart(container, config);
       else if (kind === "stats") renderStats(container, config);
       else if (kind === "timeline") renderTimeline(container, config);
+      else if (kind === "ui") renderUI(container, config);
       else throw new Error(`Unsupported rich block: ${kind}`);
       container.dataset.richRendered = "true";
     } catch (error) {

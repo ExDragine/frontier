@@ -46,6 +46,18 @@ jobs:
           -u HTTP_PROXY -u http_proxy
           -u HTTPS_PROXY -u https_proxy
           uv run --locked pytest test/ -q
+      - name: Install the locked Playwright browser runtime
+        run: uv run --locked playwright install --with-deps chromium --only-shell
+      - name: Smoke-test composed message long images
+        run: uv run --locked python scripts/check_message_renderer.py --output-dir "${{ runner.temp }}/frontier-ui"
+      - name: Upload renderer screenshots and checks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: message-renderer-qa
+          path: ${{ runner.temp }}/frontier-ui
+          if-no-files-found: ignore
+          retention-days: 7
 
   renderer:
     runs-on: ubuntu-latest

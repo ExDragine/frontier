@@ -241,7 +241,9 @@ Agent 提取工件时延迟从 `utils.alconna` 加载 `UniMessage`，只接受�
 ### 输出发送规则
 
 - 短文本优先走 QQ 文本。
-- 长文本、Markdown 表格、LaTeX、Mermaid，以及 `chart`/`stats`/`timeline` 增强块走 Markdown → 图片。
+- 普通文字达到 `[agent].message_image_text_threshold`（默认 500 字符）、Markdown 表格、LaTeX、Mermaid，以及 `chart`/`stats`/`timeline`/`ui` 增强块走 Markdown → 图片。短标题、列表和代码块本身不强制转图。
+- `ui` 使用受控组件树组合行列布局、卡片、提示、标签、步骤、表格和现有数据组件；契约与容量限制位于 `utils/markdown_rich.py` 和 `/skills/rich-markdown/SKILL.md`，不允许原始 HTML、任意样式或交互控件。保留 QQ 可点开和放大的完整长图。
+- 短文本的 Markdown 链接保留网址，避免转为纯文字时丢失目标。
 - 文本发送失败时会尝试图片回退。
 - 多段媒体工件会拆分并串行发送，避免 QQ 消息顺序混乱。
 

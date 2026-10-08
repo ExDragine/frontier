@@ -272,6 +272,99 @@ hr {
     color: #b42318;
     font-size: 15px;
 }
+/* 组合模块：缩略图有清晰层级，点开长图后保留完整细节。 */
+.md-ui-document {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+    color: #253247;
+    font-size: 22px;
+    line-height: 1.65;
+}
+.md-ui-document > * + * { margin-top: 24px; }
+.md-ui-title {
+    margin: 0 0 28px;
+    padding: 0;
+    border: 0;
+    color: #152236;
+    font-size: 38px;
+    line-height: 1.3;
+}
+.md-ui-heading, .md-ui-card-title {
+    margin: 0;
+    color: #152236;
+    font-size: 26px;
+    line-height: 1.4;
+}
+.md-ui-text { margin: 0; white-space: pre-wrap; }
+.md-ui-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: stretch;
+}
+.md-ui-row > * { flex: 1 1 260px; }
+.md-ui-column { display: flex; flex-direction: column; gap: 20px; }
+.md-ui-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--md-ui-columns, 2), minmax(0, 1fr));
+    gap: 20px;
+}
+.md-ui-row > *, .md-ui-column > *, .md-ui-grid > * { min-width: 0; }
+.md-ui-card {
+    min-width: 0;
+    padding: 24px;
+    border: 1px solid #dce3eb;
+    border-radius: 16px;
+    background: #f8fafc;
+    overflow-wrap: anywhere;
+}
+.md-ui-card > * + * { margin-top: 16px; }
+.md-ui-badge {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 3px 12px;
+    border-radius: 7px;
+    background: #e8edf4;
+    color: #46556c;
+    font-size: 17px;
+    font-weight: 600;
+}
+.md-ui-badge.md-status-success { background: #dcf5ea; color: #08764f; }
+.md-ui-badge.md-status-warning { background: #fff0cf; color: #875500; }
+.md-ui-badge.md-status-danger { background: #ffe3e3; color: #a32232; }
+.md-ui-callout {
+    padding: 22px 26px;
+    border-left: 5px solid #477bb3;
+    border-radius: 0 12px 12px 0;
+    background: #edf4fc;
+}
+.md-ui-callout.md-status-success { border-color: #159165; background: #ecf9f2; }
+.md-ui-callout.md-status-warning { border-color: #c38a15; background: #fffaed; }
+.md-ui-callout.md-status-danger { border-color: #c84754; background: #fff0f1; }
+.md-ui-callout-title { display: block; margin-bottom: 8px; font-size: 24px; }
+.md-ui-link { padding: 14px 0; overflow-wrap: anywhere; }
+.md-ui-url { margin-top: 4px; color: #526984; font-size: 17px; }
+.md-ui-code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.md-ui-steps { margin: 0; padding-left: 1.6em; }
+.md-ui-steps li { padding-left: 8px; margin: 14px 0; white-space: pre-wrap; }
+.md-ui-steps li::marker { color: #365f91; font-weight: 700; }
+.md-ui-table { margin: 0; table-layout: fixed; font-size: 18px; }
+.md-ui-table th, .md-ui-table td { padding: 12px; overflow-wrap: anywhere; }
+.md-ui-data { min-width: 0; }
+.md-ui-data .md-chart-canvas { height: 380px; }
+.md-ui-data .md-stats-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.md-ui-data .md-stat-detail, .md-ui-data .md-timeline-content { font-size: 17px; }
+.md-ui-data .md-timeline-title { font-size: 21px; }
+.md-ui-document .mermaid { overflow: visible; }
+@media (max-width: 600px) {
+    .md-ui-grid { grid-template-columns: 1fr; }
+    .md-ui-document { font-size: 19px; }
+    .md-ui-title { font-size: 30px; }
+    .md-ui-card { padding: 18px; }
+}
 @media (max-width: 700px) {
     .md-stats-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));

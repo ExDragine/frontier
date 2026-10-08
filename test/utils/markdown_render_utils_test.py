@@ -97,6 +97,21 @@ async def test_markdown_to_text_basic():
 
 
 @pytest.mark.asyncio
+async def test_markdown_to_text_preserves_link_addresses_and_copyable_code():
+    text = await markdown_render.markdown_to_text(
+        "[文档](https://example.com/docs?q=1&v=2)\n\n```python\nprint('hello')\n```"
+    )
+    assert "文档（https://example.com/docs?q=1&v=2）" in text
+    assert "print('hello')" in text
+
+
+@pytest.mark.asyncio
+async def test_markdown_to_text_does_not_duplicate_autolink_addresses():
+    text = await markdown_render.markdown_to_text("<https://example.com/docs>")
+    assert text.count("https://example.com/docs") == 1
+
+
+@pytest.mark.asyncio
 async def test_markdown_to_image_calls(monkeypatch, tmp_path):
     (tmp_path / "templates").mkdir()
     (tmp_path / "templates" / "markdown_assets").mkdir()

@@ -425,6 +425,7 @@ async def test_send_messages_retries_image_render(monkeypatch):
         '```chart\n{"type":"bar","labels":["A"],"series":[{"name":"x","values":[1]}]}\n```',
         '```stats\n{"items":[{"label":"在线","value":"12"}]}\n```',
         '```timeline\n{"items":[{"time":"现在","title":"完成"}]}\n```',
+        '```ui\n{"children":[{"type":"text","text":"重点"}]}\n```',
     ],
 )
 def test_message_should_render_image_for_hard_to_text_content(content):
@@ -445,6 +446,38 @@ def test_message_keeps_simple_short_content_as_text(content):
 
 def test_message_renders_long_simple_content_as_image_for_any_group():
     assert message_module._message_should_render_as_image("x" * 600) is True
+
+
+def test_message_image_length_threshold_defaults_to_500():
+    assert message_module._message_should_render_as_image("字" * 499) is False
+    assert message_module._message_should_render_as_image("字" * 500) is True
+
+
+def test_message_image_threshold_is_configurable_without_disabling_rich_content(monkeypatch):
+    monkeypatch.setattr(message_module.EnvConfig, "MESSAGE_IMAGE_TEXT_THRESHOLD", 4000)
+    assert not message_module._message_should_render_as_image("字" * 500)
+    assert message_module._message_should_render_as_image("字" * 4000)
+    assert message_module._message_should_render_as_image("$E=mc^2$")
+
+
+@pytest.mark.asyncio
+async def test_send_messages_routes_composed_ui_directly_to_image(monkeypatch):
+    monkeypatch.setattr(message_module, "UniMessage", DummyUniMessage)
+    rendered = []
+
+    async def image(content):
+        rendered.append(content)
+        return b"img"
+
+    async def text(_content):
+        raise AssertionError("UI JSON must not be sent as ordinary text")
+
+    monkeypatch.setattr(message_module, "markdown_to_image", image)
+    monkeypatch.setattr(message_module, "markdown_to_text", text)
+    content = '```ui\n{"children":[{"type":"text","text":"重点"}]}\n```'
+    result = await message_module.send_messages(None, 1, {"messages": [types.SimpleNamespace(content=content)]})
+    assert result.sent == 1
+    assert rendered == [content]
 
 
 def test_extract_message_text_reads_content_block_lists():

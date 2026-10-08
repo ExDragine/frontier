@@ -6,7 +6,7 @@ import logging
 import re
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, ValidationError, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +16,15 @@ MAX_CHART_SERIES = 8
 MAX_PIE_ITEMS = 12
 MAX_STAT_ITEMS = 12
 MAX_TIMELINE_ITEMS = 50
+MAX_UI_COMPONENTS = 80
+MAX_UI_DEPTH = 6
 
 ShortText = Annotated[str, Field(max_length=200)]
 LabelText = Annotated[str, Field(max_length=80)]
 LongText = Annotated[str, Field(max_length=2_000)]
 
 _RICH_FENCE_RE = re.compile(
-    r'<pre><code class="language-(?P<kind>chart|stats|timeline)">(?P<body>.*?)</code></pre>',
+    r'<pre><code class="language-(?P<kind>chart|stats|timeline|ui)">(?P<body>.*?)</code></pre>',
     re.DOTALL | re.IGNORECASE,
 )
 
@@ -93,10 +95,112 @@ class TimelineBlock(_RichModel):
     items: list[TimelineItem] = Field(min_length=1, max_length=MAX_TIMELINE_ITEMS)
 
 
+class UIText(_RichModel):
+    type: Literal["text", "heading", "code", "mermaid"]
+    text: LongText
+
+
+class UIBadge(_RichModel):
+    type: Literal["badge"]
+    text: LabelText
+    status: Literal["neutral", "success", "warning", "danger"] = "neutral"
+
+
+class UILink(_RichModel):
+    type: Literal["link"]
+    label: LabelText
+    url: HttpUrl
+
+
+class UICallout(_RichModel):
+    type: Literal["callout"]
+    title: ShortText | None = None
+    text: LongText
+    status: Literal["neutral", "success", "warning", "danger"] = "neutral"
+
+
+class UILayout(_RichModel):
+    type: Literal["row", "column", "grid"]
+    columns: int = Field(default=2, ge=1, le=3)
+    children: list[UIComponent] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def validate_columns(self) -> UILayout:
+        if self.type != "grid" and "columns" in self.model_fields_set:
+            raise ValueError("columns is only supported by grid")
+        return self
+
+
+class UICard(_RichModel):
+    type: Literal["card"]
+    title: ShortText | None = None
+    children: list[UIComponent] = Field(min_length=1, max_length=12)
+
+
+class UISteps(_RichModel):
+    type: Literal["steps"]
+    items: list[LongText] = Field(min_length=1, max_length=20)
+
+
+class UITable(_RichModel):
+    type: Literal["table"]
+    columns: list[LabelText] = Field(min_length=1, max_length=8)
+    rows: list[list[ShortText]] = Field(min_length=1, max_length=50)
+
+    @model_validator(mode="after")
+    def validate_rows(self) -> UITable:
+        if any(len(row) != len(self.columns) for row in self.rows):
+            raise ValueError("table rows must match columns")
+        return self
+
+
+class UIChart(_RichModel):
+    type: Literal["chart"]
+    config: ChartBlock
+
+
+class UIStats(_RichModel):
+    type: Literal["stats"]
+    config: StatsBlock
+
+
+class UITimeline(_RichModel):
+    type: Literal["timeline"]
+    config: TimelineBlock
+
+
+UIComponent = Annotated[
+    UIText | UIBadge | UILink | UICallout | UILayout | UICard | UISteps | UITable | UIChart | UIStats | UITimeline,
+    Field(discriminator="type"),
+]
+
+
+class UIBlock(_RichModel):
+    title: ShortText | None = None
+    children: list[UIComponent] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def validate_capacity(self) -> UIBlock:
+        pending = [(child, 1) for child in self.children]
+        count = 0
+        while pending:
+            child, depth = pending.pop()
+            count += 1
+            if count > MAX_UI_COMPONENTS or depth > MAX_UI_DEPTH:
+                raise ValueError("UI component count or depth limit exceeded")
+            if isinstance(child, UILayout | UICard):
+                pending.extend((item, depth + 1) for item in child.children)
+        return self
+
+
+UIBlock.model_rebuild()
+
+
 _RICH_MODELS: dict[str, type[_RichModel]] = {
     "chart": ChartBlock,
     "stats": StatsBlock,
     "timeline": TimelineBlock,
+    "ui": UIBlock,
 }
 
 

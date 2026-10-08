@@ -82,6 +82,17 @@ def test_env_config_defaults(monkeypatch):
     assert EnvConfig.FEISHU_VERIFICATION_TOKEN.get_secret_value() == ""
     assert EnvConfig.FEISHU_ENCRYPT_KEY.get_secret_value() == ""
     assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False
+    assert EnvConfig.MESSAGE_IMAGE_TEXT_THRESHOLD == 500
+
+
+def test_message_image_threshold_reloads_and_rejects_invalid_lengths():
+    from utils.configs import EnvConfig, parse_config
+
+    EnvConfig.reload({"config_version": 2, "agent": {"message_image_text_threshold": 2000}})
+    assert EnvConfig.MESSAGE_IMAGE_TEXT_THRESHOLD == 2000
+    for value in (0, -1):
+        with pytest.raises(ValidationError):
+            parse_config({"config_version": 2, "agent": {"message_image_text_threshold": value}})
 
 
 def test_env_config_reload_updates_runtime_sections():

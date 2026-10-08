@@ -160,6 +160,7 @@ class PlatformsConfig(_FrozenConfig):
 
 class AgentConfig(_FrozenConfig):
     reasoning_effort: str = "medium"
+    message_image_text_threshold: int = Field(default=500, ge=1)
 
 
 class AccessPolicy(_FrozenConfig):
@@ -699,6 +700,7 @@ class EnvConfig:
             "LAYA_CANDIDATE_TIMEOUT_SECONDS": settings.features.laya_candidate_timeout_seconds,
             "LAYA_CANDIDATE_API_KEY": SecretStr(os.getenv("LAYA_API_KEY", "")),
             "AGENT_CAPABILITY": settings.agent.reasoning_effort,
+            "MESSAGE_IMAGE_TEXT_THRESHOLD": settings.agent.message_image_text_threshold,
             "AGENT_WHITELIST_MODE": settings.agent_policy.whitelist_mode,
             "AGENT_WHITELIST_PERSON_LIST": list(settings.agent_policy.whitelist_person_list),
             "AGENT_WHITELIST_GROUP_LIST": list(settings.agent_policy.whitelist_group_list),
