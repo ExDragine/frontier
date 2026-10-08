@@ -262,7 +262,7 @@ async def verify(output_dir: Path, *, live_media: bool = False) -> None:
                         "height": 420,
                         "caption": "网络展示测试，坐标为示例地点",
                     },
-                    {"type": "iframe", "title": "公开网页快照", "url": "https://www.python.org/about/", "height": 420},
+                    {"type": "iframe", "title": "公开网页快照", "url": "https://example.com/", "height": 420},
                 ],
             }
         }
