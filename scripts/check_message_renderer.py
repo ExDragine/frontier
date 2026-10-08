@@ -126,6 +126,45 @@ ui = {
     ],
 }
 
+article_ui = {
+    "title": "长图排版回归示例",
+    "children": [
+        {"type": "callout", "title": "先看结论", "text": "以下为排版示例，用于检查长图中的字体、模块间距和表格列宽。"},
+        {
+            "type": "stats",
+            "config": {
+                "columns": 4,
+                "items": [
+                    {"label": "手稿", "value": "719", "unit": "篇", "detail": "示例数据，持续更新"},
+                    {"label": "结果族", "value": "372", "detail": "按数学分支分类"},
+                    {"label": "主结果已形式化", "value": "42", "unit": "%", "status": "success"},
+                    {"label": "平均算力", "value": "3", "unit": "小时 ChatGPT Pro"},
+                ],
+            },
+        },
+        {
+            "type": "card",
+            "title": "仓库里有什么",
+            "children": [{"type": "steps", "items": [
+                "preprints/：每篇的 PDF、源文件、单独的构建说明和引用信息",
+                "lean/：形式化库和形式化目录",
+                "Comparator：按 JSON 配置逐个核对指定定理、解答模块和允许的公理",
+            ]}],
+        },
+        {
+            "type": "table",
+            "columns": ["族", "结果说明"],
+            "rows": [
+                ["003", "这是一段较长的结果说明，包含 Dirichlet L 函数与数学符号，用来验证说明列获得足够空间。"],
+                ["074", "三维柱谷极大函数猜想与四维 Hausdorff 维数猜想"],
+                ["002 / 006", "每条有理椭圆曲线的二次扭曲族上，完整的公式应当清楚可读。"],
+            ],
+        },
+        {"type": "callout", "title": "阅读提示", "text": "示例结果仅用于验证排版。长图保留完整内容，点开后可以放大阅读。", "status": "warning"},
+        {"type": "link", "label": "示例仓库", "url": "https://github.com/example/math"},
+    ],
+}
+
 
 async def verify(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -138,11 +177,17 @@ async def verify(output_dir: Path) -> None:
             blocked_remote_requests = []
             ui["title"] = f"Frontier · 方案比较与任务说明 · {width}"
             source = "以下为混合模块示例。\n\n```ui\n" + json.dumps(ui, ensure_ascii=False) + "\n```\n\n$E=mc^2$\n"
+            source += "\n```ui\n" + json.dumps(article_ui, ensure_ascii=False) + "\n```\n"
 
             async def after_load(page, observed=observed):
                 await original_wait(page)
                 observed.update(
-                    await page.evaluate("""() => ({
+                    await page.evaluate("""() => {
+                    const article = [...document.querySelectorAll('.md-ui-document')].at(-1);
+                    const table = article.querySelector('.md-ui-table');
+                    const cells = table.querySelectorAll('th');
+                    const modules = [...article.children].map(node => node.getBoundingClientRect());
+                    return {
                     title: document.title,
                     state: window.__FRONTIER_RENDER__,
                     text: document.body.textContent,
@@ -155,8 +200,12 @@ async def verify(output_dir: Path) -> None:
                     mermaid: document.querySelector('[data-mermaid-rendered]')?.dataset.mermaidRendered,
                     gridColumns: getComputedStyle(document.querySelector('.md-ui-grid')).gridTemplateColumns,
                     scripts: document.querySelectorAll('#markdown-content script').length,
-                    height: document.querySelector('#markdown-content').scrollHeight
-                })""")
+                    height: document.querySelector('#markdown-content').scrollHeight,
+                    articleGaps: modules.slice(1).map((rect, i) => rect.top - modules[i].bottom),
+                    shortColumnRatio: cells[0].getBoundingClientRect().width / table.getBoundingClientRect().width,
+                    statLabelSize: parseFloat(getComputedStyle(article.querySelector('.md-stat-label')).fontSize),
+                    tableTextSize: parseFloat(getComputedStyle(table).fontSize)
+                }}""")
                 )
 
             def logging(page, page_errors=page_errors, blocked_remote_requests=blocked_remote_requests):
@@ -192,6 +241,9 @@ async def verify(output_dir: Path) -> None:
                 "no_horizontal_overflow": observed["scrollWidth"] <= observed["width"],
                 "long_image": image.height > 1500 and image.width == width,
                 "responsive_grid": len(observed["gridColumns"].split()) == (2 if width == 1000 else 1),
+                "article_spacing": all(gap >= 23 for gap in observed["articleGaps"]),
+                "content_table_columns": observed["shortColumnRatio"] < 0.3,
+                "readable_secondary_text": observed["statLabelSize"] >= 18 and observed["tableTextSize"] >= 19,
             }
             result = {
                 "viewport": width,
