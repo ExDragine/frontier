@@ -183,7 +183,7 @@ def case_checks(name, observed, width, image):
         checks.update(
             {
                 "media_images": len(observed["mediaImages"]) == 2 and all(observed["mediaImages"]),
-                "isolated_frame": observed["frame"] and observed["frameImage"] and 0.4 < observed["frameRatio"] < 1.4,
+                "isolated_frame": observed["frame"] and observed["frameImage"] and 0.15 < observed["frameRatio"] <= 4,
                 "card_colors": len(set(observed["colored"])) == 2,
                 "failure_fallback": observed["fallback"],
                 "badges_fit": len(observed["badgeWidths"]) == 4 and max(observed["badgeWidths"]) < 100,
@@ -209,6 +209,10 @@ async def fixture_get(self, url, **kwargs):
     """Deterministic public-source fixtures; production capture/render functions stay real."""
     if url.endswith("unavailable.png"):
         raise ValueError("Expected fixture failure")
+    if "tile.openstreetmap.org" in url:
+        buffer = io.BytesIO()
+        Image.new("RGB", (256, 256), "#dbeafe").save(buffer, format="PNG")
+        return buffer.getvalue(), "image/png"
     if url.endswith("demo.png"):
         buffer = io.BytesIO()
         picture = Image.new("RGB", (900, 480), "#dbeafe")
@@ -225,7 +229,7 @@ async def fixture_get(self, url, **kwargs):
     else:
         body = '<h1>独立页面 · 公开仪表盘测试</h1><p>此模块在隔离浏览器中加载，然后以离线快照嵌入。</p><div style="display:flex;gap:24px"><section style="background:#ecfdf5"><h2>资料</h2><p>静态图像</p></section><section style="background:#f5f3ff"><h2>网页</h2><p>独立模块</p></section></div>'
     page = (
-        '<!doctype html><meta charset="utf-8"><style>body{margin:30px;font:24px sans-serif;color:#18181b}section{padding:30px;border-radius:16px}h1{font-size:32px}</style>'
+        '<!doctype html><meta charset="utf-8"><style>body{margin:20px;font:24px sans-serif;color:#18181b}section{padding:20px;border-radius:16px;min-width:0;flex:1}h1{font-size:26px;margin:0 0 16px}h2{font-size:24px}p{font-size:20px;margin:14px 0}</style>'
         + body
     )
     return page.encode(), "text/html; charset=utf-8"
@@ -242,6 +246,7 @@ async def verify(output_dir: Path, *, live_media: bool = False) -> None:
             "live": {
                 "title": "公开媒体加载验证",
                 "children": [
+                    load_cases()["media"]["children"][0],
                     {
                         "type": "image",
                         "url": "https://www.python.org/static/community_logos/python-logo.png",
@@ -257,7 +262,7 @@ async def verify(output_dir: Path, *, live_media: bool = False) -> None:
                         "height": 420,
                         "caption": "网络展示测试，坐标为示例地点",
                     },
-                    {"type": "iframe", "title": "公开网页快照", "url": "https://example.com/", "height": 420},
+                    {"type": "iframe", "title": "公开网页快照", "url": "https://www.python.org/about/", "height": 420},
                 ],
             }
         }

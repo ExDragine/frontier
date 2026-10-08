@@ -253,6 +253,7 @@ class UIFrame(_RichModel):
     url: HttpUrl
     title: ShortText
     height: int = Field(default=480, ge=200, le=1200)
+    full_page: bool = True
     caption: ShortText | None = None
 
 

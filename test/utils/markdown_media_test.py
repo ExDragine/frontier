@@ -124,3 +124,24 @@ async def test_prepare_media_limits_loading_and_preserves_failure_fallback(monke
 def test_media_contract_rejects_unsafe_or_out_of_range_fields(node):
     with pytest.raises(ValueError):
         UIBlock.model_validate({"children": [node]})
+
+
+@pytest.mark.asyncio
+async def test_map_wraps_dateline_tiles_and_marks_exact_center():
+    requested = []
+    buffer = io.BytesIO()
+    Image.new("RGB", (256, 256), "#dbeafe").save(buffer, format="PNG")
+
+    class Fetcher:
+        async def get(self, url):
+            requested.append(url)
+            return buffer.getvalue(), "image/png"
+
+    body = await media.render_map({"latitude": 0, "longitude": 180, "zoom": 2, "height": 420}, Fetcher(), 900)
+    assert len(requested) == 8
+    assert all(url.startswith("https://tile.openstreetmap.org/2/") for url in requested)
+    assert {int(url.split("/")[-2]) for url in requested} == {0, 1, 2, 3}
+    image = Image.open(io.BytesIO(body))
+    assert image.size == (900, 420)
+    assert image.getpixel((450, 210))[:3] == (255, 255, 255)
+    assert image.getpixel((450, 203))[:3] == (29, 78, 216)

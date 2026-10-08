@@ -209,3 +209,5 @@ hr { margin: 32px 0; border: 0; border-top: 1px solid var(--md-border); }
 .md-fit-cover { object-fit: cover; }
 .md-ui-frame { display: block; width: 100%; height: auto; border: 1px solid var(--md-border); border-radius: 14px; background: var(--md-secondary); pointer-events: none; }
 .md-media-fallback { padding: 28px; border: 1px dashed var(--md-border); border-radius: 14px; background: var(--md-secondary); color: var(--md-muted-foreground); }
+
+.md-media-image .md-aspect-original { width: auto; max-width: 100%; align-self: flex-start; }

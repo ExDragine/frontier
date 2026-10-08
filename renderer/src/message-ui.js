@@ -116,6 +116,7 @@ function component(config, pendingCharts, renderers) {
       node.append(element("div", "md-media-fallback", config.media_error || "素材未能加载，请查看原链接。"));
     }
     if (config.caption) node.append(element("figcaption", "md-ui-description", config.caption));
+    if (config.capture_note) node.append(element("div", "md-ui-description", config.capture_note));
     if (type === "map") {
       node.append(element("div", "md-ui-url", `WGS84 · ${config.latitude}, ${config.longitude} · © OpenStreetMap contributors`));
     }

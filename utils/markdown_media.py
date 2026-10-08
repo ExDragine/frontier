@@ -12,11 +12,11 @@ import math
 import socket
 import time
 from pathlib import Path
-from urllib.parse import urlencode, urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import httpx2
 from bs4 import BeautifulSoup
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 
 from utils.http_client import AsyncClient
 
@@ -127,22 +127,40 @@ def raster_data(body: bytes) -> tuple[str, int, int]:
         return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode(), image.width, image.height
 
 
-def map_url(node: dict, width: int) -> str:
-    lat, lon, zoom = node["latitude"], node["longitude"], node["zoom"]
+async def render_map(node: dict, fetcher: PublicFetcher, width: int) -> bytes:
+    """Compose only the currently visible OSM tiles in Web Mercator coordinates."""
+    zoom, height = node["zoom"], node["height"]
     scale = 256 * 2**zoom
-    x = (lon + 180) / 360 * scale
-    y = (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * scale
+    center_x = (node["longitude"] + 180) / 360 * scale
+    center_y = (1 - math.asinh(math.tan(math.radians(node["latitude"]))) / math.pi) / 2 * scale
+    left, top = math.floor(center_x - width / 2), math.floor(center_y - height / 2)
+    picture = Image.new("RGBA", (width, height), "#f4f4f5")
 
-    def latitude(pixel):
-        return math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * pixel / scale))))
+    async def tile(x, y):
+        url = f"https://tile.openstreetmap.org/{zoom}/{x % 2**zoom}/{y}.png"
+        body, _ = await fetcher.get(url)
+        with Image.open(io.BytesIO(body)) as source:
+            if source.size != (256, 256):
+                raise ValueError("Unexpected map tile")
+            picture.paste(source.convert("RGBA"), (x * 256 - left, y * 256 - top))
 
-    west, east = ((x + delta) / scale * 360 - 180 for delta in (-width / 2, width / 2))
-    south, north = (latitude(y + delta) for delta in (node["height"] / 2, -node["height"] / 2))
-    params = {"bbox": f"{west},{south},{east},{north}", "layer": "mapnik", "marker": f"{lat},{lon}"}
-    return "https://www.openstreetmap.org/export/embed.html?" + urlencode(params)
+    async with asyncio.TaskGroup() as group:
+        for x in range(left // 256, (left + width - 1) // 256 + 1):
+            for y in range(top // 256, (top + height - 1) // 256 + 1):
+                if 0 <= y < 2**zoom:
+                    group.create_task(tile(x, y))
+    draw = ImageDraw.Draw(picture)
+    x, y = center_x - left, center_y - top
+    draw.ellipse((x - 12, y - 12, x + 12, y + 12), fill="#1d4ed8", outline="white", width=3)
+    draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill="white")
+    output = io.BytesIO()
+    picture.save(output, format="PNG")
+    return output.getvalue()
 
 
-async def capture_frame(browser, fetcher: PublicFetcher, url: str, width: int, height: int, *, is_map=False) -> bytes:
+async def capture_frame(
+    browser, fetcher: PublicFetcher, url: str, width: int, height: int, *, full_page=False
+) -> bytes:
     await public_address(url)
     context = await browser.new_context(
         viewport={"width": width, "height": height}, service_workers="block", accept_downloads=False
@@ -153,20 +171,18 @@ async def capture_frame(browser, fetcher: PublicFetcher, url: str, width: int, h
         page = await context.new_page()
         page.on("popup", lambda popup: popup.close())
         await page.goto(url, wait_until="domcontentloaded", timeout=12_000)
-        if is_map:
-            await page.wait_for_function(
-                "document.querySelectorAll('.leaflet-tile').length > 0 && "
-                "[...document.querySelectorAll('.leaflet-tile')].every(i => i.complete && i.naturalWidth > 0)",
-                timeout=8000,
-            )
-        else:
-            await page.wait_for_function(
-                "document.body && (document.body.innerText.trim().length > 0 || document.querySelector('canvas,svg,img')) && "
-                "[...document.images].every(i => i.complete)",
-                timeout=8000,
-            )
+        await page.wait_for_function(
+            "document.body && (document.body.innerText.trim().length > 0 || document.querySelector('canvas,svg,img')) && "
+            "[...document.images].every(i => i.complete)",
+            timeout=8000,
+        )
         await page.evaluate("document.fonts.ready")
         await page.wait_for_timeout(600)
+        if full_page:
+            content_height = await page.evaluate(
+                "Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)"
+            )
+            await page.set_viewport_size({"width": width, "height": min(max(height, int(content_height)), 1200)})
         return await page.screenshot(type="png", animations="disabled")
     finally:
         await context.close()
@@ -177,11 +193,20 @@ async def load_media(node: dict, browser, fetcher: PublicFetcher, width: int) ->
         async with asyncio.timeout(20):
             if node["type"] == "image":
                 body, _ = await fetcher.get(node["url"], limit=10_000_000)
+            elif node["type"] == "map":
+                lat, lon, zoom = node["latitude"], node["longitude"], node["zoom"]
+                node["source_url"] = (
+                    f"https://www.openstreetmap.org/?mlat={lat:.6f}&mlon={lon:.6f}#map={zoom}/{lat:.6f}/{lon:.6f}"
+                )
+                body = await render_map(node, fetcher, width)
             else:
-                url = map_url(node, width) if node["type"] == "map" else node["url"]
-                node["source_url"] = url
-                body = await capture_frame(browser, fetcher, url, width, node["height"], is_map=node["type"] == "map")
+                node["source_url"] = node["url"]
+                body = await capture_frame(
+                    browser, fetcher, node["url"], width, node["height"], full_page=node.get("full_page", False)
+                )
             node["media_data"], node["media_width"], node["media_height"] = raster_data(body)
+            if node.get("full_page") and node["media_height"] >= 1200:
+                node["capture_note"] = "网页较长，此处展示前 1200 像素，请通过原链接查看完整页面。"
             node.pop("media_error", None)
     except Exception:
         # Do not disclose network errors or internal addresses in QQ content/logs.
@@ -213,7 +238,7 @@ async def prepare_media(html_content: str, browser, *, width: int, cache_dir: Pa
 
         async def load(node):
             async with slots:
-                await load_media(node, browser, fetcher, min(max(width - 96, 320), 1200))
+                await load_media(node, browser, fetcher, min(max(width - (36 if width <= 600 else 96), 200), 1200))
 
         for index, node in enumerate(nodes):
             node["media_error"] = (
