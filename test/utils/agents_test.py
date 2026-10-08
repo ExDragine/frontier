@@ -119,18 +119,16 @@ def test_frontier_load_system_prompt_keeps_only_always_on_rules(monkeypatch):
 
 
 def test_rich_markdown_skill_owns_renderer_contract():
-    skill = (prompts_mod.PROJECT_ROOT / "skills" / "rich-markdown" / "SKILL.md").read_text(
-        encoding="utf-8"
-    )
+    root = prompts_mod.PROJECT_ROOT / "skills" / "rich-markdown"
+    skill = (root / "SKILL.md").read_text(encoding="utf-8")
 
-    assert "不要添加 `<frontier-render>`" in skill
-    assert "```chart" in skill
-    assert "```stats" in skill
-    assert "```timeline" in skill
-    assert '"type":"line"' in skill
-    assert '"type":"pie"' in skill
-    assert "最多 8 个系列" in skill
-    assert "时间线最多 50 项" in skill
+    assert "references/components.md" in skill
+    assert "references/data.md" in skill
+    assert "```chart" not in prompts_mod.load_system_prompt()
+    assert "不要为所有回答规定同一套模块或顺序" in skill
+    assert "500 字符" in skill
+    assert (root / "references" / "components.md").is_file()
+    assert (root / "references" / "data.md").is_file()
 
 
 def test_workspace_soul_prompt_owns_persistence_policy():

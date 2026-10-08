@@ -1,0 +1,80 @@
+{
+  "eyebrow": "操作指南 · 排版示例",
+  "title": "验证一个只读查询的缓存",
+  "description": "先记录基线，再验证命中与刷新。示例不会操作实际服务。",
+  "children": [
+    {
+      "type": "progress",
+      "label": "示例检查进度",
+      "value": 50,
+      "detail": "已完成 2 项，共 4 项；仅用于演示进度排版。"
+    },
+    {
+      "type": "steps",
+      "items": [
+        {
+          "title": "记录基线",
+          "description": "使用相同查询条件执行两次，记录返回值和耗时。",
+          "meta": "观察"
+        },
+        {
+          "title": "添加缓存",
+          "description": "把会改变结果的输入纳入缓存键，设置有效期。",
+          "meta": "配置"
+        },
+        {
+          "title": "验证命中",
+          "description": "再次执行同一查询，检查结果是否一致、是否确实走了缓存。",
+          "meta": "验证"
+        },
+        {
+          "title": "验证刷新",
+          "description": "修改输入或让缓存到期，确认来源会重新读取。",
+          "meta": "验证"
+        }
+      ]
+    },
+    {
+      "type": "separator",
+      "label": "保留验证记录"
+    },
+    {
+      "type": "code",
+      "text": "query = \"example\"\nfirst = read(query)\nsecond = read(query)\nassert first == second"
+    },
+    {
+      "type": "alert",
+      "title": "检查权限边界",
+      "text": "如果结果包含私有数据，缓存键需要区分用户和权限范围。",
+      "status": "warning"
+    },
+    {
+      "type": "list",
+      "variant": "outline",
+      "items": [
+        {
+          "title": "验收条件",
+          "description": "命中时结果正确，失效时重新读取来源。"
+        },
+        {
+          "title": "失败时观察",
+          "description": "检查缓存键、有效期，以及结果是否来自同一个权限范围。"
+        }
+      ]
+    },
+    {
+      "type": "quote",
+      "text": "这是一条用于展示引用组件的示例原文。",
+      "attribution": "排版测试样例"
+    },
+    {
+      "type": "sources",
+      "items": [
+        {
+          "label": "示例查询说明",
+          "url": "https://example.com/query"
+        }
+      ]
+    }
+  ]
+}

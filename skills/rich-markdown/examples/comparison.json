@@ -1,0 +1,146 @@
+{
+  "eyebrow": "方案比较 · 排版示例",
+  "title": "本地部署还是托管 API？",
+  "description": "围绕运行条件和维护责任比较，先明确自己的约束。",
+  "children": [
+    {
+      "type": "text",
+      "variant": "lead",
+      "text": "需要离线运行时，先核对本地硬件与模型能力；希望减少推理服务维护时，可以先试托管接口。"
+    },
+    {
+      "type": "grid",
+      "columns": 2,
+      "children": [
+        {
+          "type": "card",
+          "title": "本地部署",
+          "eyebrow": "方案 A",
+          "description": "自己控制推理环境与运行条件。",
+          "footer": "先验证硬件能否满足任务。",
+          "children": [
+            {
+              "type": "badge",
+              "text": "关注硬件条件",
+              "variant": "outline"
+            },
+            {
+              "type": "list",
+              "items": [
+                {
+                  "title": "运行环境",
+                  "description": "模型、硬件与服务都由自己维护。"
+                },
+                {
+                  "title": "可用条件",
+                  "description": "离线能力取决于模型、依赖和具体任务。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "variant": "muted",
+          "title": "托管 API",
+          "eyebrow": "方案 B",
+          "description": "使用服务方提供的模型接口。",
+          "footer": "先核对接口能力和数据要求。",
+          "children": [
+            {
+              "type": "badge",
+              "text": "关注接口条件",
+              "variant": "secondary"
+            },
+            {
+              "type": "list",
+              "items": [
+                {
+                  "title": "运行环境",
+                  "description": "推理服务由服务方维护。"
+                },
+                {
+                  "title": "可用条件",
+                  "description": "需要满足网络、配额与接口约束。"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "caption": "用相同维度核对",
+      "columns": [
+        "维度",
+        "本地部署",
+        "托管 API"
+      ],
+      "column_widths": [
+        2,
+        4,
+        4
+      ],
+      "rows": [
+        [
+          "维护责任",
+          "硬件、模型、服务",
+          "接口与调用侧集成"
+        ],
+        [
+          "网络",
+          "按实际任务验证离线能力",
+          "依赖服务方接口"
+        ],
+        [
+          "开始验证",
+          "选一个任务测效果和资源",
+          "选一个任务测效果和费用"
+        ]
+      ]
+    },
+    {
+      "type": "section",
+      "title": "如何决定",
+      "children": [
+        {
+          "type": "prose",
+          "text": "先用自己的代表性任务验证两种方案，再比较效果、资源和维护投入。**不要仅凭模型名称或单项跑分决定。**"
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "variant": "ghost",
+      "title": "示例测量记录",
+      "description": "以下数字为排版演示，不代表实际模型评测。",
+      "children": [
+        {
+          "type": "stats",
+          "config": {
+            "columns": 2,
+            "variant": "cards",
+            "items": [
+              {
+                "label": "示例任务 A",
+                "value": "12",
+                "unit": "项"
+              },
+              {
+                "label": "示例任务 B",
+                "value": "8",
+                "unit": "项"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "variant": "small",
+      "text": "保留实际验证记录，便于之后重新比较。"
+    }
+  ]
+}
