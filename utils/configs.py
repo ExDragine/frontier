@@ -161,6 +161,7 @@ class PlatformsConfig(_FrozenConfig):
 class AgentConfig(_FrozenConfig):
     reasoning_effort: str = "medium"
     message_image_text_threshold: int = Field(default=500, ge=1)
+    message_media_fake_ip_fallback: bool = True
 
 
 class AccessPolicy(_FrozenConfig):
@@ -584,6 +585,7 @@ class EnvConfig:
     LAYA_CANDIDATE_TIMEOUT_SECONDS: ClassVar[float]
     LAYA_CANDIDATE_API_KEY: ClassVar[SecretStr]
     AGENT_CAPABILITY: ClassVar[str]
+    MESSAGE_MEDIA_FAKE_IP_FALLBACK: ClassVar[bool]
     # Access policies
     AGENT_WHITELIST_MODE: ClassVar[bool]
     AGENT_WHITELIST_PERSON_LIST: ClassVar[list[int | str]]
@@ -701,6 +703,7 @@ class EnvConfig:
             "LAYA_CANDIDATE_API_KEY": SecretStr(os.getenv("LAYA_API_KEY", "")),
             "AGENT_CAPABILITY": settings.agent.reasoning_effort,
             "MESSAGE_IMAGE_TEXT_THRESHOLD": settings.agent.message_image_text_threshold,
+            "MESSAGE_MEDIA_FAKE_IP_FALLBACK": settings.agent.message_media_fake_ip_fallback,
             "AGENT_WHITELIST_MODE": settings.agent_policy.whitelist_mode,
             "AGENT_WHITELIST_PERSON_LIST": list(settings.agent_policy.whitelist_person_list),
             "AGENT_WHITELIST_GROUP_LIST": list(settings.agent_policy.whitelist_group_list),

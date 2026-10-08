@@ -83,6 +83,14 @@ def test_env_config_defaults(monkeypatch):
     assert EnvConfig.FEISHU_ENCRYPT_KEY.get_secret_value() == ""
     assert EnvConfig.AGENT_AUTO_REPLY_WHITELIST_MODE is False
     assert EnvConfig.MESSAGE_IMAGE_TEXT_THRESHOLD == 500
+    assert EnvConfig.MESSAGE_MEDIA_FAKE_IP_FALLBACK is True
+
+
+def test_media_fake_ip_fallback_can_be_disabled():
+    from utils.configs import EnvConfig
+
+    EnvConfig.reload({"config_version": 2, "agent": {"message_media_fake_ip_fallback": False}})
+    assert EnvConfig.MESSAGE_MEDIA_FAKE_IP_FALLBACK is False
 
 
 def test_message_image_threshold_reloads_and_rejects_invalid_lengths():
