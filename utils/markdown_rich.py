@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Annotated, Any, Literal
 
+from markdown_it import MarkdownIt
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, ValidationError, model_validator
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ class StatItem(_RichModel):
 class StatsBlock(_RichModel):
     title: ShortText | None = None
     columns: int = Field(default=3, ge=1, le=4)
+    variant: Literal["plain", "cards"] = "plain"
     items: list[StatItem] = Field(min_length=1, max_length=MAX_STAT_ITEMS)
 
 
@@ -98,12 +100,25 @@ class TimelineBlock(_RichModel):
 class UIText(_RichModel):
     type: Literal["text", "heading", "code", "mermaid"]
     text: LongText
+    variant: Literal["body", "lead", "muted", "small"] = "body"
+
+    @model_validator(mode="after")
+    def validate_variant(self) -> UIText:
+        if self.type != "text" and "variant" in self.model_fields_set:
+            raise ValueError("text variants are only supported by text")
+        return self
+
+
+class UIProse(_RichModel):
+    type: Literal["prose"]
+    text: LongText
 
 
 class UIBadge(_RichModel):
     type: Literal["badge"]
     text: LabelText
     status: Literal["neutral", "success", "warning", "danger"] = "neutral"
+    variant: Literal["secondary", "outline", "solid"] = "secondary"
 
 
 class UILink(_RichModel):
@@ -113,7 +128,7 @@ class UILink(_RichModel):
 
 
 class UICallout(_RichModel):
-    type: Literal["callout"]
+    type: Literal["alert", "callout"]
     title: ShortText | None = None
     text: LongText
     status: Literal["neutral", "success", "warning", "danger"] = "neutral"
@@ -123,6 +138,7 @@ class UILayout(_RichModel):
     type: Literal["row", "column", "grid"]
     columns: int = Field(default=2, ge=1, le=3)
     children: list[UIComponent] = Field(min_length=1, max_length=12)
+    gap: Literal["sm", "md", "lg"] = "md"
 
     @model_validator(mode="after")
     def validate_columns(self) -> UILayout:
@@ -134,23 +150,91 @@ class UILayout(_RichModel):
 class UICard(_RichModel):
     type: Literal["card"]
     title: ShortText | None = None
+    description: LongText | None = None
+    eyebrow: LabelText | None = None
+    footer: ShortText | None = None
+    variant: Literal["outline", "muted", "ghost"] = "outline"
     children: list[UIComponent] = Field(min_length=1, max_length=12)
+
+
+class UISection(_RichModel):
+    type: Literal["section"]
+    title: ShortText | None = None
+    description: LongText | None = None
+    eyebrow: LabelText | None = None
+    children: list[UIComponent] = Field(min_length=1, max_length=12)
+
+
+class UIItem(_RichModel):
+    title: ShortText
+    description: LongText | None = None
+    meta: LabelText | None = None
 
 
 class UISteps(_RichModel):
     type: Literal["steps"]
-    items: list[LongText] = Field(min_length=1, max_length=20)
+    items: list[LongText | UIItem] = Field(min_length=1, max_length=20)
+
+
+class UIList(_RichModel):
+    type: Literal["list"]
+    variant: Literal["plain", "divided", "outline"] = "plain"
+    items: list[UIItem] = Field(min_length=1, max_length=20)
+
+
+class UIFact(_RichModel):
+    label: LabelText
+    value: LongText
+
+
+class UIFacts(_RichModel):
+    type: Literal["facts"]
+    columns: int = Field(default=1, ge=1, le=2)
+    items: list[UIFact] = Field(min_length=1, max_length=20)
+
+
+class UISeparator(_RichModel):
+    type: Literal["separator"]
+    label: LabelText | None = None
+
+
+class UIQuote(_RichModel):
+    type: Literal["quote"]
+    text: LongText
+    attribution: ShortText | None = None
+
+
+class UISource(_RichModel):
+    label: ShortText
+    url: HttpUrl
+    description: ShortText | None = None
+
+
+class UISources(_RichModel):
+    type: Literal["sources"]
+    items: list[UISource] = Field(min_length=1, max_length=12)
+
+
+class UIProgress(_RichModel):
+    type: Literal["progress"]
+    label: LabelText
+    value: float = Field(ge=0, le=100)
+    detail: ShortText | None = None
 
 
 class UITable(_RichModel):
     type: Literal["table"]
     columns: list[LabelText] = Field(min_length=1, max_length=8)
     rows: list[list[ShortText]] = Field(min_length=1, max_length=50)
+    caption: ShortText | None = None
+    column_widths: list[Annotated[int, Field(ge=1, le=12)]] | None = Field(default=None, min_length=1, max_length=8)
 
     @model_validator(mode="after")
     def validate_rows(self) -> UITable:
         if any(len(row) != len(self.columns) for row in self.rows):
             raise ValueError("table rows must match columns")
+        if self.column_widths is not None and len(self.column_widths) != len(self.columns):
+            raise ValueError("table column widths must match columns")
         return self
 
 
@@ -170,13 +254,33 @@ class UITimeline(_RichModel):
 
 
 UIComponent = Annotated[
-    UIText | UIBadge | UILink | UICallout | UILayout | UICard | UISteps | UITable | UIChart | UIStats | UITimeline,
+    UIText
+    | UIProse
+    | UIBadge
+    | UILink
+    | UICallout
+    | UILayout
+    | UICard
+    | UISection
+    | UISteps
+    | UIList
+    | UIFacts
+    | UISeparator
+    | UIQuote
+    | UISources
+    | UIProgress
+    | UITable
+    | UIChart
+    | UIStats
+    | UITimeline,
     Field(discriminator="type"),
 ]
 
 
 class UIBlock(_RichModel):
     title: ShortText | None = None
+    eyebrow: LabelText | None = None
+    description: LongText | None = None
     children: list[UIComponent] = Field(min_length=1, max_length=12)
 
     @model_validator(mode="after")
@@ -188,7 +292,7 @@ class UIBlock(_RichModel):
             count += 1
             if count > MAX_UI_COMPONENTS or depth > MAX_UI_DEPTH:
                 raise ValueError("UI component count or depth limit exceeded")
-            if isinstance(child, UILayout | UICard):
+            if isinstance(child, UILayout | UICard | UISection):
                 pending.extend((item, depth + 1) for item in child.children)
         return self
 
@@ -205,7 +309,19 @@ _RICH_MODELS: dict[str, type[_RichModel]] = {
 
 
 def _rich_placeholder(kind: str, data: _RichModel) -> str:
-    serialized = json.dumps(data.model_dump(mode="json", exclude_none=True), ensure_ascii=False, separators=(",", ":"))
+    payload = data.model_dump(mode="json", exclude_none=True)
+    if kind == "ui":
+        # HTML is produced only by this parser, never accepted from model JSON.
+        parser = MarkdownIt("commonmark", {"html": False}).disable("image")
+
+        def compile_prose(node: dict[str, Any]) -> None:
+            if node.get("type") == "prose":
+                node["rendered"] = parser.render(node["text"])
+            for child in node.get("children", []):
+                compile_prose(child)
+
+        compile_prose(payload)
+    serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     encoded = html.escape(serialized, quote=True)
     return f'<div class="md-rich-block" data-rich-kind="{kind}" data-rich-config="{encoded}"></div>'
 

@@ -15,10 +15,11 @@ import "prismjs/components/prism-sql";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-yaml";
 import "./vendor.css";
+import { renderMessageUI } from "./message-ui";
 
 use([BarChart, LineChart, PieChart, GridComponent, LegendComponent, AriaComponent, SVGRenderer]);
 
-const CHART_COLORS = ["#2563eb", "#0f9f6e", "#f59e0b", "#ef4444", "#8b5cf6", "#0891b2", "#db2777", "#64748b"];
+const CHART_COLORS = ["#18181b", "#6366f1", "#a1a1aa", "#059669", "#d97706", "#64748b", "#be123c", "#0891b2"];
 const renderState = { state: "pending", errors: [] };
 window.__FRONTIER_RENDER__ = renderState;
 
@@ -59,7 +60,7 @@ function chartOption(config) {
       label: { description: config.title || "数据图表" },
     },
     color: CHART_COLORS,
-    textStyle: { fontFamily: "Noto Sans CJK SC, Microsoft YaHei, sans-serif" },
+    textStyle: { fontFamily: "Noto Sans CJK SC, Microsoft YaHei, sans-serif", fontSize: 18, color: "#52525b" },
     toolbox: { show: false },
     tooltip: { show: false },
   };
@@ -67,13 +68,13 @@ function chartOption(config) {
   if (config.type === "pie") {
     return {
       ...common,
-      legend: config.show_legend ? { type: "plain", bottom: 0 } : { show: false },
+      legend: config.show_legend ? { type: "plain", bottom: 0, textStyle: { fontSize: 16 } } : { show: false },
       series: [{
         type: "pie",
         radius: ["34%", "68%"],
         center: ["50%", "46%"],
         data: config.data,
-        label: { formatter: "{b}: {d}%", overflow: "truncate" },
+        label: { formatter: "{b}: {d}%", overflow: "truncate", fontSize: 16 },
         avoidLabelOverlap: true,
         silent: true,
       }],
@@ -89,18 +90,19 @@ function chartOption(config) {
       bottom: config.show_legend ? 82 : 58,
       containLabel: true,
     },
-    legend: config.show_legend ? { bottom: 0 } : { show: false },
+    legend: config.show_legend ? { bottom: 0, textStyle: { fontSize: 16 } } : { show: false },
     xAxis: {
       type: "category",
       data: config.labels,
-      axisLabel: axisLabel(config.labels),
+      axisLabel: { ...axisLabel(config.labels), fontSize: 16 },
       axisTick: { alignWithLabel: true },
     },
     yAxis: {
       type: "value",
       name: config.unit || "",
       scale: config.type === "line",
-      splitLine: { lineStyle: { color: "#e4eaf2" } },
+      axisLabel: { fontSize: 16 },
+      splitLine: { lineStyle: { color: "#e4e4e7" } },
     },
     series: config.series.map((series) => ({
       name: series.name,
@@ -164,7 +166,7 @@ function renderChart(container, config) {
 
 function renderStats(container, config) {
   addTitle(container, config);
-  const grid = element("div", "md-stats-grid");
+  const grid = element("div", `md-stats-grid md-stats-${config.variant || "plain"}`);
   grid.style.setProperty("--md-stats-columns", String(config.columns));
   config.items.forEach((item) => {
     const card = element("section", `md-stat-card md-status-${item.status}`);
@@ -194,66 +196,6 @@ function renderTimeline(container, config) {
   container.append(timeline);
 }
 
-function renderUIComponent(config, pendingCharts) {
-  const type = config.type;
-  let node;
-  if (["row", "column", "grid", "card"].includes(type)) {
-    node = element(type === "card" ? "section" : "div", `md-ui-${type}`);
-    if (type === "grid") node.style.setProperty("--md-ui-columns", String(config.columns));
-    if (config.title) node.append(element("h3", "md-ui-card-title", config.title));
-    node.append(...config.children.map((child) => renderUIComponent(child, pendingCharts)));
-  } else if (type === "heading" || type === "text") {
-    node = element(type === "heading" ? "h3" : "p", `md-ui-${type}`, config.text);
-  } else if (type === "badge") {
-    node = element("span", `md-ui-badge md-status-${config.status}`, config.text);
-  } else if (type === "callout") {
-    node = element("aside", `md-ui-callout md-status-${config.status}`);
-    if (config.title) node.append(element("strong", "md-ui-callout-title", config.title));
-    node.append(element("p", "md-ui-text", config.text));
-  } else if (type === "link") {
-    node = element("div", "md-ui-link");
-    node.append(element("strong", null, config.label), element("div", "md-ui-url", config.url));
-  } else if (type === "code") {
-    node = element("pre", "md-ui-code");
-    node.append(element("code", null, config.text));
-  } else if (type === "mermaid") {
-    node = element("div", "mermaid", config.text);
-  } else if (type === "steps") {
-    node = element("ol", "md-ui-steps");
-    node.append(...config.items.map((item) => element("li", null, item)));
-  } else if (type === "table") {
-    node = element("table", "md-ui-table");
-    const head = element("thead");
-    const row = element("tr");
-    row.append(...config.columns.map((label) => element("th", null, label)));
-    head.append(row);
-    const body = element("tbody");
-    config.rows.forEach((values) => {
-      const item = element("tr");
-      item.append(...values.map((value) => element("td", null, value)));
-      body.append(item);
-    });
-    node.append(head, body);
-  } else if (["chart", "stats", "timeline"].includes(type)) {
-    node = element("div", "md-ui-data");
-    if (type === "chart") pendingCharts.push(() => renderChart(node, config.config));
-    else if (type === "stats") renderStats(node, config.config);
-    else renderTimeline(node, config.config);
-  } else {
-    throw new Error(`Unsupported UI component: ${type}`);
-  }
-  return node;
-}
-
-function renderUI(container, config) {
-  container.classList.add("md-ui-document");
-  if (config.title) container.append(element("h2", "md-ui-title", config.title));
-  const pendingCharts = [];
-  container.append(...config.children.map((child) => renderUIComponent(child, pendingCharts)));
-  // ECharts needs attached layout dimensions; detached nodes produce empty SVGs.
-  pendingCharts.forEach((render) => render());
-}
-
 function renderRichBlocks() {
   document.querySelectorAll(".md-rich-block").forEach((container) => {
     try {
@@ -262,7 +204,7 @@ function renderRichBlocks() {
       if (kind === "chart") renderChart(container, config);
       else if (kind === "stats") renderStats(container, config);
       else if (kind === "timeline") renderTimeline(container, config);
-      else if (kind === "ui") renderUI(container, config);
+      else if (kind === "ui") renderMessageUI(container, config, { renderChart, renderStats, renderTimeline, renderMath });
       else throw new Error(`Unsupported rich block: ${kind}`);
       container.dataset.richRendered = "true";
     } catch (error) {
@@ -273,8 +215,8 @@ function renderRichBlocks() {
   });
 }
 
-function renderMath() {
-  renderMathInElement(document.body, {
+function renderMath(root = document.body, rich = false) {
+  renderMathInElement(root, {
     delimiters: [
       { left: "$$", right: "$$", display: true },
       { left: "$", right: "$", display: false },
@@ -284,7 +226,7 @@ function renderMath() {
     throwOnError: false,
     strict: false,
     trust: false,
-    ignoredClasses: ["mermaid", "md-rich-block"],
+    ignoredClasses: rich ? ["mermaid"] : ["mermaid", "md-rich-block"],
     macros: {
       "\\RR": "\\mathbb{R}",
       "\\NN": "\\mathbb{N}",
@@ -300,7 +242,7 @@ async function renderMermaid() {
     startOnLoad: false,
     securityLevel: "strict",
     htmlLabels: false,
-    theme: "default",
+    theme: "neutral",
   });
 
   for (const node of document.querySelectorAll(".mermaid")) {

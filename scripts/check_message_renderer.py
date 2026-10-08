@@ -126,44 +126,60 @@ ui = {
     ],
 }
 
-article_ui = {
-    "title": "长图排版回归示例",
-    "children": [
-        {"type": "callout", "title": "先看结论", "text": "以下为排版示例，用于检查长图中的字体、模块间距和表格列宽。"},
+
+def load_cases():
+    cases = {"compat": ui}
+    for name in ("article", "comparison", "guide"):
+        cases[name] = json.loads((PROJECT_ROOT / "skills" / "rich-markdown" / "examples" / f"{name}.json").read_text())
+    cases["compat"]["children"].append(
         {
-            "type": "stats",
-            "config": {
-                "columns": 4,
-                "items": [
-                    {"label": "手稿", "value": "719", "unit": "篇", "detail": "示例数据，持续更新"},
-                    {"label": "结果族", "value": "372", "detail": "按数学分支分类"},
-                    {"label": "主结果已形式化", "value": "42", "unit": "%", "status": "success"},
-                    {"label": "平均算力", "value": "3", "unit": "小时 ChatGPT Pro"},
-                ],
-            },
-        },
-        {
-            "type": "card",
-            "title": "仓库里有什么",
-            "children": [{"type": "steps", "items": [
-                "preprints/：每篇的 PDF、源文件、单独的构建说明和引用信息",
-                "lean/：形式化库和形式化目录",
-                "Comparator：按 JSON 配置逐个核对指定定理、解答模块和允许的公理",
-            ]}],
-        },
-        {
-            "type": "table",
-            "columns": ["族", "结果说明"],
-            "rows": [
-                ["003", "这是一段较长的结果说明，包含 Dirichlet L 函数与数学符号，用来验证说明列获得足够空间。"],
-                ["074", "三维柱谷极大函数猜想与四维 Hausdorff 维数猜想"],
-                ["002 / 006", "每条有理椭圆曲线的二次扭曲族上，完整的公式应当清楚可读。"],
-            ],
-        },
-        {"type": "callout", "title": "阅读提示", "text": "示例结果仅用于验证排版。长图保留完整内容，点开后可以放大阅读。", "status": "warning"},
-        {"type": "link", "label": "示例仓库", "url": "https://github.com/example/math"},
-    ],
-}
+            "type": "prose",
+            "text": "**粗体与公式** $E=mc^2$ <script>window.injection = true</script> "
+            "[危险链接](javascript:alert(1)) ![不加载图片](https://example.com/image.png)",
+        }
+    )
+    return cases
+
+
+def case_checks(name, observed, width, image):
+    checks = {}
+    if name == "compat":
+        checks.update(
+            {
+                "long_image": image.height > 1500,
+                "chart": observed["chart"] == "true"
+                and observed["chartWidth"] > 100
+                and observed["chartHeight"] > 100
+                and observed["chartPaths"] >= 3,
+                "mermaid": observed["mermaid"] == "true",
+                "prose": observed["bold"] and observed["math"] and observed["images"] == 0,
+                "escaped_text": "window.injection = true" in observed["text"],
+                "responsive_grid": len(observed["gridColumns"].split()) == (2 if width == 1000 else 1),
+            }
+        )
+    elif name == "article":
+        checks.update(
+            {
+                "article_composition": observed["sections"] == 2 and observed["cards"] == 0,
+                "article_content": observed["bold"] and observed["list"] and observed["facts"] and observed["sources"],
+            }
+        )
+    elif name == "comparison":
+        checks.update(
+            {
+                "comparison_composition": observed["cards"] == 3
+                and observed["weightedTable"] == 3
+                and observed["footer"]
+                and observed["labelSize"] >= 18
+                and observed["tableSize"] >= 19,
+                "responsive_grid": len(observed["gridColumns"].split()) == (2 if width == 1000 else 1),
+            }
+        )
+    elif name == "guide":
+        checks.update(
+            {"guide_composition": observed["progress"] == "50" and observed["quote"] and observed["sources"]}
+        )
+    return checks
 
 
 async def verify(output_dir: Path) -> None:
@@ -171,92 +187,104 @@ async def verify(output_dir: Path) -> None:
     original_wait = markdown_render._wait_for_renderer_ready
     original_logging = markdown_render._attach_page_logging
     try:
-        for width in (1000, 390):
-            observed = {}
-            page_errors = []
-            blocked_remote_requests = []
-            ui["title"] = f"Frontier · 方案比较与任务说明 · {width}"
-            source = "以下为混合模块示例。\n\n```ui\n" + json.dumps(ui, ensure_ascii=False) + "\n```\n\n$E=mc^2$\n"
-            source += "\n```ui\n" + json.dumps(article_ui, ensure_ascii=False) + "\n```\n"
+        for name, case in load_cases().items():
+            for width in (1000, 390):
+                observed = {}
+                page_errors = []
+                remote_requests = []
+                source = "```ui\n" + json.dumps(case, ensure_ascii=False) + "\n```\n"
 
-            async def after_load(page, observed=observed):
-                await original_wait(page)
-                observed.update(
-                    await page.evaluate("""() => {
-                    const article = [...document.querySelectorAll('.md-ui-document')].at(-1);
-                    const table = article.querySelector('.md-ui-table');
-                    const cells = table.querySelectorAll('th');
-                    const modules = [...article.children].map(node => node.getBoundingClientRect());
-                    return {
-                    title: document.title,
-                    state: window.__FRONTIER_RENDER__,
-                    text: document.body.textContent,
-                    width: document.querySelector('#markdown-content').clientWidth,
-                    scrollWidth: document.querySelector('#markdown-content').scrollWidth,
-                    chart: document.querySelector('[data-chart-rendered]')?.dataset.chartRendered,
-                    chartWidth: document.querySelector('.md-chart-canvas svg')?.getBoundingClientRect().width,
-                    chartHeight: document.querySelector('.md-chart-canvas svg')?.getBoundingClientRect().height,
-                    chartPaths: document.querySelectorAll('.md-chart-canvas svg path').length,
-                    mermaid: document.querySelector('[data-mermaid-rendered]')?.dataset.mermaidRendered,
-                    gridColumns: getComputedStyle(document.querySelector('.md-ui-grid')).gridTemplateColumns,
-                    scripts: document.querySelectorAll('#markdown-content script').length,
-                    height: document.querySelector('#markdown-content').scrollHeight,
-                    articleGaps: modules.slice(1).map((rect, i) => rect.top - modules[i].bottom),
-                    shortColumnRatio: cells[0].getBoundingClientRect().width / table.getBoundingClientRect().width,
-                    statLabelSize: parseFloat(getComputedStyle(article.querySelector('.md-stat-label')).fontSize),
-                    tableTextSize: parseFloat(getComputedStyle(table).fontSize)
-                }}""")
-                )
+                async def after_load(page, observed=observed):
+                    await original_wait(page)
+                    observed.update(
+                        await page.evaluate("""() => {
+                        const doc = document.querySelector('.md-ui-document');
+                        const modules = [...doc.children].map(node => node.getBoundingClientRect());
+                        const table = doc.querySelector('.md-ui-table');
+                        const chart = doc.querySelector('.md-chart-canvas svg');
+                        const prose = doc.querySelector('.md-ui-prose');
+                        const grid = doc.querySelector('.md-ui-grid');
+                        const label = doc.querySelector('.md-stat-label');
+                        const progress = doc.querySelector('[role=progressbar]');
+                        return {
+                            title: document.title,
+                            state: window.__FRONTIER_RENDER__,
+                            text: document.body.textContent,
+                            width: document.querySelector('#markdown-content').clientWidth,
+                            scrollWidth: document.querySelector('#markdown-content').scrollWidth,
+                            chart: doc.querySelector('[data-chart-rendered]')?.dataset.chartRendered,
+                            chartWidth: chart?.getBoundingClientRect().width,
+                            chartHeight: chart?.getBoundingClientRect().height,
+                            chartPaths: chart?.querySelectorAll('path').length,
+                            mermaid: doc.querySelector('[data-mermaid-rendered]')?.dataset.mermaidRendered,
+                            gridColumns: grid ? getComputedStyle(grid).gridTemplateColumns : null,
+                            scripts: doc.querySelectorAll('script').length,
+                            images: prose?.querySelectorAll('img').length,
+                            unsafeLinks: doc.querySelectorAll('a[href^="javascript:"]').length,
+                            math: !!prose?.querySelector('.katex'),
+                            bold: !!prose?.querySelector('strong'),
+                            gaps: modules.slice(1).map((rect, i) => rect.top - modules[i].bottom),
+                            shortColumnRatio: table ? table.querySelector('th').getBoundingClientRect().width
+                                / table.getBoundingClientRect().width : null,
+                            labelSize: label ? parseFloat(getComputedStyle(label).fontSize) : null,
+                            tableSize: table ? parseFloat(getComputedStyle(table).fontSize) : null,
+                            sections: doc.querySelectorAll('.md-ui-section').length,
+                            cards: doc.querySelectorAll('.md-ui-card').length,
+                            list: !!doc.querySelector('.md-list-divided'),
+                            facts: !!doc.querySelector('dl'),
+                            quote: !!doc.querySelector('.md-ui-quote'),
+                            sources: !!doc.querySelector('.md-ui-sources'),
+                            progress: progress?.getAttribute('aria-valuenow'),
+                            weightedTable: doc.querySelectorAll('colgroup col').length,
+                            footer: !!doc.querySelector('.md-ui-card-footer')
+                        };
+                    }""")
+                    )
 
-            def logging(page, page_errors=page_errors, blocked_remote_requests=blocked_remote_requests):
-                original_logging(page)
-                page.on("pageerror", lambda error: page_errors.append(str(error)))
-                page.on(
-                    "request",
-                    lambda request: (
-                        blocked_remote_requests.append(request.url)
-                        if request.url.startswith(("http:", "https:"))
-                        else None
-                    ),
-                )
+                def logging(page, page_errors=page_errors, remote_requests=remote_requests):
+                    original_logging(page)
+                    page.on("pageerror", lambda error: page_errors.append(str(error)))
+                    page.on(
+                        "request",
+                        lambda request: (
+                            remote_requests.append(request.url)
+                            if request.url.startswith(("http:", "https:"))
+                            else None
+                        ),
+                    )
 
-            markdown_render._wait_for_renderer_ready = after_load
-            markdown_render._attach_page_logging = logging
-            png = await markdown_render.markdown_to_image(source, width=width)
-            if not png:
-                raise RuntimeError("Renderer returned no image")
-            image = Image.open(io.BytesIO(png))
-            (output_dir / f"ui-{width}.png").write_bytes(png)
-            checks = {
-                "page_identity": observed["title"] == "Markdown Rendered",
-                "meaningful_content": ui["title"] in observed["text"],
-                "ready": observed["state"]["state"] == "ready",
-                "no_render_errors": not observed["state"]["errors"] and not page_errors,
-                "chart": observed["chart"] == "true",
-                "chart_geometry": observed["chartWidth"] > 100 and observed["chartHeight"] > 100
-                and observed["chartPaths"] >= 3,
-                "mermaid": observed["mermaid"] == "true",
-                "escaped_text": observed["scripts"] == 0 and "window.injection = true" in observed["text"],
-                "no_remote_requests": not blocked_remote_requests,
-                "no_horizontal_overflow": observed["scrollWidth"] <= observed["width"],
-                "long_image": image.height > 1500 and image.width == width,
-                "responsive_grid": len(observed["gridColumns"].split()) == (2 if width == 1000 else 1),
-                "article_spacing": all(gap >= 23 for gap in observed["articleGaps"]),
-                "content_table_columns": observed["shortColumnRatio"] < 0.3,
-                "readable_secondary_text": observed["statLabelSize"] >= 18 and observed["tableTextSize"] >= 19,
-            }
-            result = {
-                "viewport": width,
-                "png_size": image.size,
-                "bytes": len(png),
-                "checks": checks,
-                "render_errors": observed["state"]["errors"],
-                "page_errors": page_errors,
-            }
-            (output_dir / f"ui-{width}.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
-            print(json.dumps(result, ensure_ascii=False))
-            if not all(checks.values()):
-                raise RuntimeError(f"Renderer smoke check failed: {result}")
+                markdown_render._wait_for_renderer_ready = after_load
+                markdown_render._attach_page_logging = logging
+                png = await markdown_render.markdown_to_image(source, width=width)
+                if not png:
+                    raise RuntimeError("Renderer returned no image")
+                image = Image.open(io.BytesIO(png))
+                (output_dir / f"{name}-{width}.png").write_bytes(png)
+                checks = {
+                    "page_identity": observed["title"] == "Markdown Rendered",
+                    "meaningful_content": case["title"] in observed["text"],
+                    "ready": observed["state"]["state"] == "ready",
+                    "no_render_errors": not observed["state"]["errors"] and not page_errors,
+                    "no_remote_requests": not remote_requests,
+                    "no_horizontal_overflow": observed["scrollWidth"] <= observed["width"],
+                    "image_size": image.width == width and image.height > 600,
+                    "spacing": all(gap >= 25 for gap in observed["gaps"]),
+                    "no_injected_content": observed["scripts"] == 0 and observed["unsafeLinks"] == 0,
+                }
+                checks.update(case_checks(name, observed, width, image))
+                result = {
+                    "case": name,
+                    "viewport": width,
+                    "png_size": image.size,
+                    "bytes": len(png),
+                    "checks": checks,
+                    "render_errors": observed["state"]["errors"],
+                    "page_errors": page_errors,
+                }
+                (output_dir / f"{name}-{width}.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+                print(json.dumps(result, ensure_ascii=False))
+                if not all(checks.values()):
+                    raise RuntimeError(f"Renderer smoke check failed: {result}")
     finally:
         markdown_render._wait_for_renderer_ready = original_wait
         markdown_render._attach_page_logging = original_logging
