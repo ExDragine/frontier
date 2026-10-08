@@ -288,7 +288,7 @@ hr {
 }
 .md-ui-document > * { margin: 0; }
 .md-ui-title {
-    margin: 0 0 28px;
+    margin: 0;
     padding: 0;
     border: 0;
     color: #152236;
