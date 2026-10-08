@@ -55,7 +55,7 @@ function component(config, pendingCharts, renderers) {
     node.append(...children());
   } else if (type === "card" || type === "section") {
     node = element(type === "section" ? "section" : "article",
-      type === "section" ? "md-ui-section" : `md-ui-card md-card-${config.variant || "outline"}`);
+      type === "section" ? "md-ui-section" : `md-ui-card md-card-${config.variant || "outline"} md-color-${config.color || "neutral"}`);
     const top = header(config, "md-ui-card-title");
     if (top) node.append(top);
     const body = element("div", "md-ui-content");
@@ -92,6 +92,34 @@ function component(config, pendingCharts, renderers) {
       item.append(element("div", "md-ui-url", source.url));
       node.append(item);
     });
+  } else if (["image", "map", "iframe"].includes(type)) {
+    node = element("figure", `md-ui-media md-media-${type}`);
+    if (config.title) node.append(element("h3", "md-ui-card-title", config.title));
+    if (config.media_data) {
+      if (type === "iframe") {
+        const frame = element("iframe", "md-ui-frame");
+        frame.setAttribute("sandbox", "");
+        frame.setAttribute("title", config.title);
+        frame.setAttribute("referrerpolicy", "no-referrer");
+        frame.style.aspectRatio = `${config.media_width} / ${config.media_height}`;
+        frame.srcdoc = '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; img-src data:; style-src &apos;unsafe-inline&apos;"><style>html,body{margin:0;background:#fff}img{display:block;width:100%;height:auto}</style></head><body><img alt="" src="' + config.media_data + '"></body></html>';
+        node.append(frame);
+      } else {
+        const picture = element("img", `md-ui-picture md-fit-${config.fit || "contain"} md-aspect-${config.aspect || "original"}`);
+        picture.src = config.media_data;
+        picture.alt = config.alt || config.title || "地图";
+        picture.width = config.media_width;
+        picture.height = config.media_height;
+        node.append(picture);
+      }
+    } else {
+      node.append(element("div", "md-media-fallback", config.media_error || "素材未能加载，请查看原链接。"));
+    }
+    if (config.caption) node.append(element("figcaption", "md-ui-description", config.caption));
+    if (type === "map") {
+      node.append(element("div", "md-ui-url", `WGS84 · ${config.latitude}, ${config.longitude} · © OpenStreetMap contributors`));
+    }
+    node.append(element("div", "md-ui-url", config.source_url || config.url || "https://www.openstreetmap.org/"));
   } else if (type === "code") {
     node = element("pre", "md-ui-code");
     node.append(element("code", null, config.text));

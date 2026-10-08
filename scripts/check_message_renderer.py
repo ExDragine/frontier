@@ -19,7 +19,7 @@ from PIL import Image
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils import browser_runtime, markdown_render  # noqa: E402
+from utils import browser_runtime, markdown_media, markdown_render  # noqa: E402
 
 ui = {
     "title": "Frontier · 方案比较与任务说明",
@@ -129,7 +129,7 @@ ui = {
 
 def load_cases():
     cases = {"compat": ui}
-    for name in ("article", "comparison", "guide"):
+    for name in ("article", "comparison", "guide", "media"):
         cases[name] = json.loads((PROJECT_ROOT / "skills" / "rich-markdown" / "examples" / f"{name}.json").read_text())
     cases["compat"]["children"].append(
         {
@@ -179,13 +179,58 @@ def case_checks(name, observed, width, image):
         checks.update(
             {"guide_composition": observed["progress"] == "50" and observed["quote"] and observed["sources"]}
         )
+    if name == "media":
+        checks.update(
+            {
+                "media_images": len(observed["mediaImages"]) == 2 and all(observed["mediaImages"]),
+                "isolated_frame": observed["frame"] and 0.4 < observed["frameRatio"] < 1.4,
+                "card_colors": len(set(observed["colored"])) == 2,
+                "failure_fallback": observed["fallback"],
+                "badges_fit": len(observed["badgeWidths"]) == 4 and max(observed["badgeWidths"]) < 100,
+                "trailing_spacing": observed["trailingGap"] >= 25,
+            }
+        )
     return checks
+
+
+async def fixture_address(url):
+    return "8.8.8.8", "example.com"
+
+
+async def fixture_get(self, url, **kwargs):
+    """Deterministic public-source fixtures; production capture/render functions stay real."""
+    if url.endswith("unavailable.png"):
+        raise ValueError("Expected fixture failure")
+    if url.endswith("demo.png"):
+        buffer = io.BytesIO()
+        picture = Image.new("RGB", (900, 480), "#dbeafe")
+        from PIL import ImageDraw
+
+        draw = ImageDraw.Draw(picture)
+        draw.rounded_rectangle((70, 60, 450, 410), radius=35, fill="#60a5fa")
+        draw.ellipse((510, 90, 800, 380), fill="#a78bfa")
+        draw.line((0, 440, 900, 440), fill="#1d4ed8", width=4)
+        picture.save(buffer, format="PNG")
+        return buffer.getvalue(), "image/png"
+    if "openstreetmap.org" in url:
+        body = '<h1>地图加载测试 · 非真实底图</h1><img class="leaflet-tile" src="https://example.com/media/demo.png" style="width:85%;height:240px;object-fit:cover"><p>31.2304, 121.4737 · 测试标记</p>'
+    else:
+        body = '<h1>独立页面 · 公开仪表盘测试</h1><p>此模块在隔离浏览器中加载，然后以离线快照嵌入。</p><div style="display:flex;gap:24px"><section style="background:#ecfdf5"><h2>资料</h2><p>静态图像</p></section><section style="background:#f5f3ff"><h2>网页</h2><p>独立模块</p></section></div>'
+    page = (
+        '<!doctype html><meta charset="utf-8"><style>body{margin:30px;font:24px sans-serif;color:#18181b}section{padding:30px;border-radius:16px}h1{font-size:32px}</style>'
+        + body
+    )
+    return page.encode(), "text/html; charset=utf-8"
 
 
 async def verify(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     original_wait = markdown_render._wait_for_renderer_ready
     original_logging = markdown_render._attach_page_logging
+    original_fetch = markdown_media.PublicFetcher.get
+    original_address = markdown_media.public_address
+    markdown_media.PublicFetcher.get = fixture_get
+    markdown_media.public_address = fixture_address
     try:
         for name, case in load_cases().items():
             for width in (1000, 390):
@@ -193,6 +238,9 @@ async def verify(output_dir: Path) -> None:
                 page_errors = []
                 remote_requests = []
                 source = "```ui\n" + json.dumps(case, ensure_ascii=False) + "\n```\n"
+
+                if name == "media":
+                    source += "\n外部模块之后的普通正文也需要保持间距。\n"
 
                 async def after_load(page, observed=observed):
                     await original_wait(page)
@@ -236,7 +284,14 @@ async def verify(output_dir: Path) -> None:
                             sources: !!doc.querySelector('.md-ui-sources'),
                             progress: progress?.getAttribute('aria-valuenow'),
                             weightedTable: doc.querySelectorAll('colgroup col').length,
-                            footer: !!doc.querySelector('.md-ui-card-footer')
+                            footer: !!doc.querySelector('.md-ui-card-footer'),
+                            mediaImages: [...doc.querySelectorAll('.md-ui-picture')].map(i => i.complete && i.naturalWidth > 100),
+                            frame: !!doc.querySelector('iframe[sandbox=""]'),
+                            frameRatio: doc.querySelector('iframe')?.getBoundingClientRect().height / doc.querySelector('iframe')?.getBoundingClientRect().width,
+                            colored: [...doc.querySelectorAll('.md-ui-card')].map(c => getComputedStyle(c).backgroundColor),
+                            badgeWidths: [...doc.querySelectorAll('.md-ui-row > .md-ui-badge')].map(b => b.getBoundingClientRect().width),
+                            fallback: !!doc.querySelector('.md-media-fallback'),
+                            trailingGap: doc.nextElementSibling ? doc.nextElementSibling.getBoundingClientRect().top - doc.getBoundingClientRect().bottom : null
                         };
                     }""")
                     )
@@ -288,6 +343,8 @@ async def verify(output_dir: Path) -> None:
     finally:
         markdown_render._wait_for_renderer_ready = original_wait
         markdown_render._attach_page_logging = original_logging
+        markdown_media.PublicFetcher.get = original_fetch
+        markdown_media.public_address = original_address
         await browser_runtime.close_browser()
 
 

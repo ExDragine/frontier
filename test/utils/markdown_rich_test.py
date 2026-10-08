@@ -137,7 +137,7 @@ def test_ui_capacity_is_bounded_across_the_whole_tree():
         assert "md-rich-block" not in rendered
 
 
-@pytest.mark.parametrize("name", ["article", "comparison", "guide"])
+@pytest.mark.parametrize("name", ["article", "comparison", "guide", "media"])
 def test_skill_examples_match_the_live_component_contract(name):
     root = Path(__file__).resolve().parents[2] / "skills" / "rich-markdown" / "examples"
     block = json.loads((root / f"{name}.json").read_text())

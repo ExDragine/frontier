@@ -30,6 +30,9 @@ description: Compose readable QQ long-image replies for explanations, comparison
 | 需要原样摘录的真实文字 | `quote`，注明出处，不把自己的摘要伪装成引文 |
 | 真实已知的完成比例 | `progress`，未知进度直接写未知 |
 | 多个主要话题之间的分界 | `separator`；不要在每两段之间都插线 |
+| 真实地点的空间位置 | `map`，使用已核实的 WGS84 坐标；不靠模型猜坐标 |
+| 实际使用过的图片素材 | `image`，注明含义或来源，按需要保留全图 |
+| 网页、公开仪表盘或独立可视化 | `iframe`，指定公开 URL，作为单独整行模块展示 |
 | 用于查证的链接 | `sources`，只列实际使用过的来源；单个链接用 `link` |
 
 在同一回复里可以混用正文、分区、少量卡片和表格。完整解释不必总在卡片里；普通段落不必每段都加标题。短回复直接发普通 Markdown，不为装饰强制转图。
@@ -38,13 +41,14 @@ description: Compose readable QQ long-image replies for explanations, comparison
 
 - 输出普通 Markdown，或一个 `ui` fenced block。`ui` 使用严格 JSON；顶层可用 `title`、`eyebrow`、`description` 和 `children`，元信息按需要填写。
 - 使用组件内置的变体改变呈现：正文 `body/lead/muted/small`，卡片 `outline/muted/ghost`，列表 `plain/divided/outline`，标签 `secondary/outline/solid`，指标 `plain/cards`。根据内容的主次选择，不要全都使用高强调变体。
+- 卡片可以有自己的 `color`：`neutral/blue/emerald/violet/amber/rose/cyan`。同一对象沿用同一颜色，用颜色帮助区分并列内容；`muted` 为柔和底色，`outline` 为描边与顶部强调。不要用红绿配色暗示不存在的好坏或风险。
 - 长文优先纵向展开。两列用于真正可并列阅读的短内容；长说明、图表和步骤通常占整行。窄屏会自动折叠列，不要依赖横向滚动。
 - 用 `prose` 写需要段落、强调、列表、行内代码或公式的 Markdown；其他组件的文字字段是纯文字。不要在纯文字字段中留下 `**` 或 HTML。
-- 不输出原始 HTML、CSS、JavaScript、任意图表 option、按钮、输入框、折叠区或依赖交互才能读到的内容。QQ 最终收到的是可点开、放大的静态长图。
+- 不输出原始 HTML、CSS、JavaScript、任意图表 option、按钮、输入框、折叠区或依赖交互才能读到的内容。QQ 最终收到的是可点开、放大的静态长图。`iframe` 可展示公开网页的快照，不能在 QQ 图片里操作网页。
 - 保留必要细节，不要为缩略图删减论证，也不要为做成长图补充空话。普通文字默认达到 500 字符也会转图。
 - 需要复制的代码、链接或用户明确要求纯文本时，按全局提示词使用 `send_plain_text`；媒体使用已有媒体工具。
 
-生成 `ui` 前读取 [组件契约](references/components.md)。只在使用数据图表时再读 [数据契约](references/data.md)。不确定组件格式时，使用普通 Markdown。
+生成 `ui` 前读取 [组件契约](references/components.md)。只在使用数据图表时再读 [数据契约](references/data.md)。使用地图、图片或网页模块时再读 [媒体契约](references/media.md)。不确定组件格式时，使用普通 Markdown。
 
 参考不同内容的组合方式，不要照抄其中的内容、模块顺序或来源：
 

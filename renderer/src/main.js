@@ -278,6 +278,13 @@ async function renderDocument() {
         recordError(kind, error);
       }
     }));
+    await Promise.allSettled([...document.querySelectorAll(".md-ui-picture")].map(img => img.decode()));
+    await Promise.allSettled([...document.querySelectorAll(".md-ui-frame")].map(frame =>
+      new Promise(resolve => {
+        frame.addEventListener("load", resolve, { once: true });
+        setTimeout(resolve, 1500);
+      })
+    ));
     await nextFrame();
     await nextFrame();
   } finally {
