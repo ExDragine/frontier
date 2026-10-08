@@ -1,0 +1,16 @@
+{
+  "title": "颜色与媒体组件",
+  "description": "组件演示；示例 URL 仅用于协议与渲染测试。实际使用时替换成已核实素材。",
+  "children": [
+    {"type":"grid","columns":2,"children":[
+      {"type":"card","title":"地点与空间","description":"蓝色作为这一组内容的主题色。","color":"blue","variant":"muted","children":[{"type":"text","text":"地图单独占一行，卡片负责说明地点选择的依据。"}]},
+      {"type":"card","title":"资料与观察","description":"紫色用于另一组独立资料。","color":"violet","variant":"muted","children":[{"type":"text","text":"图片保留完整细节；公开网页作为独立的静态模块展示。"}]}
+    ]},
+    {"type":"section","title":"图片素材","children":[{"type":"image","url":"https://example.com/media/demo.png","alt":"素材加载测试图","caption":"测试素材，非地点实景。","aspect":"landscape","fit":"contain"}]},
+    {"type":"map","title":"地理位置","latitude":31.2304,"longitude":121.4737,"zoom":13,"height":420,"caption":"位置演示；测试环境使用标明为示意图的离线底图，生产环境加载真实 OpenStreetMap。"},
+    {"type":"iframe","url":"https://example.com/media/dashboard","title":"独立网页模块","height":420,"caption":"公开网页快照，QQ 图片中无法操作或滚动。"},
+    {"type":"image","url":"https://example.com/media/unavailable.png","alt":"失败回退测试","caption":"这张测试图片故意不可用，其他模块继续显示。"},
+    {"type":"row","gap":"sm","children":[{"type":"badge","text":"正常","status":"success"},{"type":"badge","text":"提示","status":"warning"},{"type":"badge","text":"注意","status":"danger"},{"type":"badge","text":"默认"}]},
+    {"type":"alert","title":"测试说明","text":"以上为组件测试，不代表实际资料或运行进度。"}
+  ]
+}

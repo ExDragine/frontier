@@ -30,7 +30,7 @@
 | `code` | `text`：代码原文 | 静态代码块 |
 | `mermaid` | `text`：Mermaid 源码 | 不嵌入 HTML 或交互 |
 | `section` | `children` | `title`、`eyebrow`、`description`；无边框分区 |
-| `card` | `children` | `title`、`eyebrow`、`description`、`footer`（200）；`variant`：`outline`（默认）、`muted`、`ghost` |
+| `card` | `children` | `title`、`eyebrow`、`description`、`footer`（200）；`variant`：`outline`（默认）、`muted`、`ghost`；`color`：`neutral`（默认）、`blue/emerald/violet/amber/rose/cyan` |
 | `row` / `column` | `children` | `gap`：`sm/md/lg`（默认 `md`）；row 自动换行 |
 | `grid` | `children` | `columns`：1–3，默认 2；`gap`：`sm/md/lg` |
 | `separator` | 无 | `label`：80 字符，可省略 |
@@ -78,3 +78,5 @@
 ```json
 {"type":"table","caption":"共同维度","columns":["维度","方案 A","方案 B"],"rows":[["维护","自行维护","服务方维护"]]}
 ```
+
+`image/map/iframe` 是独立媒体组件，可以直接放在根 children 或 section 中。契约见 [媒体组件](media.md)。

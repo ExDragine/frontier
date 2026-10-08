@@ -154,6 +154,7 @@ class UICard(_RichModel):
     eyebrow: LabelText | None = None
     footer: ShortText | None = None
     variant: Literal["outline", "muted", "ghost"] = "outline"
+    color: Literal["neutral", "blue", "emerald", "violet", "amber", "rose", "cyan"] = "neutral"
     children: list[UIComponent] = Field(min_length=1, max_length=12)
 
 
@@ -238,6 +239,34 @@ class UITable(_RichModel):
         return self
 
 
+class UIImage(_RichModel):
+    type: Literal["image"]
+    url: HttpUrl
+    alt: ShortText
+    caption: ShortText | None = None
+    fit: Literal["contain", "cover"] = "contain"
+    aspect: Literal["original", "landscape", "portrait", "square"] = "original"
+
+
+class UIFrame(_RichModel):
+    type: Literal["iframe"]
+    url: HttpUrl
+    title: ShortText
+    height: int = Field(default=480, ge=200, le=1200)
+    full_page: bool = True
+    caption: ShortText | None = None
+
+
+class UIMap(_RichModel):
+    type: Literal["map"]
+    latitude: float = Field(ge=-85, le=85)
+    longitude: float = Field(ge=-180, le=180)
+    zoom: int = Field(default=13, ge=2, le=18)
+    height: int = Field(default=480, ge=200, le=1000)
+    title: ShortText | None = None
+    caption: ShortText | None = None
+
+
 class UIChart(_RichModel):
     type: Literal["chart"]
     config: ChartBlock
@@ -270,6 +299,9 @@ UIComponent = Annotated[
     | UISources
     | UIProgress
     | UITable
+    | UIImage
+    | UIFrame
+    | UIMap
     | UIChart
     | UIStats
     | UITimeline,

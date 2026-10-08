@@ -220,6 +220,12 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
         flags=re.DOTALL,
     )
     html_content = render_rich_markdown_blocks(html_content)
+    if any(f'"type":"{kind}"' in html.unescape(html_content) for kind in ("image", "iframe", "map")):
+        from utils.markdown_media import prepare_media
+
+        html_content = await prepare_media(
+            html_content, await _get_browser(), width=width, cache_dir=CACHE_DIR / "message-media" / "tiles"
+        )
 
     if css is None:
         style_block = f'<link rel="stylesheet" href="{(TEMPLATES_DIR / "markdown_render.css").as_uri()}">'

@@ -184,3 +184,30 @@ hr { margin: 32px 0; border: 0; border-top: 1px solid var(--md-border); }
     th, td { padding: 12px 10px; }
     .md-ui-quote { font-size: 22px; }
 }
+
+/* A card owns its accent; variants control how much of that color is visible. */
+.md-color-blue { --md-accent: #1d4ed8; --md-accent-border: #bfdbfe; --md-accent-surface: #eff6ff; }
+.md-color-emerald { --md-accent: #047857; --md-accent-border: #a7f3d0; --md-accent-surface: #ecfdf5; }
+.md-color-violet { --md-accent: #6d28d9; --md-accent-border: #ddd6fe; --md-accent-surface: #f5f3ff; }
+.md-color-amber { --md-accent: #92400e; --md-accent-border: #fde68a; --md-accent-surface: #fffbeb; }
+.md-color-rose { --md-accent: #be123c; --md-accent-border: #fecdd3; --md-accent-surface: #fff1f2; }
+.md-color-cyan { --md-accent: #0e7490; --md-accent-border: #a5f3fc; --md-accent-surface: #ecfeff; }
+.md-ui-card:not(.md-color-neutral) { border-color: var(--md-accent-border); background: var(--md-accent-surface); }
+.md-ui-card:not(.md-color-neutral) .md-ui-card-title,
+.md-ui-card:not(.md-color-neutral) .md-ui-eyebrow { color: var(--md-accent); }
+.md-ui-card:not(.md-color-neutral).md-card-outline { background: var(--md-card); border-top: 3px solid var(--md-accent); }
+.md-ui-card:not(.md-color-neutral).md-card-ghost { background: transparent; }
+.md-ui-row > .md-ui-badge { flex: 0 1 auto; }
+.md-ui-grid > .md-ui-badge { justify-self: start; width: fit-content; }
+.md-ui-document + * { margin-top: 28px; }
+.md-ui-media { display: flex; flex-direction: column; gap: 12px; margin: 0; min-width: 0; }
+.md-ui-picture { display: block; width: 100%; height: auto; border: 1px solid var(--md-border); border-radius: 14px; background: var(--md-muted); }
+.md-aspect-landscape { aspect-ratio: 16 / 9; height: auto; }
+.md-aspect-portrait { aspect-ratio: 3 / 4; height: auto; }
+.md-aspect-square { aspect-ratio: 1; height: auto; }
+.md-fit-contain { object-fit: contain; }
+.md-fit-cover { object-fit: cover; }
+.md-ui-frame { display: block; width: 100%; height: auto; border: 1px solid var(--md-border); border-radius: 14px; background: var(--md-secondary); pointer-events: none; }
+.md-media-fallback { padding: 28px; border: 1px dashed var(--md-border); border-radius: 14px; background: var(--md-secondary); color: var(--md-muted-foreground); }
+
+.md-media-image .md-aspect-original { width: auto; max-width: 100%; align-self: flex-start; }
