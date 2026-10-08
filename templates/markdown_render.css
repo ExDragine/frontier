@@ -274,6 +274,9 @@ hr {
 }
 /* 组合模块：缩略图有清晰层级，点开长图后保留完整细节。 */
 .md-ui-document {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
     padding: 0;
     border: 0;
     background: transparent;
@@ -283,9 +286,9 @@ hr {
     font-size: 22px;
     line-height: 1.65;
 }
-.md-ui-document > * + * { margin-top: 24px; }
+.md-ui-document > * { margin: 0; }
 .md-ui-title {
-    margin: 0 0 28px;
+    margin: 0;
     padding: 0;
     border: 0;
     color: #152236;
@@ -351,12 +354,17 @@ hr {
 .md-ui-steps { margin: 0; padding-left: 1.6em; }
 .md-ui-steps li { padding-left: 8px; margin: 14px 0; white-space: pre-wrap; }
 .md-ui-steps li::marker { color: #365f91; font-weight: 700; }
-.md-ui-table { margin: 0; table-layout: fixed; font-size: 18px; }
-.md-ui-table th, .md-ui-table td { padding: 12px; overflow-wrap: anywhere; }
+.md-ui-table { margin: 0; table-layout: auto; font-size: 21px; line-height: 1.65; }
+.md-ui-table th, .md-ui-table td { padding: 14px 16px; overflow-wrap: anywhere; vertical-align: top; }
+.md-ui-table th:first-child, .md-ui-table td:first-child { min-width: 4.5em; }
 .md-ui-data { min-width: 0; }
 .md-ui-data .md-chart-canvas { height: 380px; }
 .md-ui-data .md-stats-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-.md-ui-data .md-stat-detail, .md-ui-data .md-timeline-content { font-size: 17px; }
+.md-ui-data .md-stat-label { font-size: 18px; line-height: 1.5; }
+.md-ui-data .md-stat-value { font-size: 32px; }
+.md-ui-data .md-stat-unit { font-size: 16px; }
+.md-ui-data .md-stat-detail { font-size: 18px; line-height: 1.5; color: #596579; }
+.md-ui-data .md-timeline-content { font-size: 17px; }
 .md-ui-data .md-timeline-title { font-size: 21px; }
 .md-ui-document .mermaid { overflow: visible; }
 @media (max-width: 600px) {
@@ -364,6 +372,8 @@ hr {
     .md-ui-document { font-size: 19px; }
     .md-ui-title { font-size: 30px; }
     .md-ui-card { padding: 18px; }
+    .md-ui-table { font-size: 19px; }
+    .md-ui-table th, .md-ui-table td { padding: 12px 10px; }
 }
 @media (max-width: 700px) {
     .md-stats-grid {
