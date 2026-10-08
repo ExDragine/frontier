@@ -2,6 +2,135 @@
   "provider": "openai",
   "models": [
     {
+      "id": "gpt-6.1-sol",
+      "display_name": "GPT-6.1 Sol",
+      "description": {
+        "en": "OpenAI's general-purpose GPT-6.1 model for professional and agentic work. Tool calling requires the Responses API; Chat Completions does not support tool calling for this model.",
+        "zh-CN": "OpenAI 面向专业任务与智能体工作流的 GPT-6.1 通用模型。工具调用需要使用 Responses API；该模型的 Chat Completions 接口不支持工具调用。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-04",
+      "released_at": "2026-09-29",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
+      "id": "gpt-6-sol",
+      "display_name": "GPT-6 Sol",
+      "description": {
+        "en": "OpenAI's general-purpose GPT-6 model for coding and professional agent workflows. Chat Completions tool calling requires reasoning_effort=none; the Responses API supports reasoning with tools.",
+        "zh-CN": "OpenAI 面向编程与专业智能体工作流的 GPT-6 通用模型。Chat Completions 工具调用需要 reasoning_effort=none；Responses API 支持推理与工具调用配合使用。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-04",
+      "released_at": "2026-09-22",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-6-sol",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
+      "id": "gpt-6-luna",
+      "display_name": "GPT-6 Luna",
+      "description": {
+        "en": "OpenAI's smaller GPT-6 model for efficient everyday and agentic work. Chat Completions tool calling requires reasoning_effort=none; the Responses API supports reasoning with tools.",
+        "zh-CN": "OpenAI 面向高效日常任务与智能体工作流的小型 GPT-6 模型。Chat Completions 工具调用需要 reasoning_effort=none；Responses API 支持推理与工具调用配合使用。"
+      },
+      "capabilities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "features": [
+          "reasoning",
+          "tool_calling",
+          "structured_output",
+          "web_search",
+          "image_generation"
+        ],
+        "api_modes": [
+          "responses",
+          "chat_completions"
+        ]
+      },
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "knowledge_cutoff": "2026-05",
+      "released_at": "2026-09-22",
+      "status": "active",
+      "sources": [
+        {
+          "url": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://developers.openai.com/api/docs/changelog",
+          "verified_at": "2026-10-08"
+        }
+      ]
+    },
+    {
       "id": "gpt-6-astra",
       "display_name": "GPT-6 Astra",
       "description": {

@@ -15,7 +15,7 @@
 ```python
 from models import ModelFeature, get_model, get_model_display_name, list_models
 
-model = get_model("openai", "gpt-5.6-sol")
+model = get_model("openai", "gpt-6.1-sol")
 assert model is not None
 print(model.display_name)
 print(get_model_display_name("openai", "gpt-image-2"))  # GPT Image 2
@@ -28,6 +28,11 @@ assert get_model("my-provider", "custom-model") is None
 ```
 
 `list_models()` 默认只返回 `active` 模型。传入 `status=None` 可包含所有生命周期状态。返回值和所有模型卡均不可变，便于安全缓存和跨模块共享。
+
+模型功能标签表示模型在至少一种官方 API 中具备该能力，接入时仍需核对具体协议限制。
+例如 GPT-6.1 Sol 的工具调用只支持 Responses API；GPT-6 Sol 和 GPT-6 Luna
+在 Chat Completions 中调用工具需要 `reasoning_effort=none`。MiniMax M3.1 Flash Preview
+目前通过 M Plan 和 MiniMax Code 提供，MiMo V2.6 Pro UltraSpeed 的 API 接入需要定制服务。
 
 ## 字段
 

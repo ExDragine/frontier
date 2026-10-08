@@ -11,6 +11,8 @@ from jsonschema import Draft202012Validator, FormatChecker
 from models import (
     ApiMode,
     ModelFeature,
+    ModelInput,
+    ModelOutput,
     ModelStatus,
     get_model,
     get_model_display_name,
@@ -72,7 +74,7 @@ def test_catalog_invariants() -> None:
         "internlm": {"internlm.intern-ai.org.cn"},
         "jina": {"jina.ai"},
         "longcat": {"longcat.chat"},
-        "minimax": {"platform.minimaxi.com"},
+        "minimax": {"platform.minimaxi.com", "platform.minimax.cn"},
         "mistral": {"docs.mistral.ai"},
         "moonshot": {"platform.kimi.ai", "www.kimi.com"},
         "nvidia": {"build.nvidia.com"},
@@ -117,7 +119,7 @@ def test_load_catalog_returns_frozen_typed_data() -> None:
     expected_model_count = sum(len(_load_resource(entry["file"])["models"]) for entry in manifest["providers"])
 
     assert catalog.schema_version == "1.1"
-    assert catalog.catalog_version == "2026.9.17"
+    assert catalog.catalog_version == manifest["catalog_version"]
     assert len(catalog.models) == expected_model_count
     with pytest.raises(AttributeError):
         catalog.__setattr__("updated_at", "2000-01-01")
@@ -148,6 +150,57 @@ def test_deepseek_v4_models_advertise_responses_api_and_web_search() -> None:
         assert model is not None
         assert ApiMode.RESPONSES in model.capabilities.api_modes
         assert ModelFeature.WEB_SEARCH in model.capabilities.features
+
+
+@pytest.mark.parametrize("model_id", ["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"])
+def test_deepseek_limits_use_exact_api_token_counts(model_id: str) -> None:
+    model = get_model("deepseek", model_id)
+
+    assert model is not None
+    assert model.context_window == 1_048_576
+    assert model.max_output_tokens == 393_216
+
+
+@pytest.mark.parametrize(
+    ("provider", "model_id", "status"),
+    [
+        ("openai", "gpt-6.1-sol", ModelStatus.ACTIVE),
+        ("anthropic", "claude-sonnet-5-5", ModelStatus.ACTIVE),
+        ("xiaomimimo", "mimo-v2.6-pro", ModelStatus.ACTIVE),
+        ("qwen", "qwen3.8-omni-flash", ModelStatus.ACTIVE),
+        ("internlm", "intern-s2", ModelStatus.ACTIVE),
+        ("stepfun", "step-5-preview", ModelStatus.PREVIEW),
+        ("minimax", "MiniMax-M3.1-Flash-Preview", ModelStatus.PREVIEW),
+        ("mistral", "mistral-large-4", ModelStatus.PREVIEW),
+        ("longcat", "LongCat-2.5-Preview", ModelStatus.PREVIEW),
+        ("internlm", "intern-s2-preview", ModelStatus.LEGACY),
+        ("internlm", "intern-s2-preview-397b", ModelStatus.DEPRECATED),
+        ("xiaomimimo", "mimo-v2.5-pro", ModelStatus.DEPRECATED),
+        ("xiaomimimo", "mimo-v2.5", ModelStatus.DEPRECATED),
+    ],
+)
+def test_current_models_obey_default_and_explicit_status_filters(provider: str, model_id: str, status: ModelStatus) -> None:
+    model = get_model(provider.upper(), model_id.upper())
+
+    assert model is not None
+    assert model.id == model_id
+    assert model.status is status
+    assert model in list_models(provider=provider, status=status)
+    assert (model in list_models(provider=provider)) is (status is ModelStatus.ACTIVE)
+
+
+@pytest.mark.parametrize("provider,model_id", [("xiaomimimo", "mimo-v2.6-pro"), ("xiaomimimo", "mimo-v2.6-flash"), ("qwen", "qwen3.8-omni-flash")])
+def test_new_omni_models_advertise_all_input_modalities(provider: str, model_id: str) -> None:
+    model = get_model(provider, model_id)
+
+    assert model is not None
+    assert set(model.capabilities.input) == {ModelInput.TEXT, ModelInput.IMAGE, ModelInput.AUDIO, ModelInput.VIDEO}
+    assert model.capabilities.output == (ModelOutput.TEXT,)
+
+
+def test_new_names_fall_back_to_verified_catalog_when_overlay_has_no_entry() -> None:
+    assert get_model_display_name("anthropic", "claude-sonnet-5-5") == "Claude Sonnet 5.5"
+    assert get_model_display_name("internlm", "intern-s2") == "Intern-S2"
 
 
 def test_list_models_filters_provider_feature_and_status() -> None:

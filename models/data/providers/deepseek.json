@@ -28,23 +28,27 @@
           "messages"
         ]
       },
-      "context_window": 1000000,
-      "max_output_tokens": 384000,
+      "context_window": 1048576,
+      "max_output_tokens": 393216,
       "knowledge_cutoff": null,
       "released_at": "2026-09-10",
       "status": "active",
       "sources": [
         {
           "url": "https://api-docs.deepseek.com/quick_start/pricing/",
-          "verified_at": "2026-09-17"
+          "verified_at": "2026-10-08"
         },
         {
-          "url": "https://api-docs.deepseek.com/news/news260910/",
-          "verified_at": "2026-09-17"
+          "url": "https://api-docs.deepseek.com/api/list-models/",
+          "verified_at": "2026-10-08"
         },
         {
-          "url": "https://api-docs.deepseek.com/guides/thinking_mode/",
-          "verified_at": "2026-09-17"
+          "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/updates/",
+          "verified_at": "2026-10-08"
         }
       ]
     },
@@ -74,23 +78,27 @@
           "messages"
         ]
       },
-      "context_window": 1000000,
-      "max_output_tokens": 384000,
+      "context_window": 1048576,
+      "max_output_tokens": 393216,
       "knowledge_cutoff": null,
       "released_at": "2026-08-13",
       "status": "active",
       "sources": [
         {
           "url": "https://api-docs.deepseek.com/quick_start/pricing/",
-          "verified_at": "2026-09-17"
+          "verified_at": "2026-10-08"
         },
         {
-          "url": "https://api-docs.deepseek.com/news/news260813/",
-          "verified_at": "2026-09-17"
+          "url": "https://api-docs.deepseek.com/api/list-models/",
+          "verified_at": "2026-10-08"
         },
         {
-          "url": "https://api-docs.deepseek.com/news/news260910/",
-          "verified_at": "2026-09-17"
+          "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/updates/",
+          "verified_at": "2026-10-08"
         }
       ]
     },
@@ -121,23 +129,27 @@
           "messages"
         ]
       },
-      "context_window": 1000000,
-      "max_output_tokens": 384000,
+      "context_window": 1048576,
+      "max_output_tokens": 393216,
       "knowledge_cutoff": null,
       "released_at": "2026-04-24",
       "status": "legacy",
       "sources": [
         {
           "url": "https://api-docs.deepseek.com/quick_start/pricing/",
-          "verified_at": "2026-09-17"
+          "verified_at": "2026-10-08"
         },
         {
-          "url": "https://api-docs.deepseek.com/news/news260910/",
-          "verified_at": "2026-09-17"
+          "url": "https://api-docs.deepseek.com/api/list-models/",
+          "verified_at": "2026-10-08"
         },
         {
-          "url": "https://api-docs.deepseek.com/news/news260424/",
-          "verified_at": "2026-09-17"
+          "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/updates/",
+          "verified_at": "2026-10-08"
         }
       ]
     },
@@ -168,23 +180,27 @@
           "messages"
         ]
       },
-      "context_window": 1000000,
-      "max_output_tokens": 384000,
+      "context_window": 1048576,
+      "max_output_tokens": 393216,
       "knowledge_cutoff": null,
       "released_at": "2026-08-21",
       "status": "legacy",
       "sources": [
         {
           "url": "https://api-docs.deepseek.com/quick_start/pricing/",
-          "verified_at": "2026-09-17"
+          "verified_at": "2026-10-08"
         },
         {
-          "url": "https://api-docs.deepseek.com/news/news260910/",
-          "verified_at": "2026-09-17"
+          "url": "https://api-docs.deepseek.com/api/list-models/",
+          "verified_at": "2026-10-08"
         },
         {
-          "url": "https://api-docs.deepseek.com/news/news260821/",
-          "verified_at": "2026-09-17"
+          "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+          "verified_at": "2026-10-08"
+        },
+        {
+          "url": "https://api-docs.deepseek.com/updates/",
+          "verified_at": "2026-10-08"
         }
       ]
     }
