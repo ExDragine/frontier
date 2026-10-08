@@ -149,6 +149,9 @@ async def verify(output_dir: Path) -> None:
                     width: document.querySelector('#markdown-content').clientWidth,
                     scrollWidth: document.querySelector('#markdown-content').scrollWidth,
                     chart: document.querySelector('[data-chart-rendered]')?.dataset.chartRendered,
+                    chartWidth: document.querySelector('.md-chart-canvas svg')?.getBoundingClientRect().width,
+                    chartHeight: document.querySelector('.md-chart-canvas svg')?.getBoundingClientRect().height,
+                    chartPaths: document.querySelectorAll('.md-chart-canvas svg path').length,
                     mermaid: document.querySelector('[data-mermaid-rendered]')?.dataset.mermaidRendered,
                     gridColumns: getComputedStyle(document.querySelector('.md-ui-grid')).gridTemplateColumns,
                     scripts: document.querySelectorAll('#markdown-content script').length,
@@ -181,6 +184,8 @@ async def verify(output_dir: Path) -> None:
                 "ready": observed["state"]["state"] == "ready",
                 "no_render_errors": not observed["state"]["errors"] and not page_errors,
                 "chart": observed["chart"] == "true",
+                "chart_geometry": observed["chartWidth"] > 100 and observed["chartHeight"] > 100
+                and observed["chartPaths"] >= 3,
                 "mermaid": observed["mermaid"] == "true",
                 "escaped_text": observed["scripts"] == 0 and "window.injection = true" in observed["text"],
                 "no_remote_requests": not blocked_remote_requests,

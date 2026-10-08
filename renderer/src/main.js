@@ -194,14 +194,14 @@ function renderTimeline(container, config) {
   container.append(timeline);
 }
 
-function renderUIComponent(config) {
+function renderUIComponent(config, pendingCharts) {
   const type = config.type;
   let node;
   if (["row", "column", "grid", "card"].includes(type)) {
     node = element(type === "card" ? "section" : "div", `md-ui-${type}`);
     if (type === "grid") node.style.setProperty("--md-ui-columns", String(config.columns));
     if (config.title) node.append(element("h3", "md-ui-card-title", config.title));
-    node.append(...config.children.map(renderUIComponent));
+    node.append(...config.children.map((child) => renderUIComponent(child, pendingCharts)));
   } else if (type === "heading" || type === "text") {
     node = element(type === "heading" ? "h3" : "p", `md-ui-${type}`, config.text);
   } else if (type === "badge") {
@@ -236,7 +236,7 @@ function renderUIComponent(config) {
     node.append(head, body);
   } else if (["chart", "stats", "timeline"].includes(type)) {
     node = element("div", "md-ui-data");
-    if (type === "chart") renderChart(node, config.config);
+    if (type === "chart") pendingCharts.push(() => renderChart(node, config.config));
     else if (type === "stats") renderStats(node, config.config);
     else renderTimeline(node, config.config);
   } else {
@@ -248,7 +248,10 @@ function renderUIComponent(config) {
 function renderUI(container, config) {
   container.classList.add("md-ui-document");
   if (config.title) container.append(element("h2", "md-ui-title", config.title));
-  container.append(...config.children.map(renderUIComponent));
+  const pendingCharts = [];
+  container.append(...config.children.map((child) => renderUIComponent(child, pendingCharts)));
+  // ECharts needs attached layout dimensions; detached nodes produce empty SVGs.
+  pendingCharts.forEach((render) => render());
 }
 
 function renderRichBlocks() {
