@@ -431,6 +431,7 @@ def main() -> None:
             encoding="utf-8",
         )
         os.environ["FRONTIER_CONFIG"] = str(config)
+        os.environ["NICKNAME"] = '["Renderer QA"]'
         markdown_render.CACHE_DIR = Path(directory) / "cache"
         asyncio.run(verify(args.output_dir, live_media=args.live_media, fake_ip_dns=args.fake_ip_dns))
 
