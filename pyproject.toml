@@ -17,7 +17,7 @@ dependencies = [
   "langchain-google-genai",
   "langchain-anthropic",
   "langchain-deepseek",
-  "deepagents",
+  "deepagents>=0.7.23,<0.8",
   "beautifulsoup4",
   "playwright",
   "httpx2[http2]",

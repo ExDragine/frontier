@@ -124,16 +124,23 @@ nonebot.init(driver="nonebot.drivers.fastapi:Driver", log_level="WARNING")
 nonebot.require("nonebot_plugin_alconna")
 
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import tool
 from nonebot_plugin_alconna import UniMessage
+from pydantic import Field
 from utils.agents import cognitive
 from utils.agents.runtime import conversation_workspace_key
 from utils.configs import EnvConfig
 
 class ContractModel(FakeMessagesListChatModel):
+    seen_messages: list[list[BaseMessage]] = Field(default_factory=list)
+
     def bind_tools(self, tools, **kwargs):
         return self
+
+    def _generate(self, messages, *args, **kwargs):
+        self.seen_messages.append(list(messages))
+        return super()._generate(messages, *args, **kwargs)
 
 @tool(response_format="content_and_artifact")
 def illustration() -> tuple[str, UniMessage]:
@@ -163,6 +170,16 @@ assert result["status"] == "success", result
 assert result["response"]["messages"][-1].content == "contract completed", result
 assert result["artifacts"][0].kind == "image", result
 assert result["artifacts"][0].data == b"contract-image", result
+assert len(model.seen_messages) == 2, model.seen_messages
+skill_body = (Path(sys.argv[1]) / "skills" / "rich-markdown" / "SKILL.md").read_text().split("---", 2)[2].strip()
+for messages in model.seen_messages:
+    pinned = [message for message in messages if message.additional_kwargs.get("lc_source") == "pinned_skill"]
+    assert len(pinned) == 1, messages
+    assert pinned[0].additional_kwargs["skill"]["name"] == "rich-markdown", pinned[0]
+    assert pinned[0].additional_kwargs["skill"]["path"] == "/skills/rich-markdown/SKILL.md", pinned[0]
+    assert skill_body in pinned[0].content, pinned[0]
+assert not any(call["name"] == "read_file" for messages in model.seen_messages for message in messages
+               if isinstance(message, AIMessage) for call in message.tool_calls)
 workspace_key = conversation_workspace_key("contract", None)
 assert (Path(agent.working_dir) / "memory" / workspace_key / "SOUL.md").is_file()
 '''

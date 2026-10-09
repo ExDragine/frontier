@@ -758,6 +758,10 @@ class FrontierCognitive:
             "video_inputs": video_inputs or [],
             "suppress_reply": False,
         }
+        if access_profile == "frontier" and (conversation is None or conversation.platform == "qq"):
+            # Load the compact composition policy before the first model call.
+            # References stay on demand; other platforms keep their own formats.
+            input_data["pinned_skills"] = ["rich-markdown"]
         prior_ids = set()
         if session_turn is not None:
             snapshot = await agent.aget_state(config)

@@ -37,7 +37,7 @@ UniMessage 文本、图片、视频或文件回复
 - **会话串行**：QQ 使用两级命名锁——`delivery:{workspace_key}` 覆盖模型生成、工件发送、最终回复和送达落库，`workspace:{workspace_key}` 覆盖同一 workspace 的 Agent 执行；固定顺序是先取 delivery 锁再取 workspace 锁，不可反向嵌套。不同群和不同私聊可并发。
 - **多模型路由**：OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek 统一由 `utils/llm_factory.py` 创建。
 - **文件系统工作区**：群聊使用 `group-{group_id}`、私聊使用 `dm-{user_id}`，同一个裸数字不会共享 workspace 或 memory。
-- **分层提示词**：`env.toml` 定义基础人设，`prompts/AGENTS.md` 定义常驻全局规范，workspace `SOUL.md` 由 Memory middleware 注入动态人设；详细渲染与平台操作流程保存在 Skills 中按需加载。
+- **分层提示词**：`env.toml` 定义基础人设，`prompts/AGENTS.md` 定义常驻全局规范，workspace `SOUL.md` 由 Memory middleware 注入动态人设。QQ 主回复通过 Deep Agents 的 `pinned_skills` 在首个模型调用前加载精简的富文本排版技能；详细组件契约与其他平台操作流程仍按需读取。短聊天保持文字，长解释、比较和指南主动选择适合内容的组件。
 - **媒体工件直发**：工具返回的 `UniMessage` artifact 会被提取并直接发送到 QQ。
 
 ## 功能模块

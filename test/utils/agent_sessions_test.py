@@ -201,6 +201,21 @@ def test_history_trimming_keeps_complete_tool_exchanges_and_obeys_profile_budget
     assert history_budget(settings, None) == 8000
 
 
+def test_pinned_skills_do_not_split_questions_from_their_answers():
+    pinned = HumanMessage(content="<skill>composition policy</skill>", additional_kwargs={"lc_source": "pinned_skill"})
+    old = [HumanMessage(content="old question " * 1000), pinned, AIMessage(content="old answer")]
+    # A skill and answer must not survive after their oversized question is dropped.
+    assert recent_complete_turns(old, 100) == []
+    recent = [HumanMessage(content="read"), pinned,
+              AIMessage(content="", tool_calls=[{"name": "read", "args": {}, "id": "c"}]),
+              ToolMessage(content="result", tool_call_id="c"), AIMessage(content="done")]
+    assert recent_complete_turns([*old, *recent], 100) == recent
+    serialized = [{"role": "user", "content": "old question " * 1000},
+                  {"role": "user", "content": pinned.content, "additional_kwargs": pinned.additional_kwargs},
+                  {"role": "assistant", "content": "old answer"}]
+    assert recent_complete_turns(serialized, 100) == []
+
+
 def test_media_in_history_or_tool_content_retires_generation():
     assert messages_contain_media([{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,YQ=="}}]}])
     assert messages_contain_media([ToolMessage(content=[{"type": "audio", "base64": "YQ==", "mime_type": "audio/wav"}], tool_call_id="a")])

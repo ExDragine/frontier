@@ -161,7 +161,9 @@ Milky `light_app` / `xml` 卡片通过 `utils/card_message.py` 本地解析常�
 Prompt 加载链：
 - `FrontierCognitive.load_system_prompt()` 组合 `env.toml` 的 `[bot].system_prompt` 与 `prompts/AGENTS.md` 始终适用的全局操作规范；基础人设中的 `{name}` 会按当前唤醒词注入。
 - 自定义 `MemoryMiddleware` 从当前 workspace 的 `/memory/{workspace_key}/SOUL.md` 注入动态人设，并同时提供 SOUL 的写入边界与优先级约束。
-- 完整的图表、指标卡和时间线渲染契约位于只读内置 Skill `/skills/rich-markdown/SKILL.md`，仅在需要增强 Markdown 时按需加载。
+- QQ 主回复与兼容 QQ 入口每轮在输入状态中传 `pinned_skills=["rich-markdown"]`（Deep Agents >= 0.7.23），由 Skills middleware 在首个模型调用前注入精简的排版决策正文，无需模型先调用 `read_file`。本轮后续工具循环不重复注入；ACP 档与显式非 QQ 平台不固定加载该技能。
+- 框架注入的技能 HumanMessage 带 `lc_source=pinned_skill`，属于操作说明；历史裁剪将它与原始用户问题、工具交换和回复保留为同一轮，不把它当成新的聊天请求。
+- `/skills/rich-markdown/SKILL.md` 定义内容关系与组件选择；详细字段、数据与媒体契约位于其 `references/`，生成相关组件时仍按需读取。短聊天与需要复制的回复保持文字，长解释、比较和操作说明优先组合正文、分区、卡片、表格或步骤；500 字转图规则只控制发送方式。
 - `plugins/agent/prompts/reply_check.md` 用于群聊是否应主动回复的 Decision LLM 判断。
 - 每日新闻不使用独立的 prompt 文件：编辑提示词是 `plugins/news/editor.py` 中的 `PROMPT` 常量，模板位于 `plugins/news/templates/daily_news.html` 和 `daily_news.css`。
 - ENS 详细工作流位于只读内置 Skill `/skills/ens-weather/SKILL.md`；主提示词只保留加载入口。
@@ -265,7 +267,7 @@ Milky 群管理工具会读取 `RunnableConfig.configurable.group_member_role` �
 
 4. Browser capture 工具不是普通兜底工具。`webpage_screenshot` / `webpage_recording` 只有在 Decision LLM 判断用户明确要求网页外观/录屏时才暴露。
 
-5. 提示词分为常驻层和按需层：`env.toml` 基本人设与 `prompts/AGENTS.md` 全局规范常驻，workspace `SOUL.md` 由 Memory middleware 注入，详细工作流与渲染契约保存在 Skills 中按需加载。修改前先确认目标层级。
+5. 提示词分层：`env.toml` 基本人设与 `prompts/AGENTS.md` 全局规范常驻，workspace `SOUL.md` 由 Memory middleware 注入，QQ 富文本决策技能通过 `pinned_skills` 每轮预加载，详细工作流与组件契约按需读取。修改前先确认目标层级；不要同时把整份技能正文复制进系统提示词。
 
 6. 测试依赖 monkeypatch 和第三方 stub。插件测试通常先 patch `nonebot.require`，再延迟 import `plugins.agent.handlers`。
 
