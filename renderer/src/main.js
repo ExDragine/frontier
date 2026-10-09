@@ -15,6 +15,7 @@ import "prismjs/components/prism-sql";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-yaml";
 import "./vendor.css";
+import "./theme.css";
 import { renderMessageUI } from "./message-ui";
 
 use([BarChart, LineChart, PieChart, GridComponent, LegendComponent, AriaComponent, SVGRenderer]);
@@ -156,6 +157,7 @@ function renderChart(container, config) {
     chart.setOption(chartOption(config), { notMerge: true, lazyUpdate: false });
     chart.resize();
     container.dataset.chartRendered = "true";
+    return () => chart.dispose();
   } catch (error) {
     chartRoot.remove();
     renderChartFallback(container, config);
@@ -204,9 +206,12 @@ function renderRichBlocks() {
       if (kind === "chart") renderChart(container, config);
       else if (kind === "stats") renderStats(container, config);
       else if (kind === "timeline") renderTimeline(container, config);
-      else if (kind === "ui") renderMessageUI(container, config, { renderChart, renderStats, renderTimeline, renderMath });
+      else if (kind === "ui") renderMessageUI(container, config, { renderChart, renderStats, renderTimeline, onError: error => {
+        container.dataset.richRendered = "fallback";
+        recordError("rich", error);
+      } });
       else throw new Error(`Unsupported rich block: ${kind}`);
-      container.dataset.richRendered = "true";
+      if (container.dataset.richRendered !== "fallback") container.dataset.richRendered = "true";
     } catch (error) {
       container.replaceChildren(element("div", "md-rich-error", "增强内容渲染失败，已保留其余内容。"));
       container.dataset.richRendered = "fallback";
@@ -266,9 +271,12 @@ function nextFrame() {
 async function renderDocument() {
   try {
     if (document.fonts?.ready) await document.fonts.ready;
+    renderRichBlocks();
     await Promise.allSettled([
-      ["math", renderMath],
-      ["rich", renderRichBlocks],
+      ["math", () => {
+        renderMath();
+        document.querySelectorAll(".md-ui-prose").forEach(node => renderMath(node, true));
+      }],
       ["mermaid", renderMermaid],
       ["highlight", () => Prism.highlightAll()],
     ].map(async ([kind, render]) => {

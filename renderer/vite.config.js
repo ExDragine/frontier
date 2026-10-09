@@ -1,7 +1,10 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  plugins: [tailwindcss()],
+  resolve: { alias: { "@": resolve(import.meta.dirname, "src") } },
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
   },

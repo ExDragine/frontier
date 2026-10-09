@@ -244,7 +244,7 @@ Agent 提取工件时延迟从 `utils.alconna` 加载 `UniMessage`，只接受�
 
 - 短文本优先走 QQ 文本。
 - 普通文字达到 `[agent].message_image_text_threshold`（默认 500 字符）、Markdown 表格、LaTeX、Mermaid，以及 `chart`/`stats`/`timeline`/`ui` 增强块走 Markdown → 图片。短标题、列表和代码块本身不强制转图。
-- `ui` 使用受控组件树组合正文、无边框分区、彩色卡片、列表、属性、引文、来源、状态、数据和媒体组件。地图/图片/iframe 经 `utils/markdown_media.py` 预加载；外部页面在无会话的隔离 context 中截图，最终 iframe 仅装载离线快照。所有远程资源逐次校验公网地址并固定连接 IP，禁止写请求、内网、文件和 WebSocket；原始消息页面仍阻止远程请求。样式位于 `templates/markdown_render.css`，渲染组合位于 `renderer/src/message-ui.js`；契约与容量限制位于 `utils/markdown_rich.py` 和 `/skills/rich-markdown/references/`。`prose` 的 HTML 仅由服务端关闭 HTML/图片的 Markdown 解析器生成，不接受模型提供的 `rendered` 字段。不允许原始 HTML、任意样式或交互控件。保留 QQ 可点开和放大的完整长图。
+- `ui` 使用受控组件树组合正文、无边框分区、彩色卡片、列表、属性、引文、来源、状态、数据和媒体组件。地图/图片/iframe 经 `utils/markdown_media.py` 预加载；外部页面在无会话的隔离 context 中截图，最终 iframe 仅装载离线快照。所有远程资源逐次校验公网地址并固定连接 IP，禁止写请求、内网、文件和 WebSocket；原始消息页面仍阻止远程请求。组合层位于 `renderer/src/message-ui.tsx`，使用 React + TypeScript、Tailwind CSS 与定制的 shadcn/ui 源码组件；主题位于 `renderer/src/theme.css`，Markdown 排版位于 `templates/markdown_render.css`。Python 校验模型通过 `scripts/generate_renderer_types.py` 生成 TypeScript 类型，CI 检查同步；Vite 输出本地 IIFE，生产不需要 Node.js。契约与容量限制位于 `utils/markdown_rich.py` 和 `/skills/rich-markdown/references/`。`prose` 的 HTML 仅由服务端关闭 HTML/图片的 Markdown 解析器生成，不接受模型提供的 `rendered` 字段。不允许原始 HTML、任意样式或交互控件。保留 QQ 可点开和放大的完整长图。
 - 短文本的 Markdown 链接保留网址，避免转为纯文字时丢失目标。
 - 文本发送失败时会尝试图片回退。
 - 多段媒体工件会拆分并串行发送，避免 QQ 消息顺序混乱。
