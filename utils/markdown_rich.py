@@ -265,6 +265,80 @@ class UIMap(_RichModel):
     height: int = Field(default=480, ge=200, le=1000)
     title: ShortText | None = None
     caption: ShortText | None = None
+    markers: list["UIMapMarker"] = Field(default_factory=list, max_length=50)
+    paths: list["UIMapPath"] = Field(default_factory=list, max_length=20)
+    analysis: "UIMapAnalysis | None" = None
+
+
+class UIMapMarker(_RichModel):
+    latitude: float = Field(ge=-85, le=85)
+    longitude: float = Field(ge=-180, le=180)
+    label: LabelText | None = None
+    color: str = Field(default="#2563eb", pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+class UIMapPath(_RichModel):
+    points: list[tuple[float, float]] = Field(min_length=2, max_length=200)
+    color: str = Field(default="#2563eb", pattern=r"^#[0-9a-fA-F]{6}$")
+    weight: int = Field(default=4, ge=1, le=12)
+
+
+class UIMapAnalysis(_RichModel):
+    type: Literal["distance", "area"]
+    path_index: int = Field(default=0, ge=0, le=19)
+    label: LabelText | None = None
+
+
+class UIThreeObject(_RichModel):
+    kind: Literal["cube", "sphere", "cylinder", "torus", "plane"]
+    position: tuple[float, float, float] = (0, 0, 0)
+    rotation: tuple[float, float, float] = (0, 0, 0)
+    scale: tuple[float, float, float] = (1, 1, 1)
+    color: str = Field(default="#6366f1", pattern=r"^#[0-9a-fA-F]{6}$")
+    size: float = Field(default=1, gt=0, le=50)
+
+
+class UIThree(_RichModel):
+    type: Literal["three"]
+    height: int = Field(default=480, ge=200, le=1000)
+    background: str = Field(default="#0f172a", pattern=r"^#[0-9a-fA-F]{6}$")
+    camera: Literal["perspective", "orthographic"] = "perspective"
+    objects: list[UIThreeObject] = Field(min_length=1, max_length=80)
+    grid: bool = True
+    axes: bool = False
+
+
+class UIFlowNode(_RichModel):
+    id: LabelText
+    label: ShortText
+    x: float = 0
+    y: float = 0
+    color: str = Field(default="#6366f1", pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+class UIFlowEdge(_RichModel):
+    source: LabelText
+    target: LabelText
+    label: LabelText | None = None
+    color: str = Field(default="#94a3b8", pattern=r"^#[0-9a-fA-F]{6}$")
+    animated: bool = False
+
+
+class UIFlow(_RichModel):
+    type: Literal["flow"]
+    height: int = Field(default=520, ge=240, le=1000)
+    direction: Literal["TB", "LR"] = "TB"
+    nodes: list[UIFlowNode] = Field(min_length=1, max_length=80)
+    edges: list[UIFlowEdge] = Field(default_factory=list, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_edges(self) -> UIFlow:
+        node_ids = {node.id for node in self.nodes}
+        if len(node_ids) != len(self.nodes):
+            raise ValueError("flow node ids must be unique")
+        if any(edge.source not in node_ids or edge.target not in node_ids for edge in self.edges):
+            raise ValueError("flow edges must reference existing nodes")
+        return self
 
 
 class UIChart(_RichModel):
@@ -302,6 +376,8 @@ UIComponent = Annotated[
     | UIImage
     | UIFrame
     | UIMap
+    | UIThree
+    | UIFlow
     | UIChart
     | UIStats
     | UITimeline,

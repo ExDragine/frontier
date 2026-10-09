@@ -69,7 +69,7 @@ export type UICard = {
   "footer"?: string | null;
   "variant"?: "outline" | "muted" | "ghost";
   "color"?: "neutral" | "blue" | "emerald" | "violet" | "amber" | "rose" | "cyan";
-  "children": (UIText | UIProse | UIBadge | UILink | UICallout | UILayout | UICard | UISection | UISteps | UIList | UIFacts | UISeparator | UIQuote | UISources | UIProgress | UITable | UIImage | UIFrame | UIMap | UIChart | UIStats | UITimeline)[];
+  "children": (UIText | UIProse | UIBadge | UILink | UICallout | UILayout | UICard | UISection | UISteps | UIList | UIFacts | UISeparator | UIQuote | UISources | UIProgress | UITable | UIImage | UIFrame | UIMap | UIThree | UIFlow | UIChart | UIStats | UITimeline)[];
 };
 
 export type UIChart = {
@@ -86,6 +86,30 @@ export type UIFacts = {
   "type": "facts";
   "columns"?: number;
   "items": (UIFact)[];
+};
+
+export type UIFlow = {
+  "type": "flow";
+  "height"?: number;
+  "direction"?: "TB" | "LR";
+  "nodes": (UIFlowNode)[];
+  "edges"?: (UIFlowEdge)[];
+};
+
+export type UIFlowEdge = {
+  "source": string;
+  "target": string;
+  "label"?: string | null;
+  "color"?: string;
+  "animated"?: boolean;
+};
+
+export type UIFlowNode = {
+  "id": string;
+  "label": string;
+  "x"?: number;
+  "y"?: number;
+  "color"?: string;
 };
 
 export type UIFrame = {
@@ -115,7 +139,7 @@ export type UIItem = {
 export type UILayout = {
   "type": "row" | "column" | "grid";
   "columns"?: number;
-  "children": (UIText | UIProse | UIBadge | UILink | UICallout | UILayout | UICard | UISection | UISteps | UIList | UIFacts | UISeparator | UIQuote | UISources | UIProgress | UITable | UIImage | UIFrame | UIMap | UIChart | UIStats | UITimeline)[];
+  "children": (UIText | UIProse | UIBadge | UILink | UICallout | UILayout | UICard | UISection | UISteps | UIList | UIFacts | UISeparator | UIQuote | UISources | UIProgress | UITable | UIImage | UIFrame | UIMap | UIThree | UIFlow | UIChart | UIStats | UITimeline)[];
   "gap"?: "sm" | "md" | "lg";
 };
 
@@ -139,6 +163,28 @@ export type UIMap = {
   "height"?: number;
   "title"?: string | null;
   "caption"?: string | null;
+  "markers"?: (UIMapMarker)[];
+  "paths"?: (UIMapPath)[];
+  "analysis"?: UIMapAnalysis | null;
+};
+
+export type UIMapAnalysis = {
+  "type": "distance" | "area";
+  "path_index"?: number;
+  "label"?: string | null;
+};
+
+export type UIMapMarker = {
+  "latitude": number;
+  "longitude": number;
+  "label"?: string | null;
+  "color"?: string;
+};
+
+export type UIMapPath = {
+  "points": ([number, number])[];
+  "color"?: string;
+  "weight"?: number;
 };
 
 export type UIProgress = {
@@ -164,7 +210,7 @@ export type UISection = {
   "title"?: string | null;
   "description"?: string | null;
   "eyebrow"?: string | null;
-  "children": (UIText | UIProse | UIBadge | UILink | UICallout | UILayout | UICard | UISection | UISteps | UIList | UIFacts | UISeparator | UIQuote | UISources | UIProgress | UITable | UIImage | UIFrame | UIMap | UIChart | UIStats | UITimeline)[];
+  "children": (UIText | UIProse | UIBadge | UILink | UICallout | UILayout | UICard | UISection | UISteps | UIList | UIFacts | UISeparator | UIQuote | UISources | UIProgress | UITable | UIImage | UIFrame | UIMap | UIThree | UIFlow | UIChart | UIStats | UITimeline)[];
 };
 
 export type UISeparator = {
@@ -207,6 +253,25 @@ export type UIText = {
   "variant"?: "body" | "lead" | "muted" | "small";
 };
 
+export type UIThree = {
+  "type": "three";
+  "height"?: number;
+  "background"?: string;
+  "camera"?: "perspective" | "orthographic";
+  "objects": (UIThreeObject)[];
+  "grid"?: boolean;
+  "axes"?: boolean;
+};
+
+export type UIThreeObject = {
+  "kind": "cube" | "sphere" | "cylinder" | "torus" | "plane";
+  "position"?: [number, number, number];
+  "rotation"?: [number, number, number];
+  "scale"?: [number, number, number];
+  "color"?: string;
+  "size"?: number;
+};
+
 export type UITimeline = {
   "type": "timeline";
   "config": TimelineBlock;
@@ -216,5 +281,5 @@ export type UIBlock = {
   "title"?: string | null;
   "eyebrow"?: string | null;
   "description"?: string | null;
-  "children": (UIText | UIProse | UIBadge | UILink | UICallout | UILayout | UICard | UISection | UISteps | UIList | UIFacts | UISeparator | UIQuote | UISources | UIProgress | UITable | UIImage | UIFrame | UIMap | UIChart | UIStats | UITimeline)[];
+  "children": (UIText | UIProse | UIBadge | UILink | UICallout | UILayout | UICard | UISection | UISteps | UIList | UIFacts | UISeparator | UIQuote | UISources | UIProgress | UITable | UIImage | UIFrame | UIMap | UIThree | UIFlow | UIChart | UIStats | UITimeline)[];
 };

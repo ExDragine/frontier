@@ -293,6 +293,16 @@ async function renderDocument() {
         setTimeout(resolve, 1500);
       })
     ));
+    await new Promise(resolve => {
+      const deadline = performance.now() + 2000;
+      const check = () => {
+        const pending = [...document.querySelectorAll(".md-leaflet-map, .md-three-scene, .md-flow")]
+          .some(node => !node.dataset.mapRendered && !node.dataset.threeRendered && !node.dataset.flowRendered);
+        if (!pending || performance.now() >= deadline) resolve();
+        else requestAnimationFrame(check);
+      };
+      check();
+    });
     await nextFrame();
     await nextFrame();
   } finally {

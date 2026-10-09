@@ -39,6 +39,8 @@ def typescript(schema: dict) -> str:
             return " | ".join(dict.fromkeys(typescript(item) for item in schema[union]))
     kind = schema.get("type")
     if kind == "array":
+        if "prefixItems" in schema:
+            return "[" + ", ".join(typescript(item) for item in schema["prefixItems"]) + "]"
         return f"({typescript(schema['items'])})[]"
     if kind == "object":
         return object_type(schema)

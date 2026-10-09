@@ -40,3 +40,65 @@
     border-color: var(--md-border);
   }
 }
+
+.md-leaflet-map,
+.md-three-scene {
+  width: 100%;
+  min-height: 200px;
+  overflow: hidden;
+  border: 1px solid var(--md-border);
+  border-radius: 0.75rem;
+  background: var(--md-muted);
+}
+
+.md-leaflet-map .leaflet-control-container {
+  display: none;
+}
+
+.md-leaflet-marker {
+  width: 16px;
+  height: 16px;
+  border: 2px solid white;
+  border-radius: 999px;
+  box-shadow: 0 1px 5px rgb(15 23 42 / 0.35);
+}
+
+.md-leaflet-marker span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.md-leaflet-label {
+  border: 0;
+  border-radius: 0.4rem;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 0.15);
+  color: #0f172a;
+  font: 600 12px/1.2 "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  padding: 0.25rem 0.4rem;
+}
+
+.md-map-analysis {
+  color: var(--md-muted-foreground);
+  font-size: 0.82rem;
+  margin-top: 0.45rem;
+}
+
+.md-flow {
+  width: 100%;
+  min-height: 240px;
+  overflow: hidden;
+  border: 1px solid var(--md-border);
+  border-radius: 0.75rem;
+  background: var(--md-muted);
+}
+
+.md-flow .react-flow__attribution {
+  display: none;
+}
+
+.md-flow .react-flow__controls button {
+  width: 28px;
+  height: 28px;
+}

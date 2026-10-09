@@ -6,6 +6,7 @@ import type {
   UIFrame,
   UIImage,
   UIMap,
+  UIThree,
   UIProse,
   UISteps,
 } from "./message-schema";
@@ -41,6 +42,7 @@ export type MediaNode = Extract<
   MessageNode,
   { type: "image" | "map" | "iframe" }
 >;
+export type ThreeNode = Extract<MessageNode, { type: "three" }>;
 export type DataNode = Extract<
   MessageNode,
   { type: "chart" | "stats" | "timeline" }

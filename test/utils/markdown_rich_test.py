@@ -106,6 +106,53 @@ def test_composed_ui_validates_nested_layout_and_existing_data_components():
     assert "language-ui" not in rendered
 
 
+def test_map_layers_and_three_scene_are_declarative_components():
+    block = {
+        "children": [
+            {
+                "type": "map",
+                "latitude": 31.23,
+                "longitude": 121.47,
+                "markers": [{"latitude": 31.23, "longitude": 121.47, "label": "中心"}],
+                "paths": [{"points": [[31.2, 121.4], [31.3, 121.5]], "color": "#e11d48"}],
+            },
+            {
+                "type": "three",
+                "objects": [{"kind": "cube", "position": [0, 0.5, 0], "color": "#6366f1"}],
+            },
+        ]
+    }
+    rendered = _render(f"```ui\n{json.dumps(block)}\n```")
+    assert 'data-rich-kind="ui"' in rendered
+    assert "language-ui" not in rendered
+
+
+def test_map_analysis_and_flow_validate_references():
+    block = {
+        "children": [
+            {
+                "type": "map",
+                "latitude": 31.23,
+                "longitude": 121.47,
+                "paths": [{"points": [[31.2, 121.4], [31.3, 121.5]]}],
+                "analysis": {"type": "distance", "label": "路线长度"},
+            },
+            {
+                "type": "flow",
+                "nodes": [{"id": "a", "label": "开始"}, {"id": "b", "label": "结束"}],
+                "edges": [{"source": "a", "target": "b"}],
+            },
+        ]
+    }
+    rendered = _render(f"```ui\n{json.dumps(block)}\n```")
+    assert 'data-rich-kind="ui"' in rendered
+    assert "language-ui" not in rendered
+
+    invalid = {"children": [{"type": "flow", "nodes": [{"id": "a", "label": "A"}], "edges": [{"source": "a", "target": "missing"}]}]}
+    invalid_rendered = _render(f"```ui\n{json.dumps(invalid)}\n```")
+    assert "language-ui" in invalid_rendered
+
+
 @pytest.mark.parametrize(
     "node",
     [

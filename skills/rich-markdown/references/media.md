@@ -25,6 +25,36 @@
 `zoom` 为 2–18，默认 13；`height` 为 200–1000，默认 480；`title/caption` 可选（200）。
 当前底图是 OpenStreetMap 单点地图，只获取当前视野的瓦片并按 Web Mercator 投影合成，瓦片缓存 7 天；自动包含坐标、地图 URL 和署名。底图无法加载时保留坐标及链接，不用假的道路或装饰地图代替真实底图。需要特定地图提供商的公开页面时可用 iframe 展示其 URL。
 
+Leaflet 只负责在本地渲染器中叠加声明式图层，适合标记和路径，不要求截图环境再次访问地图瓦片：
+
+```json
+{"type":"map","latitude":31.23,"longitude":121.47,"zoom":12,"markers":[{"latitude":31.23,"longitude":121.47,"label":"中心点","color":"#2563eb"}],"paths":[{"points":[[31.22,121.45],[31.24,121.49]],"color":"#e11d48","weight":5}]}
+```
+
+`markers` 最多 50 个，`paths` 最多 20 条，每条路径最多 200 个点。不要在消息中写任意 JavaScript。
+
+可选的 `analysis` 使用 Turf.js 对路径进行静态计算：`distance` 计算路径长度，`area` 计算闭合路径面积；通过 `path_index` 选择路径，并可用 `label` 设置显示名称。
+
+## Three.js 场景
+
+`three` 用于产品示意、空间关系和简单三维数据的静态截图。渲染器在本地沙箱中创建场景，并在截图前完成一次渲染：
+
+```json
+{"type":"three","height":420,"background":"#0f172a","grid":true,"objects":[{"kind":"cube","position":[0,0.5,0],"color":"#6366f1","size":1},{"kind":"sphere","position":[2,0.5,0],"color":"#f59e0b","size":1}]}
+```
+
+可用几何体为 `cube`、`sphere`、`cylinder`、`torus` 和 `plane`。每个对象可设置位置、旋转、缩放、颜色和尺寸，最多 80 个对象。复杂动画和任意脚本暂不直接放进消息协议，优先使用声明式场景保证截图稳定。
+
+## Flow
+
+`flow` 使用 React Flow 展示节点和连线，适合工作流、Agent 决策链和系统关系图。节点需要唯一的 `id`；不填写坐标时渲染器会自动排布。
+
+```json
+{"type":"flow","height":420,"direction":"LR","nodes":[{"id":"input","label":"输入"},{"id":"tool","label":"调用工具","color":"#059669"},{"id":"answer","label":"回答"}],"edges":[{"source":"input","target":"tool"},{"source":"tool","target":"answer","label":"结果"}]}
+```
+
+节点最多 80 个，连线最多 120 条。只使用声明式节点和连线，不在消息中写任意 JavaScript。
+
 ## Iframe
 
 ```markdown
