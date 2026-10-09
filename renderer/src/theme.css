@@ -123,6 +123,11 @@
   display: none;
 }
 
+/* The rendered message is a static image; the minimap only obscures nodes. */
+.md-flow .react-flow__minimap {
+  display: none;
+}
+
 .md-flow .react-flow__controls button {
   width: 28px;
   height: 28px;

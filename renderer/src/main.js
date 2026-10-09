@@ -206,6 +206,10 @@ function renderRichBlocks() {
       if (kind === "chart") renderChart(container, config);
       else if (kind === "stats") renderStats(container, config);
       else if (kind === "timeline") renderTimeline(container, config);
+      else if (kind === "three" || kind === "flow") renderMessageUI(container, { children: [config] }, { renderChart, renderStats, renderTimeline, onError: error => {
+        container.dataset.richRendered = "fallback";
+        recordError("rich", error);
+      } });
       else if (kind === "ui") renderMessageUI(container, config, { renderChart, renderStats, renderTimeline, onError: error => {
         container.dataset.richRendered = "fallback";
         recordError("rich", error);
