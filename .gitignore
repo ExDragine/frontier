@@ -320,6 +320,8 @@ pyrightconfig.json
 node_modules/
 package-lock.json
 !renderer/package-lock.json
+!renderer/src/lib/
+!renderer/src/lib/**
 *.db
 .idea
 .vscode
