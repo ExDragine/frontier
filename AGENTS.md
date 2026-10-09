@@ -163,7 +163,7 @@ Prompt 加载链：
 - 自定义 `MemoryMiddleware` 从当前 workspace 的 `/memory/{workspace_key}/SOUL.md` 注入动态人设，并同时提供 SOUL 的写入边界与优先级约束。
 - QQ 主回复与兼容 QQ 入口每轮在输入状态中传 `pinned_skills=["rich-markdown"]`（Deep Agents >= 0.7.23），由 Skills middleware 在首个模型调用前注入精简的排版决策正文，无需模型先调用 `read_file`。本轮后续工具循环不重复注入；ACP 档与显式非 QQ 平台不固定加载该技能。
 - 框架注入的技能 HumanMessage 带 `lc_source=pinned_skill`，属于操作说明；历史裁剪将它与原始用户问题、工具交换和回复保留为同一轮，不把它当成新的聊天请求。
-- `/skills/rich-markdown/SKILL.md` 定义内容关系与组件选择；详细字段、数据与媒体契约位于其 `references/`，生成相关组件时仍按需读取。短聊天与需要复制的回复保持文字，长解释、比较和操作说明优先组合正文、分区、卡片、表格或步骤；500 字转图规则只控制发送方式。
+- `/skills/rich-markdown/SKILL.md` 定义内容关系与基本 Markdown 组件语法；正文直接写 Markdown，按需插入 `::card`、分区、分栏、步骤或媒体，基本卡片无需先读取参考文件。详细字段、数据与媒体契约位于其 `references/`；旧 ui JSON 契约位于 `references/legacy-ui.md`。短聊天与需要复制的回复保持文字，500 字转图规则只控制发送方式。
 - `plugins/agent/prompts/reply_check.md` 用于群聊是否应主动回复的 Decision LLM 判断。
 - 每日新闻不使用独立的 prompt 文件：编辑提示词是 `plugins/news/editor.py` 中的 `PROMPT` 常量，模板位于 `plugins/news/templates/daily_news.html` 和 `daily_news.css`。
 - ENS 详细工作流位于只读内置 Skill `/skills/ens-weather/SKILL.md`；主提示词只保留加载入口。
@@ -245,8 +245,8 @@ Agent 提取工件时延迟从 `utils.alconna` 加载 `UniMessage`，只接受�
 ### 输出发送规则
 
 - 短文本优先走 QQ 文本。
-- 普通文字达到 `[agent].message_image_text_threshold`（默认 500 字符）、Markdown 表格、LaTeX、Mermaid，以及 `chart`/`stats`/`timeline`/`ui` 增强块走 Markdown → 图片。短标题、列表和代码块本身不强制转图。
-- `ui` 使用受控组件树组合正文、无边框分区、彩色卡片、列表、属性、引文、来源、状态、数据和媒体组件。地图/图片/iframe 经 `utils/markdown_media.py` 预加载；外部页面在无会话的隔离 context 中截图，最终 iframe 仅装载离线快照。所有远程资源逐次校验公网地址并固定连接 IP，禁止写请求、内网、文件和 WebSocket；原始消息页面仍阻止远程请求。组合层位于 `renderer/src/message-ui.tsx`，使用 React + TypeScript、Tailwind CSS 与定制的 shadcn/ui 源码组件；主题位于 `renderer/src/theme.css`，Markdown 排版位于 `templates/markdown_render.css`。Python 校验模型通过 `scripts/generate_renderer_types.py` 生成 TypeScript 类型，CI 检查同步；Vite 输出本地 IIFE，生产不需要 Node.js。契约与容量限制位于 `utils/markdown_rich.py` 和 `/skills/rich-markdown/references/`。`prose` 的 HTML 仅由服务端关闭 HTML/图片的 Markdown 解析器生成，不接受模型提供的 `rendered` 字段。不允许原始 HTML、任意样式或交互控件。保留 QQ 可点开和放大的完整长图。
+- 普通文字达到 `[agent].message_image_text_threshold`（默认 500 字符）、Markdown 表格、LaTeX、Mermaid，以及 `chart`/`stats`/`timeline`/`ui` 增强块与有效 Markdown 组件走 Markdown → 图片。短标题、列表和代码块本身不强制转图。
+- Markdown 组件由 `utils/markdown_components.py` 作为 MarkdownIt block rule 解析，字面量属性与正文转换为同一受控组件树；代码块中的语法示例不执行，无效组件保留正文。正文保持原生 Markdown，步骤支持格式化正文和代码；旧 `ui` JSON 继续兼容。组件树组合正文、无边框分区、彩色卡片、列表、属性、引文、来源、状态、数据和媒体组件。地图/图片/iframe 经 `utils/markdown_media.py` 预加载；外部页面在无会话的隔离 context 中截图，最终 iframe 仅装载离线快照。所有远程资源逐次校验公网地址并固定连接 IP，禁止写请求、内网、文件和 WebSocket；原始消息页面仍阻止远程请求。组合层位于 `renderer/src/message-ui.tsx`，使用 React + TypeScript、Tailwind CSS 与定制的 shadcn/ui 源码组件；主题位于 `renderer/src/theme.css`，Markdown 排版位于 `templates/markdown_render.css`。Python 校验模型通过 `scripts/generate_renderer_types.py` 生成 TypeScript 类型，CI 检查同步；Vite 输出本地 IIFE，生产不需要 Node.js。契约与容量限制位于 `utils/markdown_rich.py` 和 `/skills/rich-markdown/references/`。`prose`（含步骤正文）的 HTML 仅由服务端关闭 HTML/图片的 Markdown 解析器生成，不接受模型提供的 `rendered` 字段。不允许原始 HTML、任意样式或交互控件。保留 QQ 可点开和放大的完整长图。
 - 短文本的 Markdown 链接保留网址，避免转为纯文字时丢失目标。
 - 文本发送失败时会尝试图片回退。
 - 多段媒体工件会拆分并串行发送，避免 QQ 消息顺序混乱。

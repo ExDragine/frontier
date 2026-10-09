@@ -1,11 +1,12 @@
 # Media components
 
-媒体是独立模块，可直接放在 ui 根或 section 中。与正文、卡片、表格自由组合；宽图、地图、网页快照优先单独整行，不塞进狭窄的并列卡片。
+媒体是独立模块，可直接插入 Markdown 或放在 section 中。与正文、卡片、表格自由组合；宽图、地图、网页快照优先单独整行，不塞进狭窄的并列卡片。媒体正文留空，说明写在 caption，仍要用独立的 `::` 关闭。旧 ui 的同名字段继续支持。
 
 ## Image
 
-```json
-{"type":"image","url":"https://example.com/photo.png","alt":"说明图片内容","caption":"可选的来源或说明","aspect":"original","fit":"contain"}
+```markdown
+::image{url="https://example.com/photo.png" alt="说明图片内容" caption="可选的来源或说明" aspect="original" fit="contain"}
+::
 ```
 
 `url` 必填，必须是已知的完整公开 HTTP(S) 图片地址，不猜素材 URL。
@@ -15,8 +16,9 @@
 
 ## Map
 
-```json
-{"type":"map","title":"地点位置","latitude":31.2304,"longitude":121.4737,"zoom":13,"height":480,"caption":"示例坐标，使用时应核实实际地点"}
+```markdown
+::map{title="地点位置" latitude=31.2304 longitude=121.4737 zoom=13 height=480 caption="示例坐标，使用时应核实实际地点"}
+::
 ```
 
 `latitude`（-85–85）、`longitude`（-180–180）必填，均为有限数值。坐标系为 **WGS84**；高德/腾讯的 GCJ-02 坐标不能直接当作 WGS84。先用工具或可靠来源查证，不能从地名猜坐标。
@@ -25,8 +27,9 @@
 
 ## Iframe
 
-```json
-{"type":"iframe","url":"https://example.com/public-dashboard","title":"公开页面预览","height":480,"caption":"可选：页面来源或截取范围"}
+```markdown
+::iframe{url="https://example.com/public-dashboard" title="公开页面预览" height=480 caption="可选：页面来源或截取范围"}
+::
 ```
 
 `url/title` 必填，title 最多 200 字符；`height` 为 200–1200，默认 480；`caption` 可选（200）。height 是网页加载时的初始高度，宽度由输出宽度决定，窄屏会按比例缩放。`full_page` 默认为 true，按实际内容展开，最多 1200 像素；超出时标明截取范围和原链接。只需要初始视口时可设为 false。更高的完整页面使用已有网页截图工具；不把整个长页面压成小卡片。
@@ -37,6 +40,6 @@
 
 ## Loading limits
 
-每条回复最多预加载 6 个媒体模块；最多同时加载 3 个，整体最多等待 25 秒。单张图片最多 10 MB、20 百万像素；本轮网络资源总计最多 20 MB。只允许公网 HTTP(S) 的 80/443 端口；重定向和网页子资源同样受控。不要在 JSON 中传这些内部限制或资源字段。
+每条回复最多预加载 6 个媒体模块；最多同时加载 3 个，整体最多等待 25 秒。单张图片最多 10 MB、20 百万像素；本轮网络资源总计最多 20 MB。只允许公网 HTTP(S) 的 80/443 端口；重定向和网页子资源同样受控。不要填写内部限制或资源字段。
 
 普通正文和图表继续本地渲染，媒体失败不影响其余内容。500 字截图规则保留。需要复制图片/地图/网页地址时按全局提示词另发纯文本。

@@ -15,6 +15,7 @@ from utils.configs import EnvConfig
 from utils.context_check import ImageCheck, TextCheck
 from utils.delivery import DeliveryResult
 from utils.http_client import get_http_client
+from utils.markdown_components import has_markdown_components
 from utils.markdown_render import markdown_to_image, markdown_to_text
 
 httpx_client = get_http_client("message")
@@ -97,7 +98,7 @@ def extract_message_text(content: Any) -> str:
 
 
 def _message_has_hard_to_text_content(content: str) -> bool:
-    return any(
+    return has_markdown_components(content) or any(
         pattern.search(content)
         for pattern in (
             _BLOCK_MATH_RE,

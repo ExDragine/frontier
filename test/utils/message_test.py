@@ -426,6 +426,8 @@ async def test_send_messages_retries_image_render(monkeypatch):
         '```stats\n{"items":[{"label":"在线","value":"12"}]}\n```',
         '```timeline\n{"items":[{"time":"现在","title":"完成"}]}\n```',
         '```ui\n{"children":[{"type":"text","text":"重点"}]}\n```',
+        '::card{title="重点" color="blue"}\n短卡片也要渲染。\n::',
+        '::map{latitude=31.2304 longitude=121.4737}\n::',
     ],
 )
 def test_message_should_render_image_for_hard_to_text_content(content):
@@ -438,6 +440,7 @@ def test_message_should_render_image_for_hard_to_text_content(content):
         "普通短消息继续走文本",
         "The price is $5 today.",
         "Use `echo hello` in shell.",
+        '```markdown\n::card{color="blue"}\n语法示例\n::\n```',
     ],
 )
 def test_message_keeps_simple_short_content_as_text(content):
@@ -461,7 +464,11 @@ def test_message_image_threshold_is_configurable_without_disabling_rich_content(
 
 
 @pytest.mark.asyncio
-async def test_send_messages_routes_composed_ui_directly_to_image(monkeypatch):
+@pytest.mark.parametrize("content", [
+    '```ui\n{"children":[{"type":"text","text":"重点"}]}\n```',
+    '::card{color="blue"}\n重点\n::',
+])
+async def test_send_messages_routes_composed_ui_directly_to_image(monkeypatch, content):
     monkeypatch.setattr(message_module, "UniMessage", DummyUniMessage)
     rendered = []
 
@@ -474,7 +481,6 @@ async def test_send_messages_routes_composed_ui_directly_to_image(monkeypatch):
 
     monkeypatch.setattr(message_module, "markdown_to_image", image)
     monkeypatch.setattr(message_module, "markdown_to_text", text)
-    content = '```ui\n{"children":[{"type":"text","text":"重点"}]}\n```'
     result = await message_module.send_messages(None, 1, {"messages": [types.SimpleNamespace(content=content)]})
     assert result.sent == 1
     assert rendered == [content]

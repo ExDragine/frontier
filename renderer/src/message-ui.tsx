@@ -35,6 +35,7 @@ import type {
   MediaNode,
   MessageDocument,
   MessageNode,
+  MessageProse,
   Renderers,
 } from "./message-types";
 
@@ -86,7 +87,23 @@ function StatusIcon({ status }: { status: string }) {
   );
 }
 
-function ItemContent({ item }: { item: UIItem }) {
+function Prose({ config }: { config: MessageProse }) {
+  // Only the HTML-disabled server Markdown parser can supply `rendered`.
+  return (
+    <div
+      className="md-ui-prose"
+      dangerouslySetInnerHTML={{ __html: config.rendered }}
+    />
+  );
+}
+
+function ItemContent({ item }: { item: UIItem | MessageProse }) {
+  if ("type" in item)
+    return (
+      <div className="md-ui-item-content">
+        <Prose config={item} />
+      </div>
+    );
   return (
     <div className="md-ui-item-content">
       <div className="md-ui-item-header">
@@ -310,13 +327,7 @@ function MessageComponent({
         </p>
       );
     case "prose":
-      // Only the HTML-disabled server Markdown parser can supply `rendered`.
-      return (
-        <div
-          className="md-ui-prose"
-          dangerouslySetInnerHTML={{ __html: config.rendered }}
-        />
-      );
+      return <Prose config={config} />;
     case "badge":
       return (
         <Badge

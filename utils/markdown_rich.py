@@ -111,7 +111,7 @@ class UIText(_RichModel):
 
 class UIProse(_RichModel):
     type: Literal["prose"]
-    text: LongText
+    text: Annotated[str, Field(max_length=MAX_RICH_BLOCK_CHARS)]
 
 
 class UIBadge(_RichModel):
@@ -174,7 +174,7 @@ class UIItem(_RichModel):
 
 class UISteps(_RichModel):
     type: Literal["steps"]
-    items: list[LongText | UIItem] = Field(min_length=1, max_length=20)
+    items: list[LongText | UIItem | UIProse] = Field(min_length=1, max_length=20)
 
 
 class UIList(_RichModel):
@@ -326,6 +326,8 @@ class UIBlock(_RichModel):
                 raise ValueError("UI component count or depth limit exceeded")
             if isinstance(child, UILayout | UICard | UISection):
                 pending.extend((item, depth + 1) for item in child.children)
+            elif isinstance(child, UISteps):
+                pending.extend((item, depth + 1) for item in child.items if isinstance(item, UIProse))
         return self
 
 
@@ -340,22 +342,31 @@ _RICH_MODELS: dict[str, type[_RichModel]] = {
 }
 
 
-def _rich_placeholder(kind: str, data: _RichModel) -> str:
+def rich_block_placeholder(kind: str, data: _RichModel) -> str:
     payload = data.model_dump(mode="json", exclude_none=True)
     if kind == "ui":
         # HTML is produced only by this parser, never accepted from model JSON.
-        parser = MarkdownIt("commonmark", {"html": False}).disable("image")
+        parser = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"]).disable("image")
 
         def compile_prose(node: dict[str, Any]) -> None:
             if node.get("type") == "prose":
                 node["rendered"] = parser.render(node["text"])
             for child in node.get("children", []):
                 compile_prose(child)
+            for item in node.get("items", []):
+                if isinstance(item, dict):
+                    compile_prose(item)
 
         compile_prose(payload)
     serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     encoded = html.escape(serialized, quote=True)
     return f'<div class="md-rich-block" data-rich-kind="{kind}" data-rich-config="{encoded}"></div>'
+
+
+def parse_rich_block(kind: str, source: str) -> _RichModel:
+    if len(source) > MAX_RICH_BLOCK_CHARS:
+        raise ValueError("rich block exceeds the character limit")
+    return _RICH_MODELS[kind].model_validate(json.loads(source))
 
 
 def render_rich_markdown_blocks(html_content: str) -> str:
@@ -368,11 +379,10 @@ def render_rich_markdown_blocks(html_content: str) -> str:
             logger.warning("Markdown %s 富内容块超过 %s 字符，保留为代码块", kind, MAX_RICH_BLOCK_CHARS)
             return match.group(0)
         try:
-            raw: Any = json.loads(source)
-            data = _RICH_MODELS[kind].model_validate(raw)
+            data = parse_rich_block(kind, source)
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as exc:
             logger.warning("Markdown %s 富内容块校验失败，保留为代码块: %s", kind, exc)
             return match.group(0)
-        return _rich_placeholder(kind, data)
+        return rich_block_placeholder(kind, data)
 
     return _RICH_FENCE_RE.sub(replace, html_content)

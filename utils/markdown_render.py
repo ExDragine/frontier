@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from markdown_it import MarkdownIt
 
 from utils import browser_runtime
+from utils.markdown_components import markdown_components_plugin
 from utils.markdown_rich import render_rich_markdown_blocks
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,12 @@ def _remove_temp_file(path: Path) -> None:
 
 
 async def markdown_to_text(markdown_text):
-    md_html = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"]).render(markdown_text)
+    md_html = (
+        MarkdownIt("commonmark", {"html": False})
+        .enable(["table", "strikethrough"])
+        .use(markdown_components_plugin, plain_text=True)
+        .render(markdown_text)
+    )
     document = BeautifulSoup(md_html, "html.parser")
     for link in document.find_all("a", href=True):
         label = link.get_text()
@@ -206,7 +212,7 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
         width: 输出图片宽度
         css: 自定义 CSS 样式
     """
-    md = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"])
+    md = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"]).use(markdown_components_plugin)
     html_content = md.render(markdown_text)
 
     def replace_mermaid(match):

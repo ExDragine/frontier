@@ -112,6 +112,18 @@ async def test_markdown_to_text_does_not_duplicate_autolink_addresses():
 
 
 @pytest.mark.asyncio
+async def test_markdown_to_text_keeps_component_content_and_media_sources_without_control_syntax():
+    text = await markdown_render.markdown_to_text(
+        '::card{title="比较" color="blue"}\n**正文** [文档](https://example.com/docs)\n::\n\n'
+        '::image{url="https://example.com/picture.png" alt="图片说明"}\n::'
+    )
+    assert "比较" in text and "正文" in text and "图片说明" in text
+    assert "文档（https://example.com/docs）" in text
+    assert "https://example.com/picture.png" in text
+    assert "::card" not in text and "data-rich" not in text
+
+
+@pytest.mark.asyncio
 async def test_markdown_to_image_calls(monkeypatch, tmp_path):
     (tmp_path / "templates").mkdir()
     (tmp_path / "templates" / "markdown_assets").mkdir()

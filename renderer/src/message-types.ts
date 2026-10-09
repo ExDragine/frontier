@@ -7,6 +7,7 @@ import type {
   UIImage,
   UIMap,
   UIProse,
+  UISteps,
 } from "./message-schema";
 
 // Only the server can add these fields after validation and bounded media loading.
@@ -23,11 +24,16 @@ type Trusted<T> = T extends UIProse
   ? T & { rendered: string }
   : T extends UIImage | UIMap | UIFrame
     ? T & LoadedMedia
-    : T extends { children: unknown[] }
-      ? Omit<T, "children"> & { children: MessageNode[] }
-      : T;
+    : T extends UISteps
+      ? Omit<T, "items"> & {
+          items: (Exclude<T["items"][number], UIProse> | Trusted<UIProse>)[];
+        }
+      : T extends { children: unknown[] }
+        ? Omit<T, "children"> & { children: MessageNode[] }
+        : T;
 
 export type MessageNode = Trusted<UIBlock["children"][number]>;
+export type MessageProse = Trusted<UIProse>;
 export type MessageDocument = Omit<UIBlock, "children"> & {
   children: MessageNode[];
 };

@@ -190,7 +190,7 @@ export type UIStats = {
 
 export type UISteps = {
   "type": "steps";
-  "items": (string | UIItem)[];
+  "items": (string | UIItem | UIProse)[];
 };
 
 export type UITable = {

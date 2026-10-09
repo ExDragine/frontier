@@ -201,6 +201,12 @@ Windows:
 
 `run.sh` 会设置默认 `HF_ENDPOINT`，然后循环执行 `uv run nb run`。
 
+QQ 富文本默认使用 Markdown 正文与 `::card{color="blue"}` 等轻量组件标记，
+服务端解析、校验后复用现有组件树；卡片、分栏、步骤和独立图片/地图/网页快照无需生成整篇 JSON。
+QQ 每轮固定加载精简的富文本技能，基本语法直接可用，详细契约按需读取。
+旧 `ui` JSON、数据代码块和默认 500 字转图规则保持兼容。
+语法和限制见 [Markdown 组件契约](skills/rich-markdown/references/components.md)。
+
 消息组件采用 React + TypeScript + Tailwind CSS 和定制的 shadcn/ui 源码组件，
 Vite 将它们与 Mermaid、ECharts、KaTeX 和 Prism 一起预构建到
 `templates/markdown_assets/`，普通安装和启动不需要 Node.js，也不会在运行时访问 CDN。

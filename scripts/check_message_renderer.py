@@ -133,6 +133,8 @@ def load_cases():
     cases = {"compat": ui}
     for name in ("article", "comparison", "guide", "media"):
         cases[name] = json.loads((PROJECT_ROOT / "skills" / "rich-markdown" / "examples" / f"{name}.json").read_text())
+        source = (PROJECT_ROOT / "skills" / "rich-markdown" / "examples" / f"{name}.md").read_text()
+        cases[f"markdown-{name}"] = {"title": source.splitlines()[0].removeprefix("# "), "markdown": source}
     cases["compat"]["children"].append(
         {
             "type": "prose",
@@ -203,6 +205,27 @@ def case_checks(name, observed, width, image):
                 "no_media_fallback": not observed["fallback"],
             }
         )
+    if name.startswith("markdown-"):
+        checks.update(markdown_case_checks(name, observed, width))
+    return checks
+
+
+def markdown_case_checks(name, observed, width):
+    checks = {"no_component_markers": "::card" not in observed["text"] and "::steps" not in observed["text"]}
+    if name == "markdown-article":
+        checks["markdown_sections"] = observed["allSections"] == 2 and observed["allCards"] == 1
+    elif name == "markdown-comparison":
+        checks["colored_comparison"] = observed["allCards"] == 2 and len(set(observed["allColors"])) == 2
+        checks["responsive_grid"] = len(observed["gridColumns"].split()) == (2 if width == 1000 else 1)
+        checks["native_markdown_table"] = observed["allTables"] == 1
+    elif name == "markdown-guide":
+        checks["markdown_step_commands"] = observed["stepCount"] == 3 and observed["stepCode"] == 2
+        checks["markdown_step_formatting"] = observed["stepBold"] == 3
+        checks["complete_step_commands"] = observed["stepCodeFits"]
+    elif name == "markdown-media":
+        checks["standalone_media"] = len(observed["allMediaImages"]) == 2 and all(observed["allMediaImages"])
+        checks["isolated_frame"] = observed["frameImage"] and observed["allFrames"] == 1
+        checks["local_media_failure"] = observed["allFallbacks"] == 1
     return checks
 
 
@@ -251,6 +274,8 @@ def configure_fake_dns(enabled, original_address):
 
 
 def composed_source(name, case):
+    if "markdown" in case:
+        return case["markdown"]
     source = "```ui\n" + json.dumps(case, ensure_ascii=False) + "\n```\n"
     if name == "compat":
         second = {
@@ -321,6 +346,7 @@ async def verify(
                     observed.update(
                         await page.evaluate("""() => {
                         const doc = document.querySelector('.md-ui-document');
+                        const content = document.querySelector('#markdown-content');
                         const modules = [...doc.children].map(node => node.getBoundingClientRect());
                         const table = doc.querySelector('.md-ui-table');
                         const chart = doc.querySelector('.md-chart-canvas svg');
@@ -333,6 +359,17 @@ async def verify(
                         const alertIcon = alertTitle?.closest('.md-ui-alert')?.querySelector('svg');
                         return {
                             title: document.title,
+                            allSections: content.querySelectorAll('.md-ui-section').length,
+                            allCards: content.querySelectorAll('.md-ui-card').length,
+                            allColors: [...content.querySelectorAll('.md-ui-card')].map(c => getComputedStyle(c).backgroundColor),
+                            allTables: content.querySelectorAll('table').length,
+                            stepCount: content.querySelectorAll('.md-ui-steps > li').length,
+                            stepCode: content.querySelectorAll('.md-ui-steps pre code').length,
+                            stepBold: content.querySelectorAll('.md-ui-steps strong').length,
+                            stepCodeFits: [...content.querySelectorAll('.md-ui-steps pre')].every(p => p.scrollWidth <= p.clientWidth),
+                            allMediaImages: [...content.querySelectorAll('.md-ui-picture')].map(i => i.complete && i.naturalWidth > 100),
+                            allFrames: content.querySelectorAll('iframe[sandbox=""]').length,
+                            allFallbacks: content.querySelectorAll('.md-media-fallback').length,
                             state: window.__FRONTIER_RENDER__,
                             messageEngine: doc.dataset.messageEngine,
                             cardSlots: doc.querySelectorAll('[data-slot="card"]').length,
@@ -350,9 +387,9 @@ async def verify(
                             chartPaths: chart?.querySelectorAll('path').length,
                             mermaid: doc.querySelector('[data-mermaid-rendered]')?.dataset.mermaidRendered,
                             gridColumns: grid ? getComputedStyle(grid).gridTemplateColumns : null,
-                            scripts: doc.querySelectorAll('script').length,
+                            scripts: content.querySelectorAll('script').length,
                             images: prose?.querySelectorAll('img').length,
-                            unsafeLinks: doc.querySelectorAll('a[href^="javascript:"]').length,
+                            unsafeLinks: content.querySelectorAll('a[href^="javascript:"]').length,
                             math: !!prose?.querySelector('.katex'),
                             bold: !!prose?.querySelector('strong'),
                             gaps: modules.slice(1).map((rect, i) => rect.top - modules[i].bottom),

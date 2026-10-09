@@ -96,6 +96,7 @@ hr { margin: 32px 0; border: 0; border-top: 1px solid var(--md-border); }
 .md-ui-prose > :first-child { margin-top: 0; }
 .md-ui-prose > :last-child { margin-bottom: 0; }
 .md-ui-prose strong { font-weight: 650; }
+.md-ui-prose pre[class*="language-"], .md-ui-prose code[class*="language-"] { white-space: pre-wrap; overflow-wrap: anywhere; }
 .md-ui-row { display: flex; flex-wrap: wrap; align-items: flex-start; }
 .md-ui-row > * { flex: 1 1 260px; }
 .md-ui-column { display: flex; flex-direction: column; }
