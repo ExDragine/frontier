@@ -101,6 +101,24 @@ A[输入] --> B[验证]
     assert children[2]["type"] == "mermaid"
 
 
+def test_three_and_flow_fences_compile_to_renderable_ui_nodes():
+    source = '''::section
+```three
+{"type":"three","objects":[{"kind":"cube","position":[0,0,0]}]}
+```
+
+```flow
+{"type":"flow","nodes":[{"id":"a","label":"开始"},{"id":"b","label":"结束"}],"edges":[{"source":"a","target":"b"}]}
+```
+::
+'''
+    children = _nodes(_render(source))[0]["children"]
+    assert children[0]["type"] == "three"
+    assert children[0]["objects"][0]["kind"] == "cube"
+    assert children[1]["type"] == "flow"
+    assert children[1]["edges"][0]["target"] == "b"
+
+
 @pytest.mark.parametrize("fence", ["```markdown", "~~~markdown", "````markdown"])
 def test_component_examples_inside_code_are_not_executed(fence):
     end = fence.split("markdown")[0]

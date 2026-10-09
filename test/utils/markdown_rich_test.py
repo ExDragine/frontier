@@ -39,6 +39,16 @@ def test_valid_pie_stats_and_timeline_blocks_are_supported():
         assert f'data-rich-kind="{kind}"' in rendered
 
 
+def test_three_and_flow_models_are_available_to_the_rich_parser():
+    cases = {
+        "three": '{"type":"three","objects":[{"kind":"sphere","position":[0,0,0]}]}',
+        "flow": '{"type":"flow","nodes":[{"id":"a","label":"开始"}]}',
+    }
+    for kind, body in cases.items():
+        rendered = _render(f"```{kind}\n{body}\n```")
+        assert f'data-rich-kind="{kind}"' in rendered
+
+
 def test_rich_text_is_encoded_in_data_attribute():
     rendered = _render(
         """```stats

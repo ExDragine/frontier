@@ -25,7 +25,7 @@ LabelText = Annotated[str, Field(max_length=80)]
 LongText = Annotated[str, Field(max_length=2_000)]
 
 _RICH_FENCE_RE = re.compile(
-    r'<pre><code class="language-(?P<kind>chart|stats|timeline|ui)">(?P<body>.*?)</code></pre>',
+    r'<pre><code class="language-(?P<kind>chart|stats|timeline|ui|three|flow)">(?P<body>.*?)</code></pre>',
     re.DOTALL | re.IGNORECASE,
 )
 
@@ -415,6 +415,8 @@ _RICH_MODELS: dict[str, type[_RichModel]] = {
     "stats": StatsBlock,
     "timeline": TimelineBlock,
     "ui": UIBlock,
+    "three": UIThree,
+    "flow": UIFlow,
 }
 
 

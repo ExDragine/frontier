@@ -90,7 +90,7 @@
 
 `image/map/iframe` 是独立组件，正文留空，仍用 `::` 关闭。使用前读取 [媒体契约](media.md)，填写查证过的公开地址或 WGS84 坐标。
 
-`chart/stats/timeline` 仍使用原有 JSON 代码块，可以单独出现，也可以放在 card/section 的正文中；Mermaid 同样使用自己的代码块。使用数据组件前读取 [数据契约](data.md)。普通比较表直接写 Markdown 表格。
+`chart/stats/timeline` 仍使用对应语言标记的 JSON 代码块，可以单独出现，也可以放在 card/section 的正文中；`three` 和 `flow` 也必须分别使用 `three`/`flow` 代码块，不能使用普通 `json` 标记，否则会按代码展示。Mermaid 同样使用自己的代码块。使用数据组件前读取 [数据契约](data.md)。普通比较表直接写 Markdown 表格。
 
 ## Limits and compatibility
 

@@ -39,7 +39,7 @@ Leaflet 只负责在本地渲染器中叠加声明式图层，适合标记和路
 
 `three` 用于产品示意、空间关系和简单三维数据的静态截图。渲染器在本地沙箱中创建场景，并在截图前完成一次渲染：
 
-```json
+```three
 {"type":"three","height":420,"background":"#0f172a","grid":true,"objects":[{"kind":"cube","position":[0,0.5,0],"color":"#6366f1","size":1},{"kind":"sphere","position":[2,0.5,0],"color":"#f59e0b","size":1}]}
 ```
 
@@ -49,7 +49,7 @@ Leaflet 只负责在本地渲染器中叠加声明式图层，适合标记和路
 
 `flow` 使用 React Flow 展示节点和连线，适合工作流、Agent 决策链和系统关系图。节点需要唯一的 `id`；不填写坐标时渲染器会自动排布。
 
-```json
+```flow
 {"type":"flow","height":420,"direction":"LR","nodes":[{"id":"input","label":"输入"},{"id":"tool","label":"调用工具","color":"#059669"},{"id":"answer","label":"回答"}],"edges":[{"source":"input","target":"tool"},{"source":"tool","target":"answer","label":"结果"}]}
 ```
 
