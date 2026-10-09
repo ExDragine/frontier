@@ -265,8 +265,8 @@ function FlowView({ config }: { config: UIFlow }) {
     id: item.id,
     position: autoLayout
       ? config.direction === "LR"
-        ? { x: Math.floor(index / 3) * 220, y: (index % 3) * 110 }
-        : { x: (index % 3) * 220, y: Math.floor(index / 3) * 110 }
+        ? { x: index * 220, y: 0 }
+        : { x: 0, y: index * 110 }
       : { x: item.x || 0, y: item.y || 0 },
     data: { label: item.label },
     style: { background: item.color || "#6366f1", color: "#fff", border: "0", borderRadius: "12px", padding: "10px 14px", fontWeight: 650, boxShadow: "0 4px 14px rgb(15 23 42 / 0.16)" },
@@ -302,11 +302,23 @@ function ThreeView({ config }: { config: ThreeNode }) {
       : new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
     camera.position.set(7, 5, 9);
     camera.lookAt(0, 0, 0);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(width, height, false);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    host.replaceChildren(renderer.domElement);
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(width, height, false);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      host.replaceChildren(renderer.domElement);
+    } catch (error) {
+      // Headless Chromium can be started without a WebGL context. Keep the
+      // rich document renderable instead of letting the whole UI boundary fail.
+      const fallback = document.createElement("div");
+      fallback.className = "md-three-fallback";
+      fallback.textContent = "三维场景暂时无法渲染，请查看消息中的文字说明。";
+      host.replaceChildren(fallback);
+      host.setAttribute("data-three-rendered", "fallback");
+      return;
+    }
     scene.add(new THREE.AmbientLight(0xffffff, 1.8));
     const key = new THREE.DirectionalLight(0xffffff, 2.5);
     key.position.set(5, 8, 6);
@@ -332,6 +344,22 @@ function ThreeView({ config }: { config: ThreeNode }) {
     return () => { renderer.dispose(); scene.traverse((object: THREE.Object3D) => { if (object instanceof THREE.Mesh) { object.geometry.dispose(); const material = object.material; if (Array.isArray(material)) material.forEach(item => item.dispose()); else material.dispose(); } }); };
   }, [config]);
   return <div className="md-three-scene" ref={node} style={{ height: config.height }} role="img" aria-label="三维场景" />;
+}
+
+class VisualBoundary extends Component<
+  { children: ReactNode; label: string },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (this.state.failed) {
+      return <div className="md-visual-fallback">{this.props.label}暂时无法渲染。</div>;
+    }
+    return this.props.children;
+  }
 }
 
 function MessageTable({ config }: { config: UITable }) {
@@ -623,9 +651,17 @@ function MessageComponent({
     case "timeline":
       return <DataBlock config={config} renderers={renderers} />;
     case "three":
-      return <ThreeView config={config} />;
+      return (
+        <VisualBoundary label="三维场景">
+          <ThreeView config={config} />
+        </VisualBoundary>
+      );
     case "flow":
-      return <FlowView config={config} />;
+      return (
+        <VisualBoundary label="流程图">
+          <FlowView config={config} />
+        </VisualBoundary>
+      );
     default:
       throw new Error("Unsupported UI component");
   }
