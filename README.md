@@ -201,7 +201,8 @@ Windows:
 
 `run.sh` 会设置默认 `HF_ENDPOINT`，然后循环执行 `uv run nb run`。
 
-Markdown 渲染所需的 Mermaid、ECharts、KaTeX 和 Prism 已预构建到
+消息组件采用 React + TypeScript + Tailwind CSS 和定制的 shadcn/ui 源码组件，
+Vite 将它们与 Mermaid、ECharts、KaTeX 和 Prism 一起预构建到
 `templates/markdown_assets/`，普通安装和启动不需要 Node.js，也不会在运行时访问 CDN。
 修改 `renderer/` 后需要使用 Node.js 24 重新生成资源：
 
@@ -209,6 +210,11 @@ Markdown 渲染所需的 Mermaid、ECharts、KaTeX 和 Prism 已预构建到
 npm ci --prefix renderer
 npm run build --prefix renderer
 ```
+
+修改 `utils/markdown_rich.py` 的 `ui` 校验规则后，先运行
+`uv run --locked python scripts/generate_renderer_types.py` 更新前端类型。
+构建同时执行 TypeScript 检查；CI 校验类型和预构建资源是否同步。
+布局、组件定制与截图验证见 [渲染器开发说明](renderer/README.md)。
 
 ### Docker
 

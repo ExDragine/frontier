@@ -1,0 +1,42 @@
+/* Keep Tailwind's reset out of ordinary Markdown, KaTeX and Mermaid. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "./";
+
+@theme inline {
+  --color-background: var(--md-background);
+  --color-foreground: var(--md-foreground);
+  --color-card: var(--md-card);
+  --color-card-foreground: var(--md-foreground);
+  --color-primary: var(--md-primary);
+  --color-primary-foreground: var(--md-primary-foreground);
+  --color-secondary: var(--md-secondary);
+  --color-secondary-foreground: var(--md-foreground);
+  --color-muted: var(--md-muted);
+  --color-muted-foreground: var(--md-muted-foreground);
+  --color-border: var(--md-border);
+  --color-ring: var(--md-border);
+  --color-destructive: var(--md-danger);
+  --color-destructive-foreground: var(--md-primary-foreground);
+  --color-success: var(--md-success);
+  --color-success-surface: var(--md-success-surface);
+  --color-warning: var(--md-warning);
+  --color-warning-surface: var(--md-warning-surface);
+  --color-danger: var(--md-danger);
+  --color-danger-surface: var(--md-danger-surface);
+  --color-card-accent: var(--md-accent, var(--md-foreground));
+  --color-card-accent-border: var(--md-accent-border, var(--md-border));
+  --color-card-accent-surface: var(--md-accent-surface, var(--md-secondary));
+}
+
+/* The component utilities need solid borders, scoped to the composed message. */
+@layer base {
+  .md-ui-document *,
+  .md-ui-document ::before,
+  .md-ui-document ::after {
+    border-width: 0;
+    border-style: solid;
+    border-color: var(--md-border);
+  }
+}

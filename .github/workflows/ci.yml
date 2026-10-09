@@ -30,6 +30,8 @@ jobs:
         run: uv run --locked ruff format --check scripts/check_local_links.py
       - name: Check local documentation links
         run: uv run --locked python scripts/check_local_links.py
+      - name: Check generated message component types
+        run: uv run --locked python scripts/generate_renderer_types.py --check
       - name: Compile Python sources
         run: uv run --locked python -m compileall -q models plugins scripts tools utils
       - name: Check typed runtime boundaries

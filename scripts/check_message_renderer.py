@@ -157,6 +157,9 @@ def case_checks(name, observed, width, image):
                 "prose": observed["bold"] and observed["math"] and observed["images"] == 0,
                 "escaped_text": "window.injection = true" in observed["text"],
                 "responsive_grid": len(observed["gridColumns"].split()) == (2 if width == 1000 else 1),
+                "multiple_react_roots": observed["secondReady"] and observed["secondMath"],
+                "ordinary_markdown_styles": observed["markdownListStyle"] == "disc",
+                "shadcn_primitives": observed["cardSlots"] > 0 and observed["componentSlots"] >= 6,
             }
         )
     elif name == "article":
@@ -247,6 +250,24 @@ def configure_fake_dns(enabled, original_address):
         markdown_media.public_address = fake_address
 
 
+def composed_source(name, case):
+    source = "```ui\n" + json.dumps(case, ensure_ascii=False) + "\n```\n"
+    if name == "compat":
+        second = {
+            "title": "第二段独立消息",
+            "children": [
+                {"type": "prose", "text": "**独立挂载与公式** $a^2+b^2=c^2$"},
+                {"type": "progress", "label": "准备完成", "value": 100},
+                {"type": "separator", "label": "继续阅读"},
+            ],
+        }
+        source += "\n普通 Markdown 列表仍保留标记：\n\n- 第一项\n- 第二项\n\n"
+        source += "```ui\n" + json.dumps(second, ensure_ascii=False) + "\n```\n"
+    if name == "media":
+        source += "\n外部模块之后的普通正文也需要保持间距。\n"
+    return source
+
+
 async def verify(
     output_dir: Path, *, live_media: bool = False, fake_ip_dns: bool = False, iframe_url: str = "https://example.com/"
 ) -> None:
@@ -293,10 +314,7 @@ async def verify(
                 observed = {}
                 page_errors = []
                 remote_requests = []
-                source = "```ui\n" + json.dumps(case, ensure_ascii=False) + "\n```\n"
-
-                if name == "media":
-                    source += "\n外部模块之后的普通正文也需要保持间距。\n"
+                source = composed_source(name, case)
 
                 async def after_load(page, observed=observed):
                     await original_wait(page)
@@ -310,9 +328,19 @@ async def verify(
                         const grid = doc.querySelector('.md-ui-grid');
                         const label = doc.querySelector('.md-stat-label');
                         const progress = doc.querySelector('[role=progressbar]');
+                        const second = document.querySelectorAll('.md-ui-document')[1];
+                        const alertTitle = doc.querySelector('[data-slot="alert-title"]');
+                        const alertIcon = alertTitle?.closest('.md-ui-alert')?.querySelector('svg');
                         return {
                             title: document.title,
                             state: window.__FRONTIER_RENDER__,
+                            messageEngine: doc.dataset.messageEngine,
+                            cardSlots: doc.querySelectorAll('[data-slot="card"]').length,
+                            componentSlots: doc.querySelectorAll('[data-slot]').length,
+                            alertAligned: !alertTitle || !!alertIcon && Math.abs(alertTitle.getBoundingClientRect().top - alertIcon.getBoundingClientRect().top) < 10,
+                            secondReady: second?.dataset.richRendered === 'true' && second?.dataset.messageEngine === 'react',
+                            secondMath: !!second?.querySelector('.katex'),
+                            markdownListStyle: document.querySelector('#markdown-content > ul') ? getComputedStyle(document.querySelector('#markdown-content > ul')).listStyleType : null,
                             text: document.body.textContent,
                             width: document.querySelector('#markdown-content').clientWidth,
                             scrollWidth: document.querySelector('#markdown-content').scrollWidth,
@@ -383,9 +411,12 @@ async def verify(
                     "page_identity": observed["title"] == "Markdown Rendered",
                     "meaningful_content": case["title"] in observed["text"],
                     "ready": observed["state"]["state"] == "ready",
+                    "react_components": observed["messageEngine"] == "react"
+                    and observed["cardSlots"] == observed["cards"],
                     "no_render_errors": not observed["state"]["errors"] and not page_errors,
                     "no_remote_requests": not remote_requests,
                     "no_horizontal_overflow": observed["scrollWidth"] <= observed["width"],
+                    "alert_alignment": observed["alertAligned"],
                     "image_size": image.width == width and image.height > 600,
                     "spacing": all(gap >= 25 for gap in observed["gaps"]),
                     "no_injected_content": observed["scripts"] == 0 and observed["unsafeLinks"] == 0,
