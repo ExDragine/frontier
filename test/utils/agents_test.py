@@ -661,7 +661,12 @@ async def test_chat_agent_drops_reasoning_params_when_chat_completions(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
+@pytest.mark.parametrize("platform,expected_skills", [
+    (None, ["rich-markdown"]),
+    ("qq", ["rich-markdown"]),
+    ("feishu", []),
+])
+async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path, platform, expected_skills):
     import types
 
     captured = {}
@@ -691,6 +696,10 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
         Any, {"name": "document-agent", "description": "document", "tools": []}
     )
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
+    conversation = (
+        cognitive_mod.ConversationRef(platform=platform, account_id="bot", kind="group", conversation_id="123")
+        if platform is not None else None
+    )
 
     await frontier.chat_agent(
         messages=[{"role": "user", "content": "hi"}],
@@ -698,6 +707,7 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
         user_name="test",
         group_id=123,
         group_member_role="owner",
+        conversation=conversation,
     )
 
     backend = captured["backend"]
@@ -711,6 +721,7 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
         tmp_path / "sandbox" / "memory" / "group-123"
     )
     assert captured["skills"] == ["/skills"]
+    assert captured["payload"].get("pinned_skills", []) == expected_skills
     assert captured["memory"] == ["/memory/group-123/SOUL.md"]
     assert "/memory/group-123/SOUL.md" not in captured["system_prompt"]
     memory_middleware = next(
@@ -742,6 +753,7 @@ async def test_chat_agent_uses_group_id_scoped_workspace(monkeypatch, tmp_path):
         group_id=123,
         group_member_role="owner",
         workspace_dir=str(tmp_path / "sandbox" / "workspaces" / "group-123"),
+        conversation=conversation,
     )
 
 
@@ -794,6 +806,7 @@ async def test_chat_agent_acp_profile_removes_platform_tools_and_delegation(
     )
 
     assert captured["tools"] == []
+    assert "pinned_skills" not in captured["payload"]
     assert captured["subagents"] == [frontier.document_subagent]
     assert "可信身份或平台授权" in captured["system_prompt"]
 

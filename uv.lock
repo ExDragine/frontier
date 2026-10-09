@@ -609,7 +609,7 @@ wheels = [
 
 [[package]]
 name = "deepagents"
-version = "0.7.22"
+version = "0.7.23"
 source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }
 dependencies = [
     { name = "langchain" },
@@ -620,9 +620,9 @@ dependencies = [
     { name = "packaging" },
     { name = "wcmatch" },
 ]
-sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/13/28/517fd5fd731e6a7c659aa31218e567ff2f766aca6c075c1086fbf5595f31/deepagents-0.7.22.tar.gz", hash = "sha256:002203b62a6f535914757e198721c003792def37c065b3dd95ce2ba2ae7a919a" }
+sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/3d/80/3f1e3f28e277d2583ae25b49d6c3eb1a494c176191c02d68275bff9b21b7/deepagents-0.7.23.tar.gz", hash = "sha256:03fbffec1691f72e412eb9251516a799ac3f5d3851defb4a98a49fece5675c10" }
 wheels = [
-    { url = "https://mirrors.cloud.tencent.com/pypi/packages/d1/8b/18ecba94780bb1f6e4733a60b23b9290225144c2004273de118995d80fb3/deepagents-0.7.22-py3-none-any.whl", hash = "sha256:c6f59bfadddf411ce0856a2cf16d82be3ea736285420db6c0005b87992a1cbef" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/38/4a/9ffaf3045014ac8733c121e2b9d7e15e652f29ac42c179871960f7537e93/deepagents-0.7.23-py3-none-any.whl", hash = "sha256:ccba4ca32e82f422e08c04b2321d135f1be321fc44ae5891b9b37a7c8bde5ca7" },
 ]
 
 [[package]]
@@ -838,7 +838,7 @@ requires-dist = [
     { name = "agent-client-protocol", specifier = "==1.0.0rc1" },
     { name = "bcrypt" },
     { name = "beautifulsoup4" },
-    { name = "deepagents" },
+    { name = "deepagents", specifier = ">=0.7.23,<0.8" },
     { name = "gitpython" },
     { name = "httpx2", extras = ["http2"] },
     { name = "imageio-ffmpeg" },
@@ -1479,7 +1479,7 @@ wheels = [
 
 [[package]]
 name = "langchain-core"
-version = "1.6.6"
+version = "1.6.9"
 source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }
 dependencies = [
     { name = "httpx" },
@@ -1493,9 +1493,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uuid-utils" },
 ]
-sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/18/87/9e5d393bbcec068c51becc255a15aacfd8a14ac5826179751c1c320e5258/langchain_core-1.6.6.tar.gz", hash = "sha256:67616d984c085009be2c381c2efd330d32429a58aebab295b4f51b6573964511" }
+sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/a7/d3/e9611e44e62ab8175127e137587c62dc2ed00e2615aebd89dfdb77f5fba0/langchain_core-1.6.9.tar.gz", hash = "sha256:34394228603e6f0bd24ce4e773b58b7d160e1b8cf489ecb350cf41f5366f5e92" }
 wheels = [
-    { url = "https://mirrors.cloud.tencent.com/pypi/packages/90/10/8c00b4dc094886314c907ec7ead258dfee28948cf44175976cc4fba9aba8/langchain_core-1.6.6-py3-none-any.whl", hash = "sha256:d9a71e312ab7443701238750e04a57aefc037c4f1ec82837c8a1609d9a14a9b1" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/49/41/fdcdd869c052874b17e2325c986cf8c2fc6bbefa3b9d5404dd64dfffb12a/langchain_core-1.6.9-py3-none-any.whl", hash = "sha256:2bacea12270fd4cfdeeefdc5977e7e8b3c30814c509534d1ef43f4e5b7d3f657" },
 ]
 
 [[package]]

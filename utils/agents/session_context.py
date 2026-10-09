@@ -22,11 +22,15 @@ def history_budget(settings, profile, *, reserved_tokens: int = 0) -> int:
 
 
 def recent_complete_turns(messages, max_tokens: int):
-    """Retain a suffix of complete human-led turns, never orphan tool results."""
+    """Retain complete user-led turns, including their internally pinned skills."""
     turns = []
     for message in messages:
         role = message.get("role") if isinstance(message, dict) else getattr(message, "type", None)
-        if role in {"user", "human"}:
+        metadata = (
+            message.get("additional_kwargs", {}) if isinstance(message, dict)
+            else getattr(message, "additional_kwargs", {})
+        )
+        if role in {"user", "human"} and metadata.get("lc_source") != "pinned_skill":
             turns.append([])
         if turns:
             turns[-1].append(message)
