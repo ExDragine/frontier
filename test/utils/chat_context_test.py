@@ -64,7 +64,7 @@ def test_remaining_budget_prefers_newest_history_without_changing_message_order(
     result = _build(history=history, images=[b"current"], max_images=2)
 
     assert _media(result) == [b"newer", b"current"]
-    assert "历史媒体未内联" in result[0]["content"][0]["text"]
+    assert "媒体未内联" in result[0]["content"][0]["text"]
 
 
 def test_oversized_current_image_does_not_exclude_a_smaller_current_image():
@@ -76,4 +76,4 @@ def test_remote_history_cannot_bypass_inline_budget():
     result = _build(
         history=[{"role": "user", "content": [{"type": "image_url", "image_url": "https://example.com/x"}]}],
     )
-    assert result[0]["content"] == [{"type": "text", "text": "[历史媒体未内联；如有附件路径，可按需读取]"}]
+    assert result[0]["content"] == [{"type": "text", "text": "[媒体未内联：超出本次预算或大小未知；如有附件路径，可分批读取]"}]

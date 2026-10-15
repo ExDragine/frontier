@@ -1,4 +1,5 @@
 # ruff: noqa: S101
+import json
 import types
 
 import pytest
@@ -158,3 +159,49 @@ async def test_message_query_tools_use_context_and_format_results(load_tool_modu
         ("get_forwarded_messages", {"forward_id": "fwd-1"}),
         ("mark_message_as_read", {"message_scene": "group", "peer_id": 123, "message_seq": 88}),
     ]
+
+
+@pytest.mark.asyncio
+async def test_history_attachment_read_uses_trusted_scope_and_mounted_path(load_tool_module, monkeypatch, tmp_path):
+    from plugins.agent import historical_attachments
+    from utils.agent_context import FrontierRuntimeContext
+    from utils.agent_protocol import ConversationRef
+
+    mod = load_tool_module("milky_message")
+    called = []
+    bot = types.SimpleNamespace(self_id="999")
+    monkeypatch.setattr(mod, "get_bot", lambda account: bot if account == "999" else pytest.fail("wrong account"))
+
+    async def load(actual_bot, source, seq, db, **kwargs):
+        called.append((actual_bot, source, seq, kwargs))
+        return {"sender_user_id": 111, "attachments": [{"path": "/memory/group-123/files/pic.png"}]}
+
+    monkeypatch.setattr(historical_attachments, "load_historical_attachments", load)
+    runtime = types.SimpleNamespace(context=FrontierRuntimeContext(
+        user_id="456", group_id=123, group_member_role=None, workspace_dir=str(tmp_path),
+        conversation=ConversationRef("qq", "999", "group", "123"),
+    ))
+    config = {"configurable": {
+        "group_id": 888, "user_id": "777", "virtual_roots": {"/memory/group-123/": str(tmp_path)},
+    }}
+    result = await mod.get_message(
+        "group", 77, include_attachments=True, attachment_index=2, config=config, runtime=runtime,
+    )
+    assert json.loads(result)["sender_user_id"] == 111
+    assert called[0][1].peer_id == 123 and called[0][2] == 77
+    assert called[0][3] == {"workspace_key": "group-123", "memory_dir": str(tmp_path), "attachment_index": 2}
+    for scene, peer in [("group", 888), ("friend", 456), ("temp", 456)]:
+        rejected = await mod.get_message(scene, 77, peer_id=peer, include_attachments=True, config=config, runtime=runtime)
+        assert "当前会话" in rejected
+    assert len(called) == 1
+
+
+@pytest.mark.asyncio
+async def test_history_attachment_requires_scope_and_mount_before_platform_access(load_tool_module, install_milky_bot):
+    mod = load_tool_module("milky_message")
+    bot = install_milky_bot(mod)
+    for config in [{}, _config()]:
+        result = await mod.get_message("group", 77, include_attachments=True, config=config)
+        assert result and not bot.calls
+    result = await mod.get_message("group", 77, attachment_index=1, config=_config())
+    assert "include_attachments=true" in result and not bot.calls

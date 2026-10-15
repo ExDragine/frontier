@@ -3,6 +3,7 @@ import json
 import re
 import time
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -33,6 +34,20 @@ _RECENT_MEDIA_FOLLOWUP_RE = re.compile(
     r"analy[sz]e|summari[sz]e|extract|read\s+(?:it|this)|take\s+a\s+look)",
     re.IGNORECASE,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class MessageSource:
+    """Trusted QQ scope usable by both event replies and history tools."""
+
+    bot_user_id: str
+    message_scene: str
+    peer_id: int
+    reply: object | None = None
+
+    @property
+    def group_id(self) -> int | None:
+        return self.peer_id if self.message_scene == "group" else None
 
 
 def _message_utils():
@@ -241,7 +256,7 @@ def _refreshable_quoted_file_item(item, group_id: int | None):
 
 async def _quoted_file_context(  # noqa: C901
     bot,
-    event: MessageEvent,
+    source: MessageSource,
     reply_seq: int,
     messages_db: MessageDatabase,
     quoted,
@@ -266,7 +281,7 @@ async def _quoted_file_context(  # noqa: C901
     segments = segments or _raw_segments(quoted)
     marker_count = len(re.findall(r"\[文件:[^\]\n]*\]", str(getattr(quoted, "content", ""))))
     if segments is None and (len(available_records) < len(records) or marker_count > len(refs)):
-        milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
+        milky_message = await _fetch_reply_message_from_milky(bot, source, reply_seq)
         segments = list(getattr(milky_message, "segments", [])) if milky_message else None
     file_items = attachments.extract_message_files(segments or [])
     expected_count = len(file_items) if file_items else max(marker_count, len(records))
@@ -291,7 +306,7 @@ async def _quoted_file_context(  # noqa: C901
             message_time=quoted.time,
             **({"message_id": quoted.id} if getattr(quoted, "id", None) is not None else {}),
             is_self_send=(
-                str(resolve_message_sender_user_id(quoted)) == str(event.self_id)
+                str(resolve_message_sender_user_id(quoted)) == str(source.bot_user_id)
                 or getattr(quoted, "role", None) == "assistant"
             ),
             user_id=quoted.user_id,
@@ -363,14 +378,14 @@ def segments_directly_mention_user(segments: list[dict], user_id: int | str) -> 
     )
 
 
-async def _fetch_reply_message_from_milky(bot, event: MessageEvent, reply_seq: int):
-    event_reply = getattr(event, "reply", None)
+async def _fetch_reply_message_from_milky(bot, source: MessageSource, reply_seq: int):
+    event_reply = source.reply
     if event_reply and getattr(event_reply, "message_seq", None) == reply_seq:
         return event_reply
     try:
         return await bot.get_message(
-            message_scene=event.data.message_scene,
-            peer_id=event.data.peer_id,
+            message_scene=source.message_scene,
+            peer_id=source.peer_id,
             message_seq=reply_seq,
         )
     except Exception as e:
@@ -381,7 +396,10 @@ async def _fetch_reply_message_from_milky(bot, event: MessageEvent, reply_seq: i
 async def _download_image_from_url(url: str) -> bytes | None:
     """下载引用消息中的图片，失败返回 None。"""
     try:
-        return (await _httpx_client.get(url)).content
+        response = await _httpx_client.get(url)
+        if callable(getattr(response, "raise_for_status", None)):
+            response.raise_for_status()
+        return response.content
     except Exception as e:
         logger.warning(f"⚠️ 下载引用图片失败 url={url}: {type(e).__name__}: {e}")
         return None
@@ -502,7 +520,7 @@ def _quoted_needs_normalization_rebuild(quoted) -> bool:
 
 
 async def _rebuild_quoted_normalization(
-    bot, event: MessageEvent, quoted, reply_seq: int, messages_db: MessageDatabase
+    bot, source: MessageSource, quoted, reply_seq: int, messages_db: MessageDatabase
 ):
     raw_segments_json = getattr(quoted, "raw_segments_json", None)
     segments = None
@@ -516,7 +534,7 @@ async def _rebuild_quoted_normalization(
 
     milky_message = None
     if segments is None:
-        milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
+        milky_message = await _fetch_reply_message_from_milky(bot, source, reply_seq)
         if not milky_message:
             return quoted
         segments = milky_message.segments
@@ -549,19 +567,20 @@ async def _rebuild_quoted_normalization(
     return quoted
 
 
-async def build_reply_context(  # noqa: C901
+async def load_message_context(  # noqa: C901
     bot,
-    event: MessageEvent,
+    source: MessageSource,
     reply_seq: int,
-    group_id: int | None,
     messages_db: MessageDatabase,
     *,
     load_images: bool = True,
+    refresh_segments: bool = False,
     workspace_key: str | None = None,
     memory_dir: str | Path | None = None,
 ) -> tuple[dict[str, object] | None, list[bytes]]:
+    group_id = source.group_id
     select_kwargs: dict[str, int] = {}
-    private_peer_user_id = _private_peer_user_id(event) if group_id is None else None
+    private_peer_user_id = source.peer_id if group_id is None else None
     if group_id is None and private_peer_user_id is None:
         logger.warning("忽略无法确定 peer_user_id 的私聊引用 message_seq={}", reply_seq)
         return None, []
@@ -573,12 +592,14 @@ async def build_reply_context(  # noqa: C901
         # segments. A rendered Markdown image must not replace or accompany it.
         stored_assistant_text = (
             quoted.role == "assistant"
-            and str(resolve_message_sender_user_id(quoted)) == str(event.self_id)
+            and str(resolve_message_sender_user_id(quoted)) == str(source.bot_user_id)
             and getattr(quoted, "raw_segments_json", None) is None
             and getattr(quoted, "normalized_status", "legacy") == "complete"
         )
-        if _quoted_needs_normalization_rebuild(quoted):
-            quoted = await _rebuild_quoted_normalization(bot, event, quoted, reply_seq, messages_db)
+        if _quoted_needs_normalization_rebuild(quoted) or (
+            refresh_segments and not quoted.raw_segments_json and not stored_assistant_text
+        ):
+            quoted = await _rebuild_quoted_normalization(bot, source, quoted, reply_seq, messages_db)
         if not load_images or stored_assistant_text:
             return (
                 _format_quote(
@@ -614,7 +635,10 @@ async def build_reply_context(  # noqa: C901
         ) == "legacy"
         # 未触发 Agent 的群图片可能只有文本占位符，需回源 Milky。
         # 纯文本或纯文件引用不应因为“没有图片索引”而额外回源。
-        if (not image_records and (has_quoted_images or image_presence_unknown)) or missing_images:
+        # On-demand reads cache individual segments. Such rows must not make a
+        # later whole-message quote look as if all its images were downloaded.
+        partial_segment_cache = any('"segment_index"' in getattr(record, "metadata_json", "") for record in image_records)
+        if (not image_records and (has_quoted_images or image_presence_unknown)) or missing_images or partial_segment_cache:
             if loaded_raw_segments is not None:
                 fetched_segments = loaded_raw_segments
                 _quoted_text, fetched_images, fetched_missing = await _extract_segments_content(
@@ -622,7 +646,7 @@ async def build_reply_context(  # noqa: C901
                 )
                 media_source_available = True
             else:
-                milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
+                milky_message = await _fetch_reply_message_from_milky(bot, source, reply_seq)
                 media_source_available = milky_message is not None
                 if milky_message:
                     fetched_segments = list(getattr(milky_message, "segments", []))
@@ -654,7 +678,7 @@ async def build_reply_context(  # noqa: C901
         images = fetched_images or local_images
         file_refs, missing_files = await _quoted_file_context(
             bot,
-            event,
+            source,
             reply_seq,
             messages_db,
             quoted,
@@ -679,7 +703,7 @@ async def build_reply_context(  # noqa: C901
             images,
         )
 
-    milky_message = await _fetch_reply_message_from_milky(bot, event, reply_seq)
+    milky_message = await _fetch_reply_message_from_milky(bot, source, reply_seq)
     if not milky_message:
         return None, []
 
@@ -690,7 +714,7 @@ async def build_reply_context(  # noqa: C901
     else:
         images, missing_images = [], 0
     sender_user_id = int(milky_message.sender_id)
-    role = "assistant" if str(sender_user_id) == str(event.self_id) else "user"
+    role = "assistant" if str(sender_user_id) == str(source.bot_user_id) else "user"
     if group_id is None and role == "assistant":
         display_name, nickname, card = EnvConfig.BOT_NAME, None, None
     else:
@@ -709,8 +733,8 @@ async def build_reply_context(  # noqa: C901
             user_nickname=nickname,
             user_card=card,
             sender_user_id=sender_user_id,
-            bot_user_id=int(event.self_id),
-            directly_mentions_bot=segments_directly_mention_user(milky_message.segments, event.self_id),
+            bot_user_id=int(source.bot_user_id),
+            directly_mentions_bot=segments_directly_mention_user(milky_message.segments, source.bot_user_id),
             role=role,
             content=quoted_text,
             raw_segments_json=normalized.raw_segments_json,
@@ -758,7 +782,7 @@ async def build_reply_context(  # noqa: C901
         )
         file_refs, missing_files = await _quoted_file_context(
             bot,
-            event,
+            source,
             reply_seq,
             messages_db,
             quoted_source,
@@ -781,4 +805,30 @@ async def build_reply_context(  # noqa: C901
             missing_files=missing_files,
         ),
         images,
+    )
+
+
+async def build_reply_context(
+    bot,
+    event: MessageEvent,
+    reply_seq: int,
+    group_id: int | None,
+    messages_db: MessageDatabase,
+    *,
+    load_images: bool = True,
+    workspace_key: str | None = None,
+    memory_dir: str | Path | None = None,
+) -> tuple[dict[str, object] | None, list[bytes]]:
+    peer_id = group_id if group_id is not None else _private_peer_user_id(event)
+    if peer_id is None:
+        return None, []
+    source = MessageSource(
+        bot_user_id=str(event.self_id),
+        message_scene="group" if group_id is not None else event.data.message_scene,
+        peer_id=peer_id,
+        reply=getattr(event, "reply", None),
+    )
+    return await load_message_context(
+        bot, source, reply_seq, messages_db,
+        load_images=load_images, workspace_key=workspace_key, memory_dir=memory_dir,
     )

@@ -174,6 +174,41 @@ async def _complete_staged_write(target_path: Path, data: bytes) -> None:
         raise
 
 
+async def stage_message_bytes(
+    data: bytes,
+    file_name: str,
+    *,
+    memory_dir: str | Path,
+    workspace_key: str,
+    message_time: int | None = None,
+    message_id: int | None = None,
+) -> StagedMessageFile:
+    """Stage a downloaded attachment; the caller must index or clean it up."""
+    memory_path = Path(memory_dir)
+    files_dir = memory_path / "files"
+    if message_id is not None:
+        prefix = f"{int(message_time)}-" if message_time is not None else ""
+        files_dir /= f"{prefix}m{int(message_id)}"
+    elif message_time is not None:
+        files_dir /= str(int(message_time))
+    files_dir.mkdir(parents=True, exist_ok=True)
+    target_path = _reserve_attachment_path(files_dir, _safe_attachment_file_name(file_name))
+    staged = StagedMessageFile(
+        file_name=target_path.name,
+        file_size=len(data),
+        virtual_path=f"/memory/{workspace_key}/{target_path.relative_to(memory_path).as_posix()}",
+        local_path=target_path,
+        mime_type=detect_mime_type(data, kind="file", file_name=target_path.name),
+        sha256=hashlib.sha256(data).hexdigest(),
+    )
+    try:
+        await _complete_staged_write(target_path, data)
+    except BaseException:
+        cleanup_staged_message_files([staged])
+        raise
+    return staged
+
+
 async def stage_message_files(
     bot,
     file_items: list[MessageFileItem],
@@ -190,14 +225,6 @@ async def stage_message_files(
     if not file_items:
         return []
 
-    memory_path = Path(memory_dir)
-    files_dir = memory_path / "files"
-    if message_id is not None:
-        prefix = f"{int(message_time)}-" if message_time is not None else ""
-        files_dir /= f"{prefix}m{int(message_id)}"
-    elif message_time is not None:
-        files_dir /= str(int(message_time))
-    files_dir.mkdir(parents=True, exist_ok=True)
     staged_files: list[StagedMessageFile] = []
 
     try:
@@ -212,20 +239,13 @@ async def stage_message_files(
             if file_bytes is None:
                 continue
 
-            safe_name = _safe_attachment_file_name(file_item.file_name)
-            target_path = _reserve_attachment_path(files_dir, safe_name)
-            virtual_path = f"/memory/{workspace_key}/{target_path.relative_to(memory_path).as_posix()}"
             staged_files.append(
-                StagedMessageFile(
-                    file_name=target_path.name,
-                    file_size=len(file_bytes),
-                    virtual_path=virtual_path,
-                    local_path=target_path,
-                    mime_type=detect_mime_type(file_bytes, kind="file", file_name=target_path.name),
-                    sha256=hashlib.sha256(file_bytes).hexdigest(),
+                await stage_message_bytes(
+                    file_bytes, file_item.file_name,
+                    memory_dir=memory_dir, workspace_key=workspace_key,
+                    message_time=message_time, message_id=message_id,
                 )
             )
-            await _complete_staged_write(target_path, file_bytes)
     except BaseException:
         cleanup_staged_message_files(staged_files)
         raise

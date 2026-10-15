@@ -14,6 +14,7 @@ from utils.agents.message_envelope import (
     build_agent_message_payload,
     content_for_persisted_images,
 )
+from utils.attachment_refs import attachment_refs, message_segments, preferred_attachment_records
 
 from .models import MESSAGE_SOURCE_TYPE_NORMAL, Message, MessageAttachment, resolve_message_sender_user_id
 
@@ -37,10 +38,11 @@ def _message_agent_payload(
     content: str | None = None,
     attachments: list[dict[str, object]] | None = None,
     include_reply_to: bool = True,
+    include_attachment_refs: bool = True,
 ) -> dict[str, object]:
     stored_model_content = getattr(message, "model_content", None)
     resolved_content = stored_model_content if stored_model_content is not None else message.content
-    return build_agent_message_payload(
+    payload = build_agent_message_payload(
         timestamp_ms=message.time,
         msg_id=message.msg_id,
         user_id=resolve_message_sender_user_id(message),
@@ -55,6 +57,9 @@ def _message_agent_payload(
         bot_user_id=message.bot_user_id,
         directly_mentions_bot=message.directly_mentions_bot,
     )
+    if include_attachment_refs and (refs := attachment_refs(message_segments(message.raw_segments_json))):
+        payload["attachment_refs"] = refs
+    return payload
 
 
 def _attachment_agent_payload(attachment: MessageAttachment) -> dict[str, object]:
@@ -105,11 +110,11 @@ def _attachments_for_message(session: Session, message: Message) -> list[Message
     if message.group_id is None:
         statement = statement.where(MessageAttachment.user_id == message.user_id)
     records = session.exec(statement.order_by(col(MessageAttachment.file_name))).all()
-    return [
+    return preferred_attachment_records([
         record for record in records
         if record.message_id is not None
         or (record.user_id == message.user_id and record.msg_id in (None, message.msg_id))
-    ]
+    ])
 
 
 def _refresh_message_model_state(

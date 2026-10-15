@@ -6,6 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot, logger
 
+from utils.attachment_refs import format_attachment_refs, message_segments
 from utils.database import Message, MessageDatabase, resolve_message_sender_user_id
 from utils.milky_tools import configurable, format_messages
 
@@ -86,6 +87,7 @@ def _format_search_results(
     offset: int,
     limit: int,
     content_max_chars: int,
+    current_group_id: int | None = None,
 ) -> str:
     sort_label = "相关度" if sort == "relevance" else "时间倒序"
     lines = [f"找到 {len(messages)} 条聊天记录（{sort_label}，offset={offset}）："]
@@ -102,6 +104,7 @@ def _format_search_results(
         lines.append(
             f"- [{timestamp}] {scope} msg_id={message_id} user_id={sender_label} "
             f"{role_label}({name}): {_truncate_content(msg.content, content_max_chars)}"
+            + (format_attachment_refs(message_segments(msg.raw_segments_json)) if msg.group_id == current_group_id else "")
         )
     if len(messages) == limit and offset + len(messages) < _MAX_MEMORY_MESSAGES:
         lines.append(f"可能还有更多记录；下一页使用 offset={offset + len(messages)}。")
@@ -110,7 +113,9 @@ def _format_search_results(
     return "\n".join(lines)
 
 
-def _format_recent_conversation(messages: list[Message], *, content_max_chars: int) -> str:
+def _format_recent_conversation(
+    messages: list[Message], *, content_max_chars: int, current_group_id: int | None = None,
+) -> str:
     lines = [f"当前会话最近 {len(messages)} 条消息（按时间从早到晚）："]
     for msg in reversed(messages):
         timestamp = datetime.datetime.fromtimestamp(msg.time / 1000, tz=_SHANGHAI).strftime(
@@ -121,9 +126,11 @@ def _format_recent_conversation(messages: list[Message], *, content_max_chars: i
         role_label = "助手" if msg.role == "assistant" else "用户"
         sender_user_id = resolve_message_sender_user_id(msg)
         sender_label = str(sender_user_id) if sender_user_id is not None else "未知"
+        scope = f"群{msg.group_id}" if msg.group_id is not None else "私聊"
         lines.append(
-            f"- [{timestamp}] msg_id={message_id} user_id={sender_label} "
+            f"- [{timestamp}] {scope} msg_id={message_id} user_id={sender_label} "
             f"{role_label}({name}): {_truncate_content(msg.content, content_max_chars)}"
+            + (format_attachment_refs(message_segments(msg.raw_segments_json)) if msg.group_id == current_group_id else "")
         )
     return "\n".join(lines)
 
@@ -168,7 +175,7 @@ async def get_recent_conversation(
         return "最近对话读取失败，请稍后重试。"
     if not messages:
         return "当前会话还没有可用的历史消息。"
-    return _format_recent_conversation(messages, content_max_chars=max_chars)
+    return _format_recent_conversation(messages, content_max_chars=max_chars, current_group_id=group_id)
 
 
 @tool(response_format="content")
@@ -264,6 +271,7 @@ async def search_messages(  # noqa: C901
         offset=query_offset,
         limit=query_limit,
         content_max_chars=max_chars,
+        current_group_id=group_id,
     )
 
 

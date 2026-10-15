@@ -52,6 +52,7 @@ from utils.media import detect_mime_type, inline_media_bytes, media_block_kind
 from .capture import detect_browser_capture_intent
 from .execution import current_run_id, managed_agent_turn
 from .inputs import filter_messages_for_model_capabilities
+from .media_inputs import MediaInputMiddleware
 from .progress import (
     ProgressEvent,
     ProgressReporter,
@@ -708,6 +709,10 @@ class FrontierCognitive:
             middleware.append(NativeWebSearchMiddleware())
         if session_turn is not None:
             middleware.append(SessionHistoryMiddleware(session_turn, model.profile))
+        middleware.append(MediaInputMiddleware(
+            EnvConfig.ADVAN_MODEL, role="advanced",
+            max_images=EnvConfig.MAX_INLINE_IMAGES, max_bytes=EnvConfig.MAX_INLINE_MEDIA_BYTES,
+        ))
         agent = create_deep_agent(
             name=EnvConfig.BOT_NAME,
             model=model,

@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, desc, func, select
 
 from utils.agents.message_envelope import content_for_persisted_images, serialize_agent_payload
+from utils.attachment_refs import preferred_attachment_records
 
 from .attachments import _message_workspace_key, _MessageAttachmentFacadeMixin, _MessageAttachmentManager
 from .engine import _run_database, get_engine
@@ -437,6 +438,7 @@ class MessageDatabase(_MessageAttachmentFacadeMixin, _MessageSearchMixin):
                     and attachment.msg_id in (None, message.msg_id)
                 )
             ]
+            msg_attachments = preferred_attachment_records(msg_attachments)
             attachment_refs = []
             missing_kinds: list[str] = []
             message_workspace_key = _message_workspace_key(message.user_id, message.group_id)
@@ -472,6 +474,7 @@ class MessageDatabase(_MessageAttachmentFacadeMixin, _MessageSearchMixin):
                 # but a quoted group participant is not part of that private
                 # scope. Keep the utterance while dropping the foreign snapshot.
                 include_reply_to=same_workspace,
+                include_attachment_refs=same_workspace,
             )
             # Keep every original platform message atomic and use the string
             # content form accepted by all supported provider protocols.

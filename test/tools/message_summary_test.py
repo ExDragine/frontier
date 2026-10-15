@@ -1,6 +1,7 @@
 # ruff: noqa: S101
 
 import inspect
+import json
 import types
 
 import pytest
@@ -18,6 +19,28 @@ def _message(*, content: str = "这里提到了 Python 搜索功能", role: str 
         role=role,
         content=content,
     )
+
+
+@pytest.mark.asyncio
+async def test_history_refs_survive_truncation_and_do_not_leak_foreign_scope(load_tool_module, monkeypatch):
+    mod = load_tool_module("memory")
+    message = _message(content="很长的说明" * 100).model_copy(update={"raw_segments_json": json.dumps([
+        {"type": "text", "data": {"text": "说明"}},
+        {"type": "image", "data": {"resource_id": "secret-resource", "temp_url": "https://secret.test"}},
+        {"type": "file", "data": {"file_name": "report.txt", "file_size": 123}},
+    ])})
+
+    class Db:
+        async def search_messages(self, **kwargs):
+            return [message]
+
+    monkeypatch.setattr(mod, "message_db", Db())
+    for tool in [mod.get_recent_conversation, mod.search_messages]:
+        result = await tool(config={"configurable": {"user_id": "456", "group_id": 123}}, content_max_chars=100)
+        assert '"segment_index":1' in result and '"segment_index":2' in result
+        assert "report.txt" in result and "secret" not in result
+        result = await tool(config={"configurable": {"user_id": "111"}}, content_max_chars=100)
+        assert "attachments=" not in result
 
 
 @pytest.mark.asyncio

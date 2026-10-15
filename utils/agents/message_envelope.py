@@ -49,6 +49,7 @@ class AgentMessagePayload(TypedDict):
     message_id: NotRequired[str]
     reply_to: NotRequired[dict[str, object]]
     attachments: NotRequired[list[AgentAttachment]]
+    attachment_refs: NotRequired[list[dict[str, object]]]
     bot_context: NotRequired[dict[str, object]]
 
 

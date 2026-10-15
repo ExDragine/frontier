@@ -8,6 +8,7 @@ from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitM
 from utils.configs import EnvConfig
 from utils.llm_factory import create_llm
 
+from ..media_inputs import MediaInputMiddleware
 from ..tool_errors import tool_error_middleware
 
 
@@ -25,6 +26,10 @@ def build_document_subagent() -> SubAgent:
         tool_error_middleware(all_read_only=True),
         ToolCallLimitMiddleware(run_limit=8, exit_behavior="end"),
         ModelCallLimitMiddleware(run_limit=6, exit_behavior="end"),
+        MediaInputMiddleware(
+            EnvConfig.BASIC_MODEL, role="basic",
+            max_images=EnvConfig.MAX_INLINE_IMAGES, max_bytes=EnvConfig.MAX_INLINE_MEDIA_BYTES,
+        ),
     ]
     return SubAgent(
         name="document-agent",

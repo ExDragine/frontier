@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
+from utils.attachment_refs import format_attachment_refs
 from utils.card_message import card_message_text
 
 MISSING_GROUP_ID = "缺少群号：请在群聊中使用，或显式传入 group_id。"
@@ -267,6 +268,10 @@ def segments_to_text(segments: list[dict] | None) -> str:
             parts.append(str(data.get("content", "")))
         elif segment_type in {"light_app", "xml"}:
             parts.append(card_message_text(segment_type, data))
+        elif segment_type == "image":
+            parts.append("[图片]")
+        elif segment_type == "file":
+            parts.append(f"[文件:{data.get('file_name') or '未命名'}]")
         else:
             parts.append(f"[不支持的消息段:{segment_type or 'unknown'}]")
     limit = 4096 if any(segment.get("type") in {"light_app", "xml"} for segment in segments) else 120
@@ -284,7 +289,7 @@ def format_message(message: Any) -> str:
         f"time={data.get('time', '')}",
         f"text={text}",
     ]
-    return " ".join(parts)
+    return " ".join(parts) + format_attachment_refs(data.get("segments") or [])
 
 
 def format_messages(title: str, messages: list[Any], next_message_seq: int | None = None) -> str:

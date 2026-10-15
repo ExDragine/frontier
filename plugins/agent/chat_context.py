@@ -1,51 +1,10 @@
 """Build one explicit current request with a shared budget for inline media."""
 
-from dataclasses import dataclass
 from typing import Any
 
 from utils.agents.message_envelope import serialize_agent_payload
-from utils.media import MediaKind, inline_media_bytes, media_block_kind, resolve_media, standard_media_block
-
-
-@dataclass(slots=True)
-class InlineMediaBudget:
-    remaining_bytes: int
-    remaining_images: int
-
-    def take(self, data: bytes, kind: str) -> bool:
-        if len(data) > self.remaining_bytes or (kind == "image" and self.remaining_images <= 0):
-            return False
-        self.remaining_bytes -= len(data)
-        if kind == "image":
-            self.remaining_images -= 1
-        return True
-
-    def history(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Spend the remaining budget on newest history, without mutating it."""
-        selected = []
-        for message in reversed(messages):
-            content = message.get("content")
-            if not isinstance(content, list):
-                selected.append(message)
-                continue
-            blocks = []
-            omitted = False
-            for block in content:
-                kind = media_block_kind(block)
-                if kind is None:
-                    blocks.append(block)
-                    continue
-                inline = inline_media_bytes(block)
-                # History contains stored bytes. Unknown-size remote URLs must
-                # not silently bypass the byte budget or trigger downloads here.
-                if inline is not None and self.take(inline[0], kind):
-                    blocks.append(block)
-                else:
-                    omitted = True
-            if omitted:
-                blocks.append({"type": "text", "text": "[历史媒体未内联；如有附件路径，可按需读取]"})
-            selected.append({**message, "content": blocks})
-        return list(reversed(selected))
+from utils.media import MediaKind, resolve_media, standard_media_block
+from utils.media_budget import InlineMediaBudget
 
 
 def build_chat_context(

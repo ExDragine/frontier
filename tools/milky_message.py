@@ -1,11 +1,15 @@
+import json
 from typing import Literal, cast
 
+from langchain.tools import ToolRuntime
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nonebot import get_bot
 from nonebot.adapters.milky.message import Message, MessageSegment
 from pydantic import BaseModel, Field
 
+from utils.agent_context import FrontierRuntimeContext
+from utils.agents.runtime import conversation_workspace_key
 from utils.milky_tools import (
     ToolInputError,
     configurable,
@@ -18,6 +22,7 @@ from utils.milky_tools import (
 )
 
 _DEFAULT_CONFIG = cast(RunnableConfig, None)
+_DEFAULT_RUNTIME = cast(ToolRuntime[FrontierRuntimeContext, dict], None)
 
 
 class ForwardMessageNode(BaseModel):
@@ -148,14 +153,27 @@ async def get_message(
     message_scene: str,
     message_seq: int,
     peer_id: int | None = None,
+    include_attachments: bool = False,
+    attachment_index: int | None = None,
     config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> str:
-    """获取单条消息。
+    """获取单条消息，可按需恢复当前会话历史图片和文件，再用 read_file 读取返回的路径。
+
+    先通过历史查询确定消息及发送者；附件可来自同群其他成员，不限当前用户。
+    不确定用户指哪一张时先澄清，不自动拿最近附件替代。每次最多加载 4 项。
+
     Args:
         message_scene: 消息场景，friend、group 或 temp
         message_seq: 消息序列号
         peer_id: 可选会话 ID，未传时按场景从当前上下文推断
+        include_attachments: 是否恢复历史附件，默认只读消息文本和附件编号
+        attachment_index: 可选原消息段的零基 segment_index；不是第几张成功下载的图片
     """
+    if include_attachments:
+        return await _message_with_attachments(message_scene, message_seq, peer_id, attachment_index, config, runtime)
+    if attachment_index is not None:
+        raise ToolInputError("指定 attachment_index 时需设置 include_attachments=true。")
     resolved_peer_id = require_peer(message_scene, peer_id, config)
     message = await get_bot().get_message(
         message_scene=message_scene,
@@ -163,6 +181,42 @@ async def get_message(
         message_seq=message_seq,
     )
     return format_message(message)
+
+
+async def _message_with_attachments(message_scene, message_seq, peer_id, attachment_index, config, runtime):
+    from plugins.agent.historical_attachments import load_historical_attachments
+    from plugins.agent.reply_context import MessageSource
+    from utils.database import MessageDatabase
+
+    cfg = configurable(config)
+    context = getattr(runtime, "context", None)
+    identity = (
+        {"configurable": {"group_id": context.group_id, "user_id": context.user_id}}
+        if context is not None else config
+    )
+    group_id = configurable(identity).get("group_id")
+    current_scene = "group" if group_id not in (None, "", 0, "0") else "friend"
+    current_peer = require_peer(current_scene, None, identity)
+    if message_scene != current_scene or (peer_id is not None and peer_id != current_peer):
+        raise ToolInputError("历史附件只能在当前会话内读取，请使用当前群聊或私聊。")
+    if message_seq < 0 or (attachment_index is not None and attachment_index < 0):
+        raise ToolInputError("消息序列号和 attachment_index 不能为负数。")
+    workspace_key = conversation_workspace_key(current_peer, current_peer if current_scene == "group" else None)
+    memory_dir = (cfg.get("virtual_roots") or {}).get(f"/memory/{workspace_key}/")
+    if not memory_dir:
+        raise ToolInputError("当前会话未挂载附件目录，无法读取历史附件。")
+    conversation = getattr(context, "conversation", None)
+    if conversation is not None and (
+        conversation.platform != "qq" or conversation.conversation_id != str(current_peer)
+        or conversation.kind != ("group" if current_scene == "group" else "private")
+    ):
+        raise ToolInputError("当前运行时会话与 QQ 目标不匹配。")
+    bot = get_bot(conversation.account_id) if conversation is not None else get_bot()
+    result = await load_historical_attachments(
+        bot, MessageSource(str(bot.self_id), current_scene, current_peer), message_seq, MessageDatabase(),
+        workspace_key=workspace_key, memory_dir=memory_dir, attachment_index=attachment_index,
+    )
+    return json.dumps(result, ensure_ascii=False)
 
 
 @tool(response_format="content")
