@@ -183,6 +183,10 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
         "deepseek_balance": types.SimpleNamespace(
             get_deepseek_api_balance=FakeBaseTool("get_deepseek_api_balance", "content")
         ),
+        "deepseek_search": types.SimpleNamespace(
+            search=FakeBaseTool("deepseek_web_search", "content"),
+            fetch=FakeBaseTool("deepseek_web_fetch", "content"),
+        ),
         "aurora": types.SimpleNamespace(aurora_live=FakeBaseTool("aurora_live")),
         "satellite": types.SimpleNamespace(
             get_fy4b_satellite_image=FakeBaseTool("get_fy4b_satellite_image"),
@@ -240,6 +244,7 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
     assert spec.loader is not None
     spec.loader.exec_module(module)
 
+    monkeypatch.setattr(module, "deepseek_search_available", lambda: True)
     assert module.agent_tools.mcp_tools == []
     assert module.agent_tools.direct_tools
     mcp_module.mcp_get_tools_async.assert_not_awaited()
@@ -254,6 +259,7 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_message",
         "get_login_info",
         "get_deepseek_api_balance",
+        "deepseek_web_search", "deepseek_web_fetch",
         "get_paint",
         "get_video",
         "get_recent_conversation",
@@ -291,6 +297,7 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_message",
         "get_login_info",
         "get_deepseek_api_balance",
+        "deepseek_web_search", "deepseek_web_fetch",
         "get_china_earthquake",
         "get_usgs_significant_earthquakes",
         "get_available_china_radar_areas",
@@ -331,7 +338,7 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
     queries = {
         "get_china_earthquake", "get_usgs_significant_earthquakes",
         "get_available_china_radar_areas", "get_deepseek_api_balance",
-        "get_message", "get_login_info", "iching_divination",
+        "get_message", "get_login_info", "iching_divination", "deepseek_web_search", "deepseek_web_fetch",
     }
     assert {tool.name for tool in registry.direct_tools if registry.is_read_only_tool(tool)} == queries
     # A same-name replacement/MCP object must not inherit a local query's policy.
@@ -358,6 +365,13 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
     assert {tool.name for tool in registry.direct_tools_for(frozenset())} == {
         tool.name for tool in registry.direct_tools
     }
+
+
+    monkeypatch.setattr(module, "deepseek_search_available", lambda: False)
+    assert not {"deepseek_web_search", "deepseek_web_fetch"} & {tool.name for tool in registry.direct_tools}
+    assert "get_message" in {tool.name for tool in registry.direct_tools}
+    monkeypatch.setattr(module, "deepseek_search_available", lambda: True)
+    assert "deepseek_web_search" in {tool.name for tool in registry.direct_tools}
 
 
 @pytest.mark.asyncio

@@ -93,6 +93,19 @@ def test_media_fake_ip_fallback_can_be_disabled():
     assert EnvConfig.MESSAGE_MEDIA_FAKE_IP_FALLBACK is False
 
 
+def test_search_defaults_reload_and_validation():
+    from utils.configs import EnvConfig, parse_config
+
+    EnvConfig.reload({"config_version": 2})
+    assert EnvConfig.SEARCH.enabled and EnvConfig.SEARCH.provider == "deepseek_responses"
+    assert EnvConfig.SEARCH.base_url == "https://api.deepseek.com"
+    EnvConfig.reload({"config_version": 2, "search": {"provider": "custom", "content_preview_chars": 1000}})
+    assert EnvConfig.SEARCH.provider == "custom" and EnvConfig.SEARCH.content_preview_chars == 1000
+    for patch in [{"timeout_seconds": 0}, {"max_content_chars": 0}, {"provider": ""}, {"unknown": True}]:
+        with pytest.raises(ValidationError):
+            parse_config({"config_version": 2, "search": patch})
+
+
 def test_message_image_threshold_reloads_and_rejects_invalid_lengths():
     from utils.configs import EnvConfig, parse_config
 

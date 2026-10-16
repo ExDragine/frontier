@@ -4,6 +4,9 @@ from pathlib import Path
 
 from langchain_core.tools import BaseTool
 
+from utils.deepseek_web import TOOL_NAMES as DEEPSEEK_SEARCH_TOOLS
+from utils.deepseek_web import deepseek_search_available
+
 from .mcp_client import mcp_get_tools_async
 
 # 跳过不应暴露给 Agent 的模块
@@ -18,7 +21,7 @@ _ALL_TOOL_GROUPS = ("main", *_DOMAIN_GROUPS, *_RESTRICTED_GROUPS)
 # Preserve the former PTC query classification for direct-tool error handling.
 # Artifact-producing tools and unknown modules are deliberately excluded.
 _READ_ONLY_MODULES = {
-    "comet", "deepseek_balance", "earthquake", "iching", "radar",
+    "comet", "deepseek_balance", "deepseek_search", "earthquake", "iching", "radar",
     "rocket", "space_weather", "tarot", "weather",
 }
 _READ_ONLY_PREFIXES = {
@@ -53,6 +56,7 @@ _TOOL_MODULE_GROUPS = {
     "milky_message": "main",
     "milky_system": "main",
     "deepseek_balance": "main",
+    "deepseek_search": "main",
     "reminder": "main",
     "scheduled_task": "main",
     "aurora": "astro",
@@ -153,7 +157,12 @@ class ModuleTools:
         return bool(required & capabilities)
 
     def _filtered_main_tools(self, capabilities: frozenset[str]) -> list[BaseTool]:
-        return [tool for tool in self.subagent_tools["main"] if self._capability_allows(tool, capabilities)]
+        search_available = deepseek_search_available()
+        return [
+            tool for tool in self.subagent_tools["main"]
+            if self._capability_allows(tool, capabilities)
+            and (tool.name not in DEEPSEEK_SEARCH_TOOLS or search_available)
+        ]
 
     def direct_tools_for(self, capabilities: frozenset[str]) -> list[BaseTool]:
         """Return direct tools visible in an explicit capability context."""
@@ -163,7 +172,7 @@ class ModuleTools:
     @property
     def direct_tools(self):
         """Return regular Agent tools, including network search and page reading."""
-        return [*self.subagent_tools["main"], *self.mcp_tools]
+        return [*self._filtered_main_tools(frozenset()), *self.mcp_tools]
 
     def is_read_only_tool(self, tool: BaseTool) -> bool:
         """Classify registered query objects without trusting name prefixes alone."""

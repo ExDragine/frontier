@@ -118,7 +118,7 @@ Milky `light_app` / `xml` 卡片通过 `utils/card_message.py` 本地解析常�
 
 | 分组 | 代表模块 | 说明 |
 |------|----------|------|
-| `main` | `adapter`, `milky_*`, `paint`, `video`, `reminder`, `scheduled_task`, `deepseek_balance`, `NRC*`, `typhoon` | QQ 平台操作、媒体生成、提醒/自动任务、游戏/业务工具 |
+| `main` | `adapter`, `milky_*`, `paint`, `video`, `reminder`, `scheduled_task`, `deepseek_balance`, `deepseek_search`, `NRC*`, `typhoon` | QQ 平台操作、媒体生成、提醒/自动任务、游戏/业务工具 |
 | `astro` | `aurora`, `comet`, `heavens_above`, `rocket`, `satellite`, `space_weather` | 天文、卫星、空间天气 |
 | `earth` | `earthquake`, `radar`, `weather` | 地震、雷达、天气 |
 | `memory` | `memory` | 当前会话最近对话、聊天记录搜索和平台历史读取，由主 Agent 按需调用 |
@@ -198,7 +198,7 @@ Prompt 加载链：
 - 显式 `*_model_provider` 优先。
 - 所有 `*_model_provider`（包括 paint/video）均指向 `[providers.<name>]`；供应商 profile 用 `type` 管理 LangChain 适配器、用 `api_mode` 管理协议，并统一保存 base URL 和 API key。Decision 的结构化策略由可选 `structured_output_method` 指定，默认 `auto`。
 - Paint/Video 服务使用 OpenAI-compatible Images/Videos API，因此对应 provider 的 `type` 必须为 `openai`。
-- 官方 OpenAI / DeepSeek Responses 路由会自动启用服务端 `web_search`；兼容代理只有在确认支持该托管工具后，才可在 provider profile 中显式设置 `native_web_search = true`。
+- 配置有效时，主 Agent 默认使用独立 `deepseek_web_search` / `deepseek_web_fetch`（搜索默认 20 条），配置与主模型供应商独立，长正文写入当前 workspace 并由 `read_file` 继续读取，详见 `docs/deepseek-web-search.md`。未配置独立搜索时，官方 OpenAI Responses 自动启用服务端 `web_search`；DeepSeek 和兼容代理需确认当前模型、上游支持后显式设置 `native_web_search = true`，Flash 会忽略该内置工具。
 - 没有显式 provider 时，`llm_factory.py` 会根据模型名前缀推断：`deepseek*`、`gemini-*`、`claude-*`，其余走 OpenAI-compatible。
 
 Dashboard 配置：

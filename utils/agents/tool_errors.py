@@ -14,6 +14,7 @@ CONTROL_ERRORS = (*BUDGET_ERRORS, CheckpointCapacityExceeded, SessionInterrupted
 # Known network queries are safe to report as errors without aborting the turn.
 # They remain direct tools and are not automatically retried by ToolRetry.
 WEB_SEARCH_TOOL_NAMES = frozenset({
+    "deepseek_web_search", "deepseek_web_fetch",
     "web_search_exa", "web_fetch_exa", "tavily_search", "tavily_extract",
     "tavily_map", "tavily_crawl", "tavily_research",
 })

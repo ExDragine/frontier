@@ -349,9 +349,9 @@ def native_web_search_support(
     enabled automatically. Compatible Responses providers must opt in explicitly
     with ``native_web_search = true`` after their upstream capability is verified.
 
-    DeepSeek's Responses compatibility endpoint currently ignores built-in
-    ``web_search``, so it must not be advertised to the Agent even though it
-    accepts the Responses request shape.
+    DeepSeek's hosted tool is model-specific (Pro supports it, Flash ignores
+    it). It requires explicit opt-in; the standalone search tools work across
+    main-model routes and take precedence in the Agent when configured.
     """
     _, profile = _provider_profile(model, provider)
     provider_type, api_mode = _provider_protocol(model, profile)
@@ -359,7 +359,9 @@ def native_web_search_support(
         return False, f"api_mode={api_mode or 'unknown'} is not Responses"
 
     if provider_official_deepseek_api_mode(model, provider) == ApiMode.RESPONSES.value:
-        return False, "DeepSeek Responses ignores built-in web_search"
+        if profile.get("native_web_search") is True:
+            return True, "official DeepSeek Responses explicitly opted in; requires a supported model"
+        return False, "DeepSeek hosted search requires model-specific opt-in; prefer standalone deepseek_web_search"
 
     if provider_is_official_openai(model, provider):
         return True, "official OpenAI Responses web_search"

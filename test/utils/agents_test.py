@@ -1271,6 +1271,7 @@ async def _run_chat_agent_with_web_search(
     supported: bool,
     model: str | None = None,
     user_text: str | None = None,
+    tools: list | None = None,
 ) -> dict:
     """构造 chat_agent 运行环境并捕获 create_deep_agent 的 tools/system_prompt 参数。"""
 
@@ -1300,7 +1301,7 @@ async def _run_chat_agent_with_web_search(
         monkeypatch.setattr(cognitive_mod.EnvConfig, "ADVAN_MODEL", model)
 
     frontier = cognitive_mod.FrontierCognitive.__new__(cognitive_mod.FrontierCognitive)
-    frontier.tools = []
+    frontier.tools = tools or []
     cast(Any, frontier).working_dir = str(tmp_path / "sandbox")
 
     await frontier.chat_agent(
@@ -1331,6 +1332,18 @@ async def test_chat_agent_skips_web_search_when_route_unsupported(monkeypatch, t
     assert {"type": "web_search"} not in captured["tools"]
     assert not any(isinstance(item, cognitive_mod.NativeWebSearchMiddleware) for item in captured["middleware"])
     assert cognitive_mod.WEB_SEARCH_PROMPT_HINT not in captured["system_prompt"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["deepseek-flash", "gpt-5.4", "claude-test"])
+async def test_configured_deepseek_search_is_default_across_main_models(monkeypatch, tmp_path, model):
+    monkeypatch.setattr(cognitive_mod, "deepseek_search_available", lambda: True)
+    tools = [types.SimpleNamespace(name=name) for name in ("deepseek_web_search", "deepseek_web_fetch")]
+    captured = await _run_chat_agent_with_web_search(monkeypatch, tmp_path, supported=True, model=model, tools=tools)
+    assert {tool.name for tool in captured["tools"]} >= {"deepseek_web_search", "deepseek_web_fetch"}
+    assert cognitive_mod.SEARCH_PROMPT_HINT in captured["system_prompt"]
+    assert cognitive_mod.WEB_SEARCH_PROMPT_HINT not in captured["system_prompt"]
+    assert not any(isinstance(item, cognitive_mod.NativeWebSearchMiddleware) for item in captured["middleware"])
 
 
 @pytest.mark.asyncio

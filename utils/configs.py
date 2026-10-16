@@ -164,6 +164,15 @@ class AgentConfig(_FrozenConfig):
     message_media_fake_ip_fallback: bool = True
 
 
+class SearchConfig(_FrozenConfig):
+    enabled: bool = True
+    provider: str = Field(default="deepseek_responses", min_length=1)
+    base_url: str = _DEEPSEEK_RESPONSES_BASE_URL
+    timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    content_preview_chars: int = Field(default=6000, ge=256, le=20000)
+    max_content_chars: int = Field(default=24000, ge=256, le=100000)
+
+
 class AccessPolicy(_FrozenConfig):
     whitelist_mode: bool = False
     whitelist_person_list: tuple[int | str, ...] = ()
@@ -249,6 +258,7 @@ class FrontierSettings(_FrozenConfig):
     features: FeatureConfig = Field(default_factory=FeatureConfig)
     platforms: PlatformsConfig = Field(default_factory=PlatformsConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
+    search: SearchConfig = Field(default_factory=SearchConfig)
     agent_policy: AccessPolicy = Field(default_factory=AccessPolicy)
     auto_reply_policy: AutoReplyPolicy = Field(default_factory=AutoReplyPolicy)
     paint_policy: AccessPolicy = Field(default_factory=AccessPolicy)
@@ -613,6 +623,7 @@ class EnvConfig:
     AGENT_MODEL_CALL_LIMIT: ClassVar[int]
     AGENT_TOOL_CALL_LIMIT: ClassVar[int]
     SESSIONS: ClassVar[SessionConfig]
+    SEARCH: ClassVar[SearchConfig]
 
     # Notification targets
     TEST_GROUP_ID: ClassVar[list[int | str]]
@@ -658,6 +669,7 @@ class EnvConfig:
         providers = _provider_profiles(settings)
         values: dict[str, Any] = {
             "SESSIONS": settings.sessions,
+            "SEARCH": settings.search,
             "BOT_NAME": nicknames[0],
             "BOT_NICKNAMES": list(nicknames),
             "SYSTEM_PROMPT": settings.bot.system_prompt,

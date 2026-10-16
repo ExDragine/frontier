@@ -382,7 +382,7 @@ def test_deepseek_responses_does_not_advertise_native_web_search(monkeypatch):
     )
 
     assert supported is False
-    assert "DeepSeek Responses ignores" in reason
+    assert "model-specific opt-in" in reason
     assert factory.model_supports_native_web_search(
         "deepseek-future-model",
         "official_deepseek",
@@ -408,6 +408,15 @@ def test_responses_proxy_can_explicitly_opt_in_to_native_web_search(monkeypatch)
 
     assert supported is True
     assert "explicitly opted in" in reason
+
+
+def test_deepseek_hosted_search_can_explicitly_opt_in_for_supported_model(monkeypatch):
+    monkeypatch.setattr(factory.EnvConfig, "LLM_PROVIDERS", {"deepseek_pro": {
+        "type": "openai", "api_mode": "responses", "base_url": "https://api.deepseek.com",
+        "native_web_search": True,
+    }})
+    supported, reason = factory.native_web_search_support("deepseek-v4-pro", "deepseek_pro")
+    assert supported and "explicitly opted in" in reason
 
 
 @pytest.mark.parametrize(

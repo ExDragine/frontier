@@ -37,6 +37,7 @@ from plugins.acp.subagent import build_acp_subagents
 from utils.agent_context import FrontierRuntimeContext
 from utils.agent_protocol import AgentArtifact, ConversationRef, Participant
 from utils.configs import EnvConfig
+from utils.deepseek_web import SEARCH_PROMPT_HINT, deepseek_search_available
 from utils.harness_profiles import register_frontier_harness_profiles
 from utils.llm_factory import (
     create_llm,
@@ -624,7 +625,14 @@ class FrontierCognitive:
             EnvConfig.ADVAN_MODEL,
             EnvConfig.ADVAN_MODEL_PROVIDER,
         )
-        if native_web_search:
+        default_deepseek_search = deepseek_search_available() and any(
+            getattr(tool, "name", None) == "deepseek_web_search" for tool in effective_tools
+        )
+        if default_deepseek_search:
+            native_web_search = False
+            system_prompt += SEARCH_PROMPT_HINT
+            logger.info("主 Agent 默认使用 deepseek_web_search / deepseek_web_fetch")
+        elif native_web_search:
             logger.info(
                 f"主 Agent 已挂载服务端原生 web_search 工具: {native_web_search_reason}"
             )
