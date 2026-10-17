@@ -282,9 +282,13 @@ Dashboard 配置保存会串行处理并发更新，使用独立临时文件原�
 `*_model_provider` 填写供应商 profile 名称，而不是重复填写 URL。例如
 `advanced_model_provider = "openrouter"` 会读取 `[providers.openrouter]`；其中 `type = "openai"`
 决定底层 LangChain 适配器。`paint_model_provider` 和 `video_model_provider` 使用相同规则；模型能力只配置在
-`[models]`，base URL、API key 和 `api_mode` 只配置在供应商 profile。绘图通过
-OpenAI-compatible Responses API 的 `image_generation` 工具调用，视频调用
-OpenAI-compatible Videos API。
+`[models]`，base URL、API key 和对话协议 `api_mode` 配置在供应商 profile。
+绘图协议跟随 `paint_model_provider` 指向的 provider 的 `api_mode`：`chat_completions` 调用
+Images API（纯文字用 `/images/generations`，参考图片编辑用 `/images/edits`），
+兼容 base64 图片和公网图片 URL 返回值；`responses` 保留原有依赖 sub2api 重写顶层模型的
+Responses `image_generation` 绘图路径。请求失败不会切换协议再次生成。
+同一服务若需为聊天与绘图选用不同协议，可配置两个同地址的 provider profile，分别绑定模型角色。
+视频调用 OpenAI-compatible Videos API。
 
 供应商 profile 名称标识具体服务，`type` 选择 LangChain 适配器，`api_mode` 选择接口协议。
 DeepSeek 可分别配置为 `deepseek + chat_completions`、`openai + responses` 和

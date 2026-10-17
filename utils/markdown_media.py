@@ -27,6 +27,7 @@ MAX_MEDIA = 6
 MAX_BYTES = 20_000_000
 USER_AGENT = "Frontier-message-media/1.0 (+https://github.com/ExDragine/frontier)"
 FAKE_IP_NETWORK = ipaddress.ip_network("198.18.0.0/15")
+FAKE_IP_V6_NETWORK = ipaddress.ip_network("2001:2::/48")
 logger = logging.getLogger(__name__)
 
 
@@ -78,7 +79,9 @@ async def public_address(url: str) -> tuple[str, str]:
         literal = True
     except ValueError:
         literal = False
-    if not literal and ips and all(ip.version == 4 and ip in FAKE_IP_NETWORK for ip in ips):
+    if not literal and ips and all(
+        ip in (FAKE_IP_NETWORK if ip.version == 4 else FAKE_IP_V6_NETWORK) for ip in ips
+    ):
         raise FakeIPAddress(parsed.hostname)
     check_public_ips(ips)
     return str(ips[0]), parsed.hostname

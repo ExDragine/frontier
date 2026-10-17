@@ -190,14 +190,14 @@ Prompt 加载链：
 
 ## Config Notes
 
-消息媒体默认兼容 Clash TUN 的 Fake-IP DNS：仅域名解析结果全部位于 `198.18.0.0/15` 时，通过固定公网引导的 DoH 查询真实公网 IP，再校验并固定连接。`[agent].message_media_fake_ip_fallback` 可关闭；不能直接放行 Fake-IP 或真实内网地址。详见 [消息媒体网络](docs/message-media-network.md)。
+消息媒体默认兼容 Clash TUN 的 Fake-IP DNS：仅域名解析结果全部位于 `198.18.0.0/15` 或 `2001:2::/48` 时，通过固定公网引导的 DoH 查询真实公网 IP，再校验并固定连接。`[agent].message_media_fake_ip_fallback` 可关闭；不能直接放行 Fake-IP 或真实内网地址。详见 [消息媒体网络](docs/message-media-network.md)。
 
 `env.toml.example` 是配置项参考；仅接受显式 `config_version = 2`，旧配置分区、provider 别名、`use_responses_api` 和绘图尺寸迁移已移除。代码中不要硬编码模型名、provider、base URL 或 API key，使用 `EnvConfig`。
 
 模型路由规则：
 - 显式 `*_model_provider` 优先。
 - 所有 `*_model_provider`（包括 paint/video）均指向 `[providers.<name>]`；供应商 profile 用 `type` 管理 LangChain 适配器、用 `api_mode` 管理协议，并统一保存 base URL 和 API key。Decision 的结构化策略由可选 `structured_output_method` 指定，默认 `auto`。
-- Paint/Video 服务使用 OpenAI-compatible Images/Videos API，因此对应 provider 的 `type` 必须为 `openai`。
+- Paint/Video 对应 provider 的 `type` 必须为 `openai`。绘图协议跟随 provider 的 `api_mode`：`chat_completions` 选择 Images API 的生成/编辑接口，`responses` 保留依赖 sub2api 重写模型的原绘图路径。Images 返回的公网 URL 经现有 PublicFetcher 校验并下载，不携带 provider 凭据。视频使用 Videos API。
 - 配置有效时，主 Agent 默认使用独立 `deepseek_web_search` / `deepseek_web_fetch`（搜索默认 20 条），配置与主模型供应商独立，长正文写入当前 workspace 并由 `read_file` 继续读取，详见 `docs/deepseek-web-search.md`。未配置独立搜索时，官方 OpenAI Responses 自动启用服务端 `web_search`；DeepSeek 和兼容代理需确认当前模型、上游支持后显式设置 `native_web_search = true`，Flash 会忽略该内置工具。
 - 没有显式 provider 时，`llm_factory.py` 会根据模型名前缀推断：`deepseek*`、`gemini-*`、`claude-*`，其余走 OpenAI-compatible。
 

@@ -168,9 +168,10 @@ async def test_fetch_rejects_oversize_content(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_fake_ip_fallback_uses_real_public_ip_and_coalesces_dns(monkeypatch, tmp_path):
+@pytest.mark.parametrize("ips", [["198.18.0.7"], ["2001:2::89"], ["198.18.0.7", "2001:2::89"]])
+async def test_fake_ip_fallback_uses_real_public_ip_and_coalesces_dns(monkeypatch, tmp_path, ips):
     async def dns(*args, **kwargs):
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("198.18.0.7", 443))]
+        return [(socket.AF_INET if ":" not in ip else socket.AF_INET6, socket.SOCK_STREAM, 6, "", (ip, 443)) for ip in ips]
 
     monkeypatch.setattr(media.asyncio.get_running_loop(), "getaddrinfo", dns)
     seen = []
@@ -227,6 +228,11 @@ async def test_fake_ip_resolver_cannot_authorize_private_targets(monkeypatch, tm
         ("https://198.18.0.1/x", ["198.18.0.1"], True),
         ("https://public.example/x", ["198.18.0.1", "127.0.0.1"], True),
         ("https://private.example/x", ["192.168.1.1"], True),
+        ("https://public.example/x", ["2001:2::89"], False),
+        ("https://[2001:2::89]/x", ["2001:2::89"], True),
+        ("https://public.example/x", ["198.18.0.7", "2001:2::89", "fd00::1"], True),
+        ("https://public.example/x", ["2001:2::89", "::1"], True),
+        ("https://public.example/x", ["2001:2::89", "8.8.8.8"], True),
     ],
 )
 async def test_fake_ip_mode_preserves_local_address_restrictions(monkeypatch, tmp_path, url, ips, enabled):

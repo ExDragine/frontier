@@ -1,14 +1,17 @@
 # ruff: noqa: S101
 
+import asyncio
 import base64
+import io
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
 from utils import paint_service
 
 
-def _set_paint_config(monkeypatch, *, base_url: str = "https://media.example.com/v1") -> None:
+def _set_paint_config(monkeypatch, *, base_url: str = "https://media.example.com/v1", api_mode: str = "responses") -> None:
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL", "gpt-image-test")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_MODEL_PROVIDER", "media")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_SIZE", "1536x1024")
@@ -18,6 +21,7 @@ def _set_paint_config(monkeypatch, *, base_url: str = "https://media.example.com
         "get_provider_profile",
         lambda name: {
             "type": "openai",
+            "api_mode": api_mode,
             "base_url": base_url,
             "api_key": "sk-media",
         }
@@ -27,9 +31,9 @@ def _set_paint_config(monkeypatch, *, base_url: str = "https://media.example.com
 
 
 def _tiny_png_bytes() -> bytes:
-    return base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6f8AAAAASUVORK5CYII="
-    )
+    output = io.BytesIO()
+    Image.new("RGB", (4, 4), "blue").save(output, format="PNG")
+    return output.getvalue()
 
 
 @pytest.mark.asyncio
@@ -230,3 +234,130 @@ def test_paint_rate_limiter_allows_after_window_slides():
 
     assert result.allowed is True
     assert result.retry_after_seconds == 0
+
+
+def _install_images_client(monkeypatch, *, result=None, error=None):
+    calls = {}
+
+    async def invoke(operation, **kwargs):
+        calls[operation] = kwargs
+        if error is not None:
+            raise error
+        return result
+
+    class Client:
+        def __init__(self, **kwargs):
+            calls["client"] = kwargs
+            self.images = SimpleNamespace(generate=self.generate, edit=self.edit)
+
+        async def generate(self, **kwargs):
+            return await invoke("generate", **kwargs)
+
+        async def edit(self, **kwargs):
+            return await invoke("edit", **kwargs)
+
+        async def close(self):
+            calls["closed"] = True
+
+    _set_paint_config(monkeypatch, api_mode="chat_completions")
+    monkeypatch.setattr(paint_service, "AsyncOpenAI", Client)
+    return calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("as_dict", [False, True])
+async def test_images_api_generates_without_responses_or_legacy_fields(monkeypatch, as_dict):
+    item = {"b64_json": base64.b64encode(_tiny_png_bytes()).decode()}
+    result = {"data": [item]} if as_dict else SimpleNamespace(data=[SimpleNamespace(**item)])
+    calls = _install_images_client(monkeypatch, result=result)
+
+    assert await paint_service.paint("a fox") == _tiny_png_bytes()
+    assert calls["generate"] == {
+        "model": "gpt-image-test", "prompt": "a fox", "n": 1, "output_format": "png",
+        "stream": False, "size": "1536x1024", "quality": "high",
+    }
+    assert "edit" not in calls
+    assert calls["closed"] is True
+
+
+@pytest.mark.asyncio
+async def test_images_api_edits_all_references_as_png_files(monkeypatch):
+    calls = _install_images_client(monkeypatch, result={"data": [{
+        "b64_json": "data:image/png;base64," + base64.b64encode(_tiny_png_bytes()).decode(),
+    }]})
+
+    assert await paint_service.paint("watercolor", [_tiny_png_bytes(), _tiny_png_bytes()]) == _tiny_png_bytes()
+    params = calls["edit"]
+    assert params["prompt"] == "watercolor" and params["model"] == "gpt-image-test"
+    assert params["size"] == "1536x1024" and params["quality"] == "high"
+    assert "response_format" not in params and "input" not in params
+    assert len(params["image"]) == 2
+    for index, (name, raw, mime) in enumerate(params["image"], start=1):
+        assert name == f"reference-{index}.png" and mime == "image/png"
+        assert raw.startswith(b"\x89PNG")
+    assert "generate" not in calls
+    assert calls["closed"] is True
+
+
+@pytest.mark.asyncio
+async def test_images_api_omits_blank_size_and_quality(monkeypatch):
+    calls = _install_images_client(monkeypatch, result={"data": []})
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_SIZE", " ")
+    monkeypatch.setattr(paint_service.EnvConfig, "PAINT_QUALITY", "")
+
+    assert await paint_service.paint("a fox") is None
+    assert "size" not in calls["generate"] and "quality" not in calls["generate"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("result", [None, {}, {"data": []}, {"data": [{}]}, {"data": [{"b64_json": "invalid!"}]}])
+async def test_images_api_rejects_unusable_responses(monkeypatch, result):
+    calls = _install_images_client(monkeypatch, result=result)
+
+    assert await paint_service.paint("a fox") is None
+    assert calls["closed"] is True
+
+
+@pytest.mark.asyncio
+async def test_images_api_downloads_provider_url_with_public_fetcher(monkeypatch):
+    calls = _install_images_client(monkeypatch, result={"data": [{"url": "https://cdn.example/image.png?sig=private"}]})
+
+    class Fetcher:
+        def __init__(self, client, cache_dir, *, fake_ip_fallback):
+            assert client is sentinel
+            assert fake_ip_fallback is True
+
+        async def get(self, url, *, limit):
+            calls["download"] = (url, limit)
+            return _tiny_png_bytes(), "image/png"
+
+    sentinel = object()
+    monkeypatch.setattr(paint_service, "PublicFetcher", Fetcher)
+    monkeypatch.setattr(paint_service, "get_http_client", lambda name: sentinel if name == "paint_service" else None)
+    monkeypatch.setattr(paint_service.EnvConfig, "MESSAGE_MEDIA_FAKE_IP_FALLBACK", True)
+
+    assert await paint_service.paint("a fox") == _tiny_png_bytes()
+    assert calls["download"] == ("https://cdn.example/image.png?sig=private", 20_000_000)
+    assert calls["closed"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url", ["http://127.0.0.1/image", "file:///etc/passwd", "https://user:password@example.com/x"])
+async def test_images_api_rejects_nonpublic_output_urls(monkeypatch, url):
+    calls = _install_images_client(monkeypatch, result={"data": [{"url": url}]})
+
+    assert await paint_service.paint("a fox") is None
+    assert calls["closed"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [RuntimeError("provider failed"), asyncio.CancelledError()])
+async def test_images_api_always_closes_client(monkeypatch, error):
+    calls = _install_images_client(monkeypatch, error=error)
+
+    if isinstance(error, asyncio.CancelledError):
+        with pytest.raises(asyncio.CancelledError):
+            await paint_service.paint("a fox")
+    else:
+        assert await paint_service.paint("a fox") is None
+    assert calls["closed"] is True

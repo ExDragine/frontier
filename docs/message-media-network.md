@@ -2,7 +2,7 @@
 
 图片、地图瓦片和网页快照只允许访问公开 HTTP(S) 地址。运行 Frontier 的主机必须能连接素材来源；QQ 客户端的网络不参与素材加载。
 
-默认开启 `[agent].message_media_fake_ip_fallback = true`。当系统 DNS 为域名只返回 `198.18.0.0/15` 地址时，媒体加载器会通过 Cloudflare 的 HTTPS DNS JSON API 查询真实 IPv4 地址。解析服务使用固定公网 IP `1.1.1.1` 连接，保留 `cloudflare-dns.com` 的 TLS 校验和 Host，避免解析服务自身再次落入 Fake-IP。
+默认开启 `[agent].message_media_fake_ip_fallback = true`。当系统 DNS 为域名只返回 `198.18.0.0/15`（IPv4）或 `2001:2::/48`（IPv6）范围的 Fake-IP 时，媒体加载器会通过 Cloudflare 的 HTTPS DNS JSON API 查询真实 IPv4 地址；兼容仅 IPv4、仅 IPv6 和二者混合的结果。解析服务使用固定公网 IP `1.1.1.1` 连接，保留 `cloudflare-dns.com` 的 TLS 校验和 Host，避免解析服务自身再次落入 Fake-IP。
 
 加载器校验解析结果后直接连接真实公网 IP，保留原素材域名的 TLS 校验和 Host。不会连接 Fake-IP，也不会放行回环、私网、链路本地、IPv4 映射 IPv6 地址或直接写入 URL 的 Fake-IP。每次重定向和网页子资源仍执行相同校验；DNS 返回混合的 Fake-IP 与其他地址时保持拒绝。
 
