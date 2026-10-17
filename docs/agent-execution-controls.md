@@ -37,6 +37,15 @@ Dashboard 总览显示累计数据，认证后的 `GET /api/dashboard/status/usa
 - 取消、中断和预算异常保持控制流语义，不转换成普通查询失败。
 - 参数绑定错误继续由 LangChain 的工具校验处理；已有工具主动返回的业务提示保持原样。
 
+Milky API 返回 `ActionFailed` 时，工具失败和最终文本/图片/工件发送失败日志会附带
+`milky_status`、`milky_retcode` 和 `milky_message`。只提取这些已知字段，不记录原始响应、
+`data` 或工具参数；错误信息会移除回显的请求正文、常见凭据、URL、文件路径、邮箱和长数字身份，
+压成单行并限制为 512 个字符。原始错误信息不进入模型上下文或用户提示；写工具仍保持停止、不重试的规则。
+
+同一图异常被 v3 的 `subagents`、`tool_calls` 和 `messages` 投影重复抛出时，
+进度收集器只记录一条告警，并列出受影响的 `projections`。独立异常分别记录，
+收集器日志只保留异常类型，不复制异常正文；收集失败仍不会掩盖主图错误或中断其他投影，取消继续传播。
+
 ## Decision 结构化输出
 
 每个 `[providers.<name>]` 可设置 `structured_output_method`：

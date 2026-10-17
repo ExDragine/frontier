@@ -6,6 +6,8 @@ from langchain.agents.middleware import ToolErrorMiddleware
 from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
 from langchain.agents.middleware.tool_call_limit import ToolCallLimitExceededError
 
+from utils.milky_errors import milky_error_details
+
 from .session_errors import CheckpointCapacityExceeded, SessionInterruptedError
 
 logger = logging.getLogger(__name__)
@@ -43,7 +45,10 @@ def tool_error_middleware(*, read_only_tools=(), all_read_only: bool = False) ->
         if isinstance(exc, (*CONTROL_ERRORS, ToolExecutionUncertainError)):
             return None
         name = request.tool_call["name"]
-        logger.warning("Tool failed name=%s error_type=%s", name, type(exc).__name__)
+        logger.warning(
+            "Tool failed name=%s error_type=%s%s", name, type(exc).__name__,
+            milky_error_details(exc, sensitive=request.tool_call.get("args")),
+        )
         if all_read_only or name in names:
             return read_only_error_message(exc)
         # Unknown tools are not assumed safe to repeat, even after ValueError:

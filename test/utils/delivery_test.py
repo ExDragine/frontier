@@ -4,6 +4,8 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from nonebot import logger
+from nonebot.adapters.milky.exception import ActionFailed
 
 from utils import message
 from utils.alconna import Image, Text, UniMessage
@@ -132,3 +134,42 @@ async def test_delivery_cancellation_propagates(monkeypatch):
     monkeypatch.setattr(UniMessage, "send", send)
     with pytest.raises(asyncio.CancelledError):
         await message.send_artifacts([UniMessage.image(raw=b"1")])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["text", "image", "artifact", "error_notice"])
+async def test_milky_delivery_failure_logs_code_without_original_exception(monkeypatch, mode):
+    private = "private outgoing message"
+    records = []
+
+    async def send(self):
+        if mode == "text" and isinstance(self[-1], Image):
+            return None
+        raise ActionFailed(status="failed", retcode=1200, message="消息发送失败 " + private,
+                           data={"token": "private-token", "text": private})
+
+    async def text(content):
+        return content
+
+    async def render(_content):
+        return None if mode == "error_notice" else b"image"
+
+    monkeypatch.setattr(UniMessage, "send", send)
+    monkeypatch.setattr(message, "markdown_to_text", text)
+    monkeypatch.setattr(message, "_markdown_to_image_with_retry", render)
+    monkeypatch.setattr(message, "_message_should_render_as_image", lambda _: mode != "text")
+    sink = logger.add(lambda item: records.append(item.record), level="WARNING")
+    try:
+        if mode == "artifact":
+            result = await message.send_artifacts([UniMessage([Text(private), Image(raw=b"1")])])
+        else:
+            result = await message.send_messages(None, 1, {"messages": [private]})
+    finally:
+        logger.remove(sink)
+
+    diagnostics = [item for item in records if "milky_retcode=1200" in item["message"]]
+    assert len(diagnostics) == 1
+    assert "消息发送失败" in diagnostics[0]["message"]
+    assert not any(value in diagnostics[0]["message"] for value in (private, "private-token"))
+    assert diagnostics[0]["exception"] is None
+    assert result.successful is (mode == "text")

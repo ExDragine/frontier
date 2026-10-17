@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
+from nonebot.adapters.milky.exception import ActionFailed
 
 from utils.agents.execution import managed_agent_turn
 from utils.agents.tool_errors import ToolExecutionUncertainError, tool_error_middleware
@@ -63,3 +64,27 @@ async def test_control_flow_and_budget_errors_propagate(error):
 
     with pytest.raises(type(error)):
         await tool_error_middleware(all_read_only=True).awrap_tool_call(request("read_file"), fail)
+
+
+@pytest.mark.asyncio
+async def test_milky_write_logs_redacted_response_without_retry_or_model_exposure(caplog):
+    calls = []
+    req = request("send_plain_text")
+    req.tool_call["args"] = {"text": "private message"}
+
+    async def fail(_request):
+        calls.append(1)
+        raise ActionFailed(status="failed", retcode=1200, message="消息过长 private message api_key=private-key",
+                           data={"secret": "private-data"})
+
+    with caplog.at_level("WARNING", logger="utils.agents.tool_errors"):
+        with pytest.raises(ToolExecutionUncertainError) as raised:
+            await tool_error_middleware().awrap_tool_call(req, fail)
+
+    assert calls == [1]
+    assert str(raised.value) == "send_plain_text"
+    records = [r for r in caplog.records if r.name == "utils.agents.tool_errors"]
+    assert len(records) == 1
+    log = records[0].getMessage()
+    assert "milky_retcode=1200" in log and "消息过长" in log
+    assert not any(value in log for value in ("private message", "private-key", "private-data"))

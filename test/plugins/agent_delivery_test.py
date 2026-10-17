@@ -56,7 +56,9 @@ async def test_delivered_reply_can_be_quoted_as_original_text(monkeypatch, group
     monkeypatch.setattr(agent, "messages_db", database)
     monkeypatch.setattr(agent, "send_messages", send)
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", False)
-    event = SimpleNamespace(self_id="1", data=SimpleNamespace(peer_id=2))
+    event = SimpleNamespace(self_id="1", data=SimpleNamespace(
+        peer_id=2, message_scene="group" if group_id is not None else "friend",
+    ))
     context = replace(_context(agent), group_id=group_id, event=cast(Any, event))
     assert await agent._process_agent_request(context)
     monkeypatch.setattr(database, "select_image_attachments_by_msg_time", reject)

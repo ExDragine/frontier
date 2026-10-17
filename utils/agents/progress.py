@@ -177,17 +177,30 @@ async def collect_progress(stream, reporter: ProgressReporter | None) -> None:  
                     ),
                 )
 
-    async def safe_consume(coro) -> None:
+    failures: dict[int, tuple[Exception, list[str]]] = {}
+
+    async def safe_consume(projection: str, coro) -> None:
         try:
             await coro
         except Exception as exc:
-            logger.warning("Progress collector 异常: %s: %s", type(exc).__name__, exc)
+            # The v3 channels re-raise the same graph failure. Keep references
+            # until collection finishes so unrelated exceptions cannot reuse IDs.
+            if id(exc) not in failures:
+                failures[id(exc)] = (exc, [])
+            failures[id(exc)][1].append(projection)
 
-    await asyncio.gather(
-        safe_consume(consume_subagents()),
-        safe_consume(consume_tool_calls()),
-        safe_consume(consume_messages()),
-    )
+    try:
+        await asyncio.gather(
+            safe_consume("subagents", consume_subagents()),
+            safe_consume("tool_calls", consume_tool_calls()),
+            safe_consume("messages", consume_messages()),
+        )
+    finally:
+        for exc, projections in failures.values():
+            logger.warning(
+                "Progress collector 异常: error_type=%s projections=%s",
+                type(exc).__name__, ",".join(projections),
+            )
 
 
 async def finish_progress_collection(progress_task: asyncio.Task) -> None:
