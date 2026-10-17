@@ -131,6 +131,18 @@ def test_strip_command_prefix_handles_aliases_and_case():
     assert playground.strip_command_prefix("hello", playground.PAINT_PREFIXES) == "hello"
 
 
+@pytest.mark.parametrize("policy, allowed", [
+    ({"PAINT_WHITELIST_PERSON_LIST": [456]}, True),
+    ({"PAINT_WHITELIST_GROUP_LIST": [123]}, False),
+    ({"PAINT_WHITELIST_PERSON_LIST": ["456"], "PAINT_BLACKLIST_PERSON_LIST": [456]}, False),
+])
+def test_private_media_permission_uses_user_whitelist(monkeypatch, policy, allowed):
+    monkeypatch.setattr(playground, "EnvConfig", _env(PAINT_WHITELIST_MODE=True, **policy))
+    event = types.SimpleNamespace(get_user_id=lambda: "456", data=types.SimpleNamespace(group=None))
+
+    assert playground._has_media_permission(event) is allowed
+
+
 @pytest.mark.asyncio
 async def test_paint_command_generates_image(monkeypatch):
     sent = _install_message_spies(monkeypatch)
@@ -230,18 +242,59 @@ async def test_video_command_prefers_video_input_over_image(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_media_command_denies_when_whitelist_excludes_user_and_group(monkeypatch):
+@pytest.mark.parametrize("command", ["paint", "video"])
+@pytest.mark.parametrize("policy", [
+    {"PAINT_WHITELIST_MODE": True},
+    {"PAINT_WHITELIST_MODE": True, "PAINT_WHITELIST_PERSON_LIST": [789]},
+    {"PAINT_WHITELIST_MODE": True, "PAINT_WHITELIST_GROUP_LIST": [999]},
+    {"PAINT_WHITELIST_MODE": True, "PAINT_WHITELIST_PERSON_LIST": [456], "PAINT_BLACKLIST_GROUP_LIST": ["123"]},
+    {"PAINT_WHITELIST_MODE": True, "PAINT_WHITELIST_GROUP_LIST": [123], "PAINT_BLACKLIST_PERSON_LIST": ["456"]},
+    {"PAINT_BLACKLIST_PERSON_LIST": [456]},
+])
+async def test_media_command_denies_before_extracting_or_downloading(monkeypatch, command, policy):
     sent = _install_message_spies(monkeypatch)
 
-    async def fake_paint(_prompt, _reference_images):
-        raise AssertionError("paint should not be called when permission denies")
+    async def unexpected_extract(_segments):
+        pytest.fail("denied command extracted or downloaded media")
 
-    monkeypatch.setattr(playground, "EnvConfig", _env(PAINT_WHITELIST_MODE=True), raising=False)
-    monkeypatch.setattr(playground, "paint", fake_paint, raising=False)
+    monkeypatch.setattr(playground, "EnvConfig", _env(**policy))
+    monkeypatch.setattr(playground, "message_extract", unexpected_extract)
 
-    await _receive(_event("/paint denied"))
+    await _receive(_event(f"/{command} denied"))
 
     assert sent == [("text", "没有权限使用媒体生成功能")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command", ["paint", "video"])
+@pytest.mark.parametrize("policy", [
+    {"PAINT_WHITELIST_PERSON_LIST": [456]},
+    {"PAINT_WHITELIST_GROUP_LIST": ["123"]},
+])
+async def test_media_command_whitelisted_user_or_group_can_generate(monkeypatch, command, policy):
+    sent = _install_message_spies(monkeypatch)
+
+    async def fake_message_extract(_segments):
+        return f"/{command} a cat", [], [], []
+
+    async def fake_paint(_prompt, _images):
+        return b"image"
+
+    async def fake_video(_prompt):
+        return types.SimpleNamespace(raw=b"video")
+
+    monkeypatch.setattr(playground, "EnvConfig", _env(PAINT_WHITELIST_MODE=True, **policy))
+    monkeypatch.setattr(playground, "message_extract", fake_message_extract)
+    monkeypatch.setattr(playground, "paint", fake_paint)
+    monkeypatch.setattr(playground, "generate_video", fake_video)
+    monkeypatch.setattr(playground, f"{command}_rate_limiter", AllowLimiter())
+
+    await _receive(_event(f"/{command} a cat"))
+
+    kind, payload = sent[0]
+    assert len(sent) == 1
+    assert kind == ("image" if command == "paint" else "video")
+    assert payload["raw"] == (b"image" if command == "paint" else b"video")
 
 
 @pytest.mark.asyncio

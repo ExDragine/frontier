@@ -121,7 +121,7 @@ const SettingsPage = {
             { key: 'agent', label: 'Agent' },
             { key: 'agent_policy', label: 'Agent 权限' },
             { key: 'auto_reply_policy', label: '自动回复' },
-            { key: 'paint_policy', label: '绘图权限' },
+            { key: 'paint_policy', label: '绘画与视频权限' },
             { key: 'limits', label: '限流与超时' },
             { key: 'sessions', label: '会话缓存' },
             { key: 'notifications', label: '消息推送' },

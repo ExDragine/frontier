@@ -1,12 +1,16 @@
 import time
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
+from langchain.tools import ToolRuntime
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from nonebot import logger
 
+from utils.agent_context import FrontierRuntimeContext
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
+from utils.media_access import MEDIA_ACCESS_DENIED, has_media_tool_permission
 from utils.paint_service import PaintRateLimiter
 from utils.paint_service import PaintRateLimitResult as PaintRateLimitResult
 from utils.tool_helpers import ToolStateView
@@ -16,6 +20,18 @@ from utils.video_service import generate_video
 
 video_rate_limiter = PaintRateLimiter()
 VideoInputType = Literal["text", "image", "video"]
+_DEFAULT_CONFIG = cast(RunnableConfig, None)
+_DEFAULT_RUNTIME = cast(ToolRuntime[FrontierRuntimeContext, dict], None)
+
+
+def _video_artifact(generated: VideoGenerationResult | None) -> UniMessage | None:
+    if generated is None:
+        return None
+    if generated.raw:
+        return UniMessage.video(raw=generated.raw)
+    if generated.url:
+        return UniMessage.video(url=generated.url)
+    return None
 
 
 @tool(response_format="content_and_artifact")
@@ -23,6 +39,8 @@ async def get_video(
     prompt: str,
     input_type: VideoInputType = "text",
     state: Annotated[dict | None, InjectedState] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> tuple[str, UniMessage | None]:
     """生成视频。
 
@@ -38,6 +56,8 @@ async def get_video(
 
     if EnvConfig.VIDEO_MODULE_ENABLED is False:
         return "视频功能没开", None
+    if not has_media_tool_permission(config, runtime, policy=EnvConfig):
+        return MEDIA_ACCESS_DENIED, None
 
     state_view = ToolStateView(state)
     rate_limit = video_rate_limiter.check(
@@ -67,11 +87,7 @@ async def get_video(
         return "没有可用的视频，请在当前消息中附带视频", None
 
     generated = await generate_video(prompt, image=image_input, video=video_input)
-    result = None
-    if generated and generated.raw:
-        result = UniMessage.video(raw=generated.raw)
-    elif generated and generated.url:
-        result = UniMessage.video(url=generated.url)
+    result = _video_artifact(generated)
     end_time = time.time()
     if not result:
         logger.warning(f"⚠️ 工具执行失败: video (耗时: {end_time - start_time:.2f}s)")

@@ -1,18 +1,24 @@
 import time
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
+from langchain.tools import ToolRuntime
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from nonebot import logger
 
+from utils.agent_context import FrontierRuntimeContext
 from utils.alconna import UniMessage
 from utils.configs import EnvConfig
+from utils.media_access import MEDIA_ACCESS_DENIED, has_media_tool_permission
 from utils.paint_service import PaintRateLimiter, paint
 from utils.paint_service import PaintRateLimitResult as PaintRateLimitResult
 from utils.tool_helpers import ToolStateView
 
 PaintMode = Literal["generate", "edit"]
 paint_rate_limiter = PaintRateLimiter()
+_DEFAULT_CONFIG = cast(RunnableConfig, None)
+_DEFAULT_RUNTIME = cast(ToolRuntime[FrontierRuntimeContext, dict], None)
 
 
 @tool(response_format="content_and_artifact")
@@ -20,6 +26,8 @@ async def get_paint(
     prompt: str,
     mode: PaintMode = "generate",
     state: Annotated[dict | None, InjectedState] = None,
+    config: RunnableConfig = _DEFAULT_CONFIG,
+    runtime: ToolRuntime[FrontierRuntimeContext, dict] = _DEFAULT_RUNTIME,
 ) -> tuple[str, UniMessage | None]:
     """生成或编辑图片。
 
@@ -35,6 +43,8 @@ async def get_paint(
 
     if EnvConfig.PAINT_MODULE_ENABLED is False:
         return "绘画功能未启用", None
+    if not has_media_tool_permission(config, runtime, policy=EnvConfig):
+        return MEDIA_ACCESS_DENIED, None
 
     state_view = ToolStateView(state)
     rate_limit = paint_rate_limiter.check(

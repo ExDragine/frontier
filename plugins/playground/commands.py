@@ -11,6 +11,7 @@ require("nonebot_plugin_alconna")
 from utils.alconna import UniMessage
 from utils.command_text import strip_command_prefix
 from utils.configs import EnvConfig
+from utils.media_access import MEDIA_ACCESS_DENIED, has_media_permission
 from utils.message import download_media, message_extract
 from utils.paint_service import PaintRateLimiter, paint
 from utils.video_service import generate_video
@@ -28,7 +29,6 @@ def _command_prefixes(command: str, aliases: tuple[str, ...]) -> tuple[str, ...]
 
 PAINT_PREFIXES = _command_prefixes(PAINT_COMMAND, PAINT_ALIASES)
 VIDEO_PREFIXES = _command_prefixes(VIDEO_COMMAND, VIDEO_ALIASES)
-MEDIA_ACCESS_DENIED = "没有权限使用媒体生成功能"
 
 
 async def _is_nudge(event) -> bool:
@@ -57,26 +57,10 @@ async def handle_notice(bot: Bot, event: FriendNudgeEvent | GroupNudgeEvent):
             await bot.send_group_nudge(group_id=event.data.group_id, user_id=sender_id)
 
 
-def _contains_id(values: list, target: int | str | None) -> bool:
-    if target is None:
-        return False
-    target_text = str(target)
-    return any(str(value) == target_text for value in values)
-
-
 def _has_media_permission(event: MessageEvent) -> bool:
     user_id = event.get_user_id()
     group_id = event.data.group.group_id if event.data.group else None
-
-    if _contains_id(EnvConfig.PAINT_BLACKLIST_PERSON_LIST, user_id):
-        return False
-    if _contains_id(EnvConfig.PAINT_BLACKLIST_GROUP_LIST, group_id):
-        return False
-    if not EnvConfig.PAINT_WHITELIST_MODE:
-        return True
-    return _contains_id(EnvConfig.PAINT_WHITELIST_PERSON_LIST, user_id) or _contains_id(
-        EnvConfig.PAINT_WHITELIST_GROUP_LIST, group_id
-    )
+    return has_media_permission(user_id, group_id, policy=EnvConfig)
 
 
 @paint_entry.handle()

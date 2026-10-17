@@ -261,6 +261,11 @@ docker compose up -d --build
 - `[dashboard]`: 管理面板密码、JWT secret、过期时间。
 - `[content_check]`: 文本/图片内容安全开关。
 
+绘画和视频共用 `[paint_policy]`，同时限制 `/paint`、`/video` 命令和聊天 Agent 的媒体生成工具。
+将 `whitelist_mode` 设为 `true` 后，用户号在 `whitelist_person_list` 中或当前群号在
+`whitelist_group_list` 中即可使用；两份名单均为空时全部拒绝。个人和群黑名单优先于白名单，
+白名单模式关闭时黑名单仍生效。可在 Dashboard 的“绘画与视频权限”中修改，保存后对后续调用生效。
+
 配置必须显式声明 `config_version = 2` 并使用上述结构。旧版配置分区、模型 endpoint、
 供应商协议开关及绘图尺寸转换已移除；旧字段会在启动或 Dashboard 保存时明确报错。
 `utils/configs.py` 校验成功后才原子切换运行时快照，失败不会覆盖当前配置。
