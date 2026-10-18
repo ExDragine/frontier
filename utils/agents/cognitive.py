@@ -81,8 +81,6 @@ _ARTIFACT_KINDS = frozenset({"image", "audio", "video", "file"})
 def _normalized_artifact_kind(value: object) -> str | None:
     kind = str(value or "").lower()
     if kind == "voice":
-        # Legacy QQ segments use ``voice`` for a playable audio segment.  Keep
-        # the neutral boundary to the four media kinds in AgentArtifact.
         kind = "audio"
     return kind if kind in _ARTIFACT_KINDS else None
 
@@ -100,8 +98,6 @@ def _mapping_source(block: Mapping[str, object]) -> tuple[str | None, str | None
     path_value = block.get("path")
     path = str(path_value) if isinstance(path_value, str) and path_value else None
     if url and url.startswith("data:"):
-        # inline_media_bytes() owns data-URL decoding; do not expose the
-        # encoded payload as a remote source to the platform adapter.
         url = None
     return url, path
 
@@ -363,8 +359,6 @@ def _provider_request_overrides(
             }
         }
     if provider_is_official_anthropic(model, provider):
-        # Anthropic prompt caching is opt-in. Top-level cache_control lets the
-        # official Messages API advance its breakpoint with the chat.
         return {"model_kwargs": {"cache_control": {"type": "ephemeral"}}}
     return {}
 
@@ -443,14 +437,13 @@ class FrontierCognitive:
 
     async def _prepare_components(self):
         if "_component_revision" not in self.__dict__:
-            return  # Explicitly injected components, used by isolated callers/tests.
+            return
         initialize = getattr(agent_tools, "initialize", None)
         if initialize is not None:
             await initialize()
         if self._component_revision != EnvConfig.REVISION:
             self._build_components()
         else:
-            # Take the latest tool snapshot each turn; MCP recovery does not rebuild models.
             self.tools = _stable_named_items(agent_tools.direct_tools)
 
     @staticmethod
@@ -544,15 +537,10 @@ class FrontierCognitive:
         )
         await self._prepare_components()
         if session_turn is not None and session_turn.entry.revision != EnvConfig.REVISION:
-            # Configuration can reload during intent detection/MCP discovery.
-            # No model or tool has run: retire this lease rather than restore an
-            # old state schema with a newly configured graph.
             raise SessionInterruptedError("configuration changed before session execution")
         selected_tools = self._tools_for_capabilities(capabilities)
         if tool_overrides:
             selected_tools = _merge_named_items(selected_tools, tool_overrides)
-        # Keep construction synchronous until the graph is ready: a Dashboard reload
-        # may run during the awaits above, but cannot split model/capability selection.
         workspace_key = normalize_workspace_key(
             workspace_key_override or conversation_workspace_key(user_id, group_id)
         )
@@ -658,7 +646,6 @@ class FrontierCognitive:
             role="advanced",
         )
         if session_turn is not None:
-            # Mark even omitted background as covered so it is not re-injected.
             messages = session_turn.inputs(messages)
             messages = [
                 *recent_complete_turns(messages[:-1], history_budget(session_turn.entry.settings, model.profile)),
@@ -690,8 +677,6 @@ class FrontierCognitive:
             ModelCallLimitMiddleware(run_limit=EnvConfig.AGENT_MODEL_CALL_LIMIT, exit_behavior="error"),
             ToolCallLimitMiddleware(run_limit=EnvConfig.AGENT_TOOL_CALL_LIMIT, exit_behavior="error"),
             ModelRetryMiddleware(on_failure="error"),
-            # Replace DeepAgents' built-in instance by name and enable the
-            # 0.7.21 blob offload path for binary messages/tool results.
             FilesystemMiddleware(
                 backend=backend,
                 offload_binary_content=True,
@@ -772,8 +757,6 @@ class FrontierCognitive:
             "suppress_reply": False,
         }
         if access_profile == "frontier" and (conversation is None or conversation.platform == "qq"):
-            # Load the compact composition policy before the first model call.
-            # References stay on demand; other platforms keep their own formats.
             input_data["pinned_skills"] = ["rich-markdown"]
         prior_ids = set()
         if session_turn is not None:
@@ -793,7 +776,6 @@ class FrontierCognitive:
             response = await stream.output()
         finally:
             try:
-                # Close the graph before releasing its workspace/session lease.
                 if callable(abort := getattr(stream, "abort", None)):
                     await abort()
             finally:
@@ -843,9 +825,6 @@ class FrontierCognitive:
         return {
             "response": {"messages": [final_response]},
             "total_time": processing_time,
-            # ``uni_messages`` remains as a short-lived compatibility alias
-            # for ACP/scheduled callers.  Both fields contain only neutral
-            # AgentArtifact values; QQ conversion happens in QqDelivery.
             "artifacts": artifacts,
             "uni_messages": artifacts,
             "should_reply": should_reply,

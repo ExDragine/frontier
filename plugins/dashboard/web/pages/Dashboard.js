@@ -1,10 +1,9 @@
-// 总览页面
 const DashboardPage = {
     template: `
         <div class="space-y-6">
             <h1 class="text-2xl font-bold text-gray-800">系统总览</h1>
-            
-            <!-- 统计卡片 -->
+
+
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="flex items-center justify-between">
@@ -15,7 +14,7 @@ const DashboardPage = {
                         <div class="text-4xl">⏱️</div>
                     </div>
                 </div>
-                
+
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="flex items-center justify-between">
                         <div>
@@ -25,7 +24,7 @@ const DashboardPage = {
                         <div class="text-4xl">💬</div>
                     </div>
                 </div>
-                
+
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="flex items-center justify-between">
                         <div>
@@ -35,7 +34,7 @@ const DashboardPage = {
                         <div class="text-4xl">👥</div>
                     </div>
                 </div>
-                
+
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="flex items-center justify-between">
                         <div>
@@ -46,7 +45,7 @@ const DashboardPage = {
                     </div>
                 </div>
             </div>
-            
+
             <div class="bg-white rounded-lg shadow p-6">
                 <h2 class="text-lg font-semibold text-gray-800">Agent 用量</h2>
                 <p class="text-xs text-gray-500 mt-1 mb-4">本次启动以来已结束任务的累计统计，含主模型和本地子代理；重启后重新计数。</p>
@@ -99,7 +98,7 @@ const DashboardPage = {
                 </div>
             </div>
 
-            <!-- 系统信息 -->
+
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="bg-white rounded-lg shadow p-6">
                     <h2 class="text-lg font-semibold text-gray-800 mb-4">模型配置</h2>
@@ -118,7 +117,7 @@ const DashboardPage = {
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="bg-white rounded-lg shadow p-6">
                     <h2 class="text-lg font-semibold text-gray-800 mb-4">功能状态</h2>
                     <div class="space-y-3">
@@ -143,8 +142,8 @@ const DashboardPage = {
                     </div>
                 </div>
             </div>
-            
-            <!-- 系统资源 -->
+
+
             <div class="bg-white rounded-lg shadow p-6">
                 <h2 class="text-lg font-semibold text-gray-800 mb-4">系统资源</h2>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -161,7 +160,7 @@ const DashboardPage = {
                             {{ system.memory?.used_mb }} MB / {{ system.memory?.total_mb }} MB
                         </p>
                     </div>
-                    
+
                     <div>
                         <div class="flex justify-between mb-2">
                             <span class="text-gray-600">磁盘使用</span>
@@ -175,7 +174,7 @@ const DashboardPage = {
                             {{ system.disk?.used_gb }} GB / {{ system.disk?.total_gb }} GB
                         </p>
                     </div>
-                    
+
                     <div>
                         <p class="text-gray-600 mb-2">进程内存</p>
                         <p class="text-2xl font-bold text-gray-800">{{ system.memory?.process_mb }} MB</p>
@@ -192,7 +191,7 @@ const DashboardPage = {
         const overview = ref({});
         const system = ref({});
         let interval = null;
-        
+
         const fetchData = async () => {
             try {
                 const [overviewData, systemData] = await Promise.all([
@@ -205,7 +204,7 @@ const DashboardPage = {
                 showToast('加载数据失败: ' + err.message, 'error');
             }
         };
-        
+
         const formatUptime = (seconds) => {
             if (!seconds) return '0秒';
             const days = Math.floor(seconds / 86400);
@@ -217,16 +216,16 @@ const DashboardPage = {
             if (mins > 0) parts.push(`${mins}分钟`);
             return parts.join(' ') || '少于1分钟';
         };
-        
+
         onMounted(() => {
             fetchData();
             interval = setInterval(fetchData, 30000);
         });
-        
+
         onUnmounted(() => {
             if (interval) clearInterval(interval);
         });
-        
+
         return { overview, system, formatUptime };
     }
 };

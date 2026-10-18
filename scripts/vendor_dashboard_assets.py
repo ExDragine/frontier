@@ -29,9 +29,6 @@ INDEX_HTML = WEB_DIR / "index.html"
 
 _USER_AGENT = "Mozilla/5.0 (compatible; frontier-dashboard-vendor/1.0)"
 
-# Keep in sync with the `<script src="/dashboard/vendor/...">` tags and the
-# pinned CDN fallback URLs in index.html; test/plugins/dashboard_vendor_test.py
-# fails when these two files disagree.
 ASSETS: tuple[tuple[str, str], ...] = (
     ("tailwindcss.js", "https://cdn.tailwindcss.com/3.4.17"),
     ("vue.global.prod.js", "https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"),
@@ -70,7 +67,6 @@ def download(asset: Asset, vendor_dir: Path | None = None) -> Path:
     directory = vendor_dir if vendor_dir is not None else VENDOR_DIR
     directory.mkdir(parents=True, exist_ok=True)
     destination = directory / asset.filename
-    # cdn.tailwindcss.com answers 403 to the default Python-urllib user agent.
     request = urllib.request.Request(asset.url, headers={"User-Agent": _USER_AGENT})  # noqa: S310 (pinned https)
     with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 (pinned https URLs)
         payload = response.read()

@@ -1,4 +1,3 @@
-// 设置编辑页面
 const SettingsPage = {
     template: `
         <div class="space-y-6">
@@ -165,7 +164,7 @@ const SettingsPage = {
             loading.value = true;
             try {
                 const data = await ApiClient.get('/settings/');
-                // 清空并重新填充 reactive 对象
+
                 Object.keys(configData).forEach(k => delete configData[k]);
                 Object.assign(configData, data.config);
                 if (!configData[activeTab.value] && visibleTabs.value.length > 0) {
@@ -200,7 +199,7 @@ const SettingsPage = {
         const addArrayItem = (section, key, event) => {
             const val = event.target.value.trim();
             if (!val) return;
-            // 尝试转为数字
+
             const num = Number(val);
             configData[section][key].push(isNaN(num) ? val : num);
             event.target.value = '';

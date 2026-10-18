@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 
 __all__ = ["SHANGHAI", "add_daily_job"]
 
-#: The single process-wide reference timezone for user-facing schedules and formatting.
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 

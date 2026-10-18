@@ -17,8 +17,6 @@ class BrowserCaptureIntent(BaseModel):
     recording: bool = Field(description="用户是否要求录制网页视频（录屏/录制/录视频等）")
 
 
-# This is a broad candidate filter, not authorization. Ambiguous visual requests
-# still go to the decision model; URLs alone and ordinary conversation require no extra call.
 _CAPTURE_CANDIDATE = re.compile(
     r"截|拍照|拍个|拍张|快照|录屏|录制|录视频|录下来|录一段|来张|来一张|"
     r"打开|访问|看看|长啥样|长什么样|什么样|外观|页面|网页|首页|"

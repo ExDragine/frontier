@@ -66,8 +66,6 @@ def _coerce_datetime(value: object) -> datetime | None:
         return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     if isinstance(value, (int, float)):
         timestamp = float(value)
-        # Feishu sends create_time in milliseconds in some event versions and
-        # seconds in others.  Handle both while preserving UTC explicitly.
         if abs(timestamp) > 10_000_000_000:
             timestamp /= 1000
         try:
@@ -408,9 +406,6 @@ class FeishuHistoryStore:
             messages = list(self._records.get(query.conversation, ()))
         if query.before is not None:
             messages = [message for message in messages if message.created_at is None or message.created_at < query.before]
-        # A callback owns its ordering and may already apply the database
-        # limit.  The local smoke store keeps chronological rows, so return
-        # the newest bounded suffix there.
         return messages[: query.limit] if loaded_from_callback else messages[-query.limit :]
 
     async def append(self, message: ChatMessage) -> None:
@@ -644,9 +639,6 @@ class FeishuTextGateway:
             execution_profile=self._execution_profile,
             allow_silent_reply=self._allow_silent_reply,
         )
-        # A transient history/gate failure happened before Agent Core started;
-        # permit the connector to retry the same event.  Once Core has run,
-        # keep the claim to prevent duplicate tool side effects or delivery.
         if outcome.status.value in {"history_failed", "gate_failed"}:
             self._deduper.release(dedupe_key)
         return outcome

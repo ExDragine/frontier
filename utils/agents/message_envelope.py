@@ -83,10 +83,6 @@ def content_for_persisted_images(content: str, persisted_image_count: int) -> st
         return content
 
     marker_count = count_image_placeholders(content)
-    # A failed download does not retain a segment identity in the legacy media
-    # pipeline. In a partial-success batch, keeping all markers may duplicate a
-    # successful image description, but it never attributes the wrong marker to
-    # an attachment or erases the failed image's only textual representation.
     if marker_count == 0 or persisted_image_count < marker_count:
         return content
 
@@ -127,8 +123,6 @@ def build_agent_sender_payload(
         sender["user_id"] = normalized_user_id
     if normalized_nickname and normalized_nickname != normalized_display_name:
         sender["nickname"] = normalized_nickname
-    # display_name already carries the effective group card. Repeating the same
-    # value under `card` costs context without adding identity information.
     return sender
 
 

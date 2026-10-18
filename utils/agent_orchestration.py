@@ -102,9 +102,6 @@ def _assistant_message(
 ) -> ChatMessage:
     """Convert a delivered neutral response to the history representation."""
 
-    # A response may produce multiple platform messages (for example an
-    # attachment followed by text). The final message is the assistant turn
-    # boundary used by session checkpoints and history deduplication.
     message_id = receipt.message_refs[-1].message_id if receipt.message_refs else None
     metadata: dict[str, object] = {
         "run_id": response.run_id,
@@ -210,8 +207,6 @@ class ConversationOrchestrator:
             if progress_reporter is None:
                 response = await self._core.run(request, tools=selected_tools)
             else:
-                # Only asked for when the caller supplies a reporter, so cores
-                # that keep the two-argument shape stay valid.
                 response = await self._core.run(
                     request,
                     tools=selected_tools,
@@ -280,9 +275,6 @@ class ConversationOrchestrator:
                 receipt=receipt,
             )
 
-        # Assistant history is a text-turn boundary.  Artifact-only replies
-        # can still be delivered, but there is no textual assistant message to
-        # append and no platform-independent artifact history representation.
         if not response.text.strip():
             return TurnOutcome(
                 request_id=request_id,

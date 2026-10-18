@@ -8,14 +8,11 @@ from utils.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
-# 常量配置
 LAUNCH_API_URL = "https://ll.thespacedevs.com/2.3.0/launches/"
 
-# 全局 HTTP 客户端复用
 http_client = get_http_client("rocket")
 
 
-# 火箭发射
 @tool(response_format="content")
 async def get_launches(days: int = 7):
     """获取未来指定天数内的火箭发射计划。
@@ -28,7 +25,6 @@ async def get_launches(days: int = 7):
 
     now = datetime.now(UTC)
 
-    # 构造查询参数
     params = {"net__gte": now.isoformat(), "net__lt": (now + timedelta(days=days)).isoformat(), "ordering": "net", "limit": 100}
 
     try:
@@ -44,7 +40,6 @@ async def get_launches(days: int = 7):
         tz_cn = zoneinfo.ZoneInfo("Asia/Shanghai")
 
         for launch in results:
-            # 1. 提取名称与载荷
             full_name = launch.get("name", "")
             if " | " in full_name:
                 rocket, payload = full_name.split(" | ", 1)
@@ -52,14 +47,12 @@ async def get_launches(days: int = 7):
                 rocket = (launch.get("rocket") or {}).get("configuration", {}).get("name", full_name)
                 payload = "N/A"
 
-            # 2. 提取核心信息
             pad = launch.get("pad") or {}
             location = pad.get("location") or {}
             site = location.get("name") or pad.get("name") or "Unknown"
             company = (launch.get("launch_service_provider") or {}).get("name", "Unknown")
             net_str = launch.get("net")
 
-            # 3. 时间与倒计时计算
             if net_str:
                 t_utc = datetime.fromisoformat(net_str)
                 t_cn = t_utc.astimezone(tz_cn)
@@ -77,7 +70,6 @@ async def get_launches(days: int = 7):
                 time_str = "待定"
                 countdown = "未知"
 
-            # 4. 打印输出
             messages += (
                 f"🚀 火箭: {rocket}\n"
                 f"🌍 发射场: {site}\n"

@@ -150,4 +150,3 @@ def filter_messages_for_model_capabilities(
         else:
             filtered_messages.append(message)
     return filtered_messages
-

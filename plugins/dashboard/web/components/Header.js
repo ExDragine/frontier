@@ -1,4 +1,3 @@
-// 顶部栏组件
 const HeaderComponent = {
     props: ['botName', 'botConnected'],
     template: `
@@ -24,7 +23,7 @@ const HeaderComponent = {
                 AuthUtils.logout();
             }
         };
-        
+
         return { handleLogout };
     }
 };

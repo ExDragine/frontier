@@ -208,8 +208,6 @@ async def handle_updater(event: MessageEvent):
 
 @restart.handle()
 async def handle_restart(event: MessageEvent):
-    # 重启Windows
     if os.name == "nt":
         shutdown_executable = shutil.which("shutdown") or "shutdown"
         subprocess.Popen([shutdown_executable, "/r", "/t", "0"])  # noqa: S603
-

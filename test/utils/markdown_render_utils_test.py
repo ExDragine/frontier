@@ -151,7 +151,6 @@ async def test_markdown_to_image_calls(monkeypatch, tmp_path):
 
     assert factory.playwright is not None
     assert factory.playwright.chromium.browser is not None
-    # markdown 渲染与 browser_capture 共用同一浏览器入口，GPU/WebGL 启动参数必须保留
     assert factory.playwright.chromium.launch_kwargs["headless"] is True
     assert "--enable-webgl" in factory.playwright.chromium.launch_kwargs["args"]
     page = factory.playwright.chromium.browser.page
@@ -172,12 +171,12 @@ async def test_shared_browser_is_reused_and_restarted_after_disconnect(monkeypat
     assert await browser_runtime.get_browser() is first
     assert factory.start_calls == 1
 
-    first.connected = False  # 模拟浏览器进程崩溃
+    first.connected = False
     restarted = await browser_runtime.get_browser()
 
     assert restarted is not first
     assert restarted.is_connected() is True
-    assert factory.start_calls == 2  # 重启会重建 playwright driver 并重新 launch
+    assert factory.start_calls == 2
     assert factory.playwright.chromium.launch_calls == 1
     assert "--enable-webgl" in factory.playwright.chromium.launch_kwargs["args"]
 

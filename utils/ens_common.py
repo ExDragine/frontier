@@ -9,7 +9,6 @@ import json
 import re
 from pathlib import Path
 
-# 页面就绪判定：地球可视化站的 #load 遮罩隐藏即视为加载完成。
 EARTH_LOADING_WAIT = (
     "(function(){var l=document.getElementById('load');if(!l)return true;"
     "var s=window.getComputedStyle(l);return s.display==='none'||s.visibility==='hidden';})()"
@@ -24,7 +23,6 @@ def _load_coords_table(name: str) -> dict[str, tuple[float, float]]:
     return {key: tuple(value) for key, value in raw.items()}
 
 
-# 城市名 → (lon, lat)；普通模式与专业模式共用同一张表。
 CITY_COORDS: dict[str, tuple[float, float]] = _load_coords_table("city_coords.json")
 
 
@@ -144,7 +142,6 @@ def build_return_text(
 
     coords_str = f"（{page_data['coords']}）" if page_data.get("coords") else ""
 
-    # 数据值：叠加层（spotB）优先，用户查的就是它；主数据（spotA）作为补充
     values = []
     if page_data.get("spotB.value"):
         label = page_data.get("spotB.label", "")
@@ -160,7 +157,6 @@ def build_return_text(
         values.append(f"{label} {page_data['spotA.value']}" if label else page_data["spotA.value"])
     data_str = "，".join(values) if values else "数据已返回"
 
-    # 数据时间
     time_str = f"，数据时间 {page_data['time']}" if page_data.get("time") else ""
 
     return (

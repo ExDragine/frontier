@@ -12,8 +12,6 @@ from .session_errors import CheckpointCapacityExceeded
 
 
 def _without_artifacts(value):
-    # Artifacts belong to the current transport turn, not serialized graph memory.
-    # Leave the live message untouched so the sender can still extract UniMessage.
     if isinstance(value, ToolMessage):
         return value.model_copy(update={"artifact": None})
     if isinstance(value, dict):

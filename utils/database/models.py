@@ -66,8 +66,6 @@ def resolve_message_sender_user_id(message: Message) -> int | None:
     if sender_user_id is not None:
         return int(sender_user_id)
     if getattr(message, "group_id", None) is None and getattr(message, "role", "user") == "assistant":
-        # Legacy private assistant rows stored the peer in user_id to preserve
-        # scope. Treat the author as unknown instead of impersonating that peer.
         return None
     return int(message.user_id)
 

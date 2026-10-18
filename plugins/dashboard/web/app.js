@@ -1,8 +1,7 @@
-// Vue 应用主入口
 const { createApp } = Vue;
 const { createRouter, createWebHashHistory } = VueRouter;
 
-// 定义路由
+
 const routes = [
     { path: '/login', component: LoginPage, meta: { public: true } },
     { path: '/', component: DashboardPage },
@@ -16,7 +15,7 @@ const router = createRouter({
     routes,
 });
 
-// 导航守卫：未登录跳转到登录页
+
 router.beforeEach((to, from, next) => {
     if (!to.meta.public && !AuthUtils.isLoggedIn()) {
         next('/login');
@@ -27,7 +26,7 @@ router.beforeEach((to, from, next) => {
     }
 });
 
-// 根组件
+
 const App = {
     template: `
         <div v-if="!isLoginPage" class="flex flex-col md:flex-row h-screen overflow-hidden">
@@ -49,10 +48,10 @@ const App = {
         const route = router.currentRoute;
         const botName = ref('Frontier');
         const botConnected = ref(undefined);
-        
+
         const isLoginPage = computed(() => route.value.path === '/login');
-        
-        // 获取 bot 基本信息
+
+
         const fetchBotInfo = async () => {
             if (AuthUtils.isLoggedIn()) {
                 try {
@@ -60,13 +59,13 @@ const App = {
                     botName.value = status.bot_name;
                     botConnected.value = status.bot_connected;
                 } catch (err) {
-                    // 忽略错误，保持默认值
+
                 }
             }
         };
-        
+
         fetchBotInfo();
-        
+
         return { isLoginPage, botName, botConnected, route };
     },
     provide() {
@@ -77,7 +76,7 @@ const App = {
     }
 };
 
-// 创建并挂载应用
+
 const app = createApp(App);
 app.component('Sidebar', SidebarComponent);
 app.component('Header', HeaderComponent);

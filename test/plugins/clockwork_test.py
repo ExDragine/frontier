@@ -393,7 +393,6 @@ async def test_news_scheduler_reports_persisted_delivery_outcome(monkeypatch, de
     monkeypatch.setattr(scheduler, "generate", AsyncMock(return_value=(
         NewsConfig(), repository, {"id": "r", "status": "ready"},
     )))
-    # All success can also mean a previously delivered archive, with no new sends.
     monkeypatch.setattr(scheduler, "deliver", AsyncMock(return_value=[]))
     manager = types.SimpleNamespace(get_task_groups=AsyncMock(return_value=[9, 10]))
     monkeypatch.setattr(sys.modules["plugins.clockwork"], "task_manager", manager, raising=False)

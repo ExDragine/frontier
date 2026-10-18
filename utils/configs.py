@@ -59,7 +59,6 @@ class MediaModelConfig(_FrozenConfig):
 
 
 class PaintModelConfig(MediaModelConfig):
-    # Accepted for existing v2 files; image generation always uses automatic sizing.
     size: str = "auto"
     quality: str = "auto"
 
@@ -111,9 +110,6 @@ class ProviderProfile(BaseModel):
     native_web_search: bool = False
     structured_output_method: Literal["auto", "json_schema", "function_calling", "json_mode", "text_json"] = "auto"
     decision_extra_body: dict[str, Any] = Field(default_factory=dict)
-    # Deprecated compatibility field.  New configurations should use
-    # ``decision_extra_body``; normalization keeps both keys available while
-    # old v2 files are migrated in memory.
     signal_extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -126,13 +122,7 @@ class FeatureConfig(_FrozenConfig):
     agent_enabled: bool = True
     paint_enabled: bool = True
     video_enabled: bool = True
-    # Deprecated compatibility setting.  The QQ neutral orchestrator is now
-    # always active; this field remains accepted so older env.toml files do
-    # not fail validation during the final cutover.
     qq_text_canary_enabled: bool = False
-    # Laya only expands the automatic-reply candidate set; Decision remains the
-    # final gate.  Keep this opt-in because the optional model needs local
-    # calibration before it can be enabled in production.
     laya_candidate_enabled: bool = False
     laya_candidate_model: str = "auto"
     laya_candidate_device: str = "cpu"
@@ -230,8 +220,6 @@ class SessionConfig(_FrozenConfig):
 
 
 class NotificationConfig(_FrozenConfig):
-    # 保留（当前无读取者）：历史 env.toml 仍写入该键，而配置模型是 extra=forbid，
-    # 删除字段会让既有配置文件在启动时校验失败。
     test_group_id: tuple[int | str, ...] = ()
     announce_group_id: tuple[int | str, ...] = ()
     apod_group_id: tuple[int | str, ...] = ()
@@ -413,9 +401,6 @@ def _normalize_provider_profile(
             else _default_api_mode(provider_type)
         )
     merged = {**existing, **profile}
-    # ``signal_extra_body`` was the original name for parameters that are
-    # applied only to the lightweight structured decision model.  Preserve
-    # old files while publishing the canonical decision name to new callers.
     old_payload = merged.get("signal_extra_body")
     new_payload = merged.get("decision_extra_body")
     if old_payload and new_payload and old_payload != new_payload:
@@ -453,9 +438,6 @@ def _normalize_provider_profiles(providers: Mapping[str, Any]) -> dict[str, dict
 def _normalize_models(models: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     """Map current flat TOML model fields onto typed model roles."""
     model_fields = dict(models)
-    # ``signal_*`` was the pre-decision name.  Accept it as a migration alias
-    # so an existing v2 configuration keeps booting, while all runtime values
-    # are sourced from the canonical ``decision`` role.
     for suffix in ("model", "model_provider", "model_capabilities"):
         old_key = f"signal_{suffix}"
         new_key = f"decision_{suffix}"
@@ -509,12 +491,9 @@ def parse_config(config: Mapping[str, Any]) -> FrontierSettings:
         for key in FrontierSettings.model_fields
         if key not in {"config_version", "models", "providers", "keys"}
     }
-    # These v2 settings belonged to removed middleware. Ignore only the known
-    # retired keys; unrelated typos still fail strict schema validation.
     for key in ("answer_rubric_enabled", "answer_rubric_max_iterations"):
         normalized["features"].pop(key, None)
     normalized["limits"].pop("agent_ptc_call_limit", None)
-    # Preserve the documented defaults for omitted current-format fields.
     normalized["features"].setdefault("video_enabled", normalized["features"].get("paint_enabled", True))
     normalized["storage"].setdefault("media_ttl_days", normalized["storage"].get("image_ttl_days", 30))
     return FrontierSettings.model_validate({
@@ -563,20 +542,16 @@ class EnvConfig:
     settings: ClassVar[FrontierSettings]
     SPEECH_RECOGNITION: ClassVar[SpeechRecognitionConfig]
 
-    # Bot identity
     BOT_NAME: ClassVar[str]
     BOT_NICKNAMES: ClassVar[list[str]]
     SYSTEM_PROMPT: ClassVar[str]
 
-    # Model roles and provider profiles
     BASIC_MODEL: ClassVar[str]
     BASIC_MODEL_PROVIDER: ClassVar[str]
     BASIC_MODEL_CAPABILITIES: ClassVar[list[str]]
     DECISION_MODEL: ClassVar[str]
     DECISION_MODEL_PROVIDER: ClassVar[str]
     DECISION_MODEL_CAPABILITIES: ClassVar[list[str]]
-    # Deprecated runtime aliases kept for plugins and integrations that have
-    # not migrated their imports yet.
     SIGNAL_MODEL: ClassVar[str]
     SIGNAL_MODEL_PROVIDER: ClassVar[str]
     SIGNAL_MODEL_CAPABILITIES: ClassVar[list[str]]
@@ -596,11 +571,9 @@ class EnvConfig:
     VIDEO_SECONDS: ClassVar[str]
     LLM_PROVIDERS: ClassVar[dict[str, dict[str, Any]]]
 
-    # External credentials
     NASA_API_KEY: ClassVar[SecretStr]
     GITHUB_PAT: ClassVar[SecretStr]
 
-    # Feature switches and agent settings
     AGENT_MODULE_ENABLED: ClassVar[bool]
     PAINT_MODULE_ENABLED: ClassVar[bool]
     VIDEO_MODULE_ENABLED: ClassVar[bool]
@@ -614,7 +587,6 @@ class EnvConfig:
     LAYA_CANDIDATE_API_KEY: ClassVar[SecretStr]
     AGENT_CAPABILITY: ClassVar[str]
     MESSAGE_MEDIA_FAKE_IP_FALLBACK: ClassVar[bool]
-    # Access policies
     AGENT_WHITELIST_MODE: ClassVar[bool]
     AGENT_WHITELIST_PERSON_LIST: ClassVar[list[int | str]]
     AGENT_WHITELIST_GROUP_LIST: ClassVar[list[int | str]]
@@ -629,7 +601,6 @@ class EnvConfig:
     PAINT_BLACKLIST_PERSON_LIST: ClassVar[list[int | str]]
     PAINT_BLACKLIST_GROUP_LIST: ClassVar[list[int | str]]
 
-    # Rate limits and timeouts
     PAINT_RATE_LIMIT_MAX_REQUESTS: ClassVar[int]
     PAINT_RATE_LIMIT_WINDOW_SECONDS: ClassVar[int]
     VIDEO_RATE_LIMIT_MAX_REQUESTS: ClassVar[int]
@@ -643,7 +614,6 @@ class EnvConfig:
     SESSIONS: ClassVar[SessionConfig]
     SEARCH: ClassVar[SearchConfig]
 
-    # Notification targets
     TEST_GROUP_ID: ClassVar[list[int | str]]
     ANNOUNCE_GROUP_ID: ClassVar[list[int | str]]
     APOD_GROUP_ID: ClassVar[list[int | str]]
@@ -652,7 +622,6 @@ class EnvConfig:
     EARTHQUAKE_GROUP_ID: ClassVar[list[int | str]]
     NRC_MERCHANT_GROUP_ID: ClassVar[list[int | str]]
 
-    # Storage, diagnostics, and dashboard
     QUERY_MESSAGE_NUMBERS: ClassVar[int]
     IMAGE_ENABLED: ClassVar[bool]
     IMAGE_TTL_DAYS: ClassVar[int]
@@ -666,8 +635,6 @@ class EnvConfig:
     DASHBOARD_JWT_EXPIRE_HOURS: ClassVar[int]
     CONTENT_CHECK_ENABLED: ClassVar[bool]
 
-    # Feishu connector boundary.  The first four values are non-secret TOML
-    # settings; credentials are loaded from process environment variables.
     FEISHU_ENABLED: ClassVar[bool]
     FEISHU_APP_ID: ClassVar[str]
     FEISHU_BOT_OPEN_ID: ClassVar[str]
@@ -697,9 +664,6 @@ class EnvConfig:
             "DECISION_MODEL": model.decision.model,
             "DECISION_MODEL_PROVIDER": model.decision.provider,
             "DECISION_MODEL_CAPABILITIES": list(model.decision.capabilities),
-            # Keep the old names as read-compatible aliases.  Internal code
-            # should use DECISION_MODEL* so decision and basic workloads stay
-            # visibly separate.
             "SIGNAL_MODEL": model.decision.model,
             "SIGNAL_MODEL_PROVIDER": model.decision.provider,
             "SIGNAL_MODEL_CAPABILITIES": list(model.decision.capabilities),
@@ -771,9 +735,6 @@ class EnvConfig:
             "FEISHU_APP_ID": settings.platforms.feishu.app_id,
             "FEISHU_BOT_OPEN_ID": settings.platforms.feishu.bot_open_id,
             "FEISHU_PATH": settings.platforms.feishu.path,
-            # Keep Feishu credentials out of env.toml and the typed settings
-            # snapshot.  Reading them at reload time also makes connector
-            # configuration changes explicit and testable.
             "FEISHU_APP_SECRET": SecretStr(os.getenv("FEISHU_APP_SECRET", "")),
             "FEISHU_VERIFICATION_TOKEN": SecretStr(os.getenv("FEISHU_VERIFICATION_TOKEN", "")),
             "FEISHU_ENCRYPT_KEY": SecretStr(os.getenv("FEISHU_ENCRYPT_KEY", "")),
@@ -781,7 +742,6 @@ class EnvConfig:
         for field in LimitConfig.model_fields:
             values[field.upper()] = getattr(settings.limits, field)
 
-        # 解析和所有派生值计算成功后再统一替换，避免半更新状态。
         for name, value in values.items():
             setattr(cls, name, value)
         cls.settings = settings

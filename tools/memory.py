@@ -11,8 +11,6 @@ from utils.database import Message, MessageDatabase, resolve_message_sender_user
 from utils.milky_tools import configurable, format_messages
 
 _SHANGHAI = zoneinfo.ZoneInfo("Asia/Shanghai")
-# 以约 200K tokens 的有效上下文预算规划：典型 QQ 短消息最多读取 1,000 条，
-# 每页 200 条；超长消息仍由 content_max_chars 单独截断。
 _MAX_PAGE_SIZE = 200
 _MAX_OFFSET = 5000
 _MAX_MEMORY_MESSAGES = 1000

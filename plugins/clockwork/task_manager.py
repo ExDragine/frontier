@@ -27,16 +27,15 @@ class TaskManager:
         "eq_usgs": "EARTHQUAKE_GROUP_ID",
         "daily_news": "NEWS_SUMMARY_GROUP_ID",
         "nrc_merchant_alert": "NRC_MERCHANT_GROUP_ID",
-        "happy_new_year": None,  # 特殊处理：发送所有群
+        "happy_new_year": None,
     }
 
     def __init__(self, scheduler: AsyncIOScheduler, engine: Engine):
         self.scheduler = scheduler
         self.engine = engine
         self.logger = logger
-        self._job_func = None  # 由 TaskExecutor 设置
+        self._job_func = None
 
-        # 只监听 missed 事件（成功/失败由 TaskExecutor 处理）
         self.scheduler.add_listener(self._on_job_missed, EVENT_JOB_MISSED)
 
     def set_job_func(self, func):
@@ -67,7 +66,6 @@ class TaskManager:
         if not task.enabled:
             self.scheduler.pause_job(task.job_id)
 
-    # ==================== 任务配置管理 ====================
 
     async def register_task(
         self,
@@ -85,7 +83,6 @@ class TaskManager:
     ) -> TaskConfig:
         """注册新任务到数据库和调度器"""
         with Session(self.engine) as session:
-            # 检查任务是否已存在
             statement = select(TaskConfig).where(TaskConfig.job_id == job_id)
             existing_task = session.exec(statement).first()
 
@@ -95,7 +92,6 @@ class TaskManager:
                     handler_module, handler_function, group_ids,
                 )
 
-            # 创建任务配置
             task = TaskConfig(
                 job_id=job_id,
                 name=name,
@@ -109,7 +105,6 @@ class TaskManager:
             )
             session.add(task)
 
-            # 添加群组映射
             for group_id in sorted(set(group_ids)):
                 mapping = TaskGroupMapping(
                     job_id=job_id,
@@ -182,7 +177,6 @@ class TaskManager:
             existing_task.updated_at = int(time.time())
             updated = True
 
-        # 同步群组
         old_groups = [
             m.group_id
             for m in session.exec(select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)).all()
@@ -257,7 +251,6 @@ class TaskManager:
                 self.logger.warning(f"任务 {job_id} 不存在")
                 return False
 
-            # 先尝试更新 APScheduler，失败则不写入数据库
             try:
                 self.scheduler.reschedule_job(job_id, trigger=trigger_type, **trigger_args)
             except Exception as e:
@@ -266,7 +259,6 @@ class TaskManager:
                 return False
 
             task.updated_at = int(time.time())
-            # 更新数据库
             task.trigger_type = trigger_type
             task.trigger_args = json.dumps(trigger_args)
             session.add(task)
@@ -285,13 +277,11 @@ class TaskManager:
                 self.logger.warning(f"任务 {job_id} 不存在")
                 return False
 
-            # 删除旧的群组映射
             statement = select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)
             old_mappings = session.exec(statement).all()
             for mapping in old_mappings:
                 session.delete(mapping)
 
-            # 添加新的群组映射
             for group_id in sorted(set(group_ids)):
                 mapping = TaskGroupMapping(job_id=job_id, group_id=group_id)
                 session.add(mapping)
@@ -323,12 +313,10 @@ class TaskManager:
             task.enabled = True
             task.updated_at = int(time.time())
 
-            # 恢复或重新添加到 APScheduler
             try:
                 self.scheduler.resume_job(job_id)
                 self.logger.info(f"任务 {job_id} 已启用")
             except Exception:
-                # 任务不在 scheduler 中，重新添加
                 try:
                     self.add_job_to_scheduler(task)
                     self.logger.info(f"任务 {job_id} 已重新添加到调度器并启用")
@@ -355,12 +343,10 @@ class TaskManager:
             task.enabled = False
             task.updated_at = int(time.time())
 
-            # 暂停APScheduler任务
             try:
                 self.scheduler.pause_job(job_id)
                 self.logger.info(f"任务 {job_id} 已禁用")
             except Exception as e:
-                # 任务可能还未注册到 scheduler，这是正常的
                 self.logger.warning(f"无法在 scheduler 中暂停任务 {job_id}: {e}")
 
             session.add(task)
@@ -377,7 +363,6 @@ class TaskManager:
                 self.logger.warning(f"任务 {job_id} 不存在")
                 return False
 
-            # 删除群组映射
             statement = select(TaskGroupMapping).where(TaskGroupMapping.job_id == job_id)
             mappings = session.exec(statement).all()
             for mapping in mappings:
@@ -388,13 +373,11 @@ class TaskManager:
             if metadata:
                 session.delete(metadata)
 
-            # 删除任务配置
             session.delete(task)
             session.commit()
 
             self._sync_group_config(job_id, [])
 
-            # 从APScheduler中移除
             try:
                 self.scheduler.remove_job(job_id)
             except Exception as e:
@@ -448,7 +431,6 @@ class TaskManager:
         await self._job_func(job_id)
         return True
 
-    # ==================== 任务查询 ====================
 
     async def get_task(self, job_id: str) -> TaskConfig | None:
         """获取任务配置"""
@@ -536,7 +518,6 @@ class TaskManager:
             mappings = session.exec(statement).all()
             return [mapping.group_id for mapping in mappings]
 
-    # ==================== 执行历史 ====================
 
     async def log_execution(
         self,
@@ -567,7 +548,6 @@ class TaskManager:
             )
             session.add(history)
 
-            # 更新任务统计信息
             statement = select(TaskConfig).where(TaskConfig.job_id == job_id)
 
             task = session.exec(statement).first()
@@ -579,7 +559,6 @@ class TaskManager:
                 elif status in {"failed", "timeout", "cancelled"}:
                     task.failed_runs += 1
 
-                # 从 APScheduler 同步 next_run_time
                 try:
                     job = self.scheduler.get_job(job_id)
                     if job and job.next_run_time:
@@ -622,7 +601,6 @@ class TaskManager:
             if not task:
                 return {}
 
-            # 获取最近执行记录
             statement = (
                 select(TaskExecutionHistory)
                 .where(TaskExecutionHistory.job_id == job_id)
@@ -652,7 +630,6 @@ class TaskManager:
                 ],
             }
 
-    # ==================== 事件监听 ====================
 
     def _on_job_missed(self, event):
         """APScheduler missed事件回调 - 任务因超过 misfire_grace_time 被跳过"""
@@ -667,7 +644,6 @@ class TaskManager:
         )
         self.logger.warning(f"任务 {job_id} 执行被跳过 (missed)")
 
-    # ==================== 任务初始化 ====================
 
     async def initialize(self):
         """初始化时同步群组配置到EnvConfig"""

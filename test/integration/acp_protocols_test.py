@@ -73,7 +73,7 @@ async def test_real_stdio_protocol_roundtrip_and_cancel(tmp_path, version):
 
         pending = asyncio.create_task(service.run("wait", workspace_key="group:1", progress_reporter=report))
         await asyncio.wait_for(thinking.wait(), 10)
-        assert not pending.done()  # v2 ACK is not completion
+        assert not pending.done()
         assert await service.cancel(workspace_key="group:1") == 1
         cancelled = await asyncio.wait_for(pending, 10)
         assert cancelled.stop_reason == "cancelled"

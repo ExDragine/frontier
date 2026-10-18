@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class ProviderConfig:
-    cls_fn: Callable[[], type[BaseChatModel]]  # 延迟求值，支持测试时替换
+    cls_fn: Callable[[], type[BaseChatModel]]
     api_key_field: str
     valid_kwargs: set[str]
     kwarg_map: dict[str, str] = field(default_factory=dict)
@@ -151,9 +151,6 @@ def _model_specific_capabilities(model: str, role: str | None = None) -> set[str
         "advanced": (EnvConfig.ADVAN_MODEL, EnvConfig.ADVAN_MODEL_CAPABILITIES),
         "daily_news": (EnvConfig.DAILY_NEWS_MODEL, EnvConfig.DAILY_NEWS_MODEL_CAPABILITIES),
     }
-    # ``signal`` remains an input alias for older callers.  It follows the
-    # legacy attributes only when they were overridden independently; normal
-    # reloads keep those aliases equal to the decision role.
     if role == "signal":
         configured_model, configured_capabilities = EnvConfig.SIGNAL_MODEL, EnvConfig.SIGNAL_MODEL_CAPABILITIES
         return _normalize_capabilities(configured_capabilities) if model == configured_model else set()
@@ -166,8 +163,6 @@ def _model_specific_capabilities(model: str, role: str | None = None) -> set[str
 
     capabilities: set[str] = set()
     configured_roles = list(role_capabilities.values())
-    # Include the deprecated attributes for callers that still monkeypatch or
-    # populate them directly instead of going through EnvConfig.reload().
     configured_roles.append((EnvConfig.SIGNAL_MODEL, EnvConfig.SIGNAL_MODEL_CAPABILITIES))
     for configured_model, configured_capabilities in configured_roles:
         if model == configured_model:
@@ -204,7 +199,6 @@ def _provider_protocol(model: str, profile: dict) -> tuple[str, str]:
     provider_type = (_clean_optional(profile.get("type")) or _infer_provider(model)).lower()
     api_mode = _clean_optional(profile.get("api_mode")).lower()
 
-    # 兼容短暂使用过的专用类型和更早的布尔开关；规范化配置不会再输出它们。
     if provider_type == "deepseek_responses":
         provider_type = "openai"
         api_mode = ApiMode.RESPONSES.value
@@ -438,7 +432,6 @@ def provider_decision_extra_body(model: str, provider: str | None = None) -> dic
     try:
         _, profile = _provider_profile(model, provider)
     except ValueError:
-        # create_llm() 会对同一个 profile 先报错，这里只做尽力而为的读取。
         return {}
     payload = profile.get("decision_extra_body")
     if not isinstance(payload, dict) or not payload:
@@ -492,8 +485,6 @@ def structured_output_options(
             selected = "function_calling"
         else:
             selected = "json_mode"
-    # ChatDeepSeek implements json_schema via function calling; strict=True can
-    # switch to its beta endpoint. Do not opt into that behavior automatically.
     options: dict[str, Any] = {"method": selected}
     if selected == "json_schema" and provider_type == "openai":
         options["strict"] = True
@@ -551,9 +542,6 @@ def create_llm(model: str, provider: str | None = None, **kwargs) -> BaseChatMod
         if k in config.valid_kwargs or k == "tags":
             actual_key = config.kwarg_map.get(k, k)
             filtered[actual_key] = v
-    # BaseChatModel already defines ``metadata`` for tracing. ChatAnthropic's
-    # constructor moves a same-named provider kwarg onto that field instead of
-    # keeping it in the API payload, so install that one key after validation.
     deferred_anthropic_kwargs = _defer_anthropic_request_metadata(provider_type, filtered)
     if "profile" not in filtered:
         catalog_profile = get_langchain_model_profile(model, _infer_provider(model))

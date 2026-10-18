@@ -271,8 +271,6 @@ def _coerce_datetime(value: object) -> datetime | None:
     if isinstance(value, datetime):
         return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     if isinstance(value, (int, float)):
-        # QQ/database timestamps are milliseconds; accept seconds for callers
-        # that already normalized their history snapshot.
         timestamp = float(value)
         if abs(timestamp) > 10_000_000_000:
             timestamp /= 1000
@@ -347,8 +345,6 @@ def _as_chat_message(item: object, conversation: ConversationRef | None = None) 
         created_at = getattr(item, "created_at", getattr(item, "time", None))
         sender_value = getattr(item, "sender", None)
 
-    # Database history stores the complete envelope as JSON.  Use it as a
-    # source of neutral metadata while retaining the original content string.
     payload = _json_mapping(content)
     if payload is not None:
         role = _normalize_role(payload.get("role", role))
@@ -446,8 +442,6 @@ class QqHistoryStore:
             if group_id is not None and account_id is not None:
                 db_user_id = account_id
             elif group_id is None:
-                # Private QQ history is scoped by the other participant; the
-                # bot identity is kept separately in ``bot_user_id``.
                 db_user_id = user_id
         try:
             msg_id = int(message.message_id) if message.message_id is not None else None
@@ -612,10 +606,6 @@ class QqDelivery:
                 receipts.append(text_receipt)
         if not receipts:
             return DeliveryReceipt(DeliveryStatus.DELIVERED)
-        # A media item may fail after the final text has been acknowledged.
-        # The text receipt is the assistant-turn delivery boundary: an
-        # artifact-only success must never make an undelivered final text look
-        # committed, and a successful artifact must not mask a text failure.
         if text_receipt is not None:
             status = text_receipt.status
         else:
@@ -648,9 +638,6 @@ class QqReplyPolicy:
             if isinstance(result, GateDecision):
                 return result
             return GateDecision(bool(result), reason="injected_callback")
-        # The inbound adapter maps QQ's is_tome/to_me/wake-word decision to
-        # mentions_agent.  This fallback is deliberately conservative until the
-        # legacy event gateway is injected into the QQ entry point.
         return GateDecision(message.mentions_agent, reason="mentions_agent" if message.mentions_agent else "not_mentioned")
 
 

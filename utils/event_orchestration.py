@@ -88,8 +88,6 @@ class EventOrchestrator:
                 await executor.execute(event, action, current)
                 await self.store.finish(event.key, "succeeded", "platform_confirmed", action, policy)
         except asyncio.CancelledError:
-            # The durable executing marker is recovered as unknown if shutdown
-            # interrupts this final write as well. Never retry the platform call.
             await self.store.finish(event.key, "unknown" if writing else "deferred", "cancelled", action, policy)
             raise
         except Exception as error:  # noqa: BLE001 - inbox failures must not stop workers
@@ -101,7 +99,7 @@ class EventOrchestrator:
         """Read-only recovery; never repeat an uncertain platform operation."""
         event = InboundEvent.model_validate_json(row["payload"])
         if event.kind == "group_invitation":
-            return  # No remote lookup exists; an operator must inspect it.
+            return
         try:
             current = await MilkyEventExecutor(self.bot_lookup(event.bot_id)).current(event)
             state = field(current, "state")

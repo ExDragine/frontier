@@ -46,8 +46,6 @@ def _json_fields(payload: str) -> dict[str, str]:
     if not isinstance(root, dict):
         return {}
     meta = root.get("meta", {})
-    # QQ shares place display data under news/detail_1/music/video, etc.
-    # Inspect one bounded level instead of exposing arbitrary nested state.
     details = [value for value in list(meta.values())[:8] if isinstance(value, dict)] if isinstance(meta, dict) else []
     nodes = [*details, root]
     title = _first(nodes, ("title",), 256)

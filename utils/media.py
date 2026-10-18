@@ -192,7 +192,6 @@ def normalize_image_for_model(data: bytes) -> ResolvedMedia | None:
             image_format = str(image.format or "").upper()
             image.verify()
 
-        # JPEG verify() may only inspect the header; force pixel decoding too.
         with PILImage.open(BytesIO(data)) as decoded:
             decoded.load()
 

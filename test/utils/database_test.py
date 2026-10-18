@@ -358,8 +358,6 @@ async def test_insert_media_removes_new_files_when_database_indexing_fails(
     def fail_refresh(*_args, **_kwargs):
         raise RuntimeError("database unavailable")
 
-    # The helper lives in its own module now, so patch the call sites that hold
-    # a direct reference instead of the package facade.
     monkeypatch.setattr(db_attachments, "_refresh_message_model_states", fail_refresh)
     monkeypatch.setattr(db_rows, "_refresh_message_model_states", fail_refresh)
 
@@ -1118,9 +1116,6 @@ async def test_event_database_ops(monkeypatch, memory_engine):
     assert await database.select("event") is None
 
 
-# ── GroupSettingsManager 测试 ────────────────────────────────
-
-
 class TestGroupSettingsManager:
     def test_get_returns_empty_list_when_no_settings(self, memory_engine):
         GroupSettings.metadata.create_all(memory_engine)
@@ -1179,7 +1174,7 @@ class TestGroupSettingsManager:
         count = manager.clear(123, "wake_word")
         assert count == 2
         assert manager.get(123, "wake_word") == []
-        assert manager.get(123, "model") == ["gpt-4"]  # 不影响其他 key
+        assert manager.get(123, "model") == ["gpt-4"]
 
     def test_clear_empty_returns_zero(self, memory_engine):
         GroupSettings.metadata.create_all(memory_engine)

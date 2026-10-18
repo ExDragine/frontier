@@ -290,8 +290,6 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_available_china_radar_areas",
         "get_static_china_radar",
     }
-    # Every main/domain tool is a direct Agent tool: the PTC channel was removed
-    # together with the interpreter that executed it.
     direct_names = {tool.name for tool in module.agent_tools.direct_tools}
     assert direct_names == {
         "get_message",
@@ -333,7 +331,6 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
         "web_fetch_exa",
     }
 
-    # The registry exposes a fresh snapshot without mutating local tools or old views.
     registry = module.agent_tools
     queries = {
         "get_china_earthquake", "get_usgs_significant_earthquakes",
@@ -341,7 +338,6 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
         "get_message", "get_login_info", "iching_divination", "deepseek_web_search", "deepseek_web_fetch",
     }
     assert {tool.name for tool in registry.direct_tools if registry.is_read_only_tool(tool)} == queries
-    # A same-name replacement/MCP object must not inherit a local query's policy.
     assert not registry.is_read_only_tool(FakeBaseTool("get_china_earthquake", "content"))
     previous = registry.direct_tools
     recovered = FakeBaseTool("web_search_exa", "content")
@@ -354,8 +350,6 @@ async def test_module_tools_groups_tools_by_domain(monkeypatch):
     assert "mcp_tool" not in {tool.name for tool in registry.direct_tools}
     assert "mcp_tool" in {tool.name for tool in previous}
 
-    # Explicit platform capabilities filter QQ/Milky modules while retaining
-    # common tools; an empty set remains the legacy unfiltered behavior.
     message_tools = {tool.name for tool in registry.direct_tools_for(frozenset({"qq:message"}))}
     assert "send_image" in message_tools
     assert "get_message" in message_tools

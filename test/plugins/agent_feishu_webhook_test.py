@@ -170,8 +170,6 @@ def test_signature_fixed_vector_matches_feishu_concatenation():
     body = b'{"type":"event_callback"}'
     expected = "dd754c270c3bff81381a71e16203226097965307de78c04ffaa65398a401ccae"
 
-    # Keep this vector independent of the connector helper so a shared
-    # implementation bug cannot make the test pass.
     assert hashlib.sha256(timestamp.encode() + nonce.encode() + encrypt_key.encode() + body).hexdigest() == expected
 
 

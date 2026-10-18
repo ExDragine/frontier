@@ -423,7 +423,6 @@ _RICH_MODELS: dict[str, type[_RichModel]] = {
 def rich_block_placeholder(kind: str, data: _RichModel) -> str:
     payload = data.model_dump(mode="json", exclude_none=True)
     if kind == "ui":
-        # HTML is produced only by this parser, never accepted from model JSON.
         parser = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"]).disable("image")
 
         def compile_prose(node: dict[str, Any]) -> None:

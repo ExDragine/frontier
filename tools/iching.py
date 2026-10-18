@@ -26,8 +26,6 @@ __all__ = [
     "load_trigrams_data",
 ]
 
-# ===== 工具函数 =====
-
 
 @tool(response_format="content")
 async def iching_divination(
@@ -80,7 +78,6 @@ async def iching_divination(
         随机报数: iching_divination("number", "今日运势")  # num1和num2自动随机
     """
     try:
-        # 加载周易数据
         index_data = load_iching_index()
         if not index_data:
             return "❌ 周易索引数据加载失败,请检查数据文件"
@@ -91,7 +88,6 @@ async def iching_divination(
 
         reader = IChingReader(index_data, trigrams_data)
 
-        # 根据不同方法起卦
         if method == "coin":
             result = reader.divine_by_coins()
         elif method == "time":
@@ -107,7 +103,6 @@ async def iching_divination(
                 f"   • number - 报数起卦法"
             )
 
-        # 格式化输出
         formatted_result = reader.format_divination_result(
             original_hex=result["original_hexagram"],
             changing_hex=result.get("changing_hexagram"),
@@ -155,13 +150,11 @@ async def list_iching_hexagrams(filter_type: str = "all") -> str:  # noqa: C901
         hexagrams = index_data.get("hexagrams", [])
 
         if filter_type == "eight":
-            # 八纯卦(上下卦相同)
             result = "☯️ 周易八纯卦\n\n"
             result += "━" * 50 + "\n\n"
 
             eight_pure = [h for h in hexagrams if h["upper"] == h["lower"]]
             for h in eight_pure:
-                # 加载详细信息
                 detail = load_hexagram_detail(h["file"])
                 if detail:
                     result += f"{h['symbol']} {h['number']}.{h['name']}卦 ({h['nature']})\n"
@@ -171,7 +164,6 @@ async def list_iching_hexagrams(filter_type: str = "all") -> str:  # noqa: C901
                     result += "\n"
 
         elif filter_type == "element":
-            # 按五行分类
             result = "☯️ 64卦五行分类\n\n"
             result += "━" * 50 + "\n\n"
 
@@ -190,11 +182,10 @@ async def list_iching_hexagrams(filter_type: str = "all") -> str:  # noqa: C901
                         result += f"   {h['symbol']} {h['number']}.{h['name']}\n"
                     result += "\n"
 
-        else:  # all
+        else:
             result = "☯️ 周易64卦总览\n\n"
             result += "━" * 50 + "\n\n"
 
-            # 每行8卦
             for i in range(0, 64, 8):
                 line_hexagrams = hexagrams[i : i + 8]
                 result += "  ".join([f"{h['symbol']}{h['number']:02d}.{h['name']}" for h in line_hexagrams]) + "\n"
@@ -229,7 +220,6 @@ async def get_hexagram_detail(hexagram_name: str) -> str:
         hexagrams = index_data.get("hexagrams", [])
         hex_info = None
 
-        # 查找卦象
         for h in hexagrams:
             if h["name"] == hexagram_name or str(h["number"]) == str(hexagram_name):
                 hex_info = h
@@ -238,12 +228,10 @@ async def get_hexagram_detail(hexagram_name: str) -> str:
         if not hex_info:
             return f"❌ 未找到卦象: {hexagram_name}"
 
-        # 加载详细信息
         hexagram = load_hexagram_detail(hex_info["file"])
         if not hexagram:
             return f"❌ 无法加载卦象详情: {hexagram_name}"
 
-        # 详细展示
         result = f"☯️ {hexagram['full_symbol']} 第{hexagram['number']}卦 - {hexagram['name']}卦\n\n"
         result += f"🎴 别名: {hexagram['nature']}\n"
         result += f"🔺 上卦: {hexagram['upper_trigram']} {hexagram['upper_symbol']}\n"

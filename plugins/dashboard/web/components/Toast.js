@@ -1,4 +1,3 @@
-// Toast 通知组件
 const toastState = Vue.reactive({
     toasts: []
 });

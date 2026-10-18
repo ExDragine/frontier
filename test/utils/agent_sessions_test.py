@@ -94,7 +94,6 @@ async def test_incremental_input_and_delivered_reply_ids_are_not_reinjected(setu
     await complete(manager, first, message_id=4, delivered_at=1001)
     second = manager.begin(SessionKey("1", "11", 20), HistoryBoundary(5, 2000), settings, 1)
     assert second.hot
-    # Message 3 arrived during generation, before assistant 4 was inserted.
     assert second.entry.history_cursor == 2
     messages = [{"id": database_message_id("1", number)} for number in range(1, 6)]
     assert [item["id"] for item in second.inputs(messages)] == [database_message_id("1", 3), second.current_id]
@@ -171,7 +170,7 @@ async def test_settlement_uses_audited_text_and_cancellation_invalidates(setup_m
     assert updates[0]["messages"][0].content == "audited"
     assert updates[0]["messages"][0].id == "answer"
     assert lease.graph is None
-    await manager.finish(lease, delivered=True)  # idempotent settlement
+    await manager.finish(lease, delivered=True)
     assert len(updates) == 1
 
     async def cancel(config, values):
@@ -204,7 +203,6 @@ def test_history_trimming_keeps_complete_tool_exchanges_and_obeys_profile_budget
 def test_pinned_skills_do_not_split_questions_from_their_answers():
     pinned = HumanMessage(content="<skill>composition policy</skill>", additional_kwargs={"lc_source": "pinned_skill"})
     old = [HumanMessage(content="old question " * 1000), pinned, AIMessage(content="old answer")]
-    # A skill and answer must not survive after their oversized question is dropped.
     assert recent_complete_turns(old, 100) == []
     recent = [HumanMessage(content="read"), pinned,
               AIMessage(content="", tool_calls=[{"name": "read", "args": {}, "id": "c"}]),

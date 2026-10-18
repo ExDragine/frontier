@@ -105,7 +105,6 @@ function StatusIcon({ status }: { status: string }) {
 }
 
 function Prose({ config }: { config: MessageProse }) {
-  // Only the HTML-disabled server Markdown parser can supply `rendered`.
   return (
     <div
       className="md-ui-prose"
@@ -166,7 +165,6 @@ function Media({ config }: { config: MediaNode }) {
             style={{
               aspectRatio: `${config.media_width} / ${config.media_height}`,
             }}
-            // The frame receives only the server's PNG data URL, never the remote page.
             srcDoc={
               '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; img-src data:; style-src &apos;unsafe-inline&apos;"><style>html,body{margin:0;background:#fff}img{display:block;width:100%;height:auto}</style></head><body><img alt="" src="' +
               config.media_data +
@@ -310,8 +308,6 @@ function ThreeView({ config }: { config: ThreeNode }) {
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       host.replaceChildren(renderer.domElement);
     } catch (error) {
-      // Headless Chromium can be started without a WebGL context. Keep the
-      // rich document renderable instead of letting the whole UI boundary fail.
       const fallback = document.createElement("div");
       fallback.className = "md-three-fallback";
       fallback.textContent = "三维场景暂时无法渲染，请查看消息中的文字说明。";
@@ -408,7 +404,6 @@ function DataBlock({
   useLayoutEffect(() => {
     const container = node.current!;
     let dispose: void | (() => void);
-    // The React commit has attached the container, so ECharts sees its real width.
     if (config.type === "chart")
       dispose = renderers.renderChart(container, config.config);
     else if (config.type === "stats")
@@ -705,7 +700,6 @@ export function renderMessageUI(
     roots.set(container, mounted);
   }
   const { root } = mounted;
-  // A screenshot needs one complete commit before math, Mermaid and highlighting.
   flushSync(() =>
     root.render(
       <MessageBoundary key={++mounted.revision} onError={renderers.onError}>

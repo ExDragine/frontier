@@ -31,7 +31,6 @@ class EventConfig(BaseModel):
     max_pending: int = Field(default=1000, ge=1, le=10000)
     retention_days: int = Field(default=30, ge=1, le=365)
     rules: dict[EventKind, EventRule] = Field(default_factory=dict)
-    # Configuration-file overrides only; no untrusted group message can edit them.
     groups: dict[str, dict[EventKind, EventRule]] = Field(default_factory=dict)
 
     def rule_for(self, kind: str, group_id: int | None) -> EventRule:

@@ -23,9 +23,8 @@ from utils.ens_common import format_time_text as _format_time_text
 from utils.ens_gate import _ens_prefix
 from utils.tool_helpers import tool_timer
 
-# 内存缓存：同一 URL 在 TTL 内直接返回，避免重复生成视频/截图。
 _ens_cache: dict = {}
-_ENS_CACHE_TTL = 1800  # 30 分钟
+_ENS_CACHE_TTL = 1800
 
 
 def clear_ens_cache():
@@ -33,10 +32,8 @@ def clear_ens_cache():
     _ens_cache.clear()
     logger.info("ENS 专业模式缓存已清理")
 
-# ── 模式编号 → 中文名 ──
 _MODE_NAMES = {1: "大气", 2: "海洋", 3: "大气化学", 4: "颗粒物", 5: "空间天气", 6: "生物"}
 
-# ── 参数映射表 ──
 
 _MODE = {1: "wind", 2: "ocean", 3: "chem", 4: "particulates", 5: "space", 6: "bio"}
 
@@ -64,7 +61,6 @@ _PROJ = {
     8: "winkel3",
 }
 
-# 叠加层按模式分表
 _OVERLAY = {
     "wind": {
         0: None,
@@ -125,7 +121,6 @@ def _build_professional_url(
         lat=lat,
         zoom=zoom,
         annot=annot,
-        # 专业模式的 anim 只有 "off"（暂停）一种取值。
         anim_state="off" if paused else None,
         overlay=overlay,
     )
@@ -210,7 +205,6 @@ async def run_ens_professional(
     bio_annot: int = 0,
 ) -> tuple[str, UniMessage | None]:
     """专业模式核心逻辑。"""
-    # 硬门控：非 vep 前缀消息触发的调用直接拒绝
     if _ens_prefix.get() != "vep":
         logger.info("ens_professional 被非 vep 前缀触发，拒绝执行")
         return (
@@ -245,7 +239,6 @@ async def run_ens_professional(
         mode_name = _MODE_NAMES.get(p1, mode)
         time_text = _format_time_text(time)
 
-        # 检查内存缓存：同一 URL 在 TTL 内直接返回
         cached = _ens_cache.get(url)
         if cached and (_time.time() - cached[2]) < _ENS_CACHE_TTL:
             logger.info(f"ens_professional 缓存命中: {url}")

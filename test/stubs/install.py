@@ -5,8 +5,6 @@ import types
 from typing import TypedDict
 
 import langchain_core.callbacks  # noqa: F401
-
-# Keep the real, lightweight exception hierarchy for model failure tests.
 import langchain_core.exceptions  # noqa: F401
 import langchain_core.tracers.context  # noqa: F401
 import langgraph.checkpoint.serde.jsonplus  # noqa: F401

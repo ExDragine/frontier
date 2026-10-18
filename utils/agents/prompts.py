@@ -24,9 +24,6 @@ def load_base_system_prompt(group_id: int | None) -> str:
         logger.error("❌ env.toml 中未配置 bot.system_prompt")
         return f"You are {EnvConfig.BOT_NAME}, a helpful assistant. [配置错误: system prompt未配置]"
 
-    # Keep the system-prefix identity stable for a conversation. A transient
-    # triggering alias belongs to the user message; group identity comes from
-    # the durable group setting instead.
     name = EnvConfig.BOT_NAME
     if group_id is not None:
         try:

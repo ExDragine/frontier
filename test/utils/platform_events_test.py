@@ -195,7 +195,6 @@ async def test_restart_recovers_claims_but_never_replays_writes(store):
     for key in ("read", "write"):
         await store.put(inbound(key=key), "pending", 3600, 100)
     rows = await asyncio.gather(store.claim(["100"], 180), store.claim(["100"], 180))
-    # Atomic conditional claims may return None on contention; claim remaining.
     while any(row is None for row in rows):
         rows = [row for row in rows if row is not None] + [await store.claim(["100"], 180)]
     assert len({row["key"] for row in rows}) == 2

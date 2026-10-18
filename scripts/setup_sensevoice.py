@@ -49,7 +49,6 @@ def download_verified(target: Path, url: str, expected: str) -> None:
         return
     partial = target.with_suffix(target.suffix + ".part")
     try:
-        # URLs are a fixed HTTPS manifest, not user-provided URLs.
         with urllib.request.urlopen(url, timeout=120) as response, partial.open("wb") as output:  # noqa: S310
             shutil.copyfileobj(response, output)
         if _sha256(partial) != expected:
@@ -71,7 +70,6 @@ def install(destination: Path, *, avx2: bool = False) -> None:
         download_verified(destination / name, url, expected)
     runtime = destination / ("runtime-avx2" if avx2 else "runtime")
     runtime.mkdir(exist_ok=True)
-    # Extract exactly one executable; never trust archive member paths.
     executable = runtime / "llama-funasr-sensevoice.exe"
     with zipfile.ZipFile(destination / assets[0][0]) as archive:
         matches = [item for item in archive.infolist() if Path(item.filename).name == executable.name]

@@ -7,8 +7,6 @@ import pytest
 
 _MEDIA_TOOLS = ["send_image", "send_audio", "send_voice", "send_video"]
 
-# ── 图片 ──────────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_send_image_url(load_tool_module):
@@ -34,9 +32,6 @@ async def test_send_image_local(load_tool_module):
         Path(tmp).unlink(missing_ok=True)
 
 
-# ── 音频 ──────────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_send_audio_url(load_tool_module):
     adapter = load_tool_module("adapter")
@@ -57,9 +52,6 @@ async def test_send_audio_local(load_tool_module):
         assert str(artifact[0].path) == tmp
     finally:
         Path(tmp).unlink(missing_ok=True)
-
-
-# ── 语音 ──────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -84,9 +76,6 @@ async def test_send_voice_local(load_tool_module):
         Path(tmp).unlink(missing_ok=True)
 
 
-# ── 视频 ──────────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_send_video_url(load_tool_module):
     adapter = load_tool_module("adapter")
@@ -109,9 +98,6 @@ async def test_send_video_local(load_tool_module):
         Path(tmp).unlink(missing_ok=True)
 
 
-# ── 表情 ──────────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_send_emoji(load_tool_module):
     adapter = load_tool_module("adapter")
@@ -119,9 +105,6 @@ async def test_send_emoji(load_tool_module):
     assert text == "构建了一个表情消息"
     assert artifact[0].type == "emoji"
     assert artifact[0].id == "123"
-
-
-# ── 文件 ──────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -178,9 +161,6 @@ async def test_send_file_local(load_tool_module, tmp_path):
     assert result == "已发送私聊文件 hello.txt，file_id=private-file-id"
     assert calls[0]["path"] == str(local_file)
     assert calls[0]["file_name"] == "hello.txt"
-
-
-# ── URL 格式校验 ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -292,9 +272,6 @@ async def test_send_text_with_at(load_tool_module):
     assert [segment.type for segment in calls[0]["message"]] == ["mention", "text"]
     assert calls[0]["message"][0].data == {"user_id": 12345}
     assert calls[0]["message"][1].data == {"text": " 你好"}
-
-
-# ── 沙箱 workspace 路径解析 ───────────────────────────────────────────────────
 
 
 def _ws_config(workspace_dir: str) -> dict:
@@ -454,7 +431,6 @@ async def test_media_tools_reject_traversal_and_unmounted_paths(load_tool_module
     memory = tmp_path / "memory" / "group-123"
     workspace.mkdir()
     memory.mkdir(parents=True)
-    # These existing files would be found by an unsafe traversal or default-root fallback.
     (tmp_path / "outside.png").write_bytes(b"private")
     (memory.parent / "outside.png").write_bytes(b"private")
     for relative in ("memory/group-other", "skills"):

@@ -54,12 +54,10 @@ def _limit_cpu(pid: int, cores: int) -> None:
 
     try:
         process = psutil.Process(pid)
-        # Affinity bounds logical CPUs even for releases with fixed threads.
         if hasattr(process, "cpu_affinity"):
             eligible = psutil.Process().cpu_affinity()
             process.cpu_affinity(eligible[:cores])
     except psutil.NoSuchProcess:
-        # A failed CLI can exit before affinity is set; inspect its exit below.
         pass
     except psutil.Error as exc:
         raise SpeechRecognitionError("cpu_limit_failed") from exc
@@ -89,8 +87,6 @@ async def _run_process(args: list[str], *, cores: int) -> bytes:
         if process.returncode is None:
             import psutil
 
-            # Windows venv launchers can own a second Python process. Stop
-            # descendants before the launcher so cancellation cannot orphan it.
             try:
                 children = psutil.Process(process.pid).children(recursive=True)
             except psutil.Error:
@@ -132,8 +128,6 @@ async def _decode_audio(data: bytes, directory: Path, settings: SpeechRecognitio
     else:
         import imageio_ffmpeg
 
-        # Restrict demuxers and protocols so uploaded playlists cannot read URLs
-        # or arbitrary local files. Decode only max+1 seconds, then reject excess.
         args = [
             imageio_ffmpeg.get_ffmpeg_exe(),
             "-nostdin",

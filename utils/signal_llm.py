@@ -17,8 +17,6 @@ _JSON_MODE_INSTRUCTION = (
     "Return ONLY valid JSON matching the requested schema. Do not wrap the JSON in markdown or include explanations."
 )
 
-# 这两种策略把完整 schema 放进提示词：json_mode 仍请求供应商的 JSON 模式，
-# text_json 只依赖文本输出并本地解析。
 _PROMPT_SCHEMA_METHODS = frozenset({"json_mode", "text_json"})
 
 
@@ -89,7 +87,6 @@ class DecisionLLM:
             kwargs["temperature"] = temperature
         if model_kwargs is not None:
             kwargs["model_kwargs"] = model_kwargs
-        # provider 级 decision 请求参数（如关闭思考模式）优先，调用点显式传入的覆盖它。
         payload = self._extra_body_resolver(self.model, self.provider)
         if extra_body:
             payload.update(extra_body)
@@ -123,8 +120,6 @@ class DecisionLLM:
             ("human", user_prompt),
         ]
         if options["method"] == "text_json":
-            # 思考模式等路由拒绝强制 tool_choice 和 response_format，
-            # 保持普通文本请求，由 Pydantic 在本地校验。
             result = _parse_text_json(schema, await llm.ainvoke(messages))
         else:
             structured_llm = llm.with_structured_output(schema, **options)

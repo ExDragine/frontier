@@ -65,7 +65,6 @@ class FrontierAcpV2Client:
                         self._collector._collect_agent_message(SimpleNamespace(message_id=update.message_id, content=block))
                 return
             if kind == "agent_thought":
-                # Emit only the standard thinking notice, never raw reasoning.
                 update = SimpleNamespace(session_update="agent_thought_chunk")
             if kind == "tool_call_update" and update.tool_call_id not in self._collector._tool_titles:
                 await self._collector._handle_tool_start(update)
@@ -74,8 +73,6 @@ class FrontierAcpV2Client:
     async def request_permission(self, request: schema.RequestPermissionRequest) -> schema.RequestPermissionResponse:
         if not self.active or self.cancel_requested or request.session_id != self.session_id:
             return schema.RequestPermissionResponse(outcome=schema.CancelledPermissionOutcome(outcome="cancelled"))
-        # v2 moves toolCall into subject. The configured policy still selects
-        # only known allow options, and requires no host filesystem access.
         result = await self._collector.request_permission(request.session_id, request.subject, request.options)
         return schema.RequestPermissionResponse.model_validate(result.model_dump(by_alias=True, exclude_none=True))
 

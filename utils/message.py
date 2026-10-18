@@ -38,7 +38,6 @@ class _DetectorKind(NamedTuple):
     label: str
 
 
-# 文本/图片审核只在全局变量名与构造类上不同，其余惰性加载、锁与冷却逻辑共用。
 _DETECTOR_KINDS: dict[str, _DetectorKind] = {
     "text": _DetectorKind("text_det", "_text_det_retry_at", "TextCheck", "文本"),
     "image": _DetectorKind("image_det", "_image_det_retry_at", "ImageCheck", "图片"),
@@ -265,9 +264,6 @@ async def message_extract(  # noqa: C901
                 text_parts.append(card_message_text(msg_type, msg_data))
 
             case _:
-                # Milky's forward-compatibility rule requires unknown
-                # incoming segments to survive as text instead of silently
-                # disappearing when a newer protocol adds a segment type.
                 segment_label = str(msg_type or "unknown")
                 text_parts.append(f"[不支持的消息段:{segment_label}]")
                 logger.warning("收到未支持的 Milky 消息段: {}", segment_label)
@@ -335,7 +331,6 @@ def outgoing_message_content(raw: Any) -> str:
         except (ValueError, SyntaxError) as e:
             logger.debug(f"消息内容不是字典字面量，使用原始内容: {type(e).__name__}")
         except Exception as e:
-            # 意外错误
             logger.warning(f"解析消息内容时出现意外错误: {type(e).__name__}: {e}")
     return extract_message_text(content)
 

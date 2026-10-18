@@ -47,7 +47,7 @@ async def test_v2_prompt_ack_state_replay_and_resumed_context(tmp_path):
         session_id=created.session_id, prompt=[schema.TextContentBlock(text="hello")],
     ))
     assert response.model_dump(exclude_none=True) == {}
-    assert runtime.requests == []  # acceptance returns before execution begins
+    assert runtime.requests == []
     await server._sessions[created.session_id].task
     kinds = [update.session_update for update in connection.updates]
     assert kinds == ["user_message", "state_update", "agent_thought_chunk", "tool_call_update",
@@ -131,7 +131,7 @@ async def test_v2_client_upserts_chunks_clear_and_completion():
     await update({"sessionUpdate": "agent_message_chunk", "messageId": "b", "content": {"type": "text", "text": "second"}})
     await update({"sessionUpdate": "agent_message", "messageId": "a", "content": [{"type": "text", "text": "new"}]})
     await update({"sessionUpdate": "agent_message_chunk", "messageId": "a", "content": {"type": "text", "text": "!"}})
-    await update({"sessionUpdate": "agent_message", "messageId": "a"})  # omitted leaves content untouched
+    await update({"sessionUpdate": "agent_message", "messageId": "a"})
     await update({"sessionUpdate": "agent_message", "messageId": "b", "content": None})
     await update({"sessionUpdate": "state_update", "state": "idle"})
     assert not client.completed.is_set()

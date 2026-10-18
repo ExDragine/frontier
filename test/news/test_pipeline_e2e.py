@@ -31,8 +31,6 @@ class FakeExaTool:
     }
 
     async def ainvoke(self, args):
-        # Publish one hour before the edition closes so the article is in-window
-        # regardless of when the test runs.
         end = dt.datetime.fromisoformat(args["endPublishedDate"])
         published = end - dt.timedelta(hours=1)
         return {"results": [{
@@ -94,8 +92,6 @@ def news_e2e(monkeypatch, tmp_path):
     mcp_client.mcp_get_tools_async = fake_discovery
     monkeypatch.setitem(sys.modules, "tools.mcp_client", mcp_client)
 
-    # Stub the clockwork package so daily_news resolves task_manager without
-    # executing the real plugin __init__ (scheduler/driver side effects).
     clockwork_pkg = sys.modules.get("plugins.clockwork")
     if clockwork_pkg is None:
         clockwork_pkg = types.ModuleType("plugins.clockwork")
@@ -123,7 +119,6 @@ async def test_daily_news_full_pipeline(news_e2e, tmp_path):
     assert story["title"] == "央行启用新型货币政策工具"
     assert report["evidence"][0]["text"] == ARTICLE_TEXT
 
-    # 第二轮：报告复用、已 sent 的群不重发。
     result = await scheduler.daily_news(job_id="daily_news")
     assert result.status == "success"
     assert result.messages_sent == 0

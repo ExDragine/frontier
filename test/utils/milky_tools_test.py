@@ -4,8 +4,6 @@ from pathlib import Path
 
 import pytest
 
-# ── resolve_local_path ───────────────────────────────────────────────────────
-
 
 def test_resolve_local_path_resolves_against_root_dir(tmp_path):
     from utils.milky_tools import resolve_local_path
@@ -57,27 +55,20 @@ def test_resolve_local_path_rejects_absolute_path_without_root_dir(tmp_path):
 def test_resolve_local_path_root_dir_takes_priority_over_absolute_path(tmp_path):
     from utils.milky_tools import resolve_local_path
 
-    # File outside the sandbox — must NOT be accessible when root_dir is set
     real_file = tmp_path / "real.txt"
     real_file.write_text("real")
 
     sandbox = tmp_path / "shadow"
     sandbox.mkdir()
 
-    # When root_dir is provided, the path is always resolved inside the sandbox.
-    # An absolute path outside the sandbox does NOT exist inside, so return None.
     result = resolve_local_path(str(real_file), root_dir=str(sandbox))
     assert result is None
 
-    # Only files within the sandbox are accessible
     (sandbox / "real.txt").write_text("shadow")
     result = resolve_local_path("/real.txt", root_dir=str(sandbox))
     assert result == (sandbox / "real.txt").resolve()
     assert result is not None
     assert result.read_text() == "shadow"
-
-
-# ── resolve_virtual_path ─────────────────────────────────────────────────────
 
 
 def test_resolve_virtual_path_uses_longest_matching_mount(tmp_path):
@@ -111,9 +102,6 @@ def test_resolve_virtual_path_blocks_other_reserved_mounts_and_traversal(tmp_pat
     assert resolve_virtual_path("/memory/group-2/secret.txt", roots) is None
     assert resolve_virtual_path("/skills/secret.txt", roots) is None
     assert resolve_virtual_path("/../secret.txt", roots) is None
-
-
-# ── binary_kwargs_from_uri ───────────────────────────────────────────────────
 
 
 def test_binary_kwargs_from_uri_resolves_local_file(tmp_path, monkeypatch):

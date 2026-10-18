@@ -115,9 +115,6 @@ def _load_css() -> str:
     return load_css("nrc_eggs_groups.css")
 
 
-# ── Tool ──────────────────────────────────────────────────────────────────
-
-
 async def _compare_pets(name1: str, name2: str) -> tuple[str, UniMessage | None]:
     if not name2:
         return "比较模式需要提供两只精灵的名称，请补充第二只精灵名称", None
@@ -136,7 +133,6 @@ async def _compare_pets(name1: str, name2: str) -> tuple[str, UniMessage | None]
     card1 = _build_pet_card(pet1)
     card2 = _build_pet_card(pet2)
 
-    # 判断结果类型
     if not breedable1 and not breedable2:
         result_type = "cannot_breed"
         cannot_breed_pets = [
@@ -182,7 +178,6 @@ async def _compare_pets(name1: str, name2: str) -> tuple[str, UniMessage | None]
         return result_text, None
 
 
-
 async def _find_pet_matches(name1: str) -> tuple[str, UniMessage | None]:
     pet = await _fetch_pet_by_name(name1)
     if pet is None:
@@ -204,7 +199,6 @@ async def _find_pet_matches(name1: str) -> tuple[str, UniMessage | None]:
                 seen_names.add(pname)
                 all_matches.append(p)
 
-    # 排序：可孵蛋的在前，同按名称排列
     all_matches.sort(key=lambda x: (0 if x.get("isfudan") == 1 else 1, x.get("name", "")))
 
     current_pet = _build_pet_card(pet)
@@ -232,7 +226,6 @@ async def _find_pet_matches(name1: str) -> tuple[str, UniMessage | None]:
     except Exception as e:
         logger.error(f"蛋组配偶查询渲染失败: {e}")
         return result_text, None
-
 
 
 @tool(response_format="content_and_artifact")

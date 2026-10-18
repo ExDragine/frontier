@@ -4,10 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frontier Dashboard</title>
-    <!-- Front-end assets are local-first: run `uv run python scripts/vendor_dashboard_assets.py`
-         once to drop the pinned files into /dashboard/vendor/, and the Dashboard stops
-         contacting any CDN. Each pinned CDN copy remains as the fallback so an unvendored
-         deployment keeps working exactly as before. -->
+
     <script src="/dashboard/vendor/tailwindcss.js"></script>
     <script>window.tailwind||document.write('<script src="https://cdn.tailwindcss.com/3.4.17"><\/script>')</script>
     <script>

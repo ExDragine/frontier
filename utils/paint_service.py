@@ -160,7 +160,6 @@ async def _image_bytes_from_images_response(response: Any) -> bytes | None:
                 decoded.verify()
             return image
         except Exception as exc:
-            # Signed image URLs and provider credentials must stay out of logs.
             logger.warning("下载生成图片失败: {}", failure_reason(exc))
     logger.warning("Images API 响应中没有可用的图片")
     return None
@@ -185,8 +184,6 @@ async def _paint_images(client: AsyncOpenAI, prompt: str, reference_images: list
 
 
 async def _paint_responses(client: AsyncOpenAI, prompt: str, reference_images: list[bytes]) -> bytes | None:
-    # Preserve the sub2api route, which rewrites the top-level image model to
-    # its host model while leaving the image_generation tool model intact.
     params = ResponseCreateParamsNonStreaming(
         model=EnvConfig.PAINT_MODEL,
         input=_responses_input(prompt, reference_images),

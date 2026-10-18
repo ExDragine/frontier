@@ -28,7 +28,6 @@ class TaskExecutor:
         execution_time = int(start_time)
 
         try:
-            # 获取任务配置
             task = await self.task_manager.get_task(job_id)
             if not task or not task.enabled:
                 await self.task_manager.log_execution(job_id, "skipped", execution_time)
@@ -38,13 +37,10 @@ class TaskExecutor:
                 await self.task_manager.log_execution(job_id, "skipped", execution_time)
                 return
 
-            # 动态导入任务处理函数
             handler = self._load_handler(task.handler_module, task.handler_function)
 
-            # 获取推送群组
             group_ids = await self.task_manager.get_task_groups(job_id)
 
-            # 执行任务
             timeout = (
                 EnvConfig.AGENT_JOB_TIMEOUT_SECONDS
                 if task.handler_module == "plugins.clockwork.agent_task_handler"
@@ -55,7 +51,6 @@ class TaskExecutor:
             if not isinstance(result, TaskRunResult):
                 result = TaskRunResult(groups_sent=group_ids, messages_sent=len(group_ids))
 
-            # 保留 handler 的实际投递结果。
             duration = int((time.time() - start_time) * 1000)
             await self.task_manager.log_execution(
                 job_id=job_id,

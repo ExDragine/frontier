@@ -9,17 +9,12 @@ from utils.deepseek_web import deepseek_search_available
 
 from .mcp_client import mcp_get_tools_async
 
-# 跳过不应暴露给 Agent 的模块
-# mcp_client 只负责按 mcp.json 异步加载外部 MCP 工具（经 ModuleTools.initialize
-# 写入 external 组），其模块本身不定义任何 @tool。
 _EXCLUDED_MODULES = {"__init__", "mcp_client"}
 
 _DOMAIN_GROUPS = ("astro", "earth", "memory", "divination", "external")
 _RESTRICTED_GROUPS = ("restricted",)
 _ALL_TOOL_GROUPS = ("main", *_DOMAIN_GROUPS, *_RESTRICTED_GROUPS)
 
-# Preserve the former PTC query classification for direct-tool error handling.
-# Artifact-producing tools and unknown modules are deliberately excluded.
 _READ_ONLY_MODULES = {
     "comet", "deepseek_balance", "deepseek_search", "earthquake", "iching", "radar",
     "rocket", "space_weather", "tarot", "weather",
@@ -33,11 +28,6 @@ _READ_ONLY_PREFIXES = {
     "scheduled_task": ("list_",),
 }
 
-# Platform tools stay in the legacy ``main`` group during the migration, but
-# are tagged here so neutral runtime callers can opt into only the tools their
-# adapter can actually execute.  An empty capability set deliberately means
-# "legacy mode" and keeps ACP, scheduled tasks, and existing QQ callers
-# behavior-compatible.
 _MODULE_REQUIRED_CAPABILITIES: dict[str, frozenset[str]] = {
     "adapter": frozenset({"qq:message"}),
     "milky_file": frozenset({"qq:file"}),
@@ -120,7 +110,6 @@ class ModuleTools:
             self.tool_metadata,
         ) = _discover_tools()
 
-        # 记忆与其他领域工具都由主 Agent 按需调用。
         for group in ("astro", "earth", "memory", "divination"):
             self.subagent_tools["main"].extend(self.subagent_tools[group])
 
@@ -148,7 +137,6 @@ class ModuleTools:
         if not capabilities:
             return True
         metadata = self.tool_metadata.get(getattr(tool, "name", ""), {})
-        # _discover_tools() 为每个工具恒写入 frozenset 类型的 required_capabilities。
         required = metadata.get("required_capabilities") or frozenset()
         if not required:
             return True

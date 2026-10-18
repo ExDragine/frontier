@@ -103,8 +103,6 @@ async def test_get_paint_automatically_edits_attached_images(load_tool_module, m
         {"type": "image_url", "image_url": {"url": _tiny_png_data_url(raw)}} for raw in references
     ]}]}
     if injected:
-        # The model history can contain only blob references or omitted-image
-        # notices; originals remain available in the separate runtime field.
         state["image_inputs"] = references
         state["messages"] = [{"role": "user", "content": "image stored as a blob"}]
     state["messages"].append({

@@ -81,7 +81,6 @@ group_disband = on_notice(rule=_is_group_disband, priority=10, block=False)
 
 @group_disband.handle()
 async def handle_group_disband(event: GroupDisbandEvent):
-    # A notice is not a user request. Preserve history and workspace for retrieval.
     logger.info("Milky 群已解散: group_id={} operator_id={}", event.data.group_id, event.data.operator_id)
 f_cognitive = FrontierCognitive()
 driver = get_driver()
@@ -151,8 +150,6 @@ async def _collect_incoming_assets(
     try:
         results = await asyncio.gather(*tasks, return_exceptions=True)
     except BaseException:
-        # A completed files task can outlive cancellation of the other downloads.
-        # Settle every task, including any in-flight disk write, before cleanup.
         for task in tasks:
             task.cancel()
         settled = await asyncio.gather(*tasks, return_exceptions=True)
@@ -199,7 +196,6 @@ async def _settle_session(lease: TurnLease | None, **kwargs) -> None:
     try:
         await session_manager.finish(lease, **kwargs)
     except Exception as exc:
-        # Transport success must never be retried because cache maintenance failed.
         logger.warning("会话状态结算失败: {}", type(exc).__name__)
 
 
@@ -296,8 +292,6 @@ async def _settle_qq_neutral_session(lease: TurnLease | None, outcome) -> None:
     message_id = None
     if receipt.message_refs:
         try:
-            # QqDelivery emits artifact receipts before the final text
-            # receipt. The text message is the session history boundary.
             message_id = int(receipt.message_refs[-1].message_id)
         except (TypeError, ValueError):
             message_id = None
@@ -344,9 +338,6 @@ async def _run_qq_neutral(
     )
 
     async def load_history(_query):
-        # The gateway has already prepared the bounded, pre-current history.
-        # Reusing that snapshot avoids a second database query and preserves
-        # the existing before-time semantics.
         return history_messages
 
     async def allow_gateway_result(_message, _history):
@@ -384,23 +375,15 @@ async def _run_qq_neutral(
         await _settle_session(session_turn, silent=True)
         return outcome.status == TurnStatus.DELIVERED
     if outcome.status in {TurnStatus.HISTORY_FAILED, TurnStatus.GATE_FAILED}:
-        # History and gate are already prepared by the QQ entry point.  If a
-        # port still fails here, report it once instead of retrying the legacy
-        # Agent and risking duplicate side effects.
         logger.warning("QQ 中立路径前置阶段失败: {}", outcome.error or outcome.status)
         return await _send_qq_neutral_notice(context, "本轮上下文准备失败，请稍后重试。")
     if outcome.status == TurnStatus.AGENT_FAILED:
-        # The runtime normally exposes a fixed user-facing error message.
-        # Deliver it once after the neutral call fails.
         notice = (
             outcome.response.text.strip()
             if outcome.response is not None and outcome.response.text.strip()
             else "本轮处理失败，请稍后重试。"
         )
         return await _send_qq_neutral_notice(context, notice)
-    # A transport failure is already the failed user-facing operation.  Do
-    # not issue a second message through the same failing channel; the queue
-    # caller records the failure and the next inbound turn can retry normally.
     logger.warning("QQ 中立路径投递失败: {}", outcome.error or outcome.status)
     return False
 
@@ -422,8 +405,6 @@ async def _process_agent_request(
         try:
             lease = await run_serialized(f"workspace:{_agent_workspace_key(context.user_id, context.group_id)}", begin)
         except Exception as exc:
-            # No graph/tool has started: a cache maintenance failure can safely
-            # fall back to the original execution with the same scoped history.
             session_manager.metrics["initialization_fallback"] += 1
             logger.warning("会话缓存初始化失败，使用历史上下文: {}", type(exc).__name__)
     try:
@@ -439,7 +420,6 @@ async def _process_agent_request(
                 lease.rebuild_seconds = time.monotonic() - started
         return await _execute_agent_request(context, history_messages, lease)
     finally:
-        # Covers cancellation, tool/model failures, early returns and sender errors.
         await _settle_session(lease)
 
 
@@ -475,8 +455,6 @@ async def _process_queued_agent_request(context: AgentRequestContext, history_me
         return await _process_agent_request(context, history_messages)
 
     try:
-        # Delivery includes history persistence; cognitive has a separate workspace
-        # execution lock shared with scheduled tasks and other entry points.
         delivery_key = f"delivery:{_agent_workspace_key(context.user_id, context.group_id)}"
         await run_serialized(
             delivery_key,
@@ -625,7 +603,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     group_id = event.data.group.group_id if event.data.group else None
     direct_mention = segments_directly_mention_user(event.data.segments, event.self_id)
 
-    # ── Phase 1: 快速提取文本（不下载媒体）──
     text, image_downloaders, audio_downloaders, video_downloaders = await message_extract(event.data.segments)
     file_items = extract_message_files(event.data.segments)
     normalized_message = await normalize_segments(bot, event.data.segments)
@@ -661,7 +638,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     msg_time = int(time.time() * 1000)
     text = current_text.strip()
 
-    # ── Phase 2: 存储消息文本与结构化元数据 + 快速网关检查 ──
     inserted = await messages_db.insert(
         time=msg_time,
         msg_id=event_id,
@@ -707,7 +683,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     if not await message_gateway(event, gateway_messages):
         await common.finish()
 
-    # ── Phase 3: 网关通过后才下载当前消息及引用消息中的媒体 ──
     media_task = download_media(image_downloaders, audio_downloaders, video_downloaders)
     files_task = stage_message_files(
         bot,
@@ -789,8 +764,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     persisted_image_count = sum(
         1 for attachment in persisted_attachments if getattr(attachment, "kind", None) == "image"
     )
-    # Local recognition runs only after the reply gateway and attachment saving.
-    # Keep raw media in memory storage while the model receives annotated text.
     current_text, audio_transcribed = await transcribe_message_audio(current_text, audio)
     if audio_transcribed:
         audio = []
@@ -858,7 +831,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
                     path=staged_file.virtual_path,
                 )
             )
-            # The path remains readable for this turn even when indexing failed.
             for staged_file in staged_files
         )
         known_attachment_paths = {str(attachment.get("path", "")) for attachment in current_attachment_refs}
@@ -890,8 +862,6 @@ async def handle_common(event: MessageEvent):  # noqa: C901
             attachments=attachment_refs,
             current_attachments=current_attachment_refs,
             recent_attachments=recent_attachments,
-            # Persist and reuse the post-download snapshot so quoted media
-            # semantics stay identical when this event becomes history.
             reply_to=resolved_reply_payload,
             reply_seq=reply_seq,
             direct_mention=direct_mention,

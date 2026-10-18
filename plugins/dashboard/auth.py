@@ -15,12 +15,10 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
 SECURITY_DEPENDENCY = Depends(security)
 
-# 登录限流：记录每个 IP 的登录尝试
 _login_attempts = defaultdict(list)
 MAX_ATTEMPTS = 5
-WINDOW_SECONDS = 300  # 5 分钟
+WINDOW_SECONDS = 300
 
-# bcrypt 只接受前 72 字节的输入，超长会直接抛 ValueError；统一按库的限制截断。
 _BCRYPT_MAX_BYTES = 72
 
 
@@ -98,7 +96,6 @@ async def require_auth(
     """
     token = credentials.credentials if credentials else None
 
-    # Fallback: read from HttpOnly cookie
     if not token:
         token = request.cookies.get("frontier_token")
 
@@ -111,7 +108,6 @@ async def require_auth(
 def check_rate_limit(ip: str) -> bool:
     """检查登录频率限制，返回 True 表示允许，False 表示超过限制"""
     now = time.time()
-    # 清理过期的记录
     _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < WINDOW_SECONDS]
 
     if len(_login_attempts[ip]) >= MAX_ATTEMPTS:

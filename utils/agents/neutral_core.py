@@ -99,9 +99,6 @@ def _part_block(part: MessagePart) -> object:
             media = resolve_media(part.data, kind, declared_mime=part.mime_type, file_name=part.name)
             return standard_media_block(media)
         if part.url:
-            # The runtime intentionally does not fetch remote media at this
-            # boundary.  Platform adapters can download it before normalizing
-            # the message when the provider requires inline bytes.
             return {"type": "text", "text": _part_text(part) + f" ({part.url})"}
         return {"type": "text", "text": _part_text(part)}
     return {"type": "text", "text": _part_text(part)}
@@ -159,8 +156,6 @@ def _history_message(message: ChatMessage) -> dict[str, Any]:
         "content": _content_for_message(message.content),
     }
     if message.message_id is not None:
-        # The session middleware uses LangGraph-compatible ``id`` values to
-        # identify the current boundary and avoid replaying hot history.
         result["id"] = message.message_id
     return result
 
@@ -305,9 +300,6 @@ class FrontierAgentCore:
             text=result.text,
             artifacts=artifacts,
             status=result.status,
-            # Keep failed status visible to the orchestrator.  Marking an
-            # errored turn as ``should_reply=False`` would incorrectly turn it
-            # into a silent/gated outcome before status handling runs.
             should_reply=result.status != "silent",
             run_id=result.run_id,
             usage=result.usage or {},

@@ -82,8 +82,6 @@ def build_feishu_host(
     if history is None:
         history = FeishuHistoryStore(adapter=adapter)
     if core is None:
-        # Reuse the existing process-level cognitive object after handlers have
-        # loaded, while keeping this compatibility import out of pure facades.
         from .handlers import f_cognitive
 
         core = FrontierAgentCore(FrontierAgentRuntime(cognitive=f_cognitive))

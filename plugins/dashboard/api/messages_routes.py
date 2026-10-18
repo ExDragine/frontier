@@ -40,11 +40,9 @@ async def list_messages(
         if end_time is not None:
             statement = statement.where(Message.time <= end_time)
 
-        # 总数
         count_stmt = select(func.count()).select_from(statement.subquery())
         total = session.exec(count_stmt).one()
 
-        # 分页查询
         statement = (
             statement.order_by(col(Message.time).desc(), col(Message.id).desc())
             .offset((page - 1) * page_size)

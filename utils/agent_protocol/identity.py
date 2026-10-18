@@ -3,8 +3,6 @@
 import hashlib
 import re
 
-# Percent escapes are safe filesystem characters and are used by the
-# orchestrator when encoding opaque platform identifiers.
 _SAFE_WORKSPACE_KEY = re.compile(r"^[A-Za-z0-9_.:%-]+$")
 
 

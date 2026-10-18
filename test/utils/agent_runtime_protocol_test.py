@@ -33,8 +33,6 @@ def test_runtime_request_is_a_frozen_slots_value_object() -> None:
     )
     image = AgentRuntimeMedia(kind="image", data=b"image", mime_type="image/png")
 
-    # Constructing with the full legacy + neutral surface keeps both field sets
-    # available to callers; a removed or renamed field fails here loudly.
     request = AgentRuntimeRequest(
         session_id="session-1",
         prompt="hello",
@@ -62,7 +60,7 @@ def test_runtime_request_is_a_frozen_slots_value_object() -> None:
     assert request.workspace_key == "feishu:tenant-1:thread:chat-1"
     assert request.capabilities == frozenset({"common.weather", "platform.feishu"})
 
-    assert not hasattr(request, "__dict__")  # slots
+    assert not hasattr(request, "__dict__")
     with pytest.raises(dataclasses.FrozenInstanceError):
         request.prompt = "changed"  # type: ignore[misc]
 

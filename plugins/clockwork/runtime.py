@@ -10,7 +10,6 @@ from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 from .task_manager import TaskExecutor, TaskManager  # noqa: E402
 from .task_models import ScheduledTaskMetadata, TaskConfig, TaskExecutionHistory, TaskGroupMapping  # noqa: E402
 
-# 初始化任务管理系统
 engine = get_engine()
 task_manager_instance = TaskManager(scheduler, engine)
 task_executor = TaskExecutor(task_manager_instance)
@@ -18,17 +17,9 @@ task_manager_instance.set_job_func(task_executor.execute)
 
 driver = get_driver()
 
-# 导入命令和处理器（必须在 task_manager 创建之后）
 from . import agent_task_handler, task_commands, task_handlers  # noqa: E402, F401, I001
 
-# Importing ``plugins.clockwork.task_manager`` installs the submodule on the
-# package under the same name. Re-export the manager instance only after the
-# imports above so callers keep the established public API without leaving the
-# internal name ambiguous to type checkers.
 task_manager: TaskManager = task_manager_instance
-
-
-# ==================== 任务管理系统初始化 ====================
 
 
 @driver.on_startup
@@ -36,7 +27,6 @@ async def init_task_system():
     """启动时初始化任务系统"""
     logger.info("正在初始化定时任务管理系统...")
 
-    # 1. 创建数据库表
     TaskConfig.metadata.create_all(engine)
     TaskGroupMapping.metadata.create_all(engine)
     TaskExecutionHistory.metadata.create_all(engine)
@@ -44,11 +34,9 @@ async def init_task_system():
     task_manager.ensure_schema()
     logger.info("数据库表创建完成")
 
-    # 2. 读取所有任务配置
     tasks = await task_manager.list_tasks()
     logger.info(f"发现 {len(tasks)} 个已存在的任务配置")
 
-    # 3. 注册所有任务到 APScheduler（每次启动都执行）
     for task in tasks:
         try:
             task_manager.add_job_to_scheduler(task)
@@ -57,10 +45,8 @@ async def init_task_system():
         except Exception as e:
             logger.error(f"注册任务 {task.job_id} 到调度器失败: {e}")
 
-    # 4. 同步群组配置到 EnvConfig
     await task_manager.initialize()
 
-    # 5. 注册 NRC 远行商人商品提醒推送（每天 8:10、12:10、16:10、20:10）
     try:
         await task_manager.register_task(
             job_id="nrc_merchant_alert",
@@ -86,7 +72,6 @@ async def init_task_system():
     except Exception as exc:
         logger.warning(f"注册 NRC 远行商人任务失败（可能已存在）: {exc}")
 
-    # 5. Ensure the standalone news job exists; migrate only its handler when it already exists.
     try:
         existing_news = await task_manager.get_task("daily_news")
         if existing_news is None:

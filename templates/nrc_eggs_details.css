@@ -30,7 +30,6 @@ body {
     padding-bottom: 16px;
 }
 
-/* ── Header ── */
 .eggs-header {
     background: var(--surface);
     border-bottom: 1px solid #e1e2ec;
@@ -61,7 +60,6 @@ body {
     letter-spacing: -0.02em;
 }
 
-/* ── Main ── */
 .eggs-main {
     padding: var(--stack-md) 16px;
     display: flex;
@@ -69,7 +67,6 @@ body {
     gap: var(--stack-md);
 }
 
-/* ── Card ── */
 .eggs-card {
     background: var(--surface-container-lowest);
     border-left: 4px solid var(--prob-color);
@@ -102,7 +99,6 @@ body {
     gap: var(--stack-md);
 }
 
-/* ── Image ── */
 .eggs-image-wrap {
     width: 80px;
     height: 80px;
@@ -129,7 +125,6 @@ body {
     color: var(--on-surface-variant);
 }
 
-/* ── Info ── */
 .eggs-info {
     flex: 1;
     min-width: 0;
@@ -181,7 +176,6 @@ body {
     color: var(--prob-color);
 }
 
-/* ── Progress Bar ── */
 .eggs-progress {
     width: 100%;
     height: 12px;
@@ -199,7 +193,6 @@ body {
     background-color: var(--prob-color);
 }
 
-/* ── Empty State ── */
 .eggs-empty {
     text-align: center;
     padding: 48px 16px;
@@ -215,4 +208,3 @@ body {
     color: var(--on-surface-variant);
     margin-top: 8px;
 }
-

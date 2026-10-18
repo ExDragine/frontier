@@ -148,8 +148,6 @@ class FrontierAcpV2Server:
             raise RequestError.internal_error({"reason": "ACP connection is not ready"})
         if session.task is not None or session.replaying:
             raise RequestError.invalid_request({"reason": "Session is busy"})
-        # Validate before ACK; reserve the session before the background task
-        # can run so concurrent prompts cannot both be accepted.
         runtime_request = FrontierAcpServer._request(session.session_id, request.prompt)
         session.started.clear()
         session.cancel_requested = False
@@ -215,7 +213,6 @@ class FrontierAcpV2Server:
             return
         was_started = session.started.is_set()
         session.cancel_requested = True
-        # Let a newly accepted task install its cancellation/final-state guard.
         await session.started.wait()
         if was_started and not task.done():
             task.cancel()

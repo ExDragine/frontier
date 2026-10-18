@@ -41,4 +41,3 @@ async def handle_vehelp(event: MessageEvent):
     except Exception as e:
         logger.error(f"vehelp 菜单渲染失败: {e}")
         await UniMessage.text(f"菜单加载失败: {e}").send()
-

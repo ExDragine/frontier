@@ -23,7 +23,6 @@ async def test_session_lease_covers_qq_delivery_and_failure_cleanup(monkeypatch,
     manager = SessionManager()
     monkeypatch.setattr(agent, "session_manager", manager)
     monkeypatch.setattr(agent.EnvConfig, "SESSIONS", SessionConfig(enabled=True))
-    # sessions.py holds the same runtime config in production; tests reload it.
     from utils.agents import sessions
     monkeypatch.setattr(sessions.EnvConfig, "SESSIONS", agent.EnvConfig.SESSIONS)
     captured = {"updates": [], "sends": 0}

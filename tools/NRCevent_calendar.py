@@ -44,7 +44,6 @@ async def get_nrc_event_calendar() -> tuple[str, UniMessage | None]:
         await page.wait_for_timeout(2000)
         await page.wait_for_load_state("networkidle", timeout=15000)
 
-        # 从 nav 项的 data-index 动态推导目标 section：part-{index}
         section_class = f".part-{CALENDAR_DATA_INDEX}"
         image_selector = f"{section_class} img.picture-inner"
 

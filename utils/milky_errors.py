@@ -35,14 +35,11 @@ def _sensitive_strings(value: object, depth: int = 0) -> Iterator[str]:
 
 
 def _redact_message(message: str, sensitive: object) -> str:
-    # Platform errors can echo the submitted text, including JSON-escaped text.
     for value in sorted(set(_sensitive_strings(sensitive)), key=len, reverse=True):
         variants = {value, json.dumps(value, ensure_ascii=True)[1:-1], json.dumps(value, ensure_ascii=False)[1:-1]}
         for variant in variants:
             message = message.replace(variant, "[content]")
             if len(variant) > 16:
-                # Some implementations return only the beginning of a rejected
-                # long message. Drop that echo and its tail as well.
                 message = re.sub(re.escape(variant[:8]) + r".*", "[content]", message, flags=re.DOTALL)
     message = _HEADERS.sub("[credentials]", message)
     message = _SECRETS.sub(r"\1[redacted]", message)

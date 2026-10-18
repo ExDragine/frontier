@@ -32,11 +32,9 @@ _SYSTEM_PROMPT = (
 def _trim_description(text: str) -> str:
     """清洗并截断 LLM 返回的描述文本。"""
     text = text.strip().strip('"').strip("'").strip()
-    # 如果有多行只取第一行
     text = text.split("\n")[0]
-    # 去掉可能的编号前缀如 "1. " 或 "- "
     text = re.sub(r"^[\d\-*]+\.?\s*", "", text)
-    return text[:25]  # 略放宽到 25 字
+    return text[:25]
 
 
 def _response_text(content: str | list[str | dict]) -> str:

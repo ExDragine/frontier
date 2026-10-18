@@ -8,7 +8,6 @@ from pathlib import Path
 from langchain_core.tools import tool
 from nonebot import logger
 
-# 塔罗牌数据文件路径
 TAROT_DATA_PATH = Path(__file__).parent.parent / "data" / "tarot_cards.json"
 
 
@@ -52,9 +51,7 @@ class TarotReader:
             list[dict]: 所有塔罗牌的列表
         """
         cards = []
-        # 添加22张大阿卡纳
         cards.extend(self.cards_data.get("major_arcana", []))
-        # 添加56张小阿卡纳
         minor = self.cards_data.get("minor_arcana", {})
         for suit in ["wands", "cups", "swords", "pentacles"]:
             cards.extend(minor.get(suit, []))
@@ -75,7 +72,6 @@ class TarotReader:
 
         selected_cards = random.sample(self.all_cards, count)
 
-        # 为每张牌随机确定正逆位(50%概率)
         result = []
         for card in selected_cards:
             is_reversed = secrets.choice([True, False])
@@ -94,7 +90,6 @@ class TarotReader:
         """
         if spread_type in self.spreads:
             return self.spreads[spread_type]
-        # 自定义牌阵
         count = card_count or 1
         positions = [f"位置{i + 1}" for i in range(count)]
         return {
@@ -136,7 +131,6 @@ class TarotReader:
 
         result += "\n" + "━" * 50 + "\n\n"
 
-        # 显示抽到的牌
         for idx, item in enumerate(drawn_cards):
             card = item["card"]
             is_reversed = item["reversed"]
@@ -163,13 +157,11 @@ class TarotReader:
 
         result += "━" * 50 + "\n\n"
 
-        # 添加解读提示
         if interpretation_hint:
             result += f"💡 解读提示: {interpretation_hint}\n\n"
         else:
             result += "💡 请根据以上牌面和关键词，结合问题背景进行深度解读。\n\n"
 
-        # 添加一些通用的解读建议
         result += "📖 解读建议:\n"
         result += "   • 观察牌面之间的联系和能量流动\n"
         result += "   • 关注正逆位的平衡，寻找需要调整的方向\n"
@@ -223,12 +215,10 @@ async def tarot_reading(spread_type: str = "three_card", question: str = "", car
         自定义十连: tarot_reading("custom", "感情问题", card_count=10)
     """
     try:
-        # 加载塔罗牌数据
         tarot_data = load_tarot_data()
         if not tarot_data:
             return "❌ 塔罗牌数据加载失败，请检查数据文件是否存在"
 
-        # 定义预设牌阵及对应牌数
         predefined_spreads = {
             "single": 1,
             "three_card": 3,
@@ -242,16 +232,12 @@ async def tarot_reading(spread_type: str = "three_card", question: str = "", car
             "year_ahead": 12,
         }
 
-        # 初始化阅读器
         reader = TarotReader(tarot_data)
 
-        # 检查牌数据是否充足
         if len(reader.all_cards) < 78:
             logger.warning(f"塔罗牌数据不完整，当前仅有 {len(reader.all_cards)} 张牌")
 
-        # 确定抽牌数量
         if spread_type == "custom":
-            # 自定义牌阵
             if card_count <= 0:
                 return (
                     "❌ 使用自定义牌阵时，请指定card_count参数 (1-78)\n"
@@ -261,10 +247,8 @@ async def tarot_reading(spread_type: str = "three_card", question: str = "", car
                 return f"❌ 抽牌数量不能超过78张，您请求了{card_count}张"
             count = card_count
         elif spread_type in predefined_spreads:
-            # 预设牌阵
             count = predefined_spreads[spread_type]
         else:
-            # 不支持的牌阵类型
             return (
                 f"❌ 不支持的牌阵类型: {spread_type}\n\n"
                 f"✅ 支持的牌阵类型:\n"
@@ -275,10 +259,8 @@ async def tarot_reading(spread_type: str = "three_card", question: str = "", car
                 f"💡 提示: 对于'十连'等自定义需求，请使用 spread_type='custom', card_count=10"
             )
 
-        # 抽牌
         drawn_cards = reader.draw_cards(count)
 
-        # 格式化结果
         result = reader.format_reading(drawn_cards, spread_type, question, card_count)
 
         logger.info(
@@ -308,7 +290,6 @@ async def list_tarot_spreads() -> str:
         result = "🎴 塔罗牌阵列表\n\n"
         result += "━" * 50 + "\n\n"
 
-        # 按类别组织牌阵
         categories = {
             "情感关系类": ["single", "three_card", "love_cross", "relationship"],
             "综合分析类": ["celtic_cross", "horseshoe"],

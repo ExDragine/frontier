@@ -451,8 +451,6 @@ class MessageDatabase(_MessageAttachmentFacadeMixin, _MessageSearchMixin):
                     accessible_workspace_key is not None
                     and attachment.workspace_key != accessible_workspace_key
                 ):
-                    # Private history intentionally includes this user's own
-                    # group utterances, but not another workspace's files.
                     continue
                 full_path = os.path.join(os.getcwd(), attachment.physical_path)
                 if not os.path.exists(full_path):
@@ -470,14 +468,9 @@ class MessageDatabase(_MessageAttachmentFacadeMixin, _MessageSearchMixin):
                 message,
                 content=content_text,
                 attachments=attachment_refs,
-                # Private context may include the user's own group utterances,
-                # but a quoted group participant is not part of that private
-                # scope. Keep the utterance while dropping the foreign snapshot.
                 include_reply_to=same_workspace,
                 include_attachment_refs=same_workspace,
             )
-            # Keep every original platform message atomic and use the string
-            # content form accepted by all supported provider protocols.
             messages_seq.append(
                 {
                     "role": message.role,

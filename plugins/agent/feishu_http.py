@@ -22,7 +22,6 @@ async def _handle_request(request: Request, host: FeishuWebhookHost) -> JSONResp
     try:
         result = await host.receive(raw_body, request.headers)
     except FeishuWebhookError:
-        # Do not echo signature, token, decryptor or provider payload details.
         return JSONResponse({"error": "invalid_feishu_webhook"}, status_code=400)
     return JSONResponse(dict(result.body), status_code=result.status_code)
 

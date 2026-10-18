@@ -31,10 +31,9 @@ def canonical_url(value: str) -> str:
         address = None
     if address is not None and not address.is_global:
         raise ValueError("private article URL")
-    # Preserve meaningful query parameters: dropping every query can merge different articles.
     query = [(key, val) for key, val in parse_qsl(parsed.query, keep_blank_values=True)
              if not key.lower().startswith("utm_") and key.lower() not in {"fbclid", "gclid"}]
-    port = parsed.port  # Validate malformed ports too.
+    port = parsed.port
     authority = f"[{host}]" if ":" in host else host
     if port is not None and port != (443 if parsed.scheme == "https" else 80):
         authority += f":{port}"
@@ -151,7 +150,6 @@ def eligible(articles: list[Article], edition: Edition, seen: set[str] | None = 
     urls: set[str] = set()
     result = []
     for article in articles:
-        # fetched_at is never substituted for an unknown publication timestamp.
         if article.published_at is None or not edition.start <= article.published_at <= edition.scheduled_at:
             continue
         if article.fingerprint in fingerprints or article.url in urls:

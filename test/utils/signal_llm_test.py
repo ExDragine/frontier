@@ -74,7 +74,6 @@ async def test_deepseek_route_without_model_card_keeps_schema_in_prompt(monkeypa
     captured = {}
 
     class DummyModel:
-        # 官方别名（如 deepseek-flash）没有能力卡片，策略不得依赖模型卡。
         profile = None
 
         def with_structured_output(self, *args, **kwargs):

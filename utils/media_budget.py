@@ -35,8 +35,6 @@ class InlineMediaBudget:
                     blocks.append(block)
                     continue
                 inline = inline_media_bytes(block)
-                # History contains stored bytes. Unknown-size remote URLs must
-                # not silently bypass the byte budget or trigger downloads here.
                 if inline is not None and self.take(inline[0], kind):
                     blocks.append(block)
                 else:

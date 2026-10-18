@@ -18,8 +18,6 @@ class MilkyEventExecutor:
             raise PermissionError("bot_mismatch")
         data = event.data
         if event.kind == "group_invitation":
-            # Milky has no invitation lookup API. Only a fresh inbound invitation
-            # is evidence; recovered or old invitations must be handled manually.
             return {"state": "pending"} if 0 <= time.time() - event.occurred_at < 60 else None
         if event.kind == "friend_request":
             for filtered in (False, True):

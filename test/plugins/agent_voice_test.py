@@ -104,8 +104,6 @@ async def test_voice_gate_precedes_download_and_asr_then_checks_and_persists_tex
     monkeypatch.setattr(speech, "transcribe_audio", recognize)
     settings = SpeechRecognitionConfig(enabled=True)
     monkeypatch.setattr(agent.EnvConfig, "SPEECH_RECOGNITION", settings)
-    # The suite reloads configs between tests; collected helpers retain their
-    # original class while the plugin can be imported after the reload.
     monkeypatch.setattr(speech.EnvConfig, "SPEECH_RECOGNITION", settings)
     monkeypatch.setattr(agent.EnvConfig, "CONTENT_CHECK_ENABLED", True)
 

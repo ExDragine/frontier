@@ -1,4 +1,3 @@
-/* Markdown typography and screenshot layouts; React primitives use Tailwind. */
 :root {
     --md-background: #fff;
     --md-foreground: #18181b;
@@ -48,7 +47,6 @@ hr { margin: 32px 0; border: 0; border-top: 1px solid var(--md-border); }
 .katex-html { white-space: nowrap; }
 .math-inline, .math-display { font-family: 'KaTeX_Main', serif; }
 
-/* Data primitives also work outside composed documents. */
 .md-rich-block { margin: 32px 0; padding: 28px; border: 1px solid var(--md-border); border-radius: var(--md-radius); background: var(--md-card); }
 .md-rich-title { margin-bottom: 20px; font-size: 26px; font-weight: 650; line-height: 1.4; }
 .md-rich-unit { margin-left: 16px; color: var(--md-muted-foreground); font-size: 18px; font-weight: 400; }
@@ -79,7 +77,6 @@ hr { margin: 32px 0; border: 0; border-top: 1px solid var(--md-border); }
 .md-timeline-content { margin-top: 6px; color: var(--md-muted-foreground); font-size: 20px; line-height: 1.6; white-space: pre-wrap; }
 .md-rich-error { padding: 20px; border-radius: 12px; background: var(--md-danger-surface); color: var(--md-danger); font-size: 18px; }
 
-/* Composable content: prose and sections need no enclosing card. */
 .md-ui-document { display: flex; flex-direction: column; gap: 28px; margin: 0; padding: 0; border: 0; background: transparent; font-size: 22px; line-height: 1.7; }
 .md-ui-document + .md-ui-document { margin-top: 40px; }
 .md-ui-document > * { margin: 0; min-width: 0; }
@@ -168,7 +165,6 @@ hr { margin: 32px 0; border: 0; border-top: 1px solid var(--md-border); }
     .md-ui-quote { font-size: 22px; }
 }
 
-/* A card owns its accent; variants control how much of that color is visible. */
 .md-color-neutral { --md-accent: var(--md-foreground); --md-accent-border: var(--md-border); --md-accent-surface: var(--md-secondary); }
 .md-color-blue { --md-accent: #1d4ed8; --md-accent-border: #bfdbfe; --md-accent-surface: #eff6ff; }
 .md-color-emerald { --md-accent: #047857; --md-accent-border: #a7f3d0; --md-accent-surface: #ecfdf5; }

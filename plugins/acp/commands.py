@@ -153,7 +153,6 @@ async def _send_result(result: dict, *, group_id: int | None, message_seq: int) 
     if text_delivery.errors:
         logger.warning("ACP 回复未送达: {}", text_delivery.errors)
         try:
-            # A short plain-text notification avoids recursively retrying rendering.
             async with asyncio.timeout(15):
                 notice = UniMessage.text("🔌 ACP 回复发送失败，请稍后重试。")
                 if group_id is not None:

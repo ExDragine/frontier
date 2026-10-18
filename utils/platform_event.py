@@ -31,7 +31,6 @@ def normalize_request(event) -> InboundEvent:
     else:
         identity = [bot_id, kind, group_id, data.get("notification_seq", data.get("invitation_seq"))]
     key = hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
-    # Keep routing identifiers intact; only human-written fields are bounded.
     for field in ("comment", "via"):
         if field in data:
             data[field] = str(data[field])[:4000]

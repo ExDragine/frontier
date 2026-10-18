@@ -15,10 +15,8 @@ if globals().get("__plugin__") is not None:
         """挂载 Dashboard 插件到 FastAPI 应用"""
         app = get_app()
 
-        # 挂载 API 路由
         app.include_router(api_router, prefix="/api/dashboard")
 
-        # 挂载静态文件（前端）
         web_dir = Path(__file__).parent / "web"
         app.mount("/dashboard", StaticFiles(directory=str(web_dir), html=True), name="dashboard")
 

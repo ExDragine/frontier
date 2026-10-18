@@ -25,7 +25,6 @@ from ._nrc_common import (
 API_URL = "https://roco-eggs.tsuki-world.com/api/merchant/current"
 BACKUP_API_URL = "https://rocokingdomworld.org/api/merchant/live"
 IMAGE_BASE = "https://roco-eggs.tsuki-world.com"
-# 商人 API 额外要求 Referer，其余请求头与 NRC 其他模块一致。
 API_HEADERS = {
     "User-Agent": _COMMON_API_HEADERS["User-Agent"],
     "Referer": "https://roco-eggs.tsuki-world.com/",
@@ -41,7 +40,6 @@ _RARITY_CN = {
 
 httpx_client = get_http_client("nrc_merchant")
 
-# 提醒推送目标商品名称
 ALERT_TARGET_ITEMS = {"国王球", "棱镜球", "炫彩精灵蛋", "祝福项坠", "首领血脉秘药"}
 
 
@@ -77,7 +75,6 @@ def _safe_int(value, default=0) -> int:
 
 def _adapt_backup_data(data: dict) -> dict:
     """将备用 API 返回数据转换为主 API 格式，复用现有渲染管道。"""
-    # nextRefreshBeijing 字符串 → unix 时间戳
     next_refresh_str = data.get("nextRefreshBeijing", "")
     next_refresh_ts = int(time.time())
     if next_refresh_str:
@@ -88,15 +85,12 @@ def _adapt_backup_data(data: dict) -> dict:
         except (ValueError, OSError) as e:
             logger.warning(f"NRC 商人备用 API nextRefreshBeijing 解析失败: {e}")
 
-    # startedAtBeijing 日期部分 → slot_date
     started_at = data.get("startedAtBeijing", "")
     slot_date = started_at[:10] if started_at else ""
 
-    # rounds dict key 数量 → total_rounds
     rounds_dict = data.get("rounds", {})
     total_rounds = len(rounds_dict) if isinstance(rounds_dict, dict) and rounds_dict else 1
 
-    # 适配 items：rarity 统一为 common，用 _rarity_label 储存 category 展示文字
     items = [
         {
             "name": item.get("name", ""),
@@ -109,12 +103,10 @@ def _adapt_backup_data(data: dict) -> dict:
         for item in data.get("items", [])
     ]
 
-    # fetchedAt ISO 8601 UTC → 北京时间可读字符串
     fetched_at = data.get("fetchedAt", "")
     updated_at = ""
     if fetched_at:
         try:
-            # "2026-07-06T10:31:33.660Z" → "2026-07-06 18:31:33"
             dt_obj = dt.datetime.fromisoformat(fetched_at)
             dt_bj = dt_obj.astimezone(_TZ_SHANGHAI)
             updated_at = dt_bj.strftime("%H:%M")

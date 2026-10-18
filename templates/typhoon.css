@@ -11,7 +11,6 @@ body {
     min-height: fit-content;
 }
 
-/* ── 主卡片容器（全屏，地图铺满）── */
 #typhoon-card {
     position: relative;
     width: 100%;
@@ -21,7 +20,6 @@ body {
     overflow: hidden;
 }
 
-/* ── 左侧信息面板（悬浮在地图上方）── */
 .left-panel {
     position: absolute;
     top: 20px;
@@ -42,7 +40,6 @@ body {
     box-shadow: 0 2px 12px rgba(0,0,0,0.15);
 }
 
-/* ── 基础信息卡（上） ── */
 .typhoon-name {
     font-size: 30px;
     font-weight: 800;
@@ -82,7 +79,6 @@ body {
     font-size: 16px;
 }
 
-/* 数字相关的值加大字号 */
 .info-num {
     font-size: 18px;
     font-weight: 700;
@@ -97,7 +93,6 @@ body {
     color: #fff;
 }
 
-/* ── 当前位置卡（下） ── */
 .pos-row {
     display: flex;
     justify-content: space-between;
@@ -131,7 +126,6 @@ body {
     margin-top: 2px;
 }
 
-/* ── 登陆信息卡 ── */
 .info-card-title {
     font-weight: 700;
     font-size: 14px;
@@ -179,7 +173,6 @@ body {
     font-weight: 600;
 }
 
-/* ── 右侧地图面板（全屏铺满）── */
 .right-panel {
     position: absolute;
     top: 0;
@@ -194,7 +187,6 @@ body {
     min-height: 700px;
 }
 
-/* ── 地图图例 ── */
 .map-legend {
     position: absolute;
     bottom: 20px;

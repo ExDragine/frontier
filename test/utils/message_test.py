@@ -531,7 +531,6 @@ async def test_message_http_client_uses_registry():
     """验证 message 模块的 HTTP 客户端通过注册表获取。"""
     from utils import http_client as registry
 
-    # Clean start
     registry._clients.clear()
     registry._aclose_all_called = False
     reloaded_message = importlib.reload(message_module)
@@ -573,7 +572,7 @@ async def test_message_gateway_whitelist_numeric_id(monkeypatch):
             self.data = types.SimpleNamespace(group=types.SimpleNamespace(group_id=5))
 
         def get_user_id(self):
-            return "12345"  # string, as returned by NoneBot
+            return "12345"
 
         def is_tome(self):
             return True
@@ -585,7 +584,7 @@ async def test_message_gateway_whitelist_numeric_id(monkeypatch):
 
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", True)
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_GROUP_LIST", [5])
-    monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_PERSON_LIST", [12345])  # int from TOML
+    monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_PERSON_LIST", [12345])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
     result = await _message_gateway(DummyEvent(), [])
@@ -598,7 +597,7 @@ async def test_message_gateway_whitelist_dm_allowed(monkeypatch):
 
     class DummyEvent:
         def __init__(self):
-            self.data = types.SimpleNamespace(group=None)  # DM
+            self.data = types.SimpleNamespace(group=None)
 
         def get_user_id(self):
             return "12345"
@@ -612,7 +611,7 @@ async def test_message_gateway_whitelist_dm_allowed(monkeypatch):
         to_me = True
 
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_MODE", True)
-    monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_GROUP_LIST", [99])  # user not in this group
+    monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_GROUP_LIST", [99])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_WHITELIST_PERSON_LIST", [12345])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_GROUP_LIST", [])
     monkeypatch.setattr(gateway_module.EnvConfig, "AGENT_BLACKLIST_PERSON_LIST", [])
@@ -1286,9 +1285,6 @@ async def test_sanitize_outgoing_text_allows_controversial_output(monkeypatch):
     assert result == "borderline model output"
 
 
-# ── _get_wake_words 测试 ────────────────────────────────────
-
-
 class TestGetWakeWords:
     def test_returns_env_nicknames_when_no_custom_words(self, monkeypatch):
         monkeypatch.setattr(gateway_module.EnvConfig, "BOT_NICKNAMES", ["小李子", "小栗子"])
@@ -1303,7 +1299,6 @@ class TestGetWakeWords:
         manager.set(456, "wake_word", "小天")
         manager.set(456, "wake_word", "助手")
 
-        # 让 _get_wake_words 使用 memory_engine
         monkeypatch.setattr(gateway_module, "get_engine", lambda url=None: memory_engine)
         monkeypatch.setattr(gateway_module.EnvConfig, "BOT_NICKNAMES", ["小李子", "小栗子"])
 

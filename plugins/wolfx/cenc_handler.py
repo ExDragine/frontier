@@ -84,7 +84,6 @@ def _load_event_ids(stored_value: str | None) -> list[str]:
     try:
         parsed = json.loads(stored_value)
     except json.JSONDecodeError:
-        # 兼容旧 HTTP 轮询实现保存的单个 report ID。
         return [stored_value]
     if not isinstance(parsed, list):
         return [stored_value]
@@ -136,7 +135,6 @@ async def process_cenc_event(
             logger.info("CENC 快照已过期，仅建立去重基线 (event_id={})", payload.event_id)
             return CencEventResult([], 0, "cenc snapshot baseline stored")
 
-        # 先持久化 EventID，确保同一次地震的后续报次不会重复推送。
         await _store_event_id(payload.event_id, stored_value, processed_event_ids)
         logger.info(
             "检测到{}发生{:.1f}级地震 (event_id={}, report_num={})",

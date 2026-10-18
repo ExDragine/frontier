@@ -7,7 +7,6 @@ from ..auth import check_rate_limit, create_token, require_auth, verify_password
 router = APIRouter()
 AUTH_DEPENDENCY = Depends(require_auth)
 
-# Cookie 安全配置
 COOKIE_NAME = "frontier_token"
 
 
@@ -33,7 +32,7 @@ def _set_auth_cookie(response: JSONResponse, token: str, max_age: int) -> None:
         value=token,
         max_age=max_age,
         httponly=True,
-        secure=False,  # 部署 TLS 后改为 True
+        secure=False,
         samesite="strict",
         path="/api/dashboard",
     )

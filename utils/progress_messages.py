@@ -7,27 +7,21 @@
 
 from __future__ import annotations
 
-# ── 精确映射 ──────────────────────────────────────────────────────────────
-# 覆盖不符合前缀模式或需要定制文案的工具。
 _TOOL_MESSAGE_EXACT: dict[str, str] = {
-    # Agent 内置工具
     "search": "正在搜索相关信息…",
     "read_file": "正在读取文件…",
     "write_file": "正在写入文件…",
     "edit_file": "正在编辑文件…",
     "execute": "正在执行代码…",
     "shell": "正在执行 shell 命令…",
-    # 记忆
     "search_messages": "正在搜索历史消息…",
     "get_recent_conversation": "正在读取最近对话…",
-    # 天气 / 地球
     "ens_normal": "🌐 正在查询…",
     "ens_professional": "🌐 正在专业地构建地球可视化数据中…",
     "mars_weather": "正在获取火星天气…",
     "get_wind_map": "正在获取风向图…",
     "get_static_china_radar": "正在获取雷达图…",
     "get_china_earthquake": "正在查询中国地震信息…",
-    # 空间 / 天文
     "solar_flare": "正在查询太阳耀斑…",
     "realtime_solarwind": "正在获取实时太阳风数据…",
     "soho_realtime_solarwind": "正在获取 SOHO 太阳风数据…",
@@ -43,34 +37,24 @@ _TOOL_MESSAGE_EXACT: dict[str, str] = {
     "aurora_live": "正在获取极光直播…",
     "station_location": "正在查询空间站位置…",
     "get_launches": "正在查询火箭发射…",
-    # 占卜
     "iching_divination": "正在易经占卜…",
     "list_iching_hexagrams": "正在查询卦象列表…",
     "get_hexagram_detail": "正在查看卦象详情…",
     "tarot_reading": "正在塔罗占卜…",
     "list_tarot_spreads": "正在查询牌阵…",
-    # 媒体生成
     "get_paint": "正在生成绘图…",
     "get_video": "正在处理视频…",
-    # API
     "get_deepseek_api_balance": "正在查询 API 余额…",
-    # 台风
     "get_typhoon_info": "🌀 正在查询台风信息…",
-    # 浏览器捕获
     "webpage_screenshot": "正在截取网页截图…",
     "webpage_recording": "正在录制网页视频…",
-    # NRC / 洛克王国
     "get_nrc_merchant_current": "🛒正在打开远行商人货架…",
     "get_nrc_eggs_details": "🥚正在感受精灵蛋…",
     "get_nrc_eggs_groups": "📚正在查询精灵蛋组手册…",
     "get_nrc_event_calendar": "🚪正在踹开魔方大门…",
 }
 
-# ── 前缀模式 ──────────────────────────────────────────────────────────────
-# 源码内按主题分组排列；匹配时按前缀长度降序（见 _TOOL_MESSAGE_PATTERNS_BY_LENGTH），
-# 因此长前缀（如 send_group_message_reaction）不会被短前缀（如 send_group_message）抢走。
 _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
-    # ── 适配器发送类 ──
     ("send_image", "正在发送图片…"),
     ("send_audio", "正在发送音频…"),
     ("send_voice", "正在发送语音…"),
@@ -87,7 +71,6 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
     ("send_group_nudge", "正在戳一戳群聊…"),
     ("send_group_message_reaction", "正在发送表情回应…"),
     ("send_group_announcement", "正在发布群公告…"),
-    # ── 获取类 ──
     ("get_private_file_download_url", "正在获取文件下载链接…"),
     ("get_group_file_download_url", "正在获取文件下载链接…"),
     ("get_group_files", "正在获取群文件列表…"),
@@ -99,11 +82,9 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
     ("get_resource_temp_url", "正在获取资源链接…"),
     ("get_forwarded_messages", "正在获取合并转发消息…"),
     ("get_message", "正在获取消息…"),
-    # ── 卫星图 (必须在通用 get_ 之前) ──
     ("get_fy4b_geos_cloud_map", "正在获取 FY-4B 卫星云图…"),
     ("get_fy4b_cloud_map", "正在获取 FY-4B 云图…"),
     ("get_himawari_satellite_image", "正在获取 Himawari 卫星图…"),
-    # ── 通用 get_ / set_ / download_ / upload_ ──
     ("get_custom_face_url_list", "正在获取表情列表…"),
     ("get_friend_list", "正在获取好友列表…"),
     ("get_friend_info", "正在获取好友信息…"),
@@ -117,21 +98,17 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
     ("get_user_profile", "正在获取用户资料…"),
     ("get_cookies", "正在获取 Cookies…"),
     ("get_csrf_token", "正在获取 CSRF Token…"),
-    # ── 上传 ──
     ("upload_private_file", "正在上传私聊文件…"),
     ("upload_group_file", "正在上传群文件…"),
-    # ── 删除 / 撤回 ──
     ("delete_friend", "正在删除好友…"),
     ("delete_group_file", "正在删除群文件…"),
     ("delete_group_folder", "正在删除群文件夹…"),
     ("delete_group_announcement", "正在删除群公告…"),
     ("recall_private_message", "正在撤回私聊消息…"),
     ("recall_group_message", "正在撤回群消息…"),
-    # ── 创建 ──
     ("create_reminder", "正在创建提醒…"),
     ("create_scheduled_task", "正在创建定时任务…"),
     ("create_group_folder", "正在创建群文件夹…"),
-    # ── 设置类 ──
     ("set_group_name", "正在修改群名称…"),
     ("set_group_avatar", "正在设置群头像…"),
     ("set_group_member_card", "正在设置群名片…"),
@@ -144,7 +121,6 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
     ("set_nickname", "正在设置昵称…"),
     ("set_bio", "正在设置简介…"),
     ("set_peer_pin", "正在设置置顶…"),
-    # ── 其他动作 ──
     ("kick_group_member", "正在踢出群成员…"),
     ("quit_group", "正在退出群聊…"),
     ("move_group_file", "正在移动群文件…"),
@@ -157,12 +133,10 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
     ("reject_group_request", "正在处理加群申请…"),
     ("accept_group_invitation", "正在处理群邀请…"),
     ("reject_group_invitation", "正在处理群邀请…"),
-    # ── 定时任务管理 ──
     ("list_my_scheduled_tasks", "正在查询定时任务…"),
     ("cancel_my_scheduled_task", "正在取消定时任务…"),
     ("pause_my_scheduled_task", "正在暂停定时任务…"),
     ("resume_my_scheduled_task", "正在恢复定时任务…"),
-    # ── MCP: Playwright 浏览器自动化 ──
     ("browser_navigate_back", "正在返回上一页…"),
     ("browser_console_messages", "正在获取控制台日志…"),
     ("browser_handle_dialog", "正在处理浏览器对话框…"),
@@ -186,10 +160,8 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
     ("browser_hover", "正在悬停元素…"),
     ("browser_select_option", "正在选择下拉选项…"),
     ("browser_navigate", "正在导航到新页面…"),
-    # ── MCP: 时间 ──
     ("get_current_time", "正在获取当前时间…"),
     ("convert_time", "正在转换时区…"),
-    # ── MCP: 高德地图 ──
     ("maps_regeocode", "正在逆地理编码…"),
     ("maps_geo", "正在地理编码…"),
     ("maps_ip_location", "正在 IP 定位…"),
@@ -202,7 +174,6 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
     ("maps_text_search", "正在搜索地点…"),
     ("maps_around_search", "正在搜索周边…"),
     ("maps_weather", "正在查询天气…"),
-    # ── MCP: 中国节日 ──
     ("holiday_info", "正在查询节日信息…"),
     ("current_year_holidays", "正在查询今年节假日…"),
     ("current_year_work_days", "正在查询工作日…"),
@@ -213,17 +184,14 @@ _TOOL_MESSAGE_PATTERNS: list[tuple[str, str]] = [
     ("get_24_lunar_feast", "正在查询二十四节气…"),
     ("get_8zi", "正在排八字…"),
     ("get_weekday", "正在查询星期…"),
-    # ── MCP: Exa 搜索 ──
     ("web_search_exa", "正在搜索网络信息…"),
     ("web_fetch_exa", "正在获取网页内容…"),
 ]
 
-# 匹配用视图：按前缀长度降序，等长时保持源码顺序（sorted 稳定）。
 _TOOL_MESSAGE_PATTERNS_BY_LENGTH: list[tuple[str, str]] = sorted(
     _TOOL_MESSAGE_PATTERNS, key=lambda item: len(item[0]), reverse=True
 )
 
-# ── 子代理消息映射 ─────────────────────────────────────────────────────────
 _SUBAGENT_MESSAGE_MAP: dict[str, str] = {
     "document-agent": "正在阅读并整理文档…",
     "code-explorer": "启动代码探索子代理…",

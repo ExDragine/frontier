@@ -72,8 +72,6 @@ class TurnLease:
     final_message: Any = None
     valid_result: bool = False
     finished: bool = False
-    # Binary messages are consumed live, then the generation is retired so raw
-    # bytes never become long-lived hot history. DB attachment references survive.
     media_turn: bool = False
     history_tokens: int = 0
     rebuild_seconds: float = 0
@@ -111,7 +109,6 @@ class SessionManager:
     def _drop(self, entry: SessionEntry, reason: str) -> None:
         if self.entries.get(entry.key) is not entry:
             return
-        # Failed deletion remains an invalid entry for the next sweep to retry.
         entry.state = "invalidated"
         self.saver.delete_thread(entry.thread_id)
         del self.entries[entry.key]
@@ -184,8 +181,6 @@ class SessionManager:
                     self._drop(entry, "failed")
                     return
                 if delivered and lease.final_message is not None:
-                    # Preserve its identity, replace content with exactly what was
-                    # audited and sent. Do not append another assistant message.
                     final = lease.final_message.model_copy(update={"content": content, "additional_kwargs": {}})
                     await lease.graph.aupdate_state(lease.config, {
                         "messages": [final], "image_inputs": [], "audio_inputs": [], "video_inputs": [],
@@ -242,7 +237,6 @@ class SessionManager:
             self._cleaner.cancel()
             await asyncio.gather(self._cleaner, return_exceptions=True)
             self._cleaner = None
-        # Active requests own their cleanup; shutdown must not delete their writes.
         for entry in list(self.entries.values()):
             if entry.state in {"idle", "invalidated"}:
                 self._drop(entry, "shutdown")

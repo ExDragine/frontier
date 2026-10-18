@@ -22,7 +22,6 @@ TOML_PATH = CONFIG_PATH
 BACKUP_DIR = Path("configs/backups")
 _settings_write_lock = asyncio.Lock()
 
-# 需要脱敏的段和字段
 SENSITIVE_FIELDS = {
     "key": {
         "nasa_api_key",
@@ -116,7 +115,6 @@ def _backup_config():
         backup_path.unlink(missing_ok=True)
         raise
 
-    # 保留最近 10 个备份
     backups = sorted(BACKUP_DIR.glob("env.toml.*.bak"), key=lambda p: p.stat().st_mtime_ns)
     while len(backups) > 10:
         backups.pop(0).unlink()
@@ -142,8 +140,6 @@ async def get_settings(user: dict = AUTH_DEPENDENCY):
 
 
 async def _read_settings() -> dict:
-    # Readers must not observe a published file whose runtime reload is still
-    # pending, especially when activation subsequently rolls back.
     async with _settings_write_lock:
         config = await asyncio.to_thread(_read_toml)
         from utils.configs import SessionConfig
@@ -228,7 +224,6 @@ def _restore_config(backup_path: Path) -> None:
 
 async def _reload_or_restore(new_config: dict, old_config: dict, backup_path: Path) -> None:
     try:
-        # Keep the synchronous runtime snapshot switch on the event-loop thread.
         _reload_env_config(new_config)
     except Exception as exc:
         try:
@@ -276,7 +271,5 @@ async def update_section(section: str, body: SectionUpdate, user: dict = AUTH_DE
     try:
         return await asyncio.shield(operation)
     except asyncio.CancelledError:
-        # to_thread cannot cancel an in-flight disk write. Keep the transaction
-        # alive until its new or restored runtime snapshot matches the file.
         await asyncio.gather(operation, return_exceptions=True)
         raise

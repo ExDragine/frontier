@@ -10,7 +10,6 @@ from utils.command_text import strip_command_prefix
 from utils.timeutil import SHANGHAI
 
 
-# 延迟导入避免循环依赖
 def get_task_manager():
     from . import task_manager
 
@@ -89,7 +88,6 @@ async def handle_task_command(event: MessageEvent):
     args = text.split()
     action = args[0].lower()
 
-    # 路由到具体的处理函数
     if action in {"my", "我的"}:
         await handle_task_my(args, user_id)
         return
@@ -204,7 +202,6 @@ async def handle_task_list(args: list[str]):
         await UniMessage.text("没有找到任务").send()
         return
 
-    # 格式化输出
     lines = [f"定时任务列表 (共{len(tasks)}个):\n"]
     metadata_map = await get_task_manager().get_task_metadata_map([task.job_id for task in tasks])
     for task in tasks:
@@ -212,7 +209,6 @@ async def handle_task_list(args: list[str]):
         status = "📦" if metadata and metadata.archived else ("✅" if task.enabled else "⏸️")
         trigger_args = json.loads(task.trigger_args)
 
-        # 格式化触发器信息
         if task.trigger_type == "cron":
             if "year" in trigger_args:
                 trigger_info = f"cron: {trigger_args.get('year')}-{trigger_args.get('month')}-{trigger_args.get('day')} {trigger_args.get('hour')}:{trigger_args.get('minute')}:{trigger_args.get('second', '00')}"
@@ -223,7 +219,6 @@ async def handle_task_list(args: list[str]):
         else:
             trigger_info = task.trigger_type
 
-        # 下次执行时间
         next_run = _format_time(task.next_run_time, "%m-%d %H:%M") if task.next_run_time else "无"
 
         lines.append(f"{status} {task.name} ({task.job_id})")
@@ -255,21 +250,17 @@ async def handle_task_info(args: list[str], user_id: str, is_superuser: bool):
         await UniMessage.text(f"任务 {job_id} 不存在").send()
         return
 
-    # 获取群组配置
     group_ids = await get_task_manager().get_task_groups(job_id)
     groups_str = ", ".join(map(str, group_ids)) if group_ids else "无"
     metadata = await get_task_manager().get_task_metadata(job_id)
 
-    # 解析触发器
     trigger_args = json.loads(task.trigger_args)
     trigger_str = json.dumps(trigger_args, ensure_ascii=False)
 
-    # 格式化时间
     created_at = _format_time(task.created_at)
     last_run = _format_time(task.last_run_time) if task.last_run_time else "从未执行"
     next_run = _format_time(task.next_run_time)
 
-    # 计算成功率
     success_rate = (task.success_runs / task.total_runs * 100) if task.total_runs > 0 else 0
 
     info = f"""任务详情:
@@ -413,7 +404,6 @@ async def handle_task_trigger(args: list[str]):
     trigger_type = args[2]
 
     if trigger_type == "cron":
-        # 解析cron表达式: "19:00" -> {"hour": "19", "minute": "0"}
         time_str = args[3]
         if ":" in time_str:
             parts = time_str.split(":")
@@ -451,11 +441,9 @@ async def handle_task_groups(args: list[str]):
     job_id = args[1]
     operation = args[2]
 
-    # 获取当前群组配置
     current_groups = await get_task_manager().get_task_groups(job_id)
 
     if operation in {"set", "设置"}:
-        # 设置群组（覆盖）
         if len(args) < 4:
             await UniMessage.text("用法: /task groups <job_id> set <群号1> [群号2...]").send()
             return
@@ -468,14 +456,12 @@ async def handle_task_groups(args: list[str]):
 
         success = await get_task_manager().update_task_groups(job_id, new_groups)
         if success:
-            # 同步到 EnvConfig
             await get_task_manager().initialize()
             await UniMessage.text(f"任务 {job_id} 群组已设置为: {', '.join(map(str, new_groups))}").send()
         else:
             await UniMessage.text("设置失败，请检查任务是否存在").send()
 
     elif operation in {"add", "添加"}:
-        # 添加群组
         if len(args) < 4:
             await UniMessage.text("用法: /task groups <job_id> add <群号>").send()
             return
@@ -499,7 +485,6 @@ async def handle_task_groups(args: list[str]):
             await UniMessage.text("添加失败，请检查任务是否存在").send()
 
     elif operation in {"remove", "移除", "删除"}:
-        # 移除群组
         if len(args) < 4:
             await UniMessage.text("用法: /task groups <job_id> remove <群号>").send()
             return

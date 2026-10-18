@@ -17,7 +17,6 @@ class NewsEditor:
         self.cfg = cfg
 
     async def call(self, schema, system, user):
-        # The timeout is enforced once, by the LLM client inside structured_call.
         return await structured_call(
             model=self.cfg.model, provider=self.cfg.provider, schema=schema,
             system_prompt=system, user_prompt=user, timeout=self.cfg.model_timeout,

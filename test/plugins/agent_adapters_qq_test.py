@@ -277,8 +277,6 @@ async def test_qq_delivery_uses_injected_senders_and_reports_partial_artifact_fa
             artifacts=(AgentArtifact(kind="image", data=b"x", mime_type="image/png"),),
         ),
     )
-    # The final text was delivered, so the turn is committed even when a
-    # preceding media artifact reports a partial failure.
     assert receipt.status == DeliveryStatus.DELIVERED
     assert receipt.errors == ("media_failed",)
     assert [call[0] for call in calls] == ["artifacts", "text"]

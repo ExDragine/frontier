@@ -11,7 +11,6 @@ import type {
   UISteps,
 } from "./message-schema";
 
-// Only the server can add these fields after validation and bounded media loading.
 type LoadedMedia = {
   media_data?: string;
   media_width?: number;

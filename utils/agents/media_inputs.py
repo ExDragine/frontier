@@ -16,8 +16,6 @@ class MediaInputMiddleware(AgentMiddleware):
 
     def _request(self, request):
         messages = filter_messages_for_model_capabilities(request.messages, self.model, role=self.role)
-        # Prefer the latest explicit reads and current input over older history.
-        # Preserve messages, tool IDs and ordering in the request and checkpoint.
         views = [{"content": message.content} for message in messages]
         budget = InlineMediaBudget(self.max_bytes, self.max_images)
         bounded = budget.history(views)

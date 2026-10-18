@@ -38,7 +38,7 @@ def _api_base() -> str:
         raise ValueError("[search].base_url 必须是没有账号密码的 HTTP(S) 地址。")
     if parsed.query or parsed.fragment:
         raise ValueError("[search].base_url 不能带查询参数或 fragment。")
-    _ = parsed.port  # Reject invalid port syntax before sending credentials.
+    _ = parsed.port
     path = parsed.path.rstrip("/")
     if path.endswith("/v1"):
         path = path[:-3]
@@ -83,8 +83,6 @@ class _RequestGate:
 
     async def wait(self):
         async with self.lock:
-            # 4 QPS, conservatively below the per-account 5 QPS limit. Share
-            # across keys/workspaces, with independent Search and Fetch gates.
             delay = self.last_started + 0.25 - time.monotonic()
             if delay > 0:
                 await asyncio.sleep(delay)
@@ -116,7 +114,6 @@ async def _request(operation: str, payload: dict) -> dict:
     try:
         base, key = _credentials()
     except ValueError:
-        # Do not echo profile contents, arbitrary names or invalid endpoint URLs.
         return _error("configuration", "DeepSeek 搜索配置不可用，请检查 [search] 及其引用供应商的 API Key。")
     timeout = EnvConfig.SEARCH.timeout_seconds
     client = get_http_client("deepseek_web", timeout=timeout)

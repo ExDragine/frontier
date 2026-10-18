@@ -60,9 +60,5 @@ async def test_qq_handler_passes_neutral_identity_and_capabilities(monkeypatch):
     )
     assert request.principal == Participant(id="user-1", display_name="Alice")
     assert request.capabilities == frozenset({"platform:qq", "qq:tools"})
-    # Keep the old workspace key so existing QQ memory and session files are
-    # not moved merely by declaring the neutral identity.
     assert request.workspace_key == "group-42"
-    # QQ turns only deliver their final reply; progress remains opt-in for
-    # runtime consumers such as ACP.
     assert captured["progress_reporter"] is None

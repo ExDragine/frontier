@@ -52,16 +52,10 @@ class AgentRuntimeRequest:
     audio_inputs: tuple[bytes, ...] = ()
     video_inputs: tuple[bytes, ...] = ()
     session_turn: TurnLease | None = None
-    # Neutral identity fields are optional while QQ callers migrate.  The
-    # legacy fields above remain the compatibility surface for existing ACP,
-    # scheduled-task and QQ entry points.
     conversation: ConversationRef | None = None
     principal: Participant | None = None
     capabilities: frozenset[str] = frozenset()
     workspace_key: str | None = None
-    # Platform-provided tools are supplemental to the built-in capability
-    # snapshot.  Keeping them on the runtime request lets a new adapter inject
-    # its own operations without importing the global registry.
     tool_overrides: tuple[object, ...] = ()
 
 
@@ -117,9 +111,6 @@ def _content_text(content: object) -> str:
 def _message_text(value: object) -> str:
     """Return only model-visible text from a LangChain/OpenAI message."""
 
-    # AIMessage.text deliberately excludes Responses ``reasoning`` blocks.
-    # Treat a non-callable, even empty, text property as authoritative so an
-    # all-reasoning message cannot fall back to its raw content and leak it.
     text = getattr(value, "text", _MISSING)
     if text is not _MISSING and text is not None:
         if isinstance(text, str):
@@ -242,8 +233,6 @@ def _conversation_workspace_key(conversation: ConversationRef | None) -> str | N
 
     if conversation is None:
         return None
-    # Serialize fields as a structured value so delimiters in opaque IDs
-    # cannot make two different conversations share a workspace.
     identity = json.dumps(
         [
             conversation.platform,
@@ -333,9 +322,6 @@ class FrontierAgentRuntime:
             capability=request.capability if request.capability is not None else EnvConfig.AGENT_CAPABILITY,
             group_id=group_id,
             group_member_role=group_member_role,
-            # ``images``/``audio`` are the canonical neutral media fields.
-            # Legacy callers populate only ``*_inputs``; the neutral bridge
-            # populates both for compatibility, so concatenate neither twice.
             image_inputs=list(request.image_inputs or tuple(item.data for item in request.images)),
             audio_inputs=list(request.audio_inputs or tuple(item.data for item in request.audio)),
             video_inputs=list(request.video_inputs),
@@ -360,10 +346,6 @@ class FrontierAgentRuntime:
         response_messages = response.get("messages", []) if isinstance(response, dict) else []
         final_message = response_messages[-1] if response_messages else ""
         status = result.get("status", "failed" if result.get("error") else "success") if isinstance(result, dict) else "failed"
-        # The legacy cognitive result carries silent turns as
-        # ``should_reply=False`` rather than a dedicated status.  Preserve
-        # that distinction at the neutral runtime boundary so the
-        # ConversationOrchestrator never appends an empty assistant turn.
         if isinstance(result, dict) and result.get("should_reply") is False and status == "success":
             status = "silent"
         return AgentRuntimeResult(

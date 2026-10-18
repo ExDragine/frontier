@@ -3,13 +3,10 @@ from pathlib import Path
 
 from utils.http_client import AsyncClient, HTTPError
 
-# 当前文件所在目录（绝对路径）
 current_dir = Path(__file__).resolve().parent
 
-# 项目根目录下的 temp 文件夹
 temp_dir = current_dir.parents[2] / "temp"
 
-# 拼出目标文件路径
 file_path = temp_dir / "earth_now_test.jpg"
 
 
@@ -23,10 +20,8 @@ async def fetch_earth_image():
                 print(f"[尝试第 {attempt + 1} 次] 正在获取图片...")
                 response = await client.get(url)
                 response.raise_for_status()
-                # 确保完整读取响应体
                 content = await response.aread()
 
-                # 检查 Content-Length 一致性
                 content_length = response.headers.get("Content-Length")
                 if content_length and len(content) != int(content_length):
                     print(f"⚠️ 警告：下载大小 {len(content)} 与 Content-Length {content_length} 不符，重试中...")
@@ -38,14 +33,13 @@ async def fetch_earth_image():
 
             except HTTPError as e:
                 print(f"❌ 获取图片失败: {e}")
-                await asyncio.sleep(1)  # 间隔重试
+                await asyncio.sleep(1)
                 continue
 
     if not content:
         print("❌ 下载失败：所有重试均失败")
         return None
 
-    # 保存文件以验证完整性
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_bytes(content)
     print(f"✅ 文件已保存到: {file_path}")

@@ -52,11 +52,6 @@ def pytest_configure(config):
 
 
 def pytest_sessionstart(session):
-    # Collection imports application modules before per-test fixtures run.
-    # Keep their config/database/cache initialization outside the real workspace.
-    # Windows keeps SQLite handles open past the session, so cleanup is
-    # best-effort: a failed unlink must not turn a green run into an
-    # INTERNALERROR.
     temporary_dir = tempfile.TemporaryDirectory(prefix="frontier-test-collection-", ignore_cleanup_errors=True)
     monkeypatch = pytest.MonkeyPatch()
     session.config.stash[_collection_env] = monkeypatch, temporary_dir
@@ -76,7 +71,6 @@ def pytest_sessionfinish(session):
     temporary_dir.cleanup()
 
 
-# Ensure repo root is importable during collection
 _repo_root = Path(__file__).resolve().parents[1]
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))

@@ -18,7 +18,6 @@ from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
 
-# GPU/WebGL 相关参数，两类调用方都必须保留。
 _BROWSER_ARGS = (
     "--use-gl=angle",
     "--enable-webgl",

@@ -25,8 +25,6 @@ cenc_client = importlib.import_module("plugins.wolfx.cenc_client")
 async def test_safe_client_connection_handles_loss_before_connection_made():
     connection = cenc_client._SafeClientConnection(ClientProtocol(parse_uri("ws://localhost")))
 
-    # websockets initializes recv_messages from connection_made. Simulate a
-    # reset before that callback, which is the production failure path.
     assert not hasattr(connection, "recv_messages")
     connection.connection_lost(ConnectionResetError("peer reset"))
 

@@ -9,7 +9,6 @@ httpx_client = get_http_client("weather")
 NASA_WEATHER_URL = "https://mars.nasa.gov/rss/api/?feed=weather&category=msl&feedtype=json"
 
 
-# 火星天气
 @tool(response_format="content")
 async def mars_weather() -> str:
     """

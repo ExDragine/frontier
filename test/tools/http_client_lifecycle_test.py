@@ -34,7 +34,6 @@ async def test_tool_module_http_clients_use_registry(load_tool_module, client_na
     client = getattr(mod, client_attr, None)
 
     assert client is not None, f"{client_name}.{client_attr} is None"
-    # 验证通过注册表获取（同一 name 返回同一实例）
     assert registry.get_http_client(client_name) is client
 
 
@@ -43,7 +42,6 @@ async def test_http_client_aclose_all_unifies_lifecycle():
     """验证 aclose_all() 统一关闭所有注册客户端。"""
     from utils import http_client as registry
 
-    # Clean start
     registry._clients.clear()
     registry._aclose_all_called = False
 
@@ -57,5 +55,4 @@ async def test_http_client_aclose_all_unifies_lifecycle():
     assert "test_b" in closed
     assert len(registry._clients) == 0
 
-    # Second call is no-op
     assert await registry.aclose_all() == []

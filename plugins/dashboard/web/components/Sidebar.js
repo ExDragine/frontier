@@ -1,4 +1,3 @@
-// 侧边栏导航组件
 const SidebarComponent = {
     template: `
         <div class="w-full md:w-64 shrink-0 bg-white shadow-lg md:h-screen flex flex-col">
@@ -19,19 +18,19 @@ const SidebarComponent = {
     `,
     setup() {
         const route = Vue.inject('$route');
-        
+
         const navItems = [
             { path: '/', icon: '📊', label: '总览' },
             { path: '/tasks', icon: '⏰', label: '定时任务' },
             { path: '/messages', icon: '💬', label: '对话历史' },
             { path: '/settings', icon: '⚙️', label: '设置' },
         ];
-        
+
         const isActive = (path) => {
             return route.value.path === path || 
                    (path !== '/' && route.value.path.startsWith(path));
         };
-        
+
         return { navItems, isActive, route };
     }
 };

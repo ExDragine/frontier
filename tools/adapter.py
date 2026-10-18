@@ -30,7 +30,6 @@ def _resolve_message_source(source: str, config: RunnableConfig) -> tuple[Path |
     try:
         validate_url(source)
     except ValueError:
-        # Do not probe URLs or UNC shares as local files (notably on Windows).
         if "://" in source or source.startswith(("//", "\\\\")):
             return None, None
     else:
@@ -44,13 +43,11 @@ def _resolve_message_source(source: str, config: RunnableConfig) -> tuple[Path |
         elif workspace_dir is not None:
             path = resolve_virtual_path(source, {"/": workspace_dir})
         else:
-            # Preserve direct local calls without an Agent sandbox configuration.
             path = resolve_local_path(source)
             if path is None:
                 direct_path = Path(source)
                 path = direct_path if direct_path.is_file() else None
     except (OSError, ValueError):
-        # Malformed or inaccessible local paths are input failures, before any send.
         path = None
     return path, None
 

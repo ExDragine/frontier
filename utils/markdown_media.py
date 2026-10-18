@@ -117,8 +117,6 @@ class PublicFetcher:
             return self.dns_cache[host], host
 
     async def public_dns(self, host: str) -> str:
-        # Bootstrap by a fixed public IP: the resolver's hostname may itself
-        # resolve to Fake-IP. Preserve TLS hostname verification and Host.
         target = httpx2.URL("https://cloudflare-dns.com/dns-query").copy_with(host="1.1.1.1")
         headers = {
             "Host": "cloudflare-dns.com",
@@ -341,7 +339,6 @@ async def load_media(node: dict, browser, fetcher: PublicFetcher, width: int) ->
                 node["capture_note"] = "网页较长，此处展示前 1200 像素，请通过原链接查看完整页面。"
             node.pop("media_error", None)
     except Exception as exc:
-        # Do not disclose network errors or internal addresses in QQ content/logs.
         reason = failure_reason(exc)
         logger.warning("Message media failed: type=%s reason=%s", node["type"], reason)
         node["media_error"] = f"素材未能加载：{reason}，请查看原链接。"

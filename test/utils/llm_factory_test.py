@@ -101,8 +101,8 @@ def test_gpt_routes_to_openai(monkeypatch):
     assert "openai_api_key" in kw
     assert "openai_api_base" in kw
     assert kw["use_responses_api"] is True
-    assert kw.get("request_timeout") == 300  # timeout → request_timeout
-    assert "timeout" not in kw  # raw "timeout" filtered out
+    assert kw.get("request_timeout") == 300
+    assert "timeout" not in kw
 
 
 def test_o3_routes_to_openai(monkeypatch):
@@ -159,7 +159,7 @@ def test_claude_routes_to_anthropic(monkeypatch):
     assert kw["model"] == "claude-3-5-sonnet-20241022"
     assert "anthropic_api_key" in kw
     assert kw["anthropic_api_url"] == "https://anthropic.example.com"
-    assert kw.get("default_request_timeout") == 60  # timeout → default_request_timeout
+    assert kw.get("default_request_timeout") == 60
     assert "timeout" not in kw
 
 
@@ -564,7 +564,7 @@ def test_openai_kwargs_filtered_for_google(monkeypatch):
     assert "use_responses_api" not in kw
     assert "reasoning_effort" not in kw
     assert "verbosity" not in kw
-    assert kw.get("max_retries") == 2  # 通用参数正常传入
+    assert kw.get("max_retries") == 2
 
 
 def test_openai_kwargs_filtered_for_anthropic(monkeypatch):
@@ -903,7 +903,7 @@ def test_openai_base_url_included(monkeypatch):
 
     kw = mock_cls.call_args.kwargs
     assert "openai_api_base" in kw
-    assert kw["openai_api_base"]  # 非空
+    assert kw["openai_api_base"]
 
 
 def test_google_no_base_url_field(monkeypatch):
@@ -934,5 +934,4 @@ def test_vendor_prefixed_model_id_is_passed_through_unchanged(monkeypatch, model
 
     factory.create_llm(model=model)
 
-    # ``call_args`` is None unless routing picked this exact adapter class.
     assert mock_cls.call_args.kwargs["model"] == model

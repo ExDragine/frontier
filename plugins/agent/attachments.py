@@ -163,8 +163,6 @@ def _write_staged_file(target_path: Path, data: bytes) -> None:
 
 
 async def _complete_staged_write(target_path: Path, data: bytes) -> None:
-    # Cancellation cannot stop a worker thread. Let it finish before caller cleanup
-    # so the thread cannot recreate an unindexed file after it was removed.
     write = asyncio.create_task(asyncio.to_thread(_write_staged_file, target_path, data))
     try:
         await asyncio.shield(write)
@@ -251,4 +249,3 @@ async def stage_message_files(
         raise
 
     return staged_files
-

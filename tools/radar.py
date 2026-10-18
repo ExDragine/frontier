@@ -70,11 +70,9 @@ async def china_static_radar(area: str):
             context = await browser.new_context()
             page = await context.new_page()
             await page.goto(url, wait_until="networkidle")
-            # 等待页面里目标元素出现
             try:
                 await page.wait_for_selector("div.col-xs-12.time", timeout=7000)
             except Exception as e:
-                # 如果超时则继续尝试获取（可能页面以不同方式渲染）
                 logger.error(e)
 
             elements = await page.query_selector_all("div.col-xs-12.time")
@@ -91,7 +89,6 @@ async def china_static_radar(area: str):
         return None
 
 
-# 地区名 → NMC 静态雷达页面路径；数据表见 data/radar_areas.json（保持插入顺序）。
 areas: dict[str, str] = json.loads(
     (Path(__file__).resolve().parent.parent / "data" / "radar_areas.json").read_text(encoding="utf-8")
 )

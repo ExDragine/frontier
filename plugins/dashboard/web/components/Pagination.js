@@ -1,4 +1,3 @@
-// 分页组件
 const PaginationComponent = {
     props: {
         currentPage: { type: Number, required: true },

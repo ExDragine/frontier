@@ -50,9 +50,6 @@ def get_database_diagnostics(engine: Engine | None = None) -> dict[str, object]:
                 "integrity_error": integrity_error,
             }
 
-        # The integrity check is an FTS control write even though it changes no
-        # application rows. End that transaction before asking SQLite to
-        # checkpoint the WAL below.
         conn.commit()
 
         pragmas = {

@@ -21,7 +21,6 @@ router = APIRouter()
 AUTH_DEPENDENCY = Depends(require_auth)
 logger = logging.getLogger(__name__)
 
-# 记录启动时间
 _start_time = time.time()
 
 
@@ -33,7 +32,7 @@ def get_memory_info():
             for line in f:
                 parts = line.split()
                 if len(parts) >= 2:
-                    mem[parts[0].rstrip(":")] = int(parts[1])  # in kB
+                    mem[parts[0].rstrip(":")] = int(parts[1])
         return {
             "total_mb": mem.get("MemTotal", 0) // 1024,
             "available_mb": mem.get("MemAvailable", 0) // 1024,
@@ -50,7 +49,7 @@ def get_process_memory_mb():
         with open("/proc/self/status") as f:
             for line in f:
                 if line.startswith("VmRSS:"):
-                    return int(line.split()[1]) // 1024  # kB -> MB
+                    return int(line.split()[1]) // 1024
     except Exception as exc:
         logger.debug("Failed to read process memory from /proc/self/status: %s", exc)
     return 0
@@ -62,12 +61,10 @@ async def get_status_overview(user: dict = AUTH_DEPENDENCY):
     bots = get_bots()
     uptime_seconds = int(time.time() - _start_time)
 
-    # 数据库统计
     with Session(engine) as session:
         message_count = session.exec(select(func.count()).select_from(Message)).one()
         user_count = session.exec(select(func.count()).select_from(User)).one()
 
-        # 任务数量（如果 clockwork 插件已加载）
         try:
             from plugins.clockwork.task_models import TaskConfig
 
@@ -115,7 +112,6 @@ async def get_system_status(user: dict = AUTH_DEPENDENCY):
     memory = get_memory_info()
     process_memory_mb = get_process_memory_mb()
 
-    # 磁盘使用情况
     disk_usage = shutil.disk_usage("/")
 
     return {

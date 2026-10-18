@@ -19,7 +19,6 @@ async def solar_flare():
     Returns:
         str: 最近7天的太阳耀斑数据
     """
-    # 获取最近7天的太阳耀斑数据
     today = datetime.datetime.now()
     before = today - datetime.timedelta(days=3)
     today_str = today.strftime("%Y-%m-%d")
@@ -90,7 +89,6 @@ async def soho_realtime_solarwind():
     content = (await httpx_client.get(ENDPOINT)).content
     decode_data = content.decode("utf-8").split("\n")
     parts = decode_data[-1].split()
-    # 年和第几天转化为具体日期时间
     year = int(parts[0])
     day_of_year = int(parts[1].split(":")[0])
     time_str = parts[1].split(":")[1] + ":" + parts[1].split(":")[2] + ":" + parts[1].split(":")[3]
@@ -184,17 +182,17 @@ async def solar_image(imageType) -> tuple[str, UniMessage | None]:
         MessageSegment: 返回构建好的消息串
     """
     imagesURL = {
-        "NATA": "https://services.swpc.noaa.gov/experimental/images/aurora_dashboard/tonights_static_viewline_forecast.png",  # NorthAmericanTonightAurora
-        "NATMA": "https://services.swpc.noaa.gov/experimental/images/aurora_dashboard/tomorrow_nights_static_viewline_forecast.png",  # NorthAmericanTomorrowAurora
-        "NOA": "https://services.swpc.noaa.gov/images/aurora-forecast-northern-hemisphere.jpg",  # NorthOvationAurora
-        "SOA": "https://services.swpc.noaa.gov/images/aurora-forecast-southern-hemisphere.jpg",  # SouthOvationAurora
-        "SN": "https://services.swpc.noaa.gov/images/synoptic-map.jpg",  # 手绘太阳黑子图
-        "TL": "https://services.swpc.noaa.gov/images/notifications-timeline.png",  # 过去五天发生的事件图
-        "IETL": "https://services.swpc.noaa.gov/images/notifications-in-effect-timeline.png",  # 过去三天发生的时间图以及未来两天展望
-        "GS1D": "https://services.swpc.noaa.gov/images/geospace/geospace_1_day.png",  # 一天内太阳风速度以及地磁环境数据图表
-        "GS3D": "https://services.swpc.noaa.gov/images/geospace/geospace_3_day.png",  # 三天内太阳风速度以及地磁环境数据图表
-        "GS7D": "https://services.swpc.noaa.gov/images/geospace/geospace_7_day.png",  # 七天内太阳风速度以及地磁环境数据图表
-        "GS3H": "https://services.swpc.noaa.gov/images/geospace/geospace_3_hour.png",  # 三 小时内内太阳风速度以及地磁环境数据图表
+        "NATA": "https://services.swpc.noaa.gov/experimental/images/aurora_dashboard/tonights_static_viewline_forecast.png",
+        "NATMA": "https://services.swpc.noaa.gov/experimental/images/aurora_dashboard/tomorrow_nights_static_viewline_forecast.png",
+        "NOA": "https://services.swpc.noaa.gov/images/aurora-forecast-northern-hemisphere.jpg",
+        "SOA": "https://services.swpc.noaa.gov/images/aurora-forecast-southern-hemisphere.jpg",
+        "SN": "https://services.swpc.noaa.gov/images/synoptic-map.jpg",
+        "TL": "https://services.swpc.noaa.gov/images/notifications-timeline.png",
+        "IETL": "https://services.swpc.noaa.gov/images/notifications-in-effect-timeline.png",
+        "GS1D": "https://services.swpc.noaa.gov/images/geospace/geospace_1_day.png",
+        "GS3D": "https://services.swpc.noaa.gov/images/geospace/geospace_3_day.png",
+        "GS7D": "https://services.swpc.noaa.gov/images/geospace/geospace_7_day.png",
+        "GS3H": "https://services.swpc.noaa.gov/images/geospace/geospace_3_hour.png",
         "C2": "https://services.swpc.noaa.gov/images/animations/lasco-c2/latest.jpg",
         "C3": "https://services.swpc.noaa.gov/images/animations/lasco-c3/latest.jpg",
         "CCOR": "https://services.swpc.noaa.gov/images/animations/ccor1/latest.jpg",
@@ -249,12 +247,11 @@ async def sunspot(source: Literal["SOHO", "SDO", "ASO-S"] | None) -> tuple[str, 
             content = (await httpx_client.get(url)).content
             return "获取成功", UniMessage.image(raw=content)
         case "ASO-S" | _:
-            # 构造请求的基本信息
             url = "http://aso-s.pmo.ac.cn:80/asosToday/getLastImg"
             payload = {
                 "basePath": "http://aso-s.pmo.ac.cn:80/",
                 "imageType": "wst",
-                "resolution": "",  # 请根据需要填入分辨率
+                "resolution": "",
             }
             aso_s_url = await httpx_client.post(url, data=payload)
             aso_s_img = (await httpx_client.get(aso_s_url.json()["msg"])).content

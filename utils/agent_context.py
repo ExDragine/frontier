@@ -13,9 +13,6 @@ class FrontierRuntimeContext:
     group_id: int | None
     group_member_role: str | None
     workspace_dir: str
-    # Generic identity fields are optional during the QQ compatibility phase.
-    # New platform adapters should populate these fields and stop relying on
-    # the legacy user_id/group_id pair once their tools have migrated.
     conversation: ConversationRef | None = None
     principal: Participant | None = None
     capabilities: frozenset[str] = frozenset()

@@ -67,9 +67,6 @@ def _mcp_text_items(value):
             for title, url, body in linked
         ]
 
-    # Some MCP adapters flatten Exa's result blocks into labelled text rather
-    # than preserving structured content. Keep the URL and the following
-    # metadata/body together so publication dates remain recoverable.
     labelled = re.compile(
         r"(?ms)(?:^|\n)(?:Title:\s*)?(.+?)\n(?:URL|Link):\s*(https?://\S+)(.*?)(?=\n(?:Title:|URL:|Link:)|\Z)"
     )
@@ -89,8 +86,6 @@ def _mcp_result_items(value):  # noqa: C901
             decoded = None
         if decoded is not None:
             return _mcp_result_items(decoded)
-        # Exa's MCP server may return markdown when structured content is not
-        # exposed by the adapter. Keep each linked result as an evidence item.
         return _mcp_text_items(value)
     if isinstance(value, list):
         items = []
@@ -167,8 +162,6 @@ def _mcp_articles(value, *, provider="exa"):
                 or item.get("date")
             )
             if published is None:
-                # Text-only MCP adapters can still expose the publication date
-                # in a labelled block. Never substitute fetched_at for it.
                 dates = re.findall(
                     r"\b20\d{2}-\d{2}-\d{2}(?:[T ][0-9:.+\-Z]+)?\b"
                     r"|\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+\d{1,2}\s+"

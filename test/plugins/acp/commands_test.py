@@ -52,8 +52,6 @@ def _group_message_event(text: str, *, sender_id: int = 456) -> MessageEvent:
 
 
 def test_acp_command_requires_superuser():
-    # nonebot 的 on() 会用 ``Permission() | permission`` 重建 Permission 对象，
-    # 因此比较 checker 集合，而不是对象身份。
     assert acp.acp_command.permission is not None
     assert acp.acp_command.permission.checkers == SUPERUSER.checkers
 

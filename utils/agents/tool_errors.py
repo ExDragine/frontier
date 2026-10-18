@@ -13,8 +13,6 @@ from .session_errors import CheckpointCapacityExceeded, SessionInterruptedError
 logger = logging.getLogger(__name__)
 BUDGET_ERRORS = (ModelCallLimitExceededError, ToolCallLimitExceededError)
 CONTROL_ERRORS = (*BUDGET_ERRORS, CheckpointCapacityExceeded, SessionInterruptedError)
-# Known network queries are safe to report as errors without aborting the turn.
-# They remain direct tools and are not automatically retried by ToolRetry.
 WEB_SEARCH_TOOL_NAMES = frozenset({
     "deepseek_web_search", "deepseek_web_fetch",
     "web_search_exa", "web_fetch_exa", "tavily_search", "tavily_extract",
@@ -27,7 +25,6 @@ class ToolExecutionUncertainError(RuntimeError):
 
 
 def read_only_error_message(exc: Exception) -> str:
-    # Match rate-limit hints without copying arbitrary service payloads into prompts.
     text = str(exc).lower()
     if any(marker in text for marker in ("429", "rate limit", "too many requests", "usage limit", "quota")):
         return "查询服务已限流。停止继续搜索或切换后端，使用已有证据完成回复，并说明资料可能不完整。"
@@ -51,8 +48,6 @@ def tool_error_middleware(*, read_only_tools=(), all_read_only: bool = False) ->
         )
         if all_read_only or name in names:
             return read_only_error_message(exc)
-        # Unknown tools are not assumed safe to repeat, even after ValueError:
-        # an implementation can raise after a successful external write.
         raise ToolExecutionUncertainError(name) from None
 
     return ToolErrorMiddleware(on_error=on_error)

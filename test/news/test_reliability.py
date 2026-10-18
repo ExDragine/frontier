@@ -92,11 +92,11 @@ async def test_retention_protects_active_generation_and_pending_delivery(repo, e
     cutoff = time.time() - 40 * 86400
     token = await repo.claim(edition)
     await repo._run(lambda db: db.execute("UPDATE news_reports SET updated_at=?", (cutoff,)))
-    assert await repo.prune(30) == 0  # Active generation lease.
+    assert await repo.prune(30) == 0
     await repo.fail(edition.report_id, token, "failed")
     await repo.stage_deliveries(edition.report_id, ["1"])
     await repo._run(lambda db: db.execute("UPDATE news_reports SET updated_at=?", (cutoff,)))
-    assert await repo.prune(30) == 0  # Pending delivery.
+    assert await repo.prune(30) == 0
     await repo.mark_delivery(edition.report_id, "1", "sent")
     await repo._run(lambda db: db.execute("UPDATE news_reports SET updated_at=?", (cutoff,)))
     await repo._run(lambda db: db.execute("UPDATE news_deliveries SET updated_at=?", (cutoff,)))

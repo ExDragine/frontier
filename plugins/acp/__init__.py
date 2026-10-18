@@ -26,8 +26,6 @@ def __getattr__(name: str) -> Any:
 
 __all__ = list(_EXPORTS)
 
-# NoneBot injects __plugin__ before executing a plugin package. Ordinary imports
-# (including the standalone stdio server) must not register QQ commands.
 if globals().get("__plugin__") is not None:
     from nonebot import require
 

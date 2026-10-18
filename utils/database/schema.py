@@ -76,7 +76,7 @@ def validate_database_schema(engine: Engine, *models: type[SQLModel]) -> None:
     for model in models:
         table = model.__table__
         if table.name not in existing:
-            continue  # create_all initializes new databases below.
+            continue
         columns = {column["name"] for column in inspector.get_columns(table.name)}
         missing = set(table.columns.keys()) - columns
         primary_key = inspector.get_pk_constraint(table.name)["constrained_columns"]

@@ -20,7 +20,6 @@ TEMPLATES_DIR = PROJECT_ROOT / "templates"
 CACHE_DIR = PROJECT_ROOT / "cache"
 
 _REMOTE_URL_RE = re.compile(r"^(?:https?|wss?)://", re.IGNORECASE)
-# 量取页面实际高度；markdown/html 两个渲染入口共用。
 _PAGE_HEIGHT_JS = """
     Math.max(
         document.body.scrollHeight,
@@ -157,7 +156,6 @@ async def _render_png(
     browser = await _get_browser()
     page = None
     try:
-        # 每次渲染使用独立 page，避免竞态
         page = await browser.new_page(**page_kwargs)
         if page_setup is not None:
             page_setup(page)
@@ -216,7 +214,7 @@ async def markdown_to_image(markdown_text, width=1000, css=None):
     html_content = md.render(markdown_text)
 
     def replace_mermaid(match):
-        code_content = html.unescape(match.group(1))  # 反转义 HTML 实体
+        code_content = html.unescape(match.group(1))
         return f'<div class="mermaid">{html.escape(code_content)}</div>'
 
     html_content = re.sub(

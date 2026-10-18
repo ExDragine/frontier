@@ -12,7 +12,6 @@ from typing import Any
 
 from nonebot import logger
 
-# 周易数据文件路径
 ICHING_DATA_DIR = Path(__file__).parent.parent / "data" / "iching"
 ICHING_INDEX_PATH = ICHING_DATA_DIR / "index.json"
 ICHING_TRIGRAMS_PATH = ICHING_DATA_DIR / "trigrams.json"
@@ -92,7 +91,6 @@ class IChingReader:
         self.hexagrams_list = index_data.get("hexagrams", [])
         self.trigrams = trigrams_data
 
-        # 构建上下卦映射表,加速查找
         self._build_lookup_table()
 
     def _build_lookup_table(self):
@@ -114,25 +112,20 @@ class IChingReader:
         Returns:
             dict: 占卜结果,包含original_hexagram, changing_hexagram, changing_lines
         """
-        lines = []  # 存储六爻的数值(6,7,8,9)
-        changing_lines = []  # 动爻位置(1-6)
+        lines = []
+        changing_lines = []
 
-        # 投掷6次,从下往上构建六爻
         for position in range(1, 7):
-            # 模拟投掷三枚铜钱: 正面=3, 反面=2
             coins = [secrets.choice([2, 3]) for _ in range(3)]
-            total = sum(coins)  # 6, 7, 8, 9
+            total = sum(coins)
 
             lines.append(total)
 
-            # 6(老阴)和9(老阳)是动爻
             if total in [6, 9]:
                 changing_lines.append(position)
 
-        # 生成本卦
         original_hex = self._generate_hexagram_from_lines(lines, False)
 
-        # 如果有动爻,计算变卦
         changing_hex = None
         if changing_lines:
             changing_hex = self._generate_hexagram_from_lines(lines, True)
@@ -142,7 +135,7 @@ class IChingReader:
             "changing_hexagram": changing_hex,
             "changing_lines": changing_lines,
             "method": "coin",
-            "lines_values": lines,  # 保存原始爻值用于显示
+            "lines_values": lines,
         }
 
     def divine_by_time(
@@ -160,11 +153,8 @@ class IChingReader:
             dict: 占卜结果
         """
         now = datetime.now()
-        # 传统命理中，23点之后就是“第二天”了
         is_next_day = now.hour >= 23
         if year is None:
-            # 注意：如果是12月31日23:00，年份也可能需要进位，
-            # 建议直接用 timedelta 处理日期进位
             target_time = now + timedelta(hours=1) if is_next_day else now
             year = target_time.year
             month = target_time.month
@@ -176,7 +166,6 @@ class IChingReader:
         if hour is None:
             hour = ((now.hour + 1) // 2 % 12) + 1
 
-        # 参数验证
         if not (1900 <= year <= 2100):
             raise ValueError(f"年份无效: {year}, 应在1900-2100之间")
         if not (1 <= month <= 12):
@@ -186,22 +175,18 @@ class IChingReader:
         if not (1 <= hour <= 12):
             raise ValueError(f"时辰无效: {hour}, 应在1-12之间")
 
-        # 八卦序数映射: 1=乾, 2=兑, 3=离, 4=震, 5=巽, 6=坎, 7=艮, 8=坤
         trigram_order = ["", "乾", "兑", "离", "震", "巽", "坎", "艮", "坤"]
 
-        # 计算上卦、下卦、动爻
         sum_ymd = year + month + day
-        upper_num = (sum_ymd % 8) or 8  # 余数0时取8
+        upper_num = (sum_ymd % 8) or 8
         lower_num = ((sum_ymd + hour) % 8) or 8
-        changing_line = ((sum_ymd + hour) % 6) or 6  # 1-6
+        changing_line = ((sum_ymd + hour) % 6) or 6
 
         upper_trigram = trigram_order[upper_num]
         lower_trigram = trigram_order[lower_num]
 
-        # 查找对应的卦象
         original_hex = self._find_hexagram_by_trigrams(upper_trigram, lower_trigram)
 
-        # 计算变卦(翻转动爻)
         changing_hex = self._calculate_changing_hexagram_simple(original_hex, [changing_line])
 
         time_info = f"{year}年{month}月{day}日 {self._hour_to_chinese(hour)}"
@@ -224,19 +209,16 @@ class IChingReader:
         Returns:
             dict: 占卜结果
         """
-        # 如果未提供数字,随机生成
         if num1 is None:
             num1 = secrets.randbelow(9999) + 1
         if num2 is None:
             num2 = secrets.randbelow(9999) + 1
 
-        # 参数验证
         if not (1 <= num1 <= 99999):
             raise ValueError(f"数字1超出范围: {num1}, 应在1-99999之间")
         if not (1 <= num2 <= 99999):
             raise ValueError(f"数字2超出范围: {num2}, 应在1-99999之间")
 
-        # 八卦序数映射
         trigram_order = ["", "乾", "兑", "离", "震", "巽", "坎", "艮", "坤"]
 
         upper_num = (num1 % 8) or 8
@@ -267,8 +249,6 @@ class IChingReader:
         Returns:
             dict: 卦象数据
         """
-        # 将爻值转换为二进制(1=阳, 0=阴)
-        # 6=老阴 7=少阳 8=少阴 9=老阳；变卦时只有老阴/老阳互相翻转。
         binary_lines = []
         for value in lines:
             is_yang = value in [7, 9]
@@ -276,9 +256,7 @@ class IChingReader:
                 is_yang = not is_yang
             binary_lines.append(1 if is_yang else 0)
 
-        # 下三爻(初、二、三爻)组成下卦
         lower_trigram = self._binary_to_trigram(binary_lines[0:3])
-        # 上三爻(四、五、上爻)组成上卦
         upper_trigram = self._binary_to_trigram(binary_lines[3:6])
 
         return self._find_hexagram_by_trigrams(upper_trigram, lower_trigram)
@@ -296,11 +274,9 @@ class IChingReader:
         key = (upper, lower)
         if key in self.hexagram_lookup:
             hex_info = self.hexagram_lookup[key]
-            # 加载详细数据
             detail = load_hexagram_detail(hex_info["file"])
             if detail:
                 return detail
-            # 如果详细数据加载失败,返回索引中的基本信息
             return hex_info
 
         raise ValueError(f"未找到卦象: 上卦{upper}, 下卦{lower}")
@@ -315,15 +291,12 @@ class IChingReader:
         Returns:
             dict: 变卦数据
         """
-        # 获取原卦的六爻阴阳
         lines_binary = self._hexagram_to_binary(original_hex)
 
-        # 翻转动爻
         for line_pos in changing_lines:
-            idx = line_pos - 1  # 转换为0-5索引
-            lines_binary[idx] = 1 - lines_binary[idx]  # 0变1, 1变0
+            idx = line_pos - 1
+            lines_binary[idx] = 1 - lines_binary[idx]
 
-        # 根据新的六爻查找变卦
         new_lower = self._binary_to_trigram(lines_binary[0:3])
         new_upper = self._binary_to_trigram(lines_binary[3:6])
 
@@ -415,7 +388,6 @@ class IChingReader:
 
         result = "☯️ 周易占卜结果\n\n"
 
-        # 问题和方法
         if question:
             result += f"📝 占问: {question}\n"
         result += f"🎲 方法: {method_names.get(method, method)}\n"
@@ -428,27 +400,22 @@ class IChingReader:
 
         result += "\n" + "━" * 50 + "\n\n"
 
-        # 本卦信息
         result += f"📿 本卦: {original_hex['full_symbol']} 第{original_hex['number']}卦 - {original_hex['name']}卦\n\n"
         result += f"   🎴 卦名: {original_hex['nature']}\n"
         result += f"   🔺 上卦: {original_hex['upper_trigram']} {original_hex['upper_symbol']}\n"
         result += f"   🔻 下卦: {original_hex['lower_trigram']} {original_hex['lower_symbol']}\n"
         result += f"   ⚡ 五行: {original_hex['element']}\n\n"
 
-        # 卦象图形
         result += "   卦象:\n"
         result += self._draw_hexagram_lines(original_hex, changing_lines, lines_values)
         result += "\n"
 
-        # 卦辞
         result += f"📜 卦辞: {original_hex['judgment']['text']}\n"
         result += f"   白话: {original_hex['judgment']['vernacular']}\n\n"
 
-        # 象辞
         result += f"📖 象辞: {original_hex['image']['text']}\n"
         result += f"   白话: {original_hex['image']['vernacular']}\n\n"
 
-        # 动爻信息
         if changing_lines:
             result += "━" * 50 + "\n\n"
             result += f"⚡ 动爻 ({len(changing_lines)}个):\n\n"
@@ -461,7 +428,6 @@ class IChingReader:
                     result += f"      {line['text']}\n"
                     result += f"      {line['vernacular']}\n\n"
 
-        # 变卦信息
         if changing_hex:
             result += "━" * 50 + "\n\n"
             result += (
@@ -477,7 +443,6 @@ class IChingReader:
             result += f"📜 卦辞: {changing_hex['judgment']['text']}\n"
             result += f"   白话: {changing_hex['judgment']['vernacular']}\n\n"
 
-        # 解读提示
         result += "━" * 50 + "\n\n"
         result += "💡 解读提示:\n\n"
 
@@ -489,7 +454,6 @@ class IChingReader:
             result += f"🏥 健康: {hints['health']}\n"
         result += f"📝 建议: {hints['advice']}\n\n"
 
-        # 通用解读说明
         result += "━" * 50 + "\n\n"
         result += "📖 占卜说明:\n"
         result += "   • 本卦代表当前状态和主要趋势\n"
@@ -516,24 +480,19 @@ class IChingReader:
         Returns:
             str: ASCII艺术形式的卦象
         """
-        # 从卦象符号推断六爻
         lines_binary = self._hexagram_to_binary(hexagram)
 
         yao_names = ["初爻", "二爻", "三爻", "四爻", "五爻", "上爻"]
         result = ""
 
-        # 从上往下绘制(显示顺序与计算顺序相反)
         for i in range(5, -1, -1):
             is_yang = lines_binary[i] == 1
             is_changing = (i + 1) in changing_lines
 
-            # 阳爻 ━━━━━  阴爻 ━━ ━━
             line_symbol = "━━━━━" if is_yang else "━━ ━━"
 
-            # 标记动爻
             change_marker = " ◯" if is_changing else "  "
 
-            # 如果有爻值,显示爻值类型
             yao_type = ""
             if lines_values and i < len(lines_values):
                 value = lines_values[i]

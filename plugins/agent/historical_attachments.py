@@ -65,8 +65,6 @@ async def _download(bot, source: MessageSource, message, ref: dict, segment: dic
         )
         if not data:
             return None
-        # read_file dispatches by suffix and cannot open BMP/TIFF as images.
-        # Normalize once before staging, including older unsupported caches.
         media = await asyncio.to_thread(normalize_image_for_model, data)
         if media is None:
             return None

@@ -94,7 +94,6 @@ async def test_initialization_failure_is_reported_without_provider_secrets(monke
     def fail(**kwargs):
         raise ValueError("secret provider configuration")
 
-    # All construction now happens inside the managed lifetime, not __init__.
     monkeypatch.setattr(cognitive, "build_document_subagent", fail)
     agent = cognitive.FrontierCognitive()
     result = await agent.chat_agent([], "1", "One")
@@ -119,9 +118,6 @@ async def test_configuration_revision_rebuilds_model_dependent_components(monkey
     await agent._prepare_components()
     await agent._prepare_components()
     assert len(builds) == 1
-    # Patch the class object that the module under test actually holds: the
-    # session-scoped configuration reload can replace ``utils.configs.EnvConfig``
-    # after this module imported it at collection time.
     monkeypatch.setattr(cognitive.EnvConfig, "REVISION", cognitive.EnvConfig.REVISION + 1)
     await agent._prepare_components()
     assert len(builds) == 2

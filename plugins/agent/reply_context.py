@@ -588,8 +588,6 @@ async def load_message_context(  # noqa: C901
         select_kwargs["peer_user_id"] = private_peer_user_id
     quoted = await messages_db.select_by_msg_id(msg_id=reply_seq, group_id=group_id, **select_kwargs)
     if quoted:
-        # Locally delivered replies store the source text, with no platform
-        # segments. A rendered Markdown image must not replace or accompany it.
         stored_assistant_text = (
             quoted.role == "assistant"
             and str(resolve_message_sender_user_id(quoted)) == str(source.bot_user_id)
@@ -633,10 +631,6 @@ async def load_message_context(  # noqa: C901
         image_presence_unknown = loaded_raw_segments is None and getattr(
             quoted, "normalized_status", "legacy"
         ) == "legacy"
-        # 未触发 Agent 的群图片可能只有文本占位符，需回源 Milky。
-        # 纯文本或纯文件引用不应因为“没有图片索引”而额外回源。
-        # On-demand reads cache individual segments. Such rows must not make a
-        # later whole-message quote look as if all its images were downloaded.
         partial_segment_cache = any('"segment_index"' in getattr(record, "metadata_json", "") for record in image_records)
         if (not image_records and (has_quoted_images or image_presence_unknown)) or missing_images or partial_segment_cache:
             if loaded_raw_segments is not None:
@@ -668,13 +662,9 @@ async def load_message_context(  # noqa: C901
                     )
                     durable_image_count = len(fetched_images) if cached else 0
                 else:
-                    # Existing partial rows keep their original ordinals. Do
-                    # not overwrite them with a compacted successful subset.
                     durable_missing_images = max(durable_missing_images, fetched_missing)
             elif not image_records:
                 durable_missing_images = len(re.findall(r"\[图片(?::[^\]\n]*)?\]", quoted.content))
-        # 回源会返回引用消息中的完整图片集合，不能再与部分本地缓存拼接，
-        # 否则已有图片会重复传给模型。
         images = fetched_images or local_images
         file_refs, missing_files = await _quoted_file_context(
             bot,

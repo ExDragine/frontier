@@ -72,9 +72,6 @@ class LLMDecisionProvider:
             _SYSTEM_PROMPT,
             _json_payload(state, questions),
             DecisionEnvelope,
-            # A dynamic answers map cannot be represented reliably by every
-            # provider's strict schema dialect.  text_json still gives the
-            # model the full Pydantic schema and validates it locally.
             method=self.method or "text_json",
             temperature=0,
         )

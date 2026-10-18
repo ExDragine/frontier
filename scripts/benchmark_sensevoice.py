@@ -192,7 +192,6 @@ async def _benchmark(args, directory):
         size = seconds * 16000 * 2
         return _wav((pcm * (size // len(pcm) + 1))[:size])
 
-    # Produce a genuine Tencent SILK clip with the locked codec dependency.
     import pysilk
 
     silk = io.BytesIO()

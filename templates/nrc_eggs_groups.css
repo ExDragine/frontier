@@ -47,7 +47,6 @@
     overflow: hidden;
 }
 
-/* ── Header ── */
 .eggs-groups-header {
     background: var(--surface);
     border-bottom: 1px solid rgba(0,0,0,0.06);
@@ -80,7 +79,6 @@
     letter-spacing: -0.02em;
 }
 
-/* ── Main ── */
 .eggs-groups-main {
     padding: var(--stack-md) var(--edge-margin) var(--stack-lg);
     display: flex;
@@ -89,7 +87,6 @@
     background: var(--surface-container-low);
 }
 
-/* ── Section Title ── */
 .section-title {
     font: 700 18px/1.4 "Plus Jakarta Sans", sans-serif;
     color: var(--on-surface);
@@ -102,9 +99,6 @@
     color: var(--on-surface-variant);
 }
 
-/* ══════════════════════════════════════════════
-   Compare Mode
-   ══════════════════════════════════════════════ */
 .compare-section {
     display: flex;
     flex-direction: column;
@@ -119,7 +113,6 @@
     gap: var(--stack-sm);
 }
 
-/* Pet Card (Compare) */
 .compare-pet-card {
     flex: 1;
     max-width: 180px;
@@ -195,7 +188,6 @@
     color: #c62828;
 }
 
-/* VS Divider */
 .compare-vs {
     display: flex;
     align-items: center;
@@ -214,7 +206,6 @@
     letter-spacing: 0.02em;
 }
 
-/* Result Banner */
 .compare-result {
     display: flex;
     align-items: center;
@@ -271,11 +262,6 @@
     margin-top: 2px;
 }
 
-/* ══════════════════════════════════════════════
-   Find Matches Mode
-   ══════════════════════════════════════════════ */
-
-/* Current Pet Section */
 .current-pet-section {
     display: flex;
     flex-direction: column;
@@ -356,7 +342,6 @@
     background: #c62828;
 }
 
-/* Matches Grid */
 .matches-section {
     background: var(--surface-container-lowest);
     border-radius: var(--radius-xl) var(--radius-xl) var(--radius-md) var(--radius-md);
@@ -436,7 +421,6 @@
     font: 500 9px/1.3 "Plus Jakarta Sans", sans-serif;
 }
 
-/* Empty State */
 .matches-empty {
     text-align: center;
     padding: 40px var(--stack-md);

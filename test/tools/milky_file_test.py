@@ -133,9 +133,6 @@ async def test_group_file_management_tools_call_milky(file_bot):
     ]
 
 
-# ── 沙箱 workspace 路径解析 ───────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_upload_private_file_resolves_workspace_path(file_bot, tmp_path):
     milky_file, _bot = file_bot

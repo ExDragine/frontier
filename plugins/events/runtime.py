@@ -101,7 +101,6 @@ _COMMAND_ARG = CommandArg()
 
 @command.handle()
 async def inspect_events(event: MessageEvent, args: Message = _COMMAND_ARG):
-    # Application comments are never echoed. Administration stays in private chat.
     if not event.is_private:
         await command.finish("请在私聊中管理事件。")
     await ready.wait()

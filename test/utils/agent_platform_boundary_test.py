@@ -89,9 +89,6 @@ def test_agent_protocol_import_boundary_is_clean():
     orchestration_module = root / "utils" / "agent_orchestration.py"
     if orchestration_module.is_file():
         paths.append(orchestration_module)
-    # The compatibility bridge is the first Agent-side runtime module that
-    # can be imported by a new platform adapter.  Keep its direct imports
-    # clean even while the older cognitive implementation is still migrating.
     for bridge_module in ("neutral_core.py", "runtime_gateway.py"):
         bridge_path = root / "utils" / "agents" / bridge_module
         if bridge_path.is_file():

@@ -150,14 +150,8 @@ async def collect_progress(stream, reporter: ProgressReporter | None) -> None:  
                         )
                         return
 
-            # The official v3 API exposes text and tool-call deltas as
-            # independent live projections. Consuming text first would drain
-            # the model call before the first tool-call chunk can be observed.
             await asyncio.gather(consume_text(), consume_early_tool_call())
 
-            # 每个 stream.messages 条目对应一次模型调用。只有带工具调用的
-            # AI 文本才是“边做边说”的过程发言；无工具调用的消息是终止回复，
-            # 继续交给正常的最终回复链路，避免重复发送。
             try:
                 tool_calls = await current_message.tool_calls
             except (AttributeError, TypeError):
@@ -183,8 +177,6 @@ async def collect_progress(stream, reporter: ProgressReporter | None) -> None:  
         try:
             await coro
         except Exception as exc:
-            # The v3 channels re-raise the same graph failure. Keep references
-            # until collection finishes so unrelated exceptions cannot reuse IDs.
             if id(exc) not in failures:
                 failures[id(exc)] = (exc, [])
             failures[id(exc)][1].append(projection)

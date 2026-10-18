@@ -9,14 +9,13 @@
 </head>
 <body>
     <div id="typhoon-card">
-        <!-- 右侧地图面板（全屏） -->
+
         <div class="right-panel">
             <div id="map"></div>
         </div>
 
-        <!-- 左侧信息面板（悬浮） -->
         <div class="left-panel">
-            <!-- 基础信息卡 -->
+
             <div class="info-card basic-card">
                 <div class="typhoon-name" style="color: {{ level_color }}">
                     {{ name }}
@@ -33,7 +32,6 @@
                 </div>
             </div>
 
-            <!-- 当前位置信息卡 -->
             <div class="info-card position-card">
                 <div class="info-row">
                     <span class="info-label">观测时间</span>
@@ -63,7 +61,6 @@
                 </div>
             </div>
 
-            <!-- 登陆信息卡 -->
             {% if land_points %}
             <div class="info-card land-card">
                 <div class="info-card-title">登陆信息</div>
@@ -96,7 +93,6 @@
             {% endif %}
         </div>
 
-        <!-- 图例 -->
         <div class="map-legend" id="legend">
             <div class="map-legend-title">强度分级</div>
             <div class="legend-item"><span class="legend-circle" style="background:#1afa29;border-color:#0ea82b"></span>热带低压</div>
@@ -121,7 +117,6 @@
     (function () {
         var data = {{ typhoon_data | tojson }};
 
-        // ── 地图初始化 ──
         var view = new ol.View({
             center: ol.proj.fromLonLat([125, 20]),
             zoom: 5
@@ -140,7 +135,6 @@
             })
         }));
 
-        // ── 坐标转换捷径 ──
         function to3857(lngLat) { return ol.proj.fromLonLat(lngLat); }
         function fStyle(opts) { return new ol.style.Style(opts); }
         function circleStyle(radius, fillColor, strokeColor, strokeWidth) {
@@ -153,7 +147,6 @@
             });
         }
 
-        // ==== 1. 历史轨迹线（天蓝色实线）====
         if (data.historyPolyline && data.historyPolyline.length > 0) {
             var histCoords = data.historyPolyline.map(function (p) { return to3857(p); });
             var histLine = new ol.Feature({ geometry: new ol.geom.LineString(histCoords) });
@@ -164,7 +157,6 @@
             map.addLayer(new ol.layer.Vector({ source: histLineSrc }));
         }
 
-        // ==== 2. 历史轨迹点（按强度着色）====
         if (data.historyPoints) {
             var histPtSrc = new ol.source.Vector();
             data.historyPoints.forEach(function (pt) {
@@ -175,13 +167,12 @@
             map.addLayer(new ol.layer.Vector({ source: histPtSrc }));
         }
 
-        // ==== 3. 预报路径（各机构虚线）+ 预报节点 ====
         if (data.forecastPaths) {
             var fcLineSrc = new ol.source.Vector();
             var fcPtSrc = new ol.source.Vector();
             data.forecastPaths.forEach(function (path) {
                 if (!path.points || path.points.length < 2) return;
-                var pts = path.points.slice(); // [lng, lat]
+                var pts = path.points.slice();
                 if (data.currentPos) {
                     pts.unshift([data.currentPos[1], data.currentPos[0]]);
                 }
@@ -192,7 +183,6 @@
                 }));
                 fcLineSrc.addFeature(line);
 
-                // 预报节点（跳过连接段起点，仅渲染预报节点本身）
                 for (var i = data.currentPos ? 1 : 0; i < coords.length; i++) {
                     var pf = new ol.Feature({ geometry: new ol.geom.Point(coords[i]) });
                     pf.setStyle(circleStyle(4, '#fff', path.color, 2));
@@ -203,13 +193,11 @@
             map.addLayer(new ol.layer.Vector({ source: fcPtSrc }));
         }
 
-        // ==== 4. 风圈 + 当前点 ====
         if (data.currentPos) {
             var clng = data.currentPos[1];
             var clat = data.currentPos[0];
             var cur3857 = to3857([clng, clat]);
 
-            /** 从中心沿 bearing 走 radiusKm 公里返回 [lng, lat] */
             function qPtLngLat(centerLng, centerLat, bearing, radiusKm) {
                 var R = 6371;
                 var lat1 = centerLat * Math.PI / 180;
@@ -225,15 +213,15 @@
                 if (quad && quad.ne != null && quad.nw != null && quad.se != null && quad.sw != null) {
                     var steps = 10;
                     var pts = [];
-                    // NE: 0°(北) → 90°(东)
+
                     for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, (i / steps) * 90, quad.ne));
-                    // SE: 90°(东) → 180°(南)
+
                     for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, 90 + (i / steps) * 90, quad.se));
-                    // SW: 180°(南) → 270°(西)
+
                     for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, 180 + (i / steps) * 90, quad.sw));
-                    // NW: 270°(西) → 360°(北)
+
                     for (var i = 0; i <= steps; i++) pts.push(qPtLngLat(centerLng, centerLat, 270 + (i / steps) * 90, quad.nw));
-                    // 闭合环：首尾相接
+
                     pts.push(pts[0].slice());
                     var ringCoords = pts.map(function (p) { return to3857(p); });
                     var poly = new ol.Feature({ geometry: new ol.geom.Polygon([ringCoords]) });
@@ -258,7 +246,6 @@
             drawWindRing(clng, clat, data.windRadius10Quad, data.windRadius10, '#FFD600');
             drawWindRing(clng, clat, data.windRadius12Quad, data.windRadius12, '#FF1744');
 
-            // ==== 5. 当前点 — 自定义图标 ====
             if (data.iconBase64) {
                 var iconSize = 44;
                 var markerEl = document.createElement('div');
@@ -282,7 +269,6 @@
             }
         }
 
-        // ==== 6. 登陆点标记 ====
         if (data.landPoints && data.landPoints.length > 0 && data.landIconBase64) {
             var landIconSize = 32;
             data.landPoints.forEach(function(lp) {
@@ -305,11 +291,6 @@
             });
         }
 
-        // ═══════════════════════════════════════════════
-        //  视野控制
-        // ═══════════════════════════════════════════════
-
-        /** 计算"轨迹安全展示区"——屏幕像素坐标的矩形区域。 */
         function getTyphoonSafeRect(map) {
             var sz = map.getSize();
             if (!sz) return null;
@@ -323,13 +304,11 @@
 
             var top = 80;
 
-            // 底部不受图例影响
             var bottom = mh - 24;
 
             return { left: left, right: right, top: top, bottom: bottom };
         }
 
-        /** 收集所有需要可见的地理点，构建 EPSG:4326 extent [minLng, minLat, maxLng, maxLat] */
         function createDisplayExtent(data) {
             var ext = ol.extent.createEmpty();
 
@@ -357,7 +336,6 @@
             return ol.extent.buffer(ext, 0.3);
         }
 
-        /** 画调试矩形（仅 debug 模式）。 */
         function drawDebugRect(data, safeRect) {
             if (!data.debug) return;
             var div = document.createElement('div');
@@ -376,7 +354,6 @@
             document.getElementById('typhoon-card').appendChild(div);
         }
 
-        /** 统一入口：计算安全区 → 将 extent fit 到安全区像素矩形。 */
         function focusTyphoonPath(map, data) {
             map.updateSize();
 
@@ -394,17 +371,15 @@
             var sz = map.getSize();
             if (!sz) return;
             var padding = [
-                safeRect.top,                    // 上
-                sz[0] - safeRect.right,          // 右
-                sz[1] - safeRect.bottom,         // 下
-                safeRect.left                     // 左
+                safeRect.top,
+                sz[0] - safeRect.right,
+                sz[1] - safeRect.bottom,
+                safeRect.left
             ];
 
             var ext3857 = ol.proj.transformExtent(ext4326, 'EPSG:4326', 'EPSG:3857');
             view.fit(ext3857, { padding: padding, maxZoom: 10, duration: 0 });
 
-            // fit 之后手动把地图 center 向左偏移，让路径在屏幕视觉上靠右
-            // 左侧留出空间让 overlay（云图/雷达）多露一些
             var safeW = safeRect.right - safeRect.left;
             var mapCenterPx = map.getPixelFromCoordinate(view.getCenter());
             if (!mapCenterPx) return;
@@ -413,14 +388,12 @@
             view.setCenter(newCenter);
         }
 
-        // 所有图层渲染完成后，最后一环聚焦视野
         try {
             focusTyphoonPath(map, data);
         } catch (e) {
-            // 地图未就绪时 focus 可能失败，保持默认视图，不影响叠加层
+
         }
 
-        // ==== 6. 图层叠加（云图 / 雷达）====
         if (data.overlayData) {
             var ov = data.overlayData;
             var ovExtent4326 = [ov.bounds[0][1], ov.bounds[0][0], ov.bounds[1][1], ov.bounds[1][0]];

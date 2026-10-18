@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 class TriggerUpdate(BaseModel):
-    trigger_type: str  # "cron" or "interval"
+    trigger_type: str
     trigger_args: dict
 
 
@@ -118,7 +118,6 @@ async def enable_task(
     task_manager: Any = Depends(task_manager_dependency),
 ):
     """启用任务"""
-    # 先检查任务是否存在
     task = await task_manager.get_task(job_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -137,7 +136,6 @@ async def disable_task(
     task_manager: Any = Depends(task_manager_dependency),
 ):
     """禁用任务"""
-    # 先检查任务是否存在
     task = await task_manager.get_task(job_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")

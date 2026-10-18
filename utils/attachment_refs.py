@@ -34,8 +34,6 @@ def format_attachment_refs(segments: list) -> str:
     refs = attachment_refs(segments)
     if not refs:
         return ""
-    # Keep identifiers separate from truncated message text and never expose
-    # temporary URLs or platform download credentials to the model.
     return " attachments=" + json.dumps(refs, ensure_ascii=False, separators=(",", ":"))
 
 

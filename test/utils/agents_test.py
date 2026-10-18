@@ -22,8 +22,6 @@ from utils.agents import prompts as prompts_mod
 from utils.agents import runtime as runtime_mod
 from utils.agents import workspace as workspace_mod
 
-# ── 共享 async 迭代工具 ──────────────────────────────────────────
-
 
 def _standard_test_image_block() -> dict[str, str]:
     output = BytesIO()
@@ -49,9 +47,6 @@ class _AsyncIter:
         if not self._items:
             raise StopAsyncIteration
         return self._items.pop(0)
-
-
-# ── 测试 ──────────────────────────────────────────────
 
 
 class _FakeStream:
@@ -503,7 +498,6 @@ async def test_assistant_agent_uses_basic_model_config(monkeypatch):
 
     monkeypatch.setattr(assistant_mod, "create_llm", capturing_create_llm)
 
-    # Monkeypatch the EnvConfig in the agents module
     monkeypatch.setattr(assistant_mod.EnvConfig, "BASIC_MODEL_PROVIDER", "anthropic_proxy")
     monkeypatch.setattr(assistant_mod, "model_supports", lambda *_args, **_kwargs: False)
 
@@ -1214,7 +1208,6 @@ async def test_chat_agent_stabilizes_tool_order_and_keeps_gated_tools_at_tail(mo
     )
 
     tool_names = [item.name for item in captured["tools"]]
-    # Every tool is a direct graph tool now that the PTC interpreter is gone.
     assert tool_names == [
         "alpha",
         "ens_normal",
@@ -1557,7 +1550,6 @@ class TestEmitProgress:
         from utils.agents.progress import ProgressEvent, emit_progress
 
         event = ProgressEvent(type="thinking", message="test")
-        # 不应抛异常
         await emit_progress(None, event)
 
     @pytest.mark.asyncio
@@ -1582,7 +1574,6 @@ class TestEmitProgress:
             raise RuntimeError("boom")
 
         event = ProgressEvent(type="thinking", message="test")
-        # 不应抛异常
         await emit_progress(failing_reporter, event)
 
 
@@ -1606,7 +1597,6 @@ class TestCollectProgress:
         from utils.agents.progress import collect_progress
 
         stream = self._mock_stream()
-        # 不应抛异常（emit_progress 短路）
         await collect_progress(stream, None)
 
     @pytest.mark.asyncio
@@ -1616,7 +1606,7 @@ class TestCollectProgress:
         from utils.agents.progress import collect_progress
 
         mock_text = MagicMock()
-        mock_text.__aiter__.return_value = iter([])  # 空文本迭代器
+        mock_text.__aiter__.return_value = iter([])
 
         mock_msg = MagicMock()
         mock_msg.text = mock_text
@@ -1771,7 +1761,6 @@ class TestCollectProgress:
 
         from utils.agents import cognitive as agents_mod
 
-        # 让 tool_calls 迭代器抛异常
         class _FailingIter:
             def __aiter__(self):
                 return self
@@ -1784,10 +1773,9 @@ class TestCollectProgress:
         mock_msg.text.__aiter__.return_value = iter([])
 
         stream = self._mock_stream(messages=[mock_msg])
-        stream.tool_calls = _FailingIter()  # 替换为失败的
+        stream.tool_calls = _FailingIter()
         reporter = MagicMock()
 
-        # 不应抛异常，thinking 事件仍应被发出
         await agents_mod.collect_progress(stream, reporter)
 
         thinking_calls = [c for c in reporter.call_args_list if c[0][0].type == "thinking"]
@@ -1905,7 +1893,6 @@ class TestChatAgentStreaming:
 
         from utils.agents import cognitive as agents_mod
 
-        # Mock create_deep_agent 返回的 agent
         mock_stream = MagicMock()
         mock_stream.abort = AsyncMock()
         mock_stream.output = AsyncMock(
@@ -1931,14 +1918,13 @@ class TestChatAgentStreaming:
             messages=[{"role": "user", "content": "hi"}],
             user_id="123",
             user_name="tester",
-            progress_reporter=None,  # 不传 reporter
+            progress_reporter=None,
         )
 
         assert isinstance(result, dict)
         assert "response" in result
         assert "total_time" in result
         assert "uni_messages" in result
-        # 验证 astream_events 被调用
         mock_agent.astream_events.assert_called_once()
 
     @pytest.mark.asyncio
@@ -1959,7 +1945,6 @@ class TestChatAgentStreaming:
         mock_stream = MagicMock()
         mock_stream.abort = AsyncMock()
 
-        # output 现在是 async method；用 async def 函数直接赋值
         async def _delayed_output():
             await asyncio.sleep(0)
             return mock_agent_output
@@ -1992,7 +1977,6 @@ class TestChatAgentStreaming:
 
         assert "response" in result
         assert len(collector_called) == 1, "collect_progress should be called once"
-        # 验证传入了 stream 和 reporter
         assert collector_called[0][0] is mock_stream
         assert collector_called[0][1] is reporter
 
@@ -2039,7 +2023,6 @@ class TestChatAgentStreaming:
             progress_reporter=reporter,
         )
 
-        # 错误路径应返回带有 error 键的 dict
         assert isinstance(result, dict)
         assert "response" in result
         assert "uni_messages" in result

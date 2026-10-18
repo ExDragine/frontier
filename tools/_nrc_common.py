@@ -11,7 +11,6 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-# 各站点共用的浏览器 UA（4 个 NRC 模块与 typhoon 原为 5 份逐字副本）。
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -23,7 +22,6 @@ API_HEADERS = {
     "Accept": "application/json",
 }
 
-# 图片下载专用头，不设 Accept 避免 CDN 返回 406
 IMG_HEADERS = {
     "User-Agent": USER_AGENT,
 }

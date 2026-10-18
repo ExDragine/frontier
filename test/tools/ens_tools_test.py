@@ -15,9 +15,6 @@ def vep_prefix():
         _ens_prefix.reset(token)
 
 
-# ── 普通模式 ens_normal ──
-
-
 @pytest.mark.asyncio
 async def test_ens_normal_scenario_not_found(load_tool_module):
     mod = load_tool_module("ens_normal")
@@ -86,7 +83,7 @@ async def test_ens_normal_space_mode_plays_video(load_tool_module, monkeypatch):
     )
 
     assert text == "费尔班克斯现在的极光：数据已返回 [本工具只返回极光数据，其他场景请让用户发新的ve查询]"
-    assert "anim=off" not in captured_url["url"]  # 不再有 anim=off
+    assert "anim=off" not in captured_url["url"]
     assert artifact is not None
 
 
@@ -130,9 +127,6 @@ async def test_ens_normal_record_video_failure(load_tool_module, monkeypatch):
     text, artifact = await mod.ens_normal(scenario="风速", location="北京")
     assert "获取失败" in text
     assert artifact is None
-
-
-# ── 专业模式 ens_professional ──
 
 
 @pytest.mark.asyncio
@@ -320,9 +314,6 @@ async def test_ens_professional_failure(load_tool_module, monkeypatch, vep_prefi
 
     assert "获取失败" in text
     assert artifact is None
-
-
-# ── URL 完整性 ──
 
 
 @pytest.mark.asyncio

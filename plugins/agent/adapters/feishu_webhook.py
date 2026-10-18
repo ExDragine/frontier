@@ -83,10 +83,6 @@ def _json_body(raw_body: bytes | bytearray | str | Mapping[str, object]) -> tupl
 
 
 def _signature(*, timestamp: str, nonce: str, encrypt_key: str, raw_body: bytes) -> str:
-    # Feishu's event signature is the SHA-256 digest of the three header
-    # values followed immediately by the exact raw request body.  Do not
-    # parse/re-serialize the body or add separators: whitespace and field
-    # order are part of the signed bytes.
     message = timestamp.encode("utf-8") + nonce.encode("utf-8") + encrypt_key.encode("utf-8") + raw_body
     return hashlib.sha256(message).hexdigest()
 
@@ -249,10 +245,6 @@ class FeishuWebhookConnector:
 
         headers = headers or {}
         raw, envelope = _json_body(raw_body)
-        # URL verification is a special handshake.  Feishu explicitly does
-        # not apply event signature validation to this request; when Encrypt
-        # Key is enabled, the outer envelope is decrypted first and the
-        # challenge/token are checked on the inner object.
         if envelope.get("type") == "url_verification":
             payload = envelope
         elif envelope.get("encrypt") is not None:
@@ -277,8 +269,6 @@ class FeishuWebhookConnector:
                 raise FeishuWebhookError("Feishu URL verification is missing challenge")
             return FeishuWebhookResult(200, {"challenge": challenge})
 
-        # With an encrypt key, the signature authenticates the raw body. With
-        # token-only mode, require the Verification Token on normal events.
         self._verify_token(payload, required=self.encrypt_key is None)
         if ignored := self._ignored_reason(payload):
             return FeishuWebhookResult(200, {"status": "ignored", "reason": ignored})
@@ -291,10 +281,6 @@ class FeishuWebhookConnector:
         try:
             outcome = await self.gateway.handle_event(prepared.payload)
         except ValueError:
-            # The adapter may reject an authenticated but incomplete payload
-            # (for example a provider event shape outside this MVP).  It is a
-            # valid callback from the transport's perspective, so ACK it
-            # without exposing exception text or causing a retry loop.
             return FeishuWebhookResult(200, {"status": "ignored", "reason": "unsupported_payload"})
         if outcome is None:
             return FeishuWebhookResult(200, {"status": "duplicate"})

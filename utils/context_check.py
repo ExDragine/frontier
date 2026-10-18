@@ -31,7 +31,6 @@ class TextCheck:
         quantization = importlib.import_module("torchao.quantization")
         transformers = importlib.import_module("transformers")
 
-        # load the tokenizer and the model
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
         self.model = transformers.AutoModelForCausalLM.from_pretrained(
             model_name, torch_dtype="auto", device_map="auto"
@@ -48,12 +47,10 @@ class TextCheck:
         return label, categories
 
     async def predict(self, prompt: str) -> tuple[Literal["Safe", "Unsafe", "Controversial"] | Any, list[Any]]:
-        # for prompt moderation
         messages = [{"role": "user", "content": prompt}]
         text = self.tokenizer.apply_chat_template(messages, tokenize=False)
         model_inputs = self.tokenizer([text], return_tensors="pt").to(self.model.device)
 
-        # conduct text completion
         generated_ids = self.model.generate(**model_inputs, max_new_tokens=128)
         output_ids = generated_ids[0][len(model_inputs.input_ids[0]) :].tolist()
 

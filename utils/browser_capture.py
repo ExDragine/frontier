@@ -21,7 +21,6 @@ from utils import browser_runtime
 
 logger = logging.getLogger(__name__)
 
-# 浏览器崩溃相关的错误消息特征
 _CRASH_MSG_SNIPPETS = (
     "Browser closed",
     "Target closed",
@@ -162,8 +161,6 @@ def _webm_to_mp4_bytes(
     if trim_duration is not None:
         cmd += ["-t", str(trim_duration)]
     cmd += ["-c:v", "libx264", "-preset", "fast", "-crf", "18", "-c:a", "aac", "-y", mp4_path]
-    # ffmpeg_path comes from imageio-ffmpeg and every argument is passed as a
-    # separate argv item; no shell or user-controlled executable is involved.
     result = subprocess.run(  # noqa: S603
         cmd,
         capture_output=True,

@@ -27,7 +27,6 @@ from utils.ens_common import EARTH_LOADING_WAIT as _EARTH_LOADING_WAIT
 from utils.ens_common import format_time_text as _format_time_text
 from utils.tool_helpers import tool_timer
 
-# BAA 等级含义（用于 tool 返回时附带说明，Agent 可据此解读）
 _BAA_LEVEL_MEANING: dict[str, str] = {
     "无压力": "海温正常，未超过珊瑚耐热阈值，珊瑚健康无白化风险",
     "No Stress": "海温正常，未超过珊瑚耐热阈值，珊瑚健康无白化风险",
@@ -48,9 +47,6 @@ _BAA_LEVEL_MEANING: dict[str, str] = {
 }
 
 
-# ── 数据表（data/ens/*.json）──
-# 场景映射表：key 为中文场景名，LLM 通过 docstring 中列出的清单做精确匹配。
-# anim_state="off" 表示该场景动画默认暂停，应返回截图。
 _ENS_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "ens"
 
 
@@ -65,9 +61,7 @@ def _load_coords_table(name: str) -> dict[str, tuple[float, float]]:
 
 
 SCENARIO_MAP: dict[str, dict] = _load_ens_data("scenario_map.json")
-# ── 国内城市坐标字典（lon, lat）── 与专业模式共用 utils/ens_common.py 中的同一张表
 _CITY_COORDS: dict[str, tuple[float, float]] = CITY_COORDS
-# ── 近海 / 全球海域坐标字典（lon, lat）──
 _COASTAL_SEA_COORDS: dict[str, tuple[float, float]] = _load_coords_table("coastal_sea_coords.json")
 _GLOBAL_SEA_COORDS: dict[str, tuple[float, float]] = _load_coords_table("global_sea_coords.json")
 
@@ -79,11 +73,9 @@ def _resolve_coords(location: str) -> tuple[float, float]:
 
     location = location.strip()
 
-    # 1) 精确匹配
     if location in _CITY_COORDS:
         return _CITY_COORDS[location]
 
-    # 2) 模糊匹配（最长优先）
     match = match_coords(location, _CITY_COORDS)
     if match is not None:
         return match
@@ -104,7 +96,6 @@ def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-# 海域坐标全集缓存（用于最近邻搜索）
 _SEA_COORDS_ALL: list[tuple[str, float, float]] | None = None
 
 
@@ -139,20 +130,16 @@ def _resolve_sea_coords(location: str) -> tuple[float, float]:
         raise ValueError("位置不能为空")
     location = location.strip()
 
-    # 1) 精确匹配近海
     if location in _COASTAL_SEA_COORDS:
         return _COASTAL_SEA_COORDS[location]
-    # 2) 精确匹配全球海域
     if location in _GLOBAL_SEA_COORDS:
         return _GLOBAL_SEA_COORDS[location]
 
-    # 保持近海优先、名称最长优先的模糊匹配顺序。
     for coords_table in (_COASTAL_SEA_COORDS, _GLOBAL_SEA_COORDS):
         match = _match_location(location, coords_table)
         if match is not None:
             return match
 
-    # 5) 兜底：城市坐标 → 最近海域
     city = _CITY_COORDS.get(location) or _match_location(location, _CITY_COORDS)
     if city:
         name, lon, lat = _nearest_sea_coords(city[0], city[1])
@@ -332,7 +319,6 @@ async def run_ens_normal(
     if queries is not None:
         return await _execute_query_batch(queries, time, no_video)
 
-    # ── 单地点分支 ──
     try:
         text, raw_bytes, is_video = await _execute_single_query(
             scenario, location, time, lon, lat, zoom, no_video=no_video,

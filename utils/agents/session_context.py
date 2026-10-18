@@ -54,15 +54,11 @@ class SessionHistoryMiddleware(AgentMiddleware):
         messages = request.messages
         cutoff = next((index for index, message in enumerate(messages) if message.id == self.lease.current_id), None)
         if cutoff is None:
-            # Deep Agents may have already summarized the current turn. Its
-            # compaction protocol owns that representation; do not slice it.
             return request
         current = messages[cutoff:]
         reserved = count_tokens_approximately(current)
         if request.system_message is not None:
             reserved += count_tokens_approximately([request.system_message])
-        # Tool schemas and provider accounting vary. Reserve their serialized size
-        # conservatively in addition to a margin for the next model response.
         reserved += sum(len(str(getattr(tool, "args", tool))) for tool in request.tools) // 3 + 4096
         budget = history_budget(self.lease.entry.settings, self.profile, reserved_tokens=reserved)
         history = recent_complete_turns(messages[:cutoff], budget)

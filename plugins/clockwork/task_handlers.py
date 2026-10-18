@@ -17,7 +17,6 @@ from utils.timeutil import SHANGHAI
 
 from .task_models import TaskRunResult
 
-# 共享的资源
 event_database = EventDatabase()
 httpx_client = get_http_client("task_handlers")
 
@@ -47,7 +46,6 @@ async def earth_now(**kwargs):
     try:
         response = await httpx_client.get(url)
         response.raise_for_status()
-        # 确保完整读取响应体
         content = await response.aread()
     except HTTPError as e:
         logger.warning(f"获取Earth Now图片失败: {e}", "准备重试...")
@@ -86,13 +84,11 @@ async def eq_usgs(**kwargs):
         logger.debug("USGS API 返回空数据或缺少 features，跳过")
         return
 
-    # 获取最新的地震数据
     data = content["features"][0]
     event_id = str(data["id"])
     properties = data["properties"]
     coordinates = data["geometry"]["coordinates"]
 
-    # 检查是否是新地震且震级大于限制
     if new_id != event_id:
         if not await event_database.select(EVENT_NAME):
             await event_database.insert(EVENT_NAME, event_id)
@@ -102,7 +98,6 @@ async def eq_usgs(**kwargs):
         logger.debug(f"USGS 地震已处理过 (event_id={event_id})，跳过")
         return
     logger.debug(f"检测到{properties['place']}发生{properties['mag']}级地震")
-    # 准备详细信息
     detail = [
         {
             "label": "⏱️发震时间",
@@ -115,11 +110,9 @@ async def eq_usgs(**kwargs):
         {"label": "🌐经度", "value": coordinates[0]},
     ]
 
-    # 如果有海啸警报，添加警告信息
     if properties.get("tsunami") == 1:
         detail.append({"label": "🌊警告", "value": "可能发生海啸"})
 
-    # 如果有烈度信息，添加烈度数据
     if properties.get("mmi"):
         detail.append({"label": "💢最大烈度", "value": f"{properties['mmi']}"})
 
@@ -228,7 +221,6 @@ async def nrc_merchant_alert(**kwargs):
                 output_summary=f"nrc_merchant_alert [{source}] → {hit_names or '无目标'} ({groups_sent})",
             )
 
-        # 双 API 均无效
         if not first_failure_notified:
             first_failure_notified = True
             for group in EnvConfig.NRC_MERCHANT_GROUP_ID:

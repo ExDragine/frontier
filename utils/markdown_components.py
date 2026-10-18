@@ -99,22 +99,17 @@ def _fence_nodes(token: Token) -> list[dict[str, Any]] | None:
     kind = token.info.strip()
     if kind == "mermaid" and len(token.content) <= 2000:
         return [{"type": "mermaid", "text": token.content}]
-    # These blocks use the same validated JSON contract as the other rich
-    # blocks.  Keeping the language tag explicit prevents them from falling
-    # through to an opaque `json` code block in the renderer.
     if kind not in {"chart", "stats", "timeline", "ui", "three", "flow"}:
         return None
     try:
         config = parse_rich_block(kind, token.content).model_dump(mode="json", exclude_none=True, exclude_unset=True)
         if kind == "ui":
             return config["children"]
-        # chart/stats/timeline are wrapped in a config object for the
-        # renderer; media-style rich nodes already match UIComponent directly.
         if kind in {"three", "flow"}:
             return [config]
         return [{"type": kind, "config": config}]
     except (ValidationError, TypeError, ValueError):
-        return None  # Keep invalid data as Markdown code, alongside valid siblings.
+        return None
 
 
 def _markdown_children(md: MarkdownIt, source: str, env: dict[str, Any]) -> list[dict[str, Any]]:
@@ -201,8 +196,6 @@ def _component_rule(state: StateBlock, start: int, end: int, silent: bool) -> bo
         validated = UIBlock.model_validate({"children": [node]})
         token.meta["node"] = validated.model_dump(mode="json", exclude_none=True, exclude_unset=True)["children"][0]
     except (ValidationError, TypeError, ValueError, RecursionError):
-        # Recover the prose, rather than turn a whole answer into a JSON/code wall.
-        # The plain parser also leaves nested invalid syntax inert.
         pass
     return True
 
@@ -233,8 +226,6 @@ def markdown_components_plugin(md: MarkdownIt, *, plain_text: bool = False) -> N
 
 def has_markdown_components(source: str) -> bool:
     """Recognize real components, excluding syntax examples inside Markdown code."""
-    # Markdown containers can prefix a component with `>` or a list marker.
-    # The parser, rather than this cheap prefilter, decides whether it is a block.
     if not _CANDIDATE.search(source):
         return False
     md = _plain_parser().use(markdown_components_plugin)

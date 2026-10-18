@@ -41,7 +41,6 @@ def _validate_mcp_config(description: dict) -> None:
     try:
         jsonschema.validate(description, _MCP_JSON_SCHEMA)
     except jsonschema.ValidationError as exc:
-        # ValidationError's full text includes the config instance and credentials.
         location = ".".join(str(part) for part in exc.absolute_path) or "root"
         raise ValueError(f"MCP 配置字段无效: {location} ({exc.validator})") from None
 
@@ -49,7 +48,7 @@ def _validate_mcp_config(description: dict) -> None:
         try:
             parsed = urlsplit(entry["url"])
             valid = parsed.scheme in {"http", "https"} and bool(parsed.hostname)
-            _ = parsed.port  # Reject malformed ports without logging the URL.
+            _ = parsed.port
             valid = valid and not any(char.isspace() for char in entry["url"])
         except ValueError:
             valid = False
@@ -88,7 +87,6 @@ def _load_and_validate(config_path: str = "mcp.json") -> dict:
     try:
         _validate_mcp_config(description)
     except ValueError as exc:
-        # 安全校验失败 — 这是配置错误，不应静默跳过
         raise RuntimeError(f"MCP 配置安全校验失败: {exc}") from exc
 
     logger.info("MCP 配置校验通过: %d 个服务", len(description))
@@ -109,7 +107,6 @@ _RETRY_SECONDS = 60
 def _error_summary(exc: BaseException) -> str:
     while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
         exc = exc.exceptions[0]
-    # Remote exception text can include the authenticated URL or headers.
     status = getattr(getattr(exc, "response", None), "status_code", None)
     return f"{type(exc).__name__} (HTTP {status})" if status is not None else type(exc).__name__
 

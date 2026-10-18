@@ -64,7 +64,7 @@ async def test_partial_download_keeps_original_indices_and_reuses_cached_selecti
 
     monkeypatch.setattr(reply_context, "_download_milky_image", download)
     result = await _load(database, tmp_path)
-    assert result["sender_user_id"] == 111  # not the user asking about Alice's image
+    assert result["sender_user_id"] == 111
     assert [(item["segment_index"], item["status"]) for item in result["attachments"]] == [(1, "unavailable"), (2, "ready")]
     path = result["attachments"][1]["path"]
     assert path.startswith("/memory/group-123/")

@@ -63,8 +63,6 @@ async def get_paint(
 
     reference_images = []
     if mode != "generate":
-        # Filesystem blob offload and model capability filtering can remove
-        # inline images from graph messages. The per-request bytes are canonical.
         reference_images = state_view.binary_inputs("image_inputs") or [
             media.data for media in state_view.iter_media("image_url", "image_url", "data:image/")
         ]

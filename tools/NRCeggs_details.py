@@ -68,7 +68,6 @@ def _parse_prob(prob_raw) -> str:
         value = float(str(prob_raw)) * 100
     except ValueError, TypeError:
         return "0.00"
-    # 截断到两位小数：将浮点数展开到高精度字符串，取前两位小数
     s = f"{value:.10f}"
     dot = s.find(".")
     if dot == -1:

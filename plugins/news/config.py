@@ -46,7 +46,6 @@ class NewsConfig(BaseModel):
     @field_validator("model_extra_body")
     @classmethod
     def bounded_model_options(cls, value):
-        # This snapshot is persisted. Never accept credentials or arbitrary request bodies here.
         if value and (set(value) != {"thinking"} or not isinstance(value["thinking"], dict)
                       or set(value["thinking"]) != {"type"}
                       or value["thinking"]["type"] not in {"enabled", "disabled"}):

@@ -272,4 +272,3 @@ async def handle_set_wake_clear(event: MessageEvent):
 @model_cmd.handle()
 async def handle_model():
     await _send_current_model_summary()
-

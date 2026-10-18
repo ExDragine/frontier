@@ -1,4 +1,3 @@
-// 消息历史页面
 const MessagesPage = {
     template: `
         <div class="space-y-6">
@@ -90,7 +89,7 @@ const MessagesPage = {
                 const data = await ApiClient.get('/messages/groups');
                 groups.value = data.groups;
             } catch (err) {
-                // 忽略
+
             }
         };
 
