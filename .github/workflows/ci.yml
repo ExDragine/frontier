@@ -14,11 +14,11 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           python-version: '3.14'
@@ -34,6 +34,14 @@ jobs:
         run: uv run --locked python scripts/generate_renderer_types.py --check
       - name: Compile Python sources
         run: uv run --locked python -m compileall -q models plugins scripts tools utils
+      - name: Check typed runtime boundaries
+        run: >-
+          uv run --locked ty check
+          utils/agent_context.py utils/harness_profiles.py utils/mcp.py
+          utils/agents/inputs.py utils/agents/execution.py
+          utils/agents/runtime.py utils/agents/runtime_gateway.py
+          utils/delivery.py
+          plugins/dashboard/api/settings_routes.py
       - name: Test (including real dependency contracts)
         run: >-
           env -u ALL_PROXY -u all_proxy
@@ -58,7 +66,7 @@ jobs:
         run: uv run --locked python scripts/check_message_renderer.py --live-media --iframe-url "https://zh.wikipedia.org/wiki/%E6%9D%8E%E5%AD%90" --output-dir "${{ runner.temp }}/frontier-ui/wikipedia"
       - name: Upload renderer screenshots and checks
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: message-renderer-qa
           path: ${{ runner.temp }}/frontier-ui
@@ -66,14 +74,14 @@ jobs:
           retention-days: 7
 
   renderer:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
       run:
         working-directory: renderer
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm

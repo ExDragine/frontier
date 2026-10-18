@@ -265,9 +265,9 @@ class UIMap(_RichModel):
     height: int = Field(default=480, ge=200, le=1000)
     title: ShortText | None = None
     caption: ShortText | None = None
-    markers: list["UIMapMarker"] = Field(default_factory=list, max_length=50)
-    paths: list["UIMapPath"] = Field(default_factory=list, max_length=20)
-    analysis: "UIMapAnalysis | None" = None
+    markers: list[UIMapMarker] = Field(default_factory=list, max_length=50)
+    paths: list[UIMapPath] = Field(default_factory=list, max_length=20)
+    analysis: UIMapAnalysis | None = None
 
 
 class UIMapMarker(_RichModel):

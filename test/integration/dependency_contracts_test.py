@@ -171,13 +171,13 @@ assert result["response"]["messages"][-1].content == "contract completed", resul
 assert result["artifacts"][0].kind == "image", result
 assert result["artifacts"][0].data == b"contract-image", result
 assert len(model.seen_messages) == 2, model.seen_messages
-skill_body = (Path(sys.argv[1]) / "skills" / "rich-markdown" / "SKILL.md").read_text().split("---", 2)[2].strip()
+skill_body = (Path(sys.argv[1]) / "skills" / "rich-markdown" / "SKILL.md").read_text(encoding="utf-8").split("---", 2)[2].strip()
 for messages in model.seen_messages:
     pinned = [message for message in messages if message.additional_kwargs.get("lc_source") == "pinned_skill"]
     assert len(pinned) == 1, messages
     assert pinned[0].additional_kwargs["skill"]["name"] == "rich-markdown", pinned[0]
     assert pinned[0].additional_kwargs["skill"]["path"] == "/skills/rich-markdown/SKILL.md", pinned[0]
-    assert skill_body in pinned[0].content, pinned[0]
+    assert skill_body in pinned[0].content.replace("\r\n", "\n"), pinned[0]
 assert not any(call["name"] == "read_file" for messages in model.seen_messages for message in messages
                if isinstance(message, AIMessage) for call in message.tool_calls)
 workspace_key = conversation_workspace_key("contract", None)

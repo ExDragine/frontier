@@ -38,10 +38,15 @@ def test_build_document_subagent_is_read_only_and_bounded(monkeypatch):
         "ToolErrorMiddleware",
         "ToolCallLimitMiddleware",
         "ModelCallLimitMiddleware",
+        "MediaInputMiddleware",
     ]
     middleware = cast(list[Any], subagent["middleware"])
     assert middleware[1].run_limit == 8
     assert middleware[2].run_limit == 6
+    assert middleware[3].model == document.EnvConfig.BASIC_MODEL
+    assert middleware[3].role == "basic"
+    assert middleware[3].max_images == document.EnvConfig.MAX_INLINE_IMAGES
+    assert middleware[3].max_bytes == document.EnvConfig.MAX_INLINE_MEDIA_BYTES
     permission = subagent["permissions"][0]
     assert permission.operations == ["write"]
     assert permission.paths == ["/**"]

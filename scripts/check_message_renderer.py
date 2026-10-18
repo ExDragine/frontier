@@ -189,7 +189,8 @@ def case_checks(name, observed, width, image):
     if name == "media":
         checks.update(
             {
-                "media_images": len(observed["mediaImages"]) == 2 and all(observed["mediaImages"]),
+                "media_images": len(observed["mediaImages"]) == 1 and all(observed["mediaImages"]),
+                "map_overlay": len(observed["mapLayers"]) == 1 and all(observed["mapLayers"]),
                 "isolated_frame": observed["frame"] and observed["frameImage"] and 0.15 < observed["frameRatio"] <= 4,
                 "card_colors": len(set(observed["colored"])) == 2,
                 "failure_fallback": observed["fallback"],
@@ -200,7 +201,10 @@ def case_checks(name, observed, width, image):
     if name == "live":
         checks.update(
             {
-                "public_images_and_map": len(observed["mediaImages"]) == 2 and all(observed["mediaImages"]),
+                "public_images_and_map": len(observed["mediaImages"]) == 1
+                and all(observed["mediaImages"])
+                and len(observed["mapLayers"]) == 1
+                and all(observed["mapLayers"]),
                 "public_frame": observed["frame"] and observed["frameImage"],
                 "no_media_fallback": not observed["fallback"],
             }
@@ -223,7 +227,8 @@ def markdown_case_checks(name, observed, width):
         checks["markdown_step_formatting"] = observed["stepBold"] == 3
         checks["complete_step_commands"] = observed["stepCodeFits"]
     elif name == "markdown-media":
-        checks["standalone_media"] = len(observed["allMediaImages"]) == 2 and all(observed["allMediaImages"])
+        checks["standalone_media"] = len(observed["allMediaImages"]) == 1 and all(observed["allMediaImages"])
+        checks["standalone_map"] = len(observed["allMapLayers"]) == 1 and all(observed["allMapLayers"])
         checks["isolated_frame"] = observed["frameImage"] and observed["allFrames"] == 1
         checks["local_media_failure"] = observed["allFallbacks"] == 1
     return checks
@@ -347,6 +352,11 @@ async def verify(
                         await page.evaluate("""() => {
                         const doc = document.querySelector('.md-ui-document');
                         const content = document.querySelector('#markdown-content');
+                        const mapLayers = root => [...root.querySelectorAll('.md-leaflet-map')].map(map => {
+                            const images = [...map.querySelectorAll('img.leaflet-image-layer')];
+                            return map.dataset.mapRendered === 'true' && images.length === 1
+                                && images.every(image => image.complete && image.naturalWidth > 100);
+                        });
                         const modules = [...doc.children].map(node => node.getBoundingClientRect());
                         const table = doc.querySelector('.md-ui-table');
                         const chart = doc.querySelector('.md-chart-canvas svg');
@@ -368,6 +378,7 @@ async def verify(
                             stepBold: content.querySelectorAll('.md-ui-steps strong').length,
                             stepCodeFits: [...content.querySelectorAll('.md-ui-steps pre')].every(p => p.scrollWidth <= p.clientWidth),
                             allMediaImages: [...content.querySelectorAll('.md-ui-picture')].map(i => i.complete && i.naturalWidth > 100),
+                            allMapLayers: mapLayers(content),
                             allFrames: content.querySelectorAll('iframe[sandbox=""]').length,
                             allFallbacks: content.querySelectorAll('.md-media-fallback').length,
                             state: window.__FRONTIER_RENDER__,
@@ -407,6 +418,7 @@ async def verify(
                             weightedTable: doc.querySelectorAll('colgroup col').length,
                             footer: !!doc.querySelector('.md-ui-card-footer'),
                             mediaImages: [...doc.querySelectorAll('.md-ui-picture')].map(i => i.complete && i.naturalWidth > 100),
+                            mapLayers: mapLayers(doc),
                             frame: !!doc.querySelector('iframe[sandbox=""]'),
                             frameRatio: doc.querySelector('iframe')?.getBoundingClientRect().height / doc.querySelector('iframe')?.getBoundingClientRect().width,
                             colored: [...doc.querySelectorAll('.md-ui-card')].map(c => getComputedStyle(c).backgroundColor),
