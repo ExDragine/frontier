@@ -38,7 +38,7 @@
 6. prompt 响应中的 `stopReason` 表示结束。`session/cancel` 是通知，取消后仍等待 prompt 结束。
 
 客户端根据 `agentCapabilities.promptCapabilities` 判断图片和音频支持。文本是基线输入；
-不支持的媒体附带省略说明。群聊只发送最终回复，私聊可发送脱敏后的进度；原始思考不外发。
+不支持的媒体附带省略说明。群聊和私聊均只发送最终回复；`session/update` 的工具进度不会转发到 QQ，原始思考不外发。
 权限默认拒绝；`allow_once`／`allow_always` 仅匹配对端提供的对应选项。
 客户端不声明宿主文件系统或终端执行能力。超时或异常后关闭进程，下次请求新建连接。
 

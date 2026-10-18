@@ -24,11 +24,13 @@ Run the same checks as CI:
 ```bash
 uv run --locked ruff format --check scripts/check_local_links.py
 uv run --locked ruff check .
+uv run --locked python scripts/check_local_links.py
+uv run --locked python scripts/generate_renderer_types.py --check
+uv run --locked python -m compileall -q models plugins scripts tools utils
 uv run --locked ty check utils/agent_context.py utils/harness_profiles.py utils/mcp.py \
   utils/agents/inputs.py utils/agents/execution.py utils/agents/runtime.py \
   utils/agents/runtime_gateway.py utils/delivery.py \
   plugins/dashboard/api/settings_routes.py
-uv run --locked python scripts/check_local_links.py
 uv run --locked pytest test/ -q
 npm ci --prefix renderer
 npm run build:check --prefix renderer

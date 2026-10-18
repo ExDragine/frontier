@@ -1,19 +1,42 @@
 # Frontier
 
-Frontier 是一个基于 [NoneBot2](https://nonebot.dev/) 和 Milky 适配器的 AI QQ 聊天机器人。它把 QQ 消息接入 LangGraph/deepagents 驱动的 Deep Agent，支持多模型路由、工具调用、文件系统工作区、图片/视频生成、聊天记录检索、定时任务和 Web 管理面板。
+Frontier 是一个基于 [NoneBot2](https://nonebot.dev/) 与 Milky 适配器的 AI QQ 聊天机器人。QQ 消息经归一化、存储、回复门控和内容安全检查后，交给 LangGraph/deepagents 驱动的 Deep Agent 执行，支持多模型路由、工具调用、文件系统工作区、图片/视频生成、聊天记录检索、定时任务、ACP 子代理和 Web 管理面板。
 
-项目维护入口：
-[贡献指南](CONTRIBUTING.md) · [安全策略](SECURITY.md) · [变更记录](CHANGELOG.md)。
-设计文档描述当前边界或历史决策；具体行为以代码和测试为准。
+维护入口：[贡献指南](CONTRIBUTING.md) · [安全策略](SECURITY.md) · [变更记录](CHANGELOG.md) · [文档索引](docs/README.md)。设计文档描述当前边界或历史决策；具体行为以代码和测试为准。
+
+## 能力概览
+
+- **QQ 主链路**：群聊与私聊的文本、图片、语音、视频、文件、引用和合并转发；回复网关在媒体下载前完成黑白名单、@、唤醒词和 Decision LLM 判断。
+- **Deep Agent**：主模型驱动工具调用、文件系统 workspace、memory、子代理和内置 Skill；主 Agent 直接持有聊天历史检索、联网搜索、媒体生成与平台写操作工具。
+- **富文本回复**：Markdown 正文与轻量组件按需渲染成长图，支持卡片、分区、步骤、表格、图表、公式、Mermaid、地图与网页快照；本地资源不依赖 CDN。
+- **多模型路由**：OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek 统一由供应商 profile 管理，模型目录提供上下文窗口与能力元数据。
+- **工具与集成**：`tools/` 下约 128 个 `@tool` 入口，覆盖平台操作、媒体生成、搜索、天文/地球、占卜、提醒与自动任务；MCP 工具通过 `mcp.json` 接入，ACP Agent 通过 `acp.json` 接入。
+- **运维能力**：FastAPI Dashboard、APScheduler 定时任务、独立新闻管线、Milky 申请事件处理、Wolfx 地震预警、会话缓存与执行用量统计。
+
+## 内置插件
+
+`plugins/` 下由 NoneBot 加载 9 个插件包。管理命令中 `/update`、`/restart`、`/news` 和 `/acp` 仅超级用户可用；`/model` 向所有用户开放以查看当前模型配置；`/task` 在 handler 内按超级用户或任务属主判断。
+
+| 插件 | 功能 |
+| --- | --- |
+| `plugins/agent` | 核心对话入口：消息提取、引用上下文、DB 写入、回复门控、内容安全、Agent 调度与回复发送 |
+| `plugins/acp` | ACP v1/v2 客户端与服务端、`/acp` 命令、子代理桥接和进程维护 |
+| `plugins/clockwork` | APScheduler 定时任务：内置任务、用户自动任务、任务命令和执行历史；`daily_news` 只注册任务，处理器位于 `plugins/news` |
+| `plugins/dashboard` | FastAPI Dashboard：JWT 鉴权、状态/消息/设置/任务管理 API 与 `/dashboard` 静态前端 |
+| `plugins/events` | Milky 申请事件：独立持久化收件箱、规则/受限决策、执行校验与恢复；默认只记录，`/events` 仅超级用户私聊管理 |
+| `plugins/news` | 独立新闻管线：Exa MCP 或 Exa/Tavily REST 检索 → 证据约束编辑 → `news.db` 归档 → 渲染 → 逐目标投递 |
+| `plugins/playground` | `/paint`、`/video` 命令和戳一戳响应，复用共享图片/视频服务 |
+| `plugins/toolbox` | `/update`、`/restart`、`/model`、`/set wake`、`/vehelp` 等管理命令 |
+| `plugins/wolfx` | Wolfx CENC 地震预警：WebSocket 长连接、事件去重、渲染与推送 |
 
 ## 核心架构
 
-```
+```text
 QQ / Milky MessageEvent
   ↓
 plugins/agent on_message(priority=10)
   ↓
-文本/消息段提取 → 消息归一化 → 引用上下文 → DB 存储
+消息段提取 → 归一化 → 引用上下文 → DB 存储
   ↓
 message_gateway 门控（黑白名单 / @ / 唤醒词 / Decision LLM）
   ↓
@@ -21,93 +44,59 @@ message_gateway 门控（黑白名单 / @ / 唤醒词 / Decision LLM）
   ↓
 ConversationOrchestrator（平台中性编排）
   ↓
-FrontierAgentCore → FrontierAgentRuntime.run
+FrontierAgentCore → FrontierAgentRuntime.run → FrontierCognitive.chat_agent()
   ↓
-FrontierCognitive.chat_agent()
-  ↓
-deepagents.create_deep_agent()
-  ↓
-工具调用 / 文件系统后端 / memory
+deepagents.create_deep_agent() → 工具调用 / 文件系统后端 / memory
   ↓
 UniMessage 文本、图片、视频或文件回复
 ```
 
-主要设计点：
-- **先存储、后门控、再下载媒体**：未触发回复的图片/视频不会被下载。
-- **会话串行**：QQ 使用两级命名锁——`delivery:{workspace_key}` 覆盖模型生成、工件发送、最终回复和送达落库，`workspace:{workspace_key}` 覆盖同一 workspace 的 Agent 执行；固定顺序是先取 delivery 锁再取 workspace 锁，不可反向嵌套。不同群和不同私聊可并发。
-- **多模型路由**：OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek 统一由 `utils/llm_factory.py` 创建。
-- **文件系统工作区**：群聊使用 `group-{group_id}`、私聊使用 `dm-{user_id}`，同一个裸数字不会共享 workspace 或 memory。
-- **分层提示词**：`env.toml` 定义基础人设，`prompts/AGENTS.md` 定义常驻全局规范，workspace `SOUL.md` 由 Memory middleware 注入动态人设。QQ 主回复通过 Deep Agents 的 `pinned_skills` 在首个模型调用前加载精简的富文本排版技能；详细组件契约与其他平台操作流程仍按需读取。短聊天保持文字，长解释、比较和指南主动选择适合内容的组件。
-- **媒体工件直发**：工具返回的 `UniMessage` artifact 会被提取并直接发送到 QQ。
+关键边界：
 
-## 功能模块
+- 先存储、后门控、再下载媒体，未触发回复的图片和视频不会被下载。
+- QQ 使用两级命名锁：`delivery:{workspace_key}` 覆盖生成、工件发送、最终回复和送达落库，`workspace:{workspace_key}` 覆盖同一 workspace 的 Agent 执行；顺序固定为 delivery → workspace。
+- 群聊按 `group-{group_id}` 共享 workspace 与 memory，私聊按 `dm-{user_id}` 隔离。
+- 工具返回的 `UniMessage` 工件会被提取并直接发送，多媒体工件拆分后串行发送。
 
-`plugins/` 下由 NoneBot 加载 8 个插件包：
-
-| 插件 | 功能 |
-|------|------|
-| `plugins/agent` | 核心对话引擎：消息处理、回复门控、内容安全、Deep Agent 调度、回复渲染 |
-| `plugins/acp` | ACP v1/v2 客户端与服务端、`/acp` 命令、子代理桥接及进程维护 |
-| `plugins/clockwork` | APScheduler 定时任务：提醒、用户自动任务、APOD、地震/NRC 等推送；`daily_news` 只注册任务，处理器位于 `plugins.news` |
-| `plugins/dashboard` | Web 管理面板：JWT 登录、状态、消息浏览、配置管理、任务管理 |
-| `plugins/news` | 独立新闻管线：检索 → 证据约束编辑 → `news.db` 归档 → 渲染 → 逐目标投递 |
-| `plugins/playground` | `/paint` 图片生成、`/video` 视频生成、戳一戳响应 |
-| `plugins/toolbox` | `/update`、`/restart`、`/model`、`/set wake`、`/vehelp` 等管理命令 |
-| `plugins/wolfx` | Wolfx CENC 地震预警：WebSocket 长连接监听、去重、渲染并推送 |
-
-`/model`（含 `/模型`、`/模型设置` 别名）和 `/set model` 向所有用户开放，用于查看当前模型配置。
-管理命令中 `/update`、`/restart`、`/news` 和 `/acp` 仅超级用户可用；`/task` 在 handler 内按超级用户或任务属主判断。
+完整消息路径、历史边界与投递语义见 [消息、上下文与投递边界](docs/message_flow.md)。
 
 ## Agent 工具能力
 
-`tools/` 下的 LangChain 工具会被自动发现并按组注册。当前源码约有 125 个 `@tool` 入口，覆盖：
+`tools/` 下的 LangChain 工具会被自动发现并按组注册，当前源码约有 128 个 `@tool` 入口：
 
-| 类别 | 示例 |
-|------|------|
+| 类别 | 代表能力 |
+| --- | --- |
 | 平台操作 | 发送消息/图片/视频/文件，好友、群组、群文件、公告、精华、反应、戳一戳 |
-| 历史记忆 | 主 Agent 按需调用最近对话、本地聊天搜索和平台历史工具 |
-| 子代理 | `document-agent` 只读分析本地文档 |
+| 历史记忆 | 当前会话最近对话、聊天记录搜索、平台分页历史、按消息读取附件 |
+| 子代理 | `document-agent` 只读分析本地文档；`expose_as_subagent` 的 ACP Agent 以 `acp-<名称>` 注册 |
 | 媒体生成 | AI 绘图、图片编辑、AI 视频 |
 | 自动任务 | 创建、列出、暂停、恢复、取消用户自动任务 |
-| 网络与资料 | 主 Agent 默认使用 DeepSeek 搜索（20 条）与正文抓取，保留原生搜索和 Exa / Tavily |
+| 网络与资料 | 独立 DeepSeek 搜索（默认 20 条）与正文抓取，保留原生搜索和 Exa / Tavily |
 | 天文空间 | 极光、彗星、卫星图、火箭发射、空间天气 |
-| 地球与天气 | 主 Agent 执行纯文本查询；雷达、风场图、台风和 ENS 媒体保留直接工具 |
+| 地球与天气 | 地震、雷达、风场、台风和 ENS 气象媒体 |
 | 游戏/业务工具 | NRC 远行商人、精灵蛋、活动日历等 |
 | 占卜 | 易经、塔罗 |
 
-部分工具是受限工具：网页截图/录屏只有在用户明确要求查看网页外观或录制页面时才暴露；ENS 专业气象工具有独立前缀和门控规则。
-调用预算、每轮 token 统计和错误处理约定见 [Agent 执行控制](docs/agent-execution-controls.md)。Dashboard 总览显示本次启动以来的用量；供应商的结构化输出策略可按 profile 配置。
-
-QQ 已支持有界会话缓存、空闲过期与历史重建，默认关闭；可在 Dashboard 的“会话缓存”设置中启用。配置与运行边界见 [QQ 会话缓存](docs/agent-sessions.md)，设计记录见 [Checkpointer 实施计划](docs/checkpointer-plan.md)。
-
-Agent 与平台解耦的目标架构、统一消息协议、端口和迁移阶段见 [Agent 与平台解耦设计](docs/agent-platform-separation.md)。
-QQ 消息现在默认经过平台中立的 Conversation Orchestrator，覆盖群聊/私聊文本、已下载媒体、已暂存文件、引用、近期媒体和 session。`qq_text_canary_enabled` 仅作为旧配置兼容字段保留，不再控制路由。
-飞书接入方案已记录在 [Agent 与平台解耦设计](docs/agent-platform-separation.md)；仓库中的无 SDK facade、webhook 和 API 客户端仅作为隔离参考，`plugins.agent` 不会自动注册飞书 lifecycle，当前开发主线先推进 QQ 的统一编排层。`plugins/agent/__init__.py` 与 `plugins/agent/adapters/__init__.py` 的注释明确说明不挂载第二个平台，`register_feishu_lifecycle` 目前只有测试引用。重新启用飞书前仍需补持久化 history、durable queue、加密解码和真实平台验证。
-
-工具执行分为三层：媒体工件、平台写操作、聊天记忆和 MCP 联网搜索工具由主 Agent 直接调用；本地文档分析可交给有独立调用预算的文档子代理。联网搜索、网页读取和多来源核验统一使用主 Agent 的模型与工具调用预算。默认搜索配置和工具契约见 [DeepSeek 网页搜索](docs/deepseek-web-search.md)。
-
-仓库内置工作流位于 `skills/`，运行时以只读方式挂载到 `/skills`，按描述渐进加载；Agent 不再拥有宿主 Shell，也不会在启动时从远端下载 Skill。
-`document-agent` 定义位于 `utils/agents/subagents/`，继承当前会话 backend，但全局禁止写入。
+部分工具是受限工具：网页截图/录屏只有在用户明确要求查看网页外观或录制页面时才暴露；ENS 专业气象工具有独立前缀和门控规则。调用预算、用量统计和错误处理约定见 [Agent 执行控制](docs/agent-execution-controls.md)。MCP 外部工具在首轮 Agent 执行时异步发现，单个服务故障不会使全部工具失效。
 
 ## 技术栈
 
 | 层面 | 技术 |
-|------|------|
+| --- | --- |
 | 运行时 | Python 3.14+、uv |
 | Bot 框架 | NoneBot2、FastAPI driver、nonebot-adapter-milky、nonebot_plugin_alconna |
 | Agent | LangChain、LangGraph、deepagents |
 | 模型 | OpenAI-compatible、Google Gemini、Anthropic Claude、DeepSeek |
 | 存储 | SQLite、SQLModel、FTS5、WAL |
 | 渲染/浏览器 | Playwright、markdown-it-py、Mermaid、Apache ECharts、KaTeX、Prism |
-| 定时任务 | nonebot-plugin-apscheduler / APScheduler |
+| 定时任务 | APScheduler / nonebot-plugin-apscheduler |
 | 部署 | Docker、docker compose、uv |
 
 ## 快速开始
 
 ### 环境要求
 
-- Python 3.14+
-- [uv](https://docs.astral.sh/uv/)
+- Python 3.14+ 与 [uv](https://docs.astral.sh/uv/)
 - Playwright 浏览器依赖
 - 可用的 Milky 服务和对应 NoneBot 配置
 - 至少一个可用 LLM API key
@@ -117,221 +106,60 @@ QQ 消息现在默认经过平台中立的 Conversation Orchestrator，覆盖群
 ```bash
 uv sync
 uv run playwright install
+```
 
+项目已将腾讯云 PyPI 镜像设为 uv 默认源；CPU 版 PyTorch 使用上海交通大学的 wheel 镜像，`.env.example` 和启动脚本默认把 `HF_ENDPOINT` 设为 `https://hf-mirror.com`。内容检查模型依赖随项目默认安装，启用 `[content_check]` 后首次检查会按配置下载模型和 tokenizer。
+
+### 配置
+
+```bash
 cp .env.example .env
 cp env.toml.example env.toml
 ```
 
-项目已将腾讯云 PyPI 镜像设为 uv 默认源；CPU 版 PyTorch 使用上海交通大学的
-PyTorch wheel 镜像，因为腾讯 PyPI 镜像不提供 `+cpu` wheel。`.env.example` 和启动脚本将
-`HF_ENDPOINT` 设置为 `https://hf-mirror.com`，用于 Hugging Face 模型和 tokenizer 下载。
-
-内容检查模型依赖已随项目默认安装。启用 `[content_check]` 后，首次检查会按配置下载对应的
-Hugging Face 模型和 tokenizer。
-
-[Agent Client Protocol (ACP)](https://agentclientprotocol.com/) 是 Frontier 的内置能力。
-复制配置后即可接入一个或多个外部 ACP Agent：
+在 `.env` 中设置 `NICKNAME`、`SUPERUSERS`、`HOST`/`PORT` 等 NoneBot 参数；在 `env.toml` 中配置人设、模型、供应商 profile 与功能开关。配置必须显式声明 `config_version = 2`。需要 MCP 工具或 ACP Agent 时再复制：
 
 ```bash
+cp mcp.json.example mcp.json
 cp plugins/acp/acp.json.example acp.json
 ```
 
-在 `acp.json` 中配置一个或多个通过 stdio 提供 ACP v1 或 v2 Draft 的 Agent 后，可使用
-`/acp <任务>`，或通过 `/acp --agent <名称> <任务>` 选择 Agent。`/acp --list`、
-`/acp --cancel` 和 `/acp --reset` 分别用于查看、取消当前 turn 和重建会话；`/acp` 仅超级用户可用。
-每个群聊或私聊 scope 使用 `cache/acp/workspaces/` 下的独立工作区。ACP Agent 是本地
-子进程，工作区并非操作系统 sandbox；它仍可能访问 Frontier 进程有权限读取的其他路径。
-`permission_policy` 默认为 `deny`，只有明确将其改为 `allow_once` 或 `allow_always` 时，
-Frontier 才会自动批准 Agent 的工具权限请求。需要 ACP 协议认证的 Agent 可通过
-`auth_method` 指定其在初始化阶段公布的认证方式 ID。`inherit_env` 是显式环境变量白名单，
-只会把列出的宿主变量传给对应子进程；缺少任何一项都会拒绝启动。每日缓存维护会关闭闲置
-ACP 进程并删除其 workspace；正在执行的 scope 不受影响。
+字段说明见 [配置参考](docs/configuration.md)，ACP 用法见 [ACP 接入](docs/acp.md)。真实配置文件包含密钥与聊天数据，不要提交。
 
-将某个 Agent 的 `expose_as_subagent` 设为 `true` 后，它会以 `acp-<名称>` 注册为
-DeepAgents 子代理，主 Agent 可以按 `description` 将任务委托给它。子代理返回的媒体会保存到
-当前 Frontier workspace 的 `/acp-artifacts/`，不会把大段 base64 直接塞回模型上下文。
-该开关默认关闭，避免仅用于 `/acp` 的进程被模型意外调用。
-
-每个 Agent 的 `protocol_version` 可设为 `1` 或 `2`，省略时保持 v1；修改后下次调用自动
-重建连接。可同时配置两版 Agent，通过 `--agent` 选择。版本不匹配时明确报错，不自动降级。
-
-Frontier 自身也提供 ACP v1 / v2 Draft stdio server，可供 ACP 客户端（包括日后的独立前端或其他
-Agent）启动：
-
-```bash
-uv run python -m plugins.acp
-# v2 Draft
-uv run python -m plugins.acp --protocol-version 2
-```
-
-这个入口复用同一个 `FrontierCognitive` 执行链，支持文本、图片和音频输入，并把已清洗的
-进度、工具状态、最终文本及内联媒体映射为 ACP 更新。每个 ACP session 使用独立的内部
-身份、thread 和 sandbox workspace；客户端传入的 `cwd` 只作为协议元数据，不会成为文件
-访问授权。为防止权限继承和 Agent 环路，ACP 入站会话不暴露 QQ 平台工具、聊天记忆和
-ACP 子代理，只保留隔离 workspace、文档分析及模型原生能力。
-
-SDK 锁定为 `agent-client-protocol==1.0.0rc1`：v1 使用标准接口，v2 使用官方
-`acp.experimental.v2`（schema v2.0.0-alpha.3）。SDK 是预发布版，v2 是草案协议。
-v2 prompt 立即确认接收，完成与取消通过 `state_update` 表达，并支持进程内会话恢复和回放。
-目录说明见 [ACP 插件](plugins/acp/README.md)；接入规范、字段差异与支持范围见 [ACP v1](plugins/acp/docs/acp-v1.md) 和 [ACP v2](plugins/acp/docs/acp-v2.md)。
-
-DeepSeek Harness 不再使用 Frontier 内置的 SDK/JSON-RPC 适配层，而是作为普通 ACP Agent
-接入。官方仓库提供 `pnpm run demo:acp` 的 JSON-RPC stdio server；`plugins/acp/acp.json.example`
-已包含对应配置。使用前克隆并构建
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，将示例中的绝对路径替换为
-本机 checkout，并在 Frontier 进程环境中设置 `DEEPSEEK_API_KEY`，然后使用
-`/acp --agent dsh <任务>`。DSH 仍处于
-developer preview，建议将 checkout 固定到经过验证的 commit。
-
-DSH 当前的官方 ACP 自动化接口只发送已提交的 assistant 文本/图片，不公开推理、工具活动、
-计划等实时进度；因此 Frontier 能收到最终结果和权限请求，但不会复现原 `/dsh` 的专用进度事件。
-DSH 的模型、供应商、会话和工具配置均由 DSH 自己管理，不再读取 `env.toml` 的专用 `[dsh]` 段。
-
-编辑 `.env` 和 `env.toml` 后启动：
+### 启动
 
 ```bash
 bash run.sh
 ```
 
-Windows:
-
-```powershell
-.\run.ps1
-```
-
-`run.sh` 会设置默认 `HF_ENDPOINT`，然后循环执行 `uv run nb run`。
-
-QQ 富文本默认使用 Markdown 正文与 `::card{color="blue"}` 等轻量组件标记，
-服务端解析、校验后复用现有组件树；卡片、分栏、步骤和独立图片/地图/网页快照无需生成整篇 JSON。
-QQ 每轮固定加载精简的富文本技能，基本语法直接可用，详细契约按需读取。
-旧 `ui` JSON、数据代码块和默认 500 字转图规则保持兼容。
-语法和限制见 [Markdown 组件契约](skills/rich-markdown/references/components.md)。
-
-消息组件采用 React + TypeScript + Tailwind CSS 和定制的 shadcn/ui 源码组件，
-Vite 将它们与 Mermaid、ECharts、KaTeX 和 Prism 一起预构建到
-`templates/markdown_assets/`，普通安装和启动不需要 Node.js，也不会在运行时访问 CDN。
-修改 `renderer/` 后需要使用 Node.js 24 重新生成资源：
-
-```bash
-npm ci --prefix renderer
-npm run build --prefix renderer
-```
-
-修改 `utils/markdown_rich.py` 的 `ui` 校验规则后，先运行
-`uv run --locked python scripts/generate_renderer_types.py` 更新前端类型。
-构建同时执行 TypeScript 检查；CI 校验类型和预构建资源是否同步。
-布局、组件定制与截图验证见 [渲染器开发说明](renderer/README.md)。
+Windows 使用 `.\run.ps1`。两个脚本都会设置默认 `HF_ENDPOINT`，然后循环执行 `uv run nb run`，进程退出 5 秒后自动重启。
 
 ### Docker
-
-默认镜像已包含 Torch 和内容检查模型依赖：
 
 ```bash
 docker compose up -d
 ```
 
-在 `env.toml` 中设置 `[content_check].enabled = true`：
+镜像默认包含 Torch 和内容检查模型依赖，容器把 Hugging Face 与 Torch 缓存写入 `frontier_cache` volume。首次部署前准备 `.env`、`env.toml`、`mcp.json` 和 `frontier.db`；`.dockerignore` 排除这些运行时文件，compose 通过 `env_file` 或 volume 在运行时提供它们，因此不会进入镜像层。启用 ACP 时还需准备 `acp.json`：compose 未挂载该文件，需要在构建前放入仓库根目录（会随镜像复制），或自行在 compose 中增加只读挂载。compose 默认把容器 `8080` 映射到宿主 `3000`，Dashboard 位于 `http://localhost:3000/dashboard`。
 
-```bash
-docker compose up -d --build
-```
-
-容器会把 Hugging Face 和 Torch 缓存写入 `frontier_cache` volume。首次部署前需要准备
-`.env`、`env.toml`、`mcp.json` 和 `frontier.db`；启用 ACP 时还需准备 `acp.json`。
-这些运行时文件不会复制进镜像层。
-如果曾用旧 Dockerfile 构建过镜像，建议删除旧镜像并轮换本地配置中的外部服务凭据。
-
-## 配置
+## 配置概览
 
 | 文件 | 用途 |
-|------|------|
-| `.env` | NoneBot 环境变量，以及由 `NICKNAME` 管理的机器人全局名称和别名 |
-| `env.toml` | Frontier 应用配置：system prompt、模型、API key、功能开关、速率限制、任务群组、Dashboard |
+| --- | --- |
+| `.env` | NoneBot 环境变量；`NICKNAME` 管理机器人全局名称和别名 |
+| `env.toml` | Frontier 应用配置：system prompt、模型与供应商、功能开关、策略、限额、Dashboard、内容检查 |
 | `mcp.json` | MCP 外部工具服务器定义 |
-| `acp.json` | ACP Agent 子进程、权限策略和超时定义 |
+| `acp.json` | ACP Agent 子进程、权限策略和超时 |
 
-`env.toml` 的关键部分：
-- `[bot]`: 主 system prompt；不再保存机器人名称。
-- `[models]`: 对话、绘图和视频模型 ID、供应商 profile 引用及模型能力。
-- `[providers.*]`: LangChain 适配器类型、API 协议、base URL 和可选 API key。
-- `[key]`: NASA、GitHub 等非模型服务密钥；模型密钥统一放在供应商 profile。
-- `[features]` / `[agent]`: 功能开关和 Agent 推理等级。
-- `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]`: 访问策略。
-- `[limits]` / `[notifications]` / `[storage]`: 限流超时、定时推送群和存储设置。
-- `[dashboard]`: 管理面板密码、JWT secret、过期时间。
-- `[content_check]`: 文本/图片内容安全开关。
+`env.toml` 的要点：
 
-绘画和视频共用 `[paint_policy]`，同时限制 `/paint`、`/video` 命令和聊天 Agent 的媒体生成工具。
-将 `whitelist_mode` 设为 `true` 后，用户号在 `whitelist_person_list` 中或当前群号在
-`whitelist_group_list` 中即可使用；两份名单均为空时全部拒绝。个人和群黑名单优先于白名单，
-白名单模式关闭时黑名单仍生效。可在 Dashboard 的“绘画与视频权限”中修改，保存后对后续调用生效。
+- `[bot]`、`[models]`、`[providers.*]`、`[search]`、`[key]`、`[features]`、`[agent]`、`[limits]`、`[storage]`、`[dashboard]`、`[content_check]` 等配置段覆盖人设、模型角色、供应商协议、搜索、开关与限额。
+- `*_model_provider` 填写 `[providers.<name>]` 的名称而不是 URL；`type` 选择 LangChain 适配器，`api_mode` 选择接口协议，密钥和 base URL 保存在 profile。
+- 绘画和视频 provider 的 `type` 必须为 `openai`；绘画协议跟随 `api_mode`，视频使用 Videos API。
+- `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]` 控制响应名单、主动回复和媒体生成权限。
+- Dashboard 保存会原子重载配置，同时返回 `changed_fields`、`config_revision`、`activation` 和 `restart_required`；`.env` 和 `mcp.json` 修改仍需重启。
 
-配置必须显式声明 `config_version = 2` 并使用上述结构。旧版配置分区、模型 endpoint、
-供应商协议开关及绘图尺寸转换已移除；旧字段会在启动或 Dashboard 保存时明确报错。
-`utils/configs.py` 校验成功后才原子切换运行时快照，失败不会覆盖当前配置。
-
-Dashboard 配置保存会串行处理并发更新，使用独立临时文件原子替换；备份仅保留最近 10 份，
-配置和备份权限为当前用户可读写。重载失败时会原子恢复旧文件并重新加载旧配置。
-保存结果包含 `changed_fields`、`config_revision`、`activation` 和 `restart_required`。
-当前 `env.toml` 管理的配置在后续请求/任务读取时生效，无需重启；模型相关子代理在下一轮按配置版本重建，
-已经开始的模型调用不会因此重新执行。保留的脱敏值不会覆盖原密钥，无实际变更时不创建备份。
-`.env` 中的 NoneBot 启动参数和 `mcp.json` 的服务器列表仍需重启。
-定时任务推送群以任务管理页保存的数据库映射为准，启动时会覆盖相应的 `notifications` 值；
-需要持久修改现有任务的接收群时，应使用任务管理页。
-
-`*_model_provider` 填写供应商 profile 名称，而不是重复填写 URL。例如
-`advanced_model_provider = "openrouter"` 会读取 `[providers.openrouter]`；其中 `type = "openai"`
-决定底层 LangChain 适配器。`paint_model_provider` 和 `video_model_provider` 使用相同规则；模型能力只配置在
-`[models]`，base URL、API key 和对话协议 `api_mode` 配置在供应商 profile。
-绘图协议跟随 `paint_model_provider` 指向的 provider 的 `api_mode`：`chat_completions` 调用
-Images API（纯文字用 `/images/generations`，参考图片编辑用 `/images/edits`），
-兼容 base64 图片和公网图片 URL 返回值；`responses` 保留原有依赖 sub2api 重写顶层模型的
-Responses `image_generation` 绘图路径。请求失败不会切换协议再次生成。
-同一服务若需为聊天与绘图选用不同协议，可配置两个同地址的 provider profile，分别绑定模型角色。
-视频调用 OpenAI-compatible Videos API。
-
-供应商 profile 名称标识具体服务，`type` 选择 LangChain 适配器，`api_mode` 选择接口协议。
-DeepSeek 可分别配置为 `deepseek + chat_completions`、`openai + responses` 和
-`anthropic + messages`；后两种接口的官方地址分别为 `https://api.deepseek.com` 和
-`https://api.deepseek.com/anthropic`。使用官方地址和 DeepSeek 模型时，Frontier 会在三种协议中
-自动发送不含 QQ 明文的稳定 scope ID，用于服务端 KV cache、内容安全和调度隔离；兼容代理不会
-收到这一扩展字段。图片和文件输入目前不应交给这些 DeepSeek profile。
-协议统一使用 `api_mode`；不再接受 `use_responses_api`、供应商 `provider` 别名或
-`type = "deepseek_responses"`。名为 `deepseek_responses` 的 profile 仍然可用，其类型为 `openai`。
-绘图尺寸直接填写 `paint_size`，不再转换 `paint_image_size` 和 `paint_aspect_ratio`。
-每日新闻使用独立的 `daily_news_model` / `daily_news_model_provider` 配置进行编辑与复核；检索默认使用
-Exa MCP（`mcp.json` 中的 `web_search_advanced_exa` / `web_search_exa`），没有 `EXA_API_KEY` 时也可通过
-公开 MCP 端点运行。也可以配置 `EXA_API_KEY` 或 `TAVILY_API_KEY` 使用对应的 REST 来源。
-
-机器人名称只来自 `.env` 的 `NICKNAME`。数组第一项作为默认显示名称，全部非空项都可
-作为全局唤醒词；某个群在数据库中配置了自定义唤醒词后，以该群的数据库配置为准。
-
-每个群聊按 `group_id` 共享 `cache/sandbox/memory/group-{group_id}/SOUL.md`，每个私聊按
-`user_id` 使用 `cache/sandbox/memory/dm-{user_id}/SOUL.md`。新文件为空，由 Agent 按稳定互动
-逐步记录局部人设和长期偏好；全局安全、权限和工具规范不会写入 SOUL。
-
-当前版本使用带 `group-` / `dm-` 前缀的会话目录，历史裸 `{id}` 目录和附件的自动迁移已移除。
-启动不会搬动旧目录；旧部署需先用包含迁移工具的历史版本完成升级。
-
-会话上下文与 SOUL 分开管理。主 Agent 默认只接收当前用户消息，不自动载入历史，也不生成聊天
-摘要。当前请求依赖前文时，Agent 可调用 `get_recent_conversation` 获取当前会话的近期记录；需要
-关键词、日期、用户或角色筛选时调用 `search_messages`，需要平台侧分页历史时调用
-`get_history_messages`。原始 `Message` 记录仍作为可检索的权威数据保留，并严格按群聊或私聊 scope
-隔离。`storage.query_message_numbers` 仅供回复网关判断是否需要回应，不会注入主 Agent 上下文。
-
-模型上下文中的每条 QQ 消息使用独立的 `frontier.qq_message.v1` JSON 信封，不会把连续群成员
-合并成同一个对话轮次。身份以稳定的 `sender.user_id` 为准，群内显示名优先采用群名片并保留
-昵称；引用消息通过结构化 `reply_to` 关联。信封使用未转义的 UTF-8 JSON，中文不会变成
-`\\uXXXX`。纯文本统一使用各 provider 都支持的字符串 content；当前消息在附件落库后定稿，
-并作为按需历史检索时的稳定文本信封与附件引用。工具、子代理和受控工具也按稳定顺序发送，
-以减少 provider 前缀缓存抖动。
-
-从旧版 memory `AGENTS.md` 升级时不做自动迁移。如需按新规则重置旧记忆，可在项目根目录
-执行一次以下命令；它只删除 workspace 目录中的旧 `AGENTS.md`：
-
-```bash
-find cache/sandbox/memory -mindepth 2 -maxdepth 2 -type f -name AGENTS.md -delete
-```
+逐字段说明、模型路由规则、provider 协议矩阵、访问策略语义和重载细节见 [配置参考](docs/configuration.md)。
 
 ## Dashboard
 
@@ -341,23 +169,18 @@ find cache/sandbox/memory -mindepth 2 -maxdepth 2 -type f -name AGENTS.md -delet
 http://localhost:8080/dashboard
 ```
 
-API 前缀：
-
-```text
-/api/dashboard
-```
-
-现有 API 分组包括 auth、status、tasks、messages、settings。首次部署请修改 Dashboard 默认密码和 JWT secret。
+API 前缀为 `/api/dashboard`，现有分组包括 auth、status、tasks、messages 和 settings。首次部署请修改默认密码并设置随机 JWT secret；配置保存与重载语义见 [配置参考](docs/configuration.md)。
 
 ## 项目结构
 
-```
+```text
 frontier/
 ├── plugins/
 │   ├── agent/          # QQ 事件、引用、归一化、门控、附件和上下文
 │   ├── acp/            # ACP 客户端、v1/v2 服务端、QQ 命令与子代理桥接
 │   ├── clockwork/      # 定时任务系统（daily_news 处理器位于 plugins/news）
 │   ├── dashboard/      # FastAPI Dashboard 和静态前端
+│   ├── events/         # Milky 申请事件的收件箱、规则/决策与执行恢复
 │   ├── news/           # 独立新闻检索、编辑、归档和投递
 │   ├── playground/     # /paint 和 /video
 │   ├── toolbox/        # 管理命令
@@ -372,7 +195,7 @@ frontier/
 ├── data/               # 易经、塔罗等静态数据
 ├── scripts/            # 维护脚本
 ├── test/               # pytest / nonebug 测试
-├── docs/               # 设计文档和实现计划
+├── docs/               # 设计文档、配置参考、文档索引与历史归档
 ├── cache/              # 运行时缓存和 sandbox
 ├── frontier.db         # 默认 SQLite 数据库
 ├── env.toml.example
@@ -387,24 +210,23 @@ uv sync --locked --group dev
 uv run --locked pytest --collect-only -q
 uv run --locked pytest test/ -q
 uv run --locked ruff check .
-uv run --locked ty check utils/agent_context.py utils/harness_profiles.py utils/mcp.py utils/agents/inputs.py utils/agents/execution.py utils/agents/runtime.py utils/agents/runtime_gateway.py utils/delivery.py plugins/dashboard/api/settings_routes.py
+uv run --locked python scripts/check_local_links.py
+uv run python scripts/database_maintenance.py diagnose
 ```
 
-数据库维护脚本：
+测试使用 nonebug、pytest-asyncio 和第三方 stub；fixture 会生成临时 `env.toml`，不依赖本地真实配置。修改消息主流程、数据库 schema、工具权限、Agent backend 或 LLM 路由时应补针对性测试。CI 按 `uv.lock` 安装相同依赖，执行全量测试、Ruff、本地链接检查和渲染器资源校验；类型检查范围见 [贡献指南](CONTRIBUTING.md)。
 
-```bash
-uv run python scripts/database_maintenance.py
-```
+## 文档导航
 
-测试使用 nonebug、pytest-asyncio 和第三方 stub；测试 fixture 会生成临时 `env.toml`，不依赖本地真实配置。
-工具媒体断言使用真实 `UniMessage` 消息段接口。独立子进程集成测试绕过全局 stub，覆盖真实 Deep Agents
-图构建、v3 事件流、工具媒体工件，以及本地 HTTP MCP 服务的跨事件循环调用和认证头传递，不依赖外部模型密钥。
-CI 按 `uv.lock` 安装相同依赖组合，执行全量测试、Ruff 和以上运行边界的类型检查；其余旧模块的类型检查仍待逐步收紧。
+- [文档索引](docs/README.md)：按入门、架构与运行时、平台与集成、存储与运维、历史归档分类的全部文档。
+- 常用入口：[配置参考](docs/configuration.md)、[ACP 接入](docs/acp.md)、[消息投递边界](docs/message_flow.md)、[Agent 执行控制](docs/agent-execution-controls.md)、[QQ 会话缓存](docs/agent-sessions.md)。
+- 插件、渲染器、模型目录与内置 Skill 的说明见各自目录下的 README/SKILL.md（已汇总到 [文档索引](docs/README.md)）；历史设计计划与审查记录保存在 [docs/archive/](docs/archive/README.md)，不作为当前行为依据。
 
 ## 开发提示
 
 - 新工具：在 `tools/xxx.py` 中添加 `@tool`，必要时在 `tools/__init__.py` 的 `_TOOL_MODULE_GROUPS` 注册分组。
 - 新插件：放入 `plugins/`，NoneBot 会按 `pyproject.toml` 的 `plugin_dirs` 加载。
-- 不要在 `utils/agents/cognitive.py` 顶层 import 具体工具模块，容易触发循环依赖。
-- `UniMessage` 和 alconna 相关 import 尽量延迟到 NoneBot 环境就绪后。
-- 涉及消息主流程、DB schema、工具权限、Agent backend、LLM 路由的改动需要补针对性测试。
+- 不要在 `utils/agents/cognitive.py` 顶层 import 具体工具模块，容易触发循环依赖；`UniMessage` 等 alconna import 尽量延迟到 NoneBot 环境就绪后。
+- 涉及消息主流程、DB schema、工具权限、Agent backend、LLM 路由的改动需要补测试，更多约定见 [AGENTS.md](AGENTS.md)。
+
+[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

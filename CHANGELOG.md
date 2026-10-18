@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Reorganized the documentation: `README.md` is now a concise project entry
+  point, `docs/README.md` indexes every document by audience, and the detailed
+  configuration and ACP material moved to `docs/configuration.md` and
+  `docs/acp.md`. Historical design and review documents now live under
+  `docs/archive/` with an archive README and updated links.
+- Removed the explanatory source comments from the Python code, `renderer/src`,
+  the Dashboard web client and template CSS/HTML/inline JavaScript: 874 Python
+  `#` comments plus their front-end counterparts. Linter, typing, formatting and
+  pragma directives (`noqa`, `type:`, `fmt:`, `pragma:`, ...) and docstrings are
+  preserved, and no runtime behavior changed.
 - Opened `/model` and its Chinese aliases to all users in private and group chats
   for viewing the current model configuration.
 - Updated the official model catalog to the October 8, 2026 snapshot with 18 new
@@ -24,8 +34,9 @@
 - Made the suite portable on Windows: the attachment cache assertion in
   `test/utils/database_test.py` no longer depends on POSIX path separators, and
   the session rotation contract test no longer assumes Linux-only `/proc`.
-- Aligned the documentation with the current code: the eight loaded plugins
-  (including `plugins/news` and `plugins/wolfx`), the platform-neutral QQ path
+- Aligned the documentation with the current code: the nine loaded plugins
+  (including `plugins/events`, `plugins/news` and `plugins/wolfx`), the
+  platform-neutral QQ path
   through `ConversationOrchestrator` and `FrontierAgentCore`, the real
   middleware chain, group and private final replies, media persistence
   through `insert_media`, and the `models/` catalog.

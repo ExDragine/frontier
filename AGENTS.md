@@ -10,6 +10,8 @@ Frontier 是一个基于 NoneBot2 + Milky 适配器的 AI QQ 聊天机器人。�
 
 **运行入口**: `pyproject.toml` 声明 `plugins/` 为 NoneBot 插件目录；`run.sh` / `run.ps1` 最终通过 `uv run nb run` 启动。
 
+**文档入口**: [README](README.md) 提供快速开始，[文档索引](docs/README.md) 汇总全部文档；配置字段见 [配置参考](docs/configuration.md)，ACP 接入见 [ACP 接入](docs/acp.md)。
+
 ---
 
 ## Request Lifecycle
@@ -115,7 +117,7 @@ Milky `light_app` / `xml` 卡片通过 `utils/card_message.py` 本地解析常�
 
 ### `tools/` — Agent 可调用工具
 
-`tools/__init__.py` 会扫描 `tools/*.py` 中的 LangChain `BaseTool` 对象。当前源码静态统计约 125 个 `@tool` 入口，按模块分到以下组：
+`tools/__init__.py` 会扫描 `tools/*.py` 中的 LangChain `BaseTool` 对象。当前源码静态统计约 128 个 `@tool` 入口，按模块分到以下组：
 
 | 分组 | 代表模块 | 说明 |
 |------|----------|------|
@@ -152,7 +154,7 @@ Milky `light_app` / `xml` 卡片通过 `utils/card_message.py` 本地解析常�
   - `/skills/`: 仓库内置 `skills/`，Agent 只读
   - `/memory/{workspace_key}/`: `cache/sandbox/memory/{workspace_key}`
 - 对每个 workspace，如果缺少 memory `SOUL.md`，会创建零字节空文件；群聊按 `group_id` 共享，私聊按 `user_id` 隔离。
-- 核心 middleware 顺序是 `PII → ToolError → ModelCallLimit → ToolCallLimit → ModelRetry → Filesystem → FilesystemFileSearch → Memory`；随后按需追加 `SilentReply`（仅 frontier 档）、`ProviderToolSearch`（主模型名含 `gpt`/`claude` 时）、`NativeWebSearch`（供应商原生 web_search 可用时）和 `SessionHistory`（会话缓存开启时最后追加）。没有独立的 `ToolRetryMiddleware` 层。
+- 核心 middleware 顺序是 `PII → ToolError → ModelCallLimit → ToolCallLimit → ModelRetry → Filesystem → FilesystemFileSearch → Memory`；随后按需追加 `SilentReply`（仅 frontier 档）、`ProviderToolSearch`（主模型名含 `gpt`/`claude` 时）、`NativeWebSearch`（供应商原生 web_search 可用时）和 `SessionHistory`（会话缓存开启时），最后总是追加 `MediaInput`（每次模型调用前做媒体能力检查与预算限制）。没有独立的 `ToolRetryMiddleware` 层。
 - 主模型 SDK 重试关闭，由 ModelRetry 控制模型重试。图工具错误由 ToolError 统一处理：已确认的只读工具异常转换为脱敏的可读结果，写入或未分类工具异常结束当前轮次。平台写操作或未分类工具异常不会自动重复。
 - 主图模型/工具预算由 `[limits].agent_model_call_limit / agent_tool_call_limit` 控制；子代理保留独立预算。
 - QQ 的 `[sessions]` 开关开启后，同一机器人同一群共享 checkpoint，图仍按请求构建；配置修订不兼容、快照冲突、过期或容量轮换后从 DB 重建。ACP 和定时任务不接入该缓存。运行与投递租约不能被清理器回收，最终内容按实际送达文本校准；媒体轮次结算后释放整代。详见 `docs/agent-sessions.md`。

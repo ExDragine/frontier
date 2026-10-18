@@ -8,7 +8,7 @@
 
 额外修复了下面四项新闻问题，以及生成次数上限、归档清理、长任务租约被缩短、期次时间缺失和投递失败误记 success。MCP 增加失败服务退避重发现、工具注册表和 Agent 组件刷新，以及 HTTP/SSE 认证头传递。日志占位符修复同时保留。
 
-回归测试位于 `test/news/test_reliability.py`、`test/plugins/clockwork_test.py`、`test/tools/basic_info_tools_test.py`、`test/utils/agents_test.py` 和 `test/utils/mcp_test.py`。具体运行语义见 [新闻运维说明](news-plugin.md) 和 [架构说明](architecture.md)。以下“待修复”及测试数量描述均属于初次检查记录。
+回归测试位于 `test/news/test_reliability.py`、`test/plugins/clockwork_test.py`、`test/tools/basic_info_tools_test.py`、`test/utils/agents_test.py` 和 `test/utils/mcp_test.py`。具体运行语义见 [新闻运维说明](../news-plugin.md) 和 [架构说明](../architecture.md)。以下“待修复”及测试数量描述均属于初次检查记录。
 
 合并修复后的全量回归为 **897 passed**（3 条既有第三方警告），ruff、CI 指定类型检查、`git diff --check` 均通过。使用合并后代码连接 Exa 官方 HTTP MCP，再次成功发现 `web_search_exa`、`web_fetch_exa`。没有执行真实 QQ 投递或付费搜索／模型生成。
 
@@ -24,25 +24,25 @@
 
 ### P1：送达后的数据库异常会导致重复补发
 
-位置：[delivery.py](../plugins/news/delivery.py#L24)。同一个 `try` 同时包住平台发送和 `finish_delivery(..., "sent")`。平台已发送成功、落库失败时，通用异常分支将记录写成 `failed`，此后补发会再次发送。
+位置：[delivery.py](../../plugins/news/delivery.py)。同一个 `try` 同时包住平台发送和 `finish_delivery(..., "sent")`。平台已发送成功、落库失败时，通用异常分支将记录写成 `failed`，此后补发会再次发送。
 
 复现：模拟发送成功，再使 `sent` 状态更新抛出 `OSError`，记录变成 `failed`；显式重试后发送计数为 **2**。建议分开发送和确认入库的异常边界，已送达但确认失败的记录不得进入可重发状态。
 
 ### P1：不合格草稿会阻塞同一期的后续重建
 
-位置：[service.py](../plugins/news/service.py#L42)。草稿在最终复核和最少条数检查之前被保存。失败后再次生成同一期，只要存在 `payload` 就跳过编辑，一直复核同一份草稿。
+位置：[service.py](../../plugins/news/service.py)。草稿在最终复核和最少条数检查之前被保存。失败后再次生成同一期，只要存在 `payload` 就跳过编辑，一直复核同一份草稿。
 
 复现：要求至少 2 条，有 2 条有效证据，第一次编辑仅返回 1 条。连续生成两次都报 `InsufficientEvidence`，编辑器只被调用 **1 次**，即使第二次编辑原本能够返回完整内容，也不会被调用。建议区分临时复核调用失败与草稿内容不合格，后者允许在有界尝试次数内重新编辑。
 
 ### P2：`/news retry` 会给原本没有投递记录的群首次发送
 
-位置：[commands.py](../plugins/news/commands.py#L43)、[delivery.py](../plugins/news/delivery.py#L14)。`retry_failed` 只更新失败记录，但命令没有检查是否实际更新，随后 `deliver` 会创建全新目标记录并发送。
+位置：[commands.py](../../plugins/news/commands.py)、[delivery.py](../../plugins/news/delivery.py)。`retry_failed` 只更新失败记录，但命令没有检查是否实际更新，随后 `deliver` 会创建全新目标记录并发送。
 
 复现：对没有记录的合成群调用同一补发链路，实际发送 **1 次**。命令虽然限制为超级用户，但行为不符合“仅 failed 状态允许显式重试”的提示。建议重试只消费成功重置的已有目标，不创建新投递目标。
 
 ### P2：少量有效结果不会触发备用检索来源
 
-位置：[sources.py](../plugins/news/sources.py#L131)。每个查询只要首选来源返回任意有效文章就立即返回，所有查询合并去重后数量不足时，也不会再尝试其他来源。
+位置：[sources.py](../../plugins/news/sources.py)。每个查询只要首选来源返回任意有效文章就立即返回，所有查询合并去重后数量不足时，也不会再尝试其他来源。
 
 复现：首选来源在多个查询中均返回同一条有效文章，备用来源可返回足量证据；最终只有 **1 条**，备用来源调用数为 **0**。建议在聚合去重后按缺口进行有界补充检索。
 
@@ -61,7 +61,7 @@ web_fetch_exa
 
 这能确认检查时当前环境的握手和工具发现可用，不能证明此前的偶发失败已被修复。`utils/mcp.py` 和 `tools/mcp_client.py` 在新闻提交中没有修改；新闻模块改走 REST 也不会修复 Agent 的 MCP 加载。
 
-仍存在明确缺口：[mcp_client.py](../tools/mcp_client.py#L129) 将失败服务转为空列表，然后永久缓存合并结果；[工具注册器](../tools/__init__.py#L134) 和 Agent 组件又各自缓存工具集合。首次发现时若 Exa 短暂不可用，进程内后续请求不会自动重新发现该服务。需要同时设计失败服务的退避重发现和工具集合／Agent 组件刷新，仅在底层增加重试入口还不够。
+仍存在明确缺口：[mcp_client.py](../../tools/mcp_client.py) 将失败服务转为空列表，然后永久缓存合并结果；[工具注册器](../../tools/__init__.py) 和 Agent 组件又各自缓存工具集合。首次发现时若 Exa 短暂不可用，进程内后续请求不会自动重新发现该服务。需要同时设计失败服务的退避重发现和工具集合／Agent 组件刷新，仅在底层增加重试入口还不够。
 
 当前配置校验还不接受 `headers`，HTTP 适配器也不传递认证头。如果将来配置 Exa 请求头认证，应同步修改这两处。现有本机条目没有配置认证头，此点不是本次连接的故障原因。Exa 官方支持该端点和请求头认证：[官方仓库](https://github.com/exa-labs/exa-mcp-server)。
 

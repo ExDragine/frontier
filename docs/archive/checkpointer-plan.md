@@ -1,15 +1,15 @@
 # 有界 Checkpointer 与会话重建实施计划
 
-状态：已实施，默认关闭。设计基线及实现日期：2026-09-10。启用方式、实现取舍与验证记录见 [QQ 会话缓存](agent-sessions.md)。本文保留设计背景和验收范围。
+状态：已实施，默认关闭。设计基线及实现日期：2026-09-10。启用方式、实现取舍与验证记录见 [QQ 会话缓存](../agent-sessions.md)。本文保留设计背景和验收范围。
 
 目标：连续对话复用 Agent 状态；空闲过期后释放 checkpoint，下一次触发时从聊天数据库重建上下文。同时限制长时间活跃会话的存储增长，保留现有消息隔离、调用预算和投递语义。
 
 ## 1. 改造前行为与设计约束
 
-- [cognitive.py](../utils/agents/cognitive.py) 每轮创建图，尚未传入 `checkpointer`；已有 `thread_id` 不会自动产生跨轮记忆。
-- [runtime.py](../utils/agents/runtime.py) 的 thread ID 按“群＋用户”划分，workspace 和 QQ 投递锁按群共享。接入状态前须明确这两种身份的关系。
-- [chat_context.py](../plugins/agent/chat_context.py) 每轮拼接历史与当前请求。启用 checkpointer 后不能继续无条件追加整段历史。
-- [message_flow.md](message_flow.md) 规定历史是消息到达时的快照。排队后的新问题、以及用户发送请求时尚未看到的助手回复，不得混入该请求。
+- [cognitive.py](../../utils/agents/cognitive.py) 每轮创建图，尚未传入 `checkpointer`；已有 `thread_id` 不会自动产生跨轮记忆。
+- [runtime.py](../../utils/agents/runtime.py) 的 thread ID 按“群＋用户”划分，workspace 和 QQ 投递锁按群共享。接入状态前须明确这两种身份的关系。
+- [chat_context.py](../../plugins/agent/chat_context.py) 每轮拼接历史与当前请求。启用 checkpointer 后不能继续无条件追加整段历史。
+- [message_flow.md](../message_flow.md) 规定历史是消息到达时的快照。排队后的新问题、以及用户发送请求时尚未看到的助手回复，不得混入该请求。
 - QQ 最终回复在审核、发送成功后才写入数据库；图生成完成不等于用户已经收到。
 - `extract_uni_messages()` 当前扫描全部返回消息。跨轮保留状态后，必须增加当前轮边界，避免再次发送旧媒体。
 - 当前 Deep Agents 的 `messages` 使用 `DeltaChannel`。最新 checkpoint 可能依赖祖先记录和中间写入，不能直接截取最后 N 个 checkpoint。
@@ -242,8 +242,8 @@ git diff --check
 
 ## 10. 参考与后续范围
 
-- [当前消息与投递约定](message_flow.md)
-- [调用预算、错误与用量统计](agent-execution-controls.md)
+- [当前消息与投递约定](../message_flow.md)
+- [调用预算、错误与用量统计](../agent-execution-controls.md)
 - [LangGraph 持久化与 checkpoint 语义](https://docs.langchain.com/oss/python/langgraph/persistence)
 - [裁剪 checkpoint 时的 DeltaChannel 约束](https://reference.langchain.com/python/langgraph.checkpoint/base/BaseCheckpointSaver/prune)
 - [LangChain 短期记忆与合法工具消息序列](https://docs.langchain.com/oss/python/langchain/short-term-memory)
