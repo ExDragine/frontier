@@ -168,15 +168,31 @@ class SpeechRecognitionConfig(_FrozenConfig):
     """Local SenseVoice runtime; paths are operator configuration, never tool input."""
 
     enabled: bool = False
-    executable: str = ""
-    model_path: str = ""
-    vad_model_path: str = ""
+    auto_download: bool = True
+    download_timeout_seconds: float = Field(default=600, gt=0, le=1800)
+    executable: str = "cache/speech/sensevoice/runtime/llama-funasr-sensevoice.exe"
+    model_path: str = "cache/speech/sensevoice/sensevoice-small-q8.gguf"
+    vad_model_path: str = "cache/speech/sensevoice/fsmn-vad.gguf"
     max_cpu_cores: int = Field(default=4, ge=1, le=64)
     timeout_seconds: float = Field(default=120, gt=0, le=600)
     max_audio_seconds: int = Field(default=120, ge=1, le=600)
     max_audio_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=50 * 1024 * 1024)
     max_audio_per_message: int = Field(default=3, ge=1, le=10)
     max_transcript_chars: int = Field(default=8000, ge=1, le=20000)
+
+
+class SpeechSynthesisConfig(_FrozenConfig):
+    enabled: bool = False
+    auto_download: bool = True
+    download_timeout_seconds: float = Field(default=600, gt=0, le=1800)
+    model_dir: str = "cache/speech/moss-tts"
+    voice: Literal["Junhao"] = "Junhao"
+    max_cpu_cores: int = Field(default=4, ge=1, le=64)
+    timeout_seconds: float = Field(default=180, gt=0, le=600)
+    max_text_chars: int = Field(default=300, ge=1, le=2000)
+    max_audio_seconds: int = Field(default=60, ge=1, le=120)
+    rate_limit_max_requests: int = Field(default=3, ge=1, le=100)
+    rate_limit_window_seconds: int = Field(default=600, ge=1, le=86400)
 
 
 class AccessPolicy(_FrozenConfig):
@@ -264,6 +280,7 @@ class FrontierSettings(_FrozenConfig):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     speech_recognition: SpeechRecognitionConfig = Field(default_factory=SpeechRecognitionConfig)
+    speech_synthesis: SpeechSynthesisConfig = Field(default_factory=SpeechSynthesisConfig)
     agent_policy: AccessPolicy = Field(default_factory=AccessPolicy)
     auto_reply_policy: AutoReplyPolicy = Field(default_factory=AutoReplyPolicy)
     paint_policy: AccessPolicy = Field(default_factory=AccessPolicy)
@@ -541,6 +558,7 @@ class EnvConfig:
 
     settings: ClassVar[FrontierSettings]
     SPEECH_RECOGNITION: ClassVar[SpeechRecognitionConfig]
+    SPEECH_SYNTHESIS: ClassVar[SpeechSynthesisConfig]
 
     BOT_NAME: ClassVar[str]
     BOT_NICKNAMES: ClassVar[list[str]]
@@ -699,6 +717,7 @@ class EnvConfig:
             "MESSAGE_IMAGE_TEXT_THRESHOLD": settings.agent.message_image_text_threshold,
             "MESSAGE_MEDIA_FAKE_IP_FALLBACK": settings.agent.message_media_fake_ip_fallback,
             "SPEECH_RECOGNITION": settings.speech_recognition,
+            "SPEECH_SYNTHESIS": settings.speech_synthesis,
             "AGENT_WHITELIST_MODE": settings.agent_policy.whitelist_mode,
             "AGENT_WHITELIST_PERSON_LIST": list(settings.agent_policy.whitelist_person_list),
             "AGENT_WHITELIST_GROUP_LIST": list(settings.agent_policy.whitelist_group_list),

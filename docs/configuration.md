@@ -38,6 +38,7 @@ Frontier 的配置分为四类文件：NoneBot 启动参数在 `.env`，Frontier
 | `[platforms.feishu]` | 飞书接入的非敏感配置（生产入口默认关闭） | 本页 |
 | `[agent]` | 推理等级、长文转图阈值、Fake-IP 媒体回退 | [消息媒体网络](message-media-network.md) |
 | `[speech_recognition]` | 本地 SenseVoice 语音识别 | [本地语音识别](local-speech.md) |
+| `[speech_synthesis]` | 本地 MOSS-TTS-Nano 语音合成 | [本地语音合成](local-tts.md) |
 | `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]` | 访问名单与主动回复、绘画权限 | 本页 |
 | `[limits]` | 调用预算、超时、限流 | [Agent 执行控制](agent-execution-controls.md) |
 | `[sessions]` | QQ 跨轮会话缓存 | [QQ 会话缓存](agent-sessions.md) |
@@ -121,13 +122,17 @@ DeepSeek 可分别配置为 `deepseek + chat_completions`、`openai + responses`
 
 ### `[speech_recognition]`
 
-默认关闭。启用前先运行 `uv run --locked python scripts/setup_sensevoice.py` 安装运行器、Q8 权重和 VAD 模型；路径是本机运维配置，不作为工具输入。安装、复测与消息行为见 [本地语音识别](local-speech.md)。
+默认关闭，依赖包含在默认 `uv sync` 中。启用后首次使用自动安装默认 Windows x64 运行器、Q8 权重和 VAD；可通过 `auto_download = false` 关闭自动下载，资源准备单独受 `download_timeout_seconds`（默认 600）约束。路径是本机运维配置，不作为工具输入；自定义路径由运维管理。安装、复测与消息行为见 [本地语音识别](local-speech.md)。
+
+### `[speech_synthesis]`
+
+默认关闭，依赖包含在默认 `uv sync` 中。使用原生 PyTorch MOSS-TTS-Nano，首次使用自动安装固定修订并校验的本地模型；`auto_download = false` 用于预装资源离线运行，资源准备单独受 `download_timeout_seconds`（默认 600）约束。默认 4 个逻辑 CPU、单次 300 字、60 秒音频、180 秒推理总超时；与本地识别共用推理锁。`get_speech` 返回自动发送的 SILK 语音工件，共用 `[paint_policy]` 权限，另有本节的独立用户频率限制。两套资源可通过 `uv run --locked python scripts/setup_speech.py` 统一预下载。安装、试听与参数见 [本地语音合成](local-tts.md)。
 
 ### 访问策略
 
 - `[agent_policy]`：决定是否响应 QQ 消息（`/acp` 也会二次校验）。`whitelist_mode = true` 时，非零群必须在 `whitelist_group_list` 中，且用户必须在 `whitelist_person_list` 中；个人和群黑名单优先，且黑名单在白名单模式关闭时仍然生效。
 - `[auto_reply_policy]`：控制群聊中未被 @/唤醒时是否走主动回复判断；`whitelist_mode = true` 时仅 `whitelist_group_list` 中的群参与，`blacklist_group_list` 优先。
-- `[paint_policy]`：绘画和视频共用，覆盖 `/paint`、`/video` 命令和聊天 Agent 的媒体生成工具。黑名单优先；`whitelist_mode = true` 时用户号在 `whitelist_person_list` 中或群号在 `whitelist_group_list` 中即可使用，两份名单均为空时全部拒绝。可在 Dashboard 的“绘画与视频权限”中修改，保存后对后续调用生效。
+- `[paint_policy]`：绘画、视频和本地语音合成共用，覆盖 `/paint`、`/video` 命令和聊天 Agent 的媒体生成工具。黑名单优先；`whitelist_mode = true` 时用户号在 `whitelist_person_list` 中或群号在 `whitelist_group_list` 中即可使用，两份名单均为空时全部拒绝。可在 Dashboard 的“绘画与视频权限”中修改，保存后对后续调用生效。
 
 ### `[limits]`
 

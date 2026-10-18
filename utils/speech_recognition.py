@@ -15,9 +15,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from utils.configs import EnvConfig, SpeechRecognitionConfig
+from utils.speech_assets import SpeechAssetsError, ensure_recognition_assets
+from utils.speech_resources import speech_inference_lock
 
 logger = logging.getLogger(__name__)
-_recognition_lock = asyncio.Lock()
+_recognition_lock = speech_inference_lock
 _SILK_HEADERS = (b"\x02#!SILK_V3", b"#!SILK_V3")
 _TAG = re.compile(r"<\|[^\r\n]*?\|>")
 _DECODE_WORKER = Path(__file__).with_name("speech_decode.py")
@@ -165,9 +167,10 @@ async def transcribe_audio(data: bytes, *, settings: SpeechRecognitionConfig | N
         raise SpeechRecognitionError("disabled")
     if not data or len(data) > settings.max_audio_bytes:
         raise SpeechRecognitionError("audio_size_limit")
-    executable, model, vad = _runtime_paths(settings)
     started = time.monotonic()
     try:
+        await ensure_recognition_assets(settings)
+        executable, model, vad = _runtime_paths(settings)
         async with asyncio.timeout(settings.timeout_seconds), _recognition_lock:
             with TemporaryDirectory(prefix="frontier-asr-") as temporary:
                 wav, duration = await _decode_audio(data, Path(temporary), settings)
@@ -186,6 +189,8 @@ async def transcribe_audio(data: bytes, *, settings: SpeechRecognitionConfig | N
                 return Transcription(text, duration, time.monotonic() - started)
     except TimeoutError as exc:
         raise SpeechRecognitionError("timeout") from exc
+    except SpeechAssetsError as exc:
+        raise SpeechRecognitionError(exc.code) from exc
 
 
 async def transcribe_message_audio(text: str, audio: list[bytes]) -> tuple[str, bool]:

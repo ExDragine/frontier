@@ -108,6 +108,12 @@ uv sync
 uv run playwright install
 ```
 
+语音识别和语音合成的 Python 依赖已包含在默认 `uv sync` 安装中，无需安装 extras。
+启用 `[speech_recognition]` / `[speech_synthesis]` 后，首次使用会自动下载并校验对应模型；
+Windows x64 的 SenseVoice 运行器也会自动准备。下载按需进行，未启用的功能不下载模型。
+需要提前准备或离线部署时，可运行 `uv run --locked python scripts/setup_speech.py` 一次安装两套资源。
+配置与平台限制见 [本地语音识别](docs/local-speech.md) 和 [本地语音合成](docs/local-tts.md)。
+
 项目已将腾讯云 PyPI 镜像设为 uv 默认源；CPU 版 PyTorch 使用上海交通大学的 wheel 镜像，`.env.example` 和启动脚本默认把 `HF_ENDPOINT` 设为 `https://hf-mirror.com`。内容检查模型依赖随项目默认安装，启用 `[content_check]` 后首次检查会按配置下载模型和 tokenizer。
 
 ### 配置

@@ -21,7 +21,7 @@ def has_media_permission(
     *,
     policy: type[EnvConfig],
 ) -> bool:
-    """Apply the shared paint/video policy, with blacklists taking priority."""
+    """Apply the shared media-generation policy, with blacklists taking priority."""
     if _contains_id(policy.PAINT_BLACKLIST_PERSON_LIST, user_id):
         return False
     if _contains_id(policy.PAINT_BLACKLIST_GROUP_LIST, group_id):

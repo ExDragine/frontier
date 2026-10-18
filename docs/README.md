@@ -26,6 +26,7 @@
 | [Laya 决策 Provider](laya-decision-provider.md) | 可选 Laya 候选预筛的本地 SDK/HTTP 后端、DecisionProvider 契约与门控边界。 |
 | [消息媒体网络](message-media-network.md) | 媒体加载的公开地址校验，以及 Clash TUN / Fake-IP 环境下的 DNS 回退规则。 |
 | [本地语音识别](local-speech.md) | SenseVoiceSmall Q8 的 Windows 安装、子进程识别行为、消息语义与资源复测。 |
+| [本地语音合成](local-tts.md) | MOSS-TTS-Nano 原生 PyTorch 安装、中文试听、SILK 工件和资源限制。 |
 | [模型目录](../models/README.md) | `models/` 模型元数据：模型卡字段、能力与生命周期、LobeHub 名称同步、更新流程。 |
 | [渲染器开发说明](../renderer/README.md) | Markdown 渲染器的 React/TypeScript 组件、构建、类型生成与截图验证。 |
 | [富文本排版技能](../skills/rich-markdown/SKILL.md) | QQ 回复的 Markdown 与轻量组件语法；详细字段契约位于其 `references/` 目录。 |

@@ -63,6 +63,7 @@ _TOOL_MODULE_GROUPS = {
     "weather": "earth",
     "paint": "main",
     "video": "main",
+    "speech": "main",
     "memory": "memory",
     "NRCmerchant_current": "main",
     "webpage_screenshot": "restricted",
