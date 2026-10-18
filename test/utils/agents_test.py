@@ -222,6 +222,22 @@ async def test_extract_uni_messages():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["image", "audio", "voice", "video", "file"])
+async def test_extract_artifacts_preserves_path_objects_in_media_segments(tmp_path, kind):
+    path = tmp_path / "media.bin"
+    path.write_bytes(b"media")
+    response = {"messages": [types.SimpleNamespace(
+        type="tool", name="send_media", artifact=[types.SimpleNamespace(type=kind, path=path)],
+    )]}
+
+    result = await cognitive_mod.FrontierCognitive.extract_artifacts(response)
+
+    assert len(result) == 1
+    assert result[0].kind == ("audio" if kind == "voice" else kind)
+    assert result[0].path == str(path)
+
+
+@pytest.mark.asyncio
 async def test_extract_artifacts_accepts_neutral_tool_mapping_without_sdk_types():
     response = {
         "messages": [

@@ -44,12 +44,15 @@ async def get_video(
 ) -> tuple[str, UniMessage | None]:
     """生成视频。
 
+    成功返回的视频工件会由系统在本轮最终回复时自动发送。
+    无需再调用 send_video 或 send_file，也不要为生成结果编造路径或 URL。
+
     Args:
         prompt: 视频生成提示词，描述要生成什么视频
         input_type: text 表示纯文字生成视频，image 表示用当前消息图片生成视频，video 表示用当前消息视频扩展视频
 
     Returns:
-        tuple[str, Optional[MessageSegment]]: (描述信息, 视频消息段)
+        (描述信息, 待自动发送的视频工件)；返回工件不代表已送达。
     """
     start_time = time.time()
     logger.info(f"🛠️ 调用工具: video, 参数: prompt={prompt}")
@@ -94,4 +97,4 @@ async def get_video(
         return "视频生成失败了", None
 
     logger.info(f"✅ 工具执行成功: video (耗时: {end_time - start_time:.2f}s)")
-    return f"视频生成OK了，提示词：{prompt}", result
+    return f"视频生成OK了，已加入本轮回复，将自动发送，无需再调用 send_video 或 send_file。提示词：{prompt}", result

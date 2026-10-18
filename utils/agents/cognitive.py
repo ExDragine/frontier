@@ -176,7 +176,7 @@ def _artifact_from_segment(segment: object) -> AgentArtifact | None:
     url_value = _segment_value(segment, "url")
     path_value = _segment_value(segment, "path")
     url = str(url_value) if isinstance(url_value, str) and url_value else None
-    path = str(path_value) if isinstance(path_value, str) and path_value else None
+    path = os.fsdecode(path_value) if isinstance(path_value, (str, os.PathLike)) and path_value else None
     if url and url.startswith("data:"):
         decoded = inline_media_bytes({"type": kind, "url": url})
         if decoded and decoded[0]:

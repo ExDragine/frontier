@@ -27,6 +27,8 @@ async def test_get_video_uses_shared_video_service(load_tool_module, monkeypatch
 
     assert captured == {"prompt": "a happy horse", "image": None, "video": None}
     assert "视频生成OK了" in text
+    assert "已加入本轮回复，将自动发送" in text
+    assert "无需再调用 send_video 或 send_file" in text
     assert artifact[0].raw == b"generated-video"
 
 

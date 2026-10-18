@@ -19,66 +19,96 @@ from utils.milky_tools import (
 )
 
 _DEFAULT_CONFIG = cast(RunnableConfig, None)
+_MEDIA_SOURCE_ERROR = (
+    "媒体消息未加入回复：路径不存在、超出当前会话挂载范围，或不是有效的 HTTP(S) URL。"
+    "请使用已确认存在的虚拟路径或 URL；若生成工具已返回工件，无需再次发送，直接完成最终回复。"
+)
 
 
-def _resolve_message_local_path(source: str, workspace_dir: str | None):
-    path = resolve_local_path(source, workspace_dir)
-    if path is not None or workspace_dir is not None:
-        return path
-    direct_path = Path(source)
-    return direct_path if direct_path.is_file() else None
-
-
-@tool(response_format="content_and_artifact")
-async def send_image(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage]:
-    """发送图片工具，支持本地路径或远程 URL
-    Args:
-        source: 本地文件的绝对路径（如 /tmp/photo.png）或远程 URL
-    """
-    workspace_dir = configurable(config).get("workspace_dir")
-    if path := _resolve_message_local_path(source, workspace_dir):
-        return "构建了一个图片消息", UniMessage.image(path=path)
-    validate_url(source)
-    return "构建了一个图片消息", UniMessage.image(url=source)
-
-
-@tool(response_format="content_and_artifact")
-async def send_audio(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage]:
-    """发送音频文件工具（以文件形式呈现，区别于语音），支持本地路径或远程 URL
-    Args:
-        source: 本地文件的绝对路径（如 /tmp/music.mp3）或远程 URL
-    """
-    workspace_dir = configurable(config).get("workspace_dir")
-    if path := _resolve_message_local_path(source, workspace_dir):
-        return "构建了一个音频消息", UniMessage.audio(path=path)
-    validate_url(source)
-    return "构建了一个音频消息", UniMessage.audio(url=source)
-
-
-@tool(response_format="content_and_artifact")
-async def send_voice(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage]:
-    """发送语音消息工具（以对讲/语音条形式呈现），支持本地路径或远程 URL
-    Args:
-        source: 本地文件的绝对路径（如 /tmp/voice.wav）或远程 URL
-    """
-    workspace_dir = configurable(config).get("workspace_dir")
-    if path := _resolve_message_local_path(source, workspace_dir):
-        return "构建了一个语音消息", UniMessage.voice(path=path)
-    validate_url(source)
-    return "构建了一个语音消息", UniMessage.voice(url=source)
+def _resolve_message_source(source: str, config: RunnableConfig) -> tuple[Path | None, str | None]:
+    """Validate a source before constructing an artifact; no platform write occurs here."""
+    try:
+        validate_url(source)
+    except ValueError:
+        # Do not probe URLs or UNC shares as local files (notably on Windows).
+        if "://" in source or source.startswith(("//", "\\\\")):
+            return None, None
+    else:
+        return None, source
+    settings = configurable(dict(config or {}))
+    virtual_roots = settings.get("virtual_roots")
+    workspace_dir = settings.get("workspace_dir")
+    try:
+        if isinstance(virtual_roots, dict):
+            path = resolve_virtual_path(source, virtual_roots)
+        elif workspace_dir is not None:
+            path = resolve_virtual_path(source, {"/": workspace_dir})
+        else:
+            # Preserve direct local calls without an Agent sandbox configuration.
+            path = resolve_local_path(source)
+            if path is None:
+                direct_path = Path(source)
+                path = direct_path if direct_path.is_file() else None
+    except (OSError, ValueError):
+        # Malformed or inaccessible local paths are input failures, before any send.
+        path = None
+    return path, None
 
 
 @tool(response_format="content_and_artifact")
-async def send_video(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage]:
-    """发送视频工具，支持本地路径或远程 URL
+async def send_image(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage | None]:
+    """将已有图片加入本轮最终回复，由系统在本轮结束后自动发送。
+
+    get_paint 已返回的图片工件会自动发送，无需再调用本工具，也不要编造图片路径。
+
     Args:
-        source: 本地文件的绝对路径（如 /tmp/clip.mp4）或远程 URL
+        source: 已存在的 Agent 虚拟路径（如 /photo.png、/memory/...）或 HTTP(S) URL
     """
-    workspace_dir = configurable(config).get("workspace_dir")
-    if path := _resolve_message_local_path(source, workspace_dir):
-        return "构建了一个视频消息", UniMessage.video(path=path)
-    validate_url(source)
-    return "构建了一个视频消息", UniMessage.video(url=source)
+    path, url = _resolve_message_source(source, config)
+    if path is None and url is None:
+        return _MEDIA_SOURCE_ERROR, None
+    return "构建了一个图片消息，将在本轮结束后自动发送", UniMessage.image(path=path, url=url)
+
+
+@tool(response_format="content_and_artifact")
+async def send_audio(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage | None]:
+    """将已有音频加入本轮最终回复（以文件形式呈现），由系统在本轮结束后自动发送。
+
+    Args:
+        source: 已存在的 Agent 虚拟路径（如 /music.mp3、/memory/...）或 HTTP(S) URL
+    """
+    path, url = _resolve_message_source(source, config)
+    if path is None and url is None:
+        return _MEDIA_SOURCE_ERROR, None
+    return "构建了一个音频消息，将在本轮结束后自动发送", UniMessage.audio(path=path, url=url)
+
+
+@tool(response_format="content_and_artifact")
+async def send_voice(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage | None]:
+    """将已有语音加入本轮最终回复（以语音条呈现），由系统在本轮结束后自动发送。
+
+    Args:
+        source: 已存在的 Agent 虚拟路径（如 /voice.wav、/memory/...）或 HTTP(S) URL
+    """
+    path, url = _resolve_message_source(source, config)
+    if path is None and url is None:
+        return _MEDIA_SOURCE_ERROR, None
+    return "构建了一个语音消息，将在本轮结束后自动发送", UniMessage.voice(path=path, url=url)
+
+
+@tool(response_format="content_and_artifact")
+async def send_video(source: str, config: RunnableConfig = _DEFAULT_CONFIG) -> tuple[str, UniMessage | None]:
+    """将已有视频加入本轮最终回复，由系统在本轮结束后自动发送。
+
+    get_video 已返回的视频工件会自动发送，无需再调用本工具，也不要编造视频路径。
+
+    Args:
+        source: 已存在的 Agent 虚拟路径（如 /clip.mp4、/memory/...）或 HTTP(S) URL
+    """
+    path, url = _resolve_message_source(source, config)
+    if path is None and url is None:
+        return _MEDIA_SOURCE_ERROR, None
+    return "构建了一个视频消息，将在本轮结束后自动发送", UniMessage.video(path=path, url=url)
 
 
 @tool(response_format="content_and_artifact")

@@ -41,6 +41,8 @@ async def test_get_paint_returns_direct_artifact(load_tool_module, monkeypatch):
     text, artifact = await mod.get_paint("a cat")
 
     assert artifact[0].raw == b"img"
+    assert "已加入本轮回复，将自动发送" in text
+    assert "无需再调用 send_image 或 send_file" in text
 
 
 @pytest.mark.asyncio

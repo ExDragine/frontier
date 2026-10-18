@@ -31,12 +31,15 @@ async def get_paint(
 ) -> tuple[str, UniMessage | None]:
     """生成或编辑图片。
 
+    成功返回的图片工件会由系统在本轮最终回复时自动发送。
+    无需再调用 send_image 或 send_file，也不要为生成结果编造路径或 URL。
+
     Args:
         prompt: 绘画提示词，描述要生成或修改成什么样子
         mode: generate 表示纯文字生成图片，edit 表示使用当前消息或引用消息中的图片作为参考进行编辑
 
     Returns:
-        tuple[str, Optional[MessageSegment]]: (描述信息, 图片消息段)
+        (描述信息, 待自动发送的图片工件)；返回工件不代表已送达。
     """
     start_time = time.time()
     logger.info(f"🛠️ 调用工具: paint, 参数: mode={mode}, prompt={prompt}")
@@ -73,4 +76,4 @@ async def get_paint(
     result = UniMessage.image(raw=image)
     action = "编辑" if mode == "edit" else "生成"
     logger.info(f"✅ 工具执行成功: paint (耗时: {end_time - start_time:.2f}s)")
-    return f"成功{action}图片，提示词：{prompt}", result
+    return f"成功{action}图片，已加入本轮回复，将自动发送，无需再调用 send_image 或 send_file。提示词：{prompt}", result

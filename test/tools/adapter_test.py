@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+_MEDIA_TOOLS = ["send_image", "send_audio", "send_voice", "send_video"]
+
 # ── 图片 ──────────────────────────────────────────────────────────────────────
 
 
@@ -12,7 +14,7 @@ import pytest
 async def test_send_image_url(load_tool_module):
     adapter = load_tool_module("adapter")
     text, artifact = await adapter.send_image("https://example.com/a.png")
-    assert text == "构建了一个图片消息"
+    assert text == "构建了一个图片消息，将在本轮结束后自动发送"
     assert artifact[0].type == "image"
     assert artifact[0].url == "https://example.com/a.png"
 
@@ -39,7 +41,7 @@ async def test_send_image_local(load_tool_module):
 async def test_send_audio_url(load_tool_module):
     adapter = load_tool_module("adapter")
     text, artifact = await adapter.send_audio("https://example.com/a.mp3")
-    assert text == "构建了一个音频消息"
+    assert text == "构建了一个音频消息，将在本轮结束后自动发送"
     assert artifact[0].type == "audio"
     assert artifact[0].url == "https://example.com/a.mp3"
 
@@ -64,7 +66,7 @@ async def test_send_audio_local(load_tool_module):
 async def test_send_voice_url(load_tool_module):
     adapter = load_tool_module("adapter")
     text, artifact = await adapter.send_voice("https://example.com/a.wav")
-    assert text == "构建了一个语音消息"
+    assert text == "构建了一个语音消息，将在本轮结束后自动发送"
     assert artifact[0].type == "voice"
     assert artifact[0].url == "https://example.com/a.wav"
 
@@ -89,7 +91,7 @@ async def test_send_voice_local(load_tool_module):
 async def test_send_video_url(load_tool_module):
     adapter = load_tool_module("adapter")
     text, artifact = await adapter.send_video("https://example.com/a.mp4")
-    assert text == "构建了一个视频消息"
+    assert text == "构建了一个视频消息，将在本轮结束后自动发送"
     assert artifact[0].type == "video"
     assert artifact[0].url == "https://example.com/a.mp4"
 
@@ -182,19 +184,51 @@ async def test_send_file_local(load_tool_module, tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", _MEDIA_TOOLS)
 @pytest.mark.parametrize(
     "bad_source",
     [
         "not_a_url",
         "ftp://example.com/a.png",
         "//example.com/no-scheme",
+        "\\\\example.com\\media.png",
+        "https://[malformed-host",
+        "data:image/png;base64,private-image-data",
+        "bad\x00path",
         "",
     ],
 )
-async def test_invalid_url_rejected(load_tool_module, bad_source):
+async def test_invalid_media_source_returns_recoverable_result(load_tool_module, tool_name, bad_source):
     adapter = load_tool_module("adapter")
-    with pytest.raises(ValueError, match="无效的 URL"):
-        await adapter.send_image(bad_source)
+    text, artifact = await getattr(adapter, tool_name)(bad_source)
+
+    assert artifact is None
+    assert "媒体消息未加入回复" in text
+    assert "无需再次发送" in text
+    assert "private-image-data" not in text
+    assert "malformed-host" not in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source, valid", [
+    ("https://example.com/media.png", True),
+    ("https://[malformed-host", False),
+    ("ftp://example.com/media.png", False),
+    ("//example.com/media.png", False),
+    ("\\\\example.com\\media.png", False),
+])
+async def test_remote_media_sources_do_not_probe_local_filesystem(load_tool_module, monkeypatch, source, valid):
+    adapter = load_tool_module("adapter")
+
+    def fail(*_args, **_kwargs):
+        raise AssertionError("Remote sources must not be probed as local files")
+
+    monkeypatch.setattr(adapter, "resolve_local_path", fail)
+    monkeypatch.setattr(adapter, "resolve_virtual_path", fail)
+
+    _, artifact = await adapter.send_image(source)
+
+    assert (artifact is not None) == valid
 
 
 @pytest.mark.asyncio
@@ -373,8 +407,90 @@ async def test_send_file_reports_platform_upload_failure(load_tool_module, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_send_image_falls_through_to_url_validation_when_unresolvable(load_tool_module):
+async def test_send_image_reports_missing_workspace_file_without_raising(load_tool_module):
     adapter = load_tool_module("adapter")
 
-    with pytest.raises(ValueError, match="无效的 URL"):
-        await adapter.send_image("/nope.png", config=_ws_config("/nonexistent"))
+    text, artifact = await adapter.send_image("/nope.png", config=_ws_config("/nonexistent"))
+
+    assert artifact is None
+    assert "路径不存在" in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", _MEDIA_TOOLS)
+@pytest.mark.parametrize("source", ["/photo.png", "photo.png", "/memory/group-123/photo.png"])
+async def test_media_tools_resolve_current_virtual_mounts(load_tool_module, tmp_path, tool_name, source):
+    adapter = load_tool_module("adapter")
+    workspace = tmp_path / "workspace"
+    memory = tmp_path / "memory"
+    workspace.mkdir()
+    memory.mkdir()
+    (workspace / "photo.png").write_bytes(b"workspace media")
+    (memory / "photo.png").write_bytes(b"memory media")
+    config = {"configurable": {
+        "workspace_dir": str(workspace),
+        "virtual_roots": {"/": str(workspace), "/memory/group-123/": str(memory)},
+    }}
+
+    text, artifact = await getattr(adapter, tool_name)(source, config=config)
+
+    expected_root = memory if source.startswith("/memory/") else workspace
+    assert artifact[0].path == expected_root / "photo.png"
+    assert artifact[0].url is None
+    assert "将在本轮结束后自动发送" in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", _MEDIA_TOOLS)
+@pytest.mark.parametrize("source", [
+    "/../outside.png",
+    "/memory/group-123/../outside.png",
+    "/memory/group-other/photo.png",
+    "/skills/photo.png",
+])
+async def test_media_tools_reject_traversal_and_unmounted_paths(load_tool_module, tmp_path, tool_name, source):
+    adapter = load_tool_module("adapter")
+    workspace = tmp_path / "workspace"
+    memory = tmp_path / "memory" / "group-123"
+    workspace.mkdir()
+    memory.mkdir(parents=True)
+    # These existing files would be found by an unsafe traversal or default-root fallback.
+    (tmp_path / "outside.png").write_bytes(b"private")
+    (memory.parent / "outside.png").write_bytes(b"private")
+    for relative in ("memory/group-other", "skills"):
+        folder = workspace / relative
+        folder.mkdir(parents=True)
+        (folder / "photo.png").write_bytes(b"private")
+    config = {"configurable": {
+        "virtual_roots": {"/": str(workspace), "/memory/group-123/": str(memory)},
+    }}
+
+    text, artifact = await getattr(adapter, tool_name)(source, config=config)
+
+    assert artifact is None
+    assert "挂载范围" in text
+    assert source not in text
+
+
+@pytest.mark.asyncio
+async def test_explicit_empty_mounts_do_not_fall_back_to_host_paths(load_tool_module, tmp_path):
+    adapter = load_tool_module("adapter")
+    local_file = tmp_path / "private.png"
+    local_file.write_bytes(b"private")
+
+    _, artifact = await adapter.send_image(str(local_file), config={"configurable": {"virtual_roots": {}}})
+
+    assert artifact is None
+
+
+@pytest.mark.asyncio
+async def test_media_artifact_construction_errors_are_not_swallowed(load_tool_module, monkeypatch):
+    adapter = load_tool_module("adapter")
+
+    def fail(**_kwargs):
+        raise ValueError("unexpected artifact construction failure")
+
+    monkeypatch.setattr(adapter.UniMessage, "image", fail)
+
+    with pytest.raises(ValueError, match="unexpected artifact construction failure"):
+        await adapter.send_image("https://example.com/photo.png")
