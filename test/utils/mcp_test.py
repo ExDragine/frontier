@@ -7,12 +7,17 @@ import sys
 from pathlib import Path
 
 
-def test_native_http_mcp_transport_and_cross_loop_tool_call():
+def test_native_http_mcp_transport_and_cross_loop_tool_call(tmp_path):
     script = """
 import asyncio
 import socket
+import sys
 import threading
 import time
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+assert Path.cwd() != Path(sys.argv[1]), "MCP contract must use an isolated working directory"
 
 import uvicorn
 from fastmcp import FastMCP
@@ -71,8 +76,8 @@ finally:
     assert not thread.is_alive(), "HTTP MCP server did not stop"
 """
     result = subprocess.run(  # noqa: S603 - fixed isolated test script with loopback HTTP server
-        [sys.executable, "-c", script],
-        cwd=Path(__file__).resolve().parents[2],
+        [sys.executable, "-c", script, str(Path(__file__).resolve().parents[2])],
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         timeout=45,
