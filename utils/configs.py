@@ -174,6 +174,21 @@ class SearchConfig(_FrozenConfig):
     max_content_chars: int = Field(default=24000, ge=256, le=100000)
 
 
+class SpeechRecognitionConfig(_FrozenConfig):
+    """Local SenseVoice runtime; paths are operator configuration, never tool input."""
+
+    enabled: bool = False
+    executable: str = ""
+    model_path: str = ""
+    vad_model_path: str = ""
+    max_cpu_cores: int = Field(default=4, ge=1, le=64)
+    timeout_seconds: float = Field(default=120, gt=0, le=600)
+    max_audio_seconds: int = Field(default=120, ge=1, le=600)
+    max_audio_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=50 * 1024 * 1024)
+    max_audio_per_message: int = Field(default=3, ge=1, le=10)
+    max_transcript_chars: int = Field(default=8000, ge=1, le=20000)
+
+
 class AccessPolicy(_FrozenConfig):
     whitelist_mode: bool = False
     whitelist_person_list: tuple[int | str, ...] = ()
@@ -260,6 +275,7 @@ class FrontierSettings(_FrozenConfig):
     platforms: PlatformsConfig = Field(default_factory=PlatformsConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
+    speech_recognition: SpeechRecognitionConfig = Field(default_factory=SpeechRecognitionConfig)
     agent_policy: AccessPolicy = Field(default_factory=AccessPolicy)
     auto_reply_policy: AutoReplyPolicy = Field(default_factory=AutoReplyPolicy)
     paint_policy: AccessPolicy = Field(default_factory=AccessPolicy)
@@ -545,6 +561,7 @@ class EnvConfig:
     """兼容现有调用点的配置门面；内部由不可变、已验证快照驱动。"""
 
     settings: ClassVar[FrontierSettings]
+    SPEECH_RECOGNITION: ClassVar[SpeechRecognitionConfig]
 
     # Bot identity
     BOT_NAME: ClassVar[str]
@@ -717,6 +734,7 @@ class EnvConfig:
             "AGENT_CAPABILITY": settings.agent.reasoning_effort,
             "MESSAGE_IMAGE_TEXT_THRESHOLD": settings.agent.message_image_text_threshold,
             "MESSAGE_MEDIA_FAKE_IP_FALLBACK": settings.agent.message_media_fake_ip_fallback,
+            "SPEECH_RECOGNITION": settings.speech_recognition,
             "AGENT_WHITELIST_MODE": settings.agent_policy.whitelist_mode,
             "AGENT_WHITELIST_PERSON_LIST": list(settings.agent_policy.whitelist_person_list),
             "AGENT_WHITELIST_GROUP_LIST": list(settings.agent_policy.whitelist_group_list),

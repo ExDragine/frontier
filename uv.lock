@@ -810,7 +810,9 @@ dependencies = [
     { name = "nonebot2", extra = ["fastapi"] },
     { name = "pillow" },
     { name = "playwright" },
+    { name = "psutil" },
     { name = "python-dotenv" },
+    { name = "silk-python" },
     { name = "sqlmodel" },
     { name = "tomlkit" },
     { name = "torch", version = "2.14.1", source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }, marker = "sys_platform == 'darwin'" },
@@ -857,7 +859,9 @@ requires-dist = [
     { name = "nonebot2", extras = ["fastapi"] },
     { name = "pillow" },
     { name = "playwright" },
+    { name = "psutil", specifier = ">=7.2.2" },
     { name = "python-dotenv" },
+    { name = "silk-python", specifier = "==0.2.8" },
     { name = "sqlmodel" },
     { name = "tomlkit" },
     { name = "torch", marker = "sys_platform != 'darwin'", index = "https://mirror.sjtu.edu.cn/pytorch-wheels/cpu" },
@@ -3074,6 +3078,41 @@ source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }
 sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/58/15/8b3609fd3830ef7b27b655beb4b4e9c62313a4e8da8c676e142cc210d58e/shellingham-1.5.4.tar.gz", hash = "sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de" }
 wheels = [
     { url = "https://mirrors.cloud.tencent.com/pypi/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl", hash = "sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686" },
+]
+
+[[package]]
+name = "silk-python"
+version = "0.2.8"
+source = { registry = "https://mirrors.cloud.tencent.com/pypi/simple/" }
+dependencies = [
+    { name = "cffi" },
+]
+sdist = { url = "https://mirrors.cloud.tencent.com/pypi/packages/e8/28/cfb7367c97a38b1292ebdac07fe931724137d660484e96a08d389629e3dc/silk_python-0.2.8.tar.gz", hash = "sha256:4b47e84b9ea82675af795c858fcd923ee15eeb6a9cb2a7ce5aff3f411bbb29b0" }
+wheels = [
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/b4/2d/22c148c0c3c550de0f2b3c0e8f3e6a3c81252e78bcc3e0d0ad083dfb6f5e/silk_python-0.2.8-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:e83f6e817933fb171986e4c1c012882865b87863b87092156e30c6813bb4ff68" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/a5/bd/29cc82cd8e2eff481e49688ab07d88c0068af043d93d08f45e372cfa16c7/silk_python-0.2.8-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:6fd680821ccfadf35283ea00eaf5e3577b3a430647d5d087ec7116e023d5ba96" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/85/c7/e859142979a39cc88f5d357e0d4249fdcecc77af05dc59b2bc2b440f17ef/silk_python-0.2.8-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:a2ddf68820ddd8264cdc2525fff9a24255c8222fb50df1bd0e9d11190b5aed7a" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/86/a6/36428ba06a8a54b9410b3cc42239f54fb2b54b2b66b177ccced1a4af2685/silk_python-0.2.8-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:df02961d08ca16443c1f34fb275f758cbf6f5953d073af306a81bc96949e6307" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/93/19/48831e110a0cceb85e06eeb9a923af8e2404f7816f236192d297042c8a8e/silk_python-0.2.8-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4c446430c6a38199b100857f9395e14c9a71a40d4ee1986f402605886f51cea0" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/e8/0e/bd95163ba12407b833b42e32fe0670b33f773592f89aa22aa229db1a5fbb/silk_python-0.2.8-cp314-cp314-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:2cf3e5be44caf9d38b54af8c1f06c01211ee7dcd055cdffc9f6d14fcbc2f3a7b" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/59/98/8959e81f0ac55ee681cc9bddb2f18e8fe9d706e1892f7c62d5e40064197e/silk_python-0.2.8-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:7d3b413a1d9eedc0aa4a7a0dd2fe5c1c8dd505f40eddb9b35d2fa91e08343399" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/86/d3/0d71c4a9d2c60c73caeabadda957e2b8ebea729b7c54b6faedaa5a0fb890/silk_python-0.2.8-cp314-cp314-musllinux_1_2_riscv64.whl", hash = "sha256:8b3ad1c9d9fd3c26e4c8bc488c319df4226719aa105a6692a782b735d013fb9e" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/94/29/f24da1df43b585bf434659f2661e2a180ac6a9e16ca2d08fe263f2def414/silk_python-0.2.8-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:93203a4666db5f33f3b957e740287f0f61afa0f51fdaabaee16349731e774607" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/16/7f/bc69e599b8ef2a903d087de689b31a0c54b4ecf78648a6c58a1fd4988e7b/silk_python-0.2.8-cp314-cp314-win32.whl", hash = "sha256:00506e71ceada9eec494be1c43b87518df464732ab4ae8bb88ca9497c6ad5474" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/86/2b/a931ec6cc171d659638e79f4a6dcfc25027c1f8f47152c7836345745cdfc/silk_python-0.2.8-cp314-cp314-win_amd64.whl", hash = "sha256:9dc00f9e956408ce72ce4e3fe23396b83ca68e8a711247baad6573af8d336d8a" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/18/16/4bcee2580a5d31239c58e4fc787757a1b1beeaad0587f7aad10aff94e7ba/silk_python-0.2.8-cp314-cp314-win_arm64.whl", hash = "sha256:e49afe7314e18648aaa6397216dc7faca88f658e1f4a6cd42585677ac858e3a3" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/60/a2/e842b6158d2e8eda440b853e7d2e0d4800c3196553276a26d6949032b173/silk_python-0.2.8-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:2977c027d63468f5ebce55ba3a75d174c9fcc48c53161a600c117c8125eb6d74" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/a4/66/2620b288ed58094fe1c34ada495e505fa787a8f95e3e4bb7c93c9507f144/silk_python-0.2.8-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:afbacff48642ab76ac7ee046ead2bbd0240f716c45e2ba902a448e9dbcf09b2f" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/1e/91/ff22f0d3edff0e646b38ea742c48db2c9e49d2fbef91f91f7e9a54d17ca6/silk_python-0.2.8-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:fe1d192d2a6a1c1b88e16f769f7ddeee3a0a61972e110579a4dce8b0ae79145f" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/fc/10/3e5620c0e39d5c9af4b66729e62163cefd307c7b7e6c875bbb68e75d04b0/silk_python-0.2.8-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:734b05fdb3d73acf158dcad1a34f764a66888476773a7d2c2af415275b71ef1b" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/53/61/444ab011cc67e792a6a5e08585eeb0293aa2605a342fddc961f7cc9f7faf/silk_python-0.2.8-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:84165097ed1f41d7a370880e42079f077b50d06ce798b89f4fc74e95e79738e6" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/e8/05/f1b09ed10580e84313201e2ba684c319a46c51b87b16a78a4dcfe2e1b6a8/silk_python-0.2.8-cp314-cp314t-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:afb4c3650fe0b50cce4f3c1a39449ca54376640f2d424a7a61b47ff18cdcf7ea" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/b6/80/6589fcdeb6eab2c2745f9cf4a6e42b8fe870ef4a5c0764477aed60568d37/silk_python-0.2.8-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:803ba892e60653af425a3f4bdc9537c6dd012388acb11acb6b4bd153d6e4c525" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/27/17/cc837306ba93038a06889b180f53e4be1230c7a2593c0f4738409ace993a/silk_python-0.2.8-cp314-cp314t-musllinux_1_2_riscv64.whl", hash = "sha256:8a4f4f1b17c07e2a03f8701489f79e2e537f6c7c971dc9d19362c7cb59426554" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/ec/9f/8a338a5a94ab80ae8ba2111dfd741968715b54049683967b4b47cac502e7/silk_python-0.2.8-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:37916c54011db1a937aaf67634b2d8bc1033c7a898d74837b2ba2612d220d522" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/a6/f1/d17f4f13c69594569b03204dbfdb1aa25c0c227032f8b94ab1cc1ec1dfc1/silk_python-0.2.8-cp314-cp314t-win32.whl", hash = "sha256:3b48706d1e77fc0fe3d093af277becfa230901e138d2d9c2f059e106929d81fd" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/69/54/ac87da5cc24d7b5366767408030c5dfa0acdd6dffd4e7a8775aae52ff227/silk_python-0.2.8-cp314-cp314t-win_amd64.whl", hash = "sha256:98195ff54ef6ec09d914f89096af9fd30585116cb6bac9a1a78bdfc1b54c719f" },
+    { url = "https://mirrors.cloud.tencent.com/pypi/packages/91/18/62b0c5920bc2a794553479fc77a6cfebdff8bcdaaac14f538e7b1500082e/silk_python-0.2.8-cp314-cp314t-win_arm64.whl", hash = "sha256:53c39e317b7e34741ea1004d0af4c553660f5609d7bdc6e36ed5d91e923acb3e" },
 ]
 
 [[package]]

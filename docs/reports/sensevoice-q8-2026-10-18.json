@@ -1,0 +1,513 @@
+{
+  "title": "SenseVoiceSmall Q8 本地语音识别资源压力报告",
+  "date": "2026-10-18",
+  "target": {
+    "os": "Windows",
+    "cpu": "6-core Intel, exact model unspecified",
+    "ram_gib": 8
+  },
+  "target_was_measured": false,
+  "runtime_release": "runtime-llamacpp-v0.2.1",
+  "sample": {
+    "source": "https://huggingface.co/FunAudioLLM/SenseVoiceSmall/resolve/main/example/zh.mp3",
+    "sha256": "0e64de19e4ff9a02e682955c9112f32d2317cfdbb5bc2f3504664044c993f195",
+    "transcript_observed": "开放时间早上9点至下午5点。"
+  },
+  "model_sha256": "4ae45c94422de949b387e2e0fb10d7e14e4c42c69db30c3444ecc7d4b844b7c5",
+  "measurements": {
+    "generic": {
+      "time": "2026-10-18T12:45:39.065194+08:00",
+      "hardware": {
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "os": "Windows-11-10.0.26200-SP0",
+        "logical_cpus": 16,
+        "memory_gib": 31.16299819946289,
+        "available_memory_gib_at_end": 12.664337158203125
+      },
+      "settings": {
+        "executable": "cache/speech/sensevoice/runtime/llama-funasr-sensevoice.exe",
+        "model_path": "cache/speech/sensevoice/sensevoice-small-q8.gguf",
+        "vad_model_path": "cache/speech/sensevoice/fsmn-vad.gguf",
+        "max_cpu_cores": 4,
+        "timeout_seconds": 120.0,
+        "max_audio_seconds": 120,
+        "max_audio_bytes": 10485760,
+        "max_audio_per_message": 3,
+        "max_transcript_chars": 8000
+      },
+      "model_bytes": 254208320,
+      "executable_sha256": "eb1faf1f7251c6756e4c28fa1fe3f47d3691449bde6f38bc322a3eb5df43466c",
+      "sampling_interval_seconds": 0.04,
+      "median_single_short_seconds": 3.3380005000071833,
+      "cases": [
+        {
+          "case": "首次 MP3 请求",
+          "requests": 1,
+          "wall_seconds": 3.3324893999961205,
+          "peak_rss_mib": 324.9609375,
+          "incremental_rss_mib": 271.62890625,
+          "peak_private_mib": 1324.02734375,
+          "cpu_seconds_sampled": 12.03125,
+          "average_cores_sampled": 3.610289052986637,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.5933919871787964,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 3.319120499989367
+            }
+          ]
+        },
+        {
+          "case": "MP3 重复请求",
+          "requests": 1,
+          "wall_seconds": 3.3380005000071833,
+          "peak_rss_mib": 326.09765625,
+          "incremental_rss_mib": 272.65625,
+          "peak_private_mib": 1323.9921875,
+          "cpu_seconds_sampled": 11.90625,
+          "average_cores_sampled": 3.566880831795675,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.5943733084058375,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 3.3271970999921905
+            }
+          ]
+        },
+        {
+          "case": "Tencent SILK",
+          "requests": 1,
+          "wall_seconds": 3.4584514000016497,
+          "peak_rss_mib": 326.46484375,
+          "incremental_rss_mib": 273.01953125,
+          "peak_private_mib": 1324.01171875,
+          "cpu_seconds_sampled": 11.890625,
+          "average_cores_sampled": 3.4381356349244427,
+          "peak_children": 3,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.6175806071431518,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.6,
+              "elapsed_seconds": 3.4480018000031123
+            }
+          ]
+        },
+        {
+          "case": "30 秒 WAV",
+          "requests": 1,
+          "wall_seconds": 20.36924360001285,
+          "peak_rss_mib": 372.546875,
+          "incremental_rss_mib": 319.08203125,
+          "peak_private_mib": 1370.98046875,
+          "cpu_seconds_sampled": 75.40625,
+          "average_cores_sampled": 3.701966134861897,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.678974786667095,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点，开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间。",
+              "audio_seconds": 30.0,
+              "elapsed_seconds": 20.357662499998696
+            }
+          ]
+        },
+        {
+          "case": "120 秒 WAV",
+          "requests": 1,
+          "wall_seconds": 73.61076599999797,
+          "peak_rss_mib": 396.94921875,
+          "incremental_rss_mib": 343.34765625,
+          "peak_private_mib": 1425.203125,
+          "cpu_seconds_sampled": 274.9375,
+          "average_cores_sampled": 3.7350175108897465,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.6134230499999831,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上。上9点至下午5点，开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午。5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早。",
+              "audio_seconds": 120.0,
+              "elapsed_seconds": 73.60028440000315
+            }
+          ]
+        },
+        {
+          "case": "2 请求同时到达",
+          "requests": 2,
+          "wall_seconds": 6.662076499997056,
+          "peak_rss_mib": 326.81640625,
+          "incremental_rss_mib": 273.03125,
+          "peak_private_mib": 1325.0078125,
+          "cpu_seconds_sampled": 24.59375,
+          "average_cores_sampled": 3.691604261826004,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.5931335915239545,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 3.2971895999944536
+            },
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 6.64636870000686
+            }
+          ]
+        },
+        {
+          "case": "4 请求同时到达",
+          "requests": 4,
+          "wall_seconds": 13.315719699996407,
+          "peak_rss_mib": 327.140625,
+          "incremental_rss_mib": 272.84375,
+          "peak_private_mib": 1326.0625,
+          "cpu_seconds_sampled": 47.46875,
+          "average_cores_sampled": 3.5648655175591304,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.5927581775283302,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 3.2328266000113217
+            },
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 6.608354199997848
+            },
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 9.971422300004633
+            },
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 13.298586999997497
+            }
+          ]
+        },
+        {
+          "case": "5 秒静音",
+          "requests": 1,
+          "wall_seconds": 0.2035082000074908,
+          "peak_rss_mib": 316.921875,
+          "incremental_rss_mib": 261.5546875,
+          "peak_private_mib": 307.68359375,
+          "cpu_seconds_sampled": 0.234375,
+          "average_cores_sampled": 1.1516734951779488,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": null,
+          "results": [
+            {
+              "status": "failed",
+              "code": "no_speech"
+            }
+          ]
+        },
+        {
+          "case": "超长 121 秒",
+          "requests": 1,
+          "wall_seconds": 0.07251159999577794,
+          "peak_rss_mib": 55.75,
+          "incremental_rss_mib": 0.125,
+          "peak_private_mib": 40.34375,
+          "cpu_seconds_sampled": 0.015625,
+          "average_cores_sampled": 0.2154827641495951,
+          "peak_children": 0,
+          "peak_active_recognizers": 0,
+          "rtf_including_queue_load_decode": null,
+          "results": [
+            {
+              "status": "failed",
+              "code": "audio_duration_limit"
+            }
+          ]
+        }
+      ]
+    },
+    "avx2": {
+      "time": "2026-10-18T12:42:12.836288+08:00",
+      "hardware": {
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "os": "Windows-11-10.0.26200-SP0",
+        "logical_cpus": 16,
+        "memory_gib": 31.16299819946289,
+        "available_memory_gib_at_end": 12.799999237060547
+      },
+      "settings": {
+        "executable": "cache/speech/sensevoice/runtime-avx2/llama-funasr-sensevoice.exe",
+        "model_path": "cache/speech/sensevoice/sensevoice-small-q8.gguf",
+        "vad_model_path": "cache/speech/sensevoice/fsmn-vad.gguf",
+        "max_cpu_cores": 4,
+        "timeout_seconds": 120.0,
+        "max_audio_seconds": 120,
+        "max_audio_bytes": 10485760,
+        "max_audio_per_message": 3,
+        "max_transcript_chars": 8000
+      },
+      "model_bytes": 254208320,
+      "executable_sha256": "fe8ba6a74a7acd57bdc5a5fb5cb58cb3acc96a883e54be727de285eb5db090a7",
+      "sampling_interval_seconds": 0.04,
+      "median_single_short_seconds": 0.5644515000021784,
+      "cases": [
+        {
+          "case": "首次 MP3 请求",
+          "requests": 1,
+          "wall_seconds": 0.5644515000021784,
+          "peak_rss_mib": 321.49609375,
+          "incremental_rss_mib": 268.65234375,
+          "peak_private_mib": 1324.32421875,
+          "cpu_seconds_sampled": 1.34375,
+          "average_cores_sampled": 2.3806296909385734,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.10050774572688362,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 0.5523788999998942
+            }
+          ]
+        },
+        {
+          "case": "MP3 重复请求",
+          "requests": 1,
+          "wall_seconds": 0.4996335000032559,
+          "peak_rss_mib": 319.4140625,
+          "incremental_rss_mib": 266.00390625,
+          "peak_private_mib": 1324.5234375,
+          "cpu_seconds_sampled": 1.484375,
+          "average_cores_sampled": 2.9709276899774073,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.08896607906040882,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 0.49049949999607634
+            }
+          ]
+        },
+        {
+          "case": "Tencent SILK",
+          "requests": 1,
+          "wall_seconds": 0.6380639999988489,
+          "peak_rss_mib": 323.6875,
+          "incremental_rss_mib": 270.0703125,
+          "peak_private_mib": 1324.3671875,
+          "cpu_seconds_sampled": 1.734375,
+          "average_cores_sampled": 2.718183442418204,
+          "peak_children": 3,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.11393999999979446,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.6,
+              "elapsed_seconds": 0.6293402000010246
+            }
+          ]
+        },
+        {
+          "case": "30 秒 WAV",
+          "requests": 1,
+          "wall_seconds": 2.359483899999759,
+          "peak_rss_mib": 421.22265625,
+          "incremental_rss_mib": 367.34765625,
+          "peak_private_mib": 1418.7109375,
+          "cpu_seconds_sampled": 8.6875,
+          "average_cores_sampled": 3.6819492601754504,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.0786494633333253,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点，开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间。",
+              "audio_seconds": 30.0,
+              "elapsed_seconds": 2.3494234000099823
+            }
+          ]
+        },
+        {
+          "case": "120 秒 WAV",
+          "requests": 1,
+          "wall_seconds": 7.9749995000020135,
+          "peak_rss_mib": 414.48046875,
+          "incremental_rss_mib": 360.34375,
+          "peak_private_mib": 1425.9296875,
+          "cpu_seconds_sampled": 29.96875,
+          "average_cores_sampled": 3.7578372261957425,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.06645832916668344,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上。上9点至下午5点，开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午。5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早上9点至下午5点。开放时间早。",
+              "audio_seconds": 120.0,
+              "elapsed_seconds": 7.965057800000068
+            }
+          ]
+        },
+        {
+          "case": "2 请求同时到达",
+          "requests": 2,
+          "wall_seconds": 0.9981107999919914,
+          "peak_rss_mib": 320.74609375,
+          "incremental_rss_mib": 266.37109375,
+          "peak_private_mib": 1325.56640625,
+          "cpu_seconds_sampled": 2.953125,
+          "average_cores_sampled": 2.958714603652916,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.08886314102492801,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 0.489098499994725
+            },
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 0.9824069000023883
+            }
+          ]
+        },
+        {
+          "case": "4 请求同时到达",
+          "requests": 4,
+          "wall_seconds": 1.9695497000066098,
+          "peak_rss_mib": 329.265625,
+          "incremental_rss_mib": 274.37890625,
+          "peak_private_mib": 1326.515625,
+          "cpu_seconds_sampled": 5.9375,
+          "average_cores_sampled": 3.0146484752225717,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": 0.08767582354018029,
+          "results": [
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 0.48901910000131465
+            },
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 0.9739184000063688
+            },
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 1.4625884999986738
+            },
+            {
+              "status": "success",
+              "text": "开放时间早上9点至下午5点。",
+              "audio_seconds": 5.616,
+              "elapsed_seconds": 1.9541927999962354
+            }
+          ]
+        },
+        {
+          "case": "5 秒静音",
+          "requests": 1,
+          "wall_seconds": 0.1418260999926133,
+          "peak_rss_mib": 316.2109375,
+          "incremental_rss_mib": 260.29296875,
+          "peak_private_mib": 306.80078125,
+          "cpu_seconds_sampled": 0.125,
+          "average_cores_sampled": 0.8813610471310311,
+          "peak_children": 2,
+          "peak_active_recognizers": 1,
+          "rtf_including_queue_load_decode": null,
+          "results": [
+            {
+              "status": "failed",
+              "code": "no_speech"
+            }
+          ]
+        },
+        {
+          "case": "超长 121 秒",
+          "requests": 1,
+          "wall_seconds": 0.06510809999599587,
+          "peak_rss_mib": 56.29296875,
+          "incremental_rss_mib": 0.109375,
+          "peak_private_mib": 40.7109375,
+          "cpu_seconds_sampled": 0.03125,
+          "average_cores_sampled": 0.4799710021014569,
+          "peak_children": 0,
+          "peak_active_recognizers": 0,
+          "rtf_including_queue_load_decode": null,
+          "results": [
+            {
+              "status": "failed",
+              "code": "audio_duration_limit"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "initial_timeout_investigation": {
+    "case": "120 秒 WAV",
+    "requests": 1,
+    "wall_seconds": 60.04957060000743,
+    "peak_rss_mib": 427.79296875,
+    "incremental_rss_mib": 374.234375,
+    "peak_private_mib": 1425.4765625,
+    "cpu_seconds_sampled": 241.0625,
+    "average_cores_sampled": 4.01439173654924,
+    "peak_children": 2,
+    "rtf_including_queue_load_decode": null,
+    "results": [
+      {
+        "status": "failed",
+        "code": "timeout"
+      }
+    ]
+  },
+  "functional_tests": {
+    "targeted_passed": 18,
+    "live_qq_delivery_tested": false
+  }
+}

@@ -101,6 +101,7 @@ Milky `light_app` / `xml` 卡片通过 `utils/card_message.py` 本地解析常�
 | `markdown_render.py` | Markdown → 图片，使用本地 Mermaid/ECharts/KaTeX/Prism 渲染增强内容，适配 QQ 文本/图片发送 |
 | `browser_capture.py` | Playwright 截图/录屏/页面数据提取，带浏览器重启和超时处理 |
 | `paint_service.py` / `video_service.py` | 共享图片和视频生成服务，供命令和 Agent 工具复用 |
+| `speech_recognition.py` / `speech_decode.py` | 本地 SenseVoiceSmall Q8 识别与隔离 SILK 解码；网关通过后识别当前语音，按需启动、全局串行、超时回收子进程 |
 | `milky_tools.py` | Milky API 参数解析、路径/URL/base64 输入处理、结果格式化 |
 | `http_client.py` | 命名 httpx2 AsyncClient 注册表，统一关闭生命周期 |
 | `tool_helpers.py` | LangChain tool state/config 解析，提取用户、群、图片/视频输入 |
@@ -193,6 +194,10 @@ Prompt 加载链：
 消息媒体默认兼容 Clash TUN 的 Fake-IP DNS：仅域名解析结果全部位于 `198.18.0.0/15` 或 `2001:2::/48` 时，通过固定公网引导的 DoH 查询真实公网 IP，再校验并固定连接。`[agent].message_media_fake_ip_fallback` 可关闭；不能直接放行 Fake-IP 或真实内网地址。详见 [消息媒体网络](docs/message-media-network.md)。
 
 `env.toml.example` 是配置项参考；仅接受显式 `config_version = 2`，旧配置分区、provider 别名、`use_responses_api` 和绘图尺寸迁移已移除。代码中不要硬编码模型名、provider、base URL 或 API key，使用 `EnvConfig`。
+
+`[speech_recognition]` 默认关闭。本地识别使用显式配置的 C++ 运行器、Q8 权重和 VAD 路径，
+不经过对话模型供应商。识别结果标记为用户语音转写，先经过内容检查再进入 Agent；
+原始音频保留为附件，避免重复内联给主模型。配置、安装及资源复测见 `docs/local-speech.md`。
 
 模型路由规则：
 - 显式 `*_model_provider` 优先。

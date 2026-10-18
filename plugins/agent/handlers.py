@@ -47,6 +47,7 @@ from utils.message import (
     sanitize_outgoing_text,
     send_messages,
 )
+from utils.speech_recognition import transcribe_message_audio
 from utils.timeutil import add_daily_job
 
 from .adapters import (
@@ -788,6 +789,24 @@ async def handle_common(event: MessageEvent):  # noqa: C901
     persisted_image_count = sum(
         1 for attachment in persisted_attachments if getattr(attachment, "kind", None) == "image"
     )
+    # Local recognition runs only after the reply gateway and attachment saving.
+    # Keep raw media in memory storage while the model receives annotated text.
+    current_text, audio_transcribed = await transcribe_message_audio(current_text, audio)
+    if audio_transcribed:
+        audio = []
+        update_normalization = getattr(messages_db, "update_message_normalization", None)
+        if message_id is not None and callable(update_normalization):
+            try:
+                await update_normalization(
+                    time=msg_time,
+                    message_id=message_id,
+                    content=current_text,
+                    raw_segments_json=None,
+                    normalized_version=normalized_message.normalized_version,
+                    normalized_status=normalized_message.status,
+                )
+            except Exception as exc:
+                logger.warning("语音转写历史保存失败（本轮仍可使用）: {}", type(exc).__name__)
     agent_text = _remove_attached_image_placeholders(current_text, persisted_image_count).strip()
 
     indexed_staged_paths: set[Path] = set()
