@@ -181,3 +181,85 @@ async def test_upload_group_file_extracts_file_name_from_workspace_path(file_bot
     upload_call = next(c for name, c in bot.calls if name == "upload_group_file")
     assert upload_call["path"] == str(tmp_path / "archive.zip")
     assert upload_call["file_name"] == "archive.zip"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["upload_group_file", "upload_private_file"])
+@pytest.mark.parametrize("as_uri", [False, True])
+async def test_upload_file_resolves_memory_mount(file_bot, tmp_path, tool_name, as_uri):
+    milky_file, bot = file_bot
+    workspace = tmp_path / "workspace"
+    memory = tmp_path / "memory"
+    workspace.mkdir()
+    memory.mkdir()
+    attachment = memory / "report final.pdf"
+    attachment.write_bytes(b"pdf")
+    cfg = _config(workspace_dir=str(workspace))
+    cfg["configurable"]["virtual_roots"] = {"/": str(workspace), "/memory/group-123/": str(memory)}
+    source = "/memory/group-123/report final.pdf"
+    if as_uri:
+        source = "file://" + source.replace(" ", "%20")
+
+    result = await getattr(milky_file, tool_name)(file_uri=source, config=cfg)
+
+    assert "已上传" in result
+    assert len(bot.calls) == 1 and bot.calls[0][0] == tool_name
+    assert bot.calls[0][1]["path"] == str(attachment)
+    assert bot.calls[0][1]["file_name"] == "report final.pdf"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["upload_group_file", "upload_private_file"])
+@pytest.mark.parametrize("source", [
+    "", "/missing-private.pdf", "../private.pdf", "file:///missing-private.pdf", "file://",
+    "/memory/group-456/private.pdf", "/skills/private.pdf", "https://[private-token",
+    "base64://invalid-private-token!", "data:application/pdf;base64,private-token",
+])
+async def test_upload_invalid_source_is_recoverable_before_platform_call(file_bot, tmp_path, caplog, tool_name, source):
+    milky_file, bot = file_bot
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (tmp_path / "private.pdf").write_bytes(b"private")
+    shadow = workspace / "memory" / "group-456"
+    shadow.mkdir(parents=True)
+    (shadow / "private.pdf").write_bytes(b"wrong workspace")
+
+    result = await getattr(milky_file, tool_name)(
+        file_uri=source, file_name="upload.pdf", config=_config(workspace_dir=str(workspace)),
+    )
+
+    assert "invalid_file_source" in result and "未执行" in result
+    assert bot.calls == []
+    logs = "\n".join(record.getMessage() for record in caplog.records if record.name == "tools.milky_file")
+    assert "invalid_file_source" in logs
+    assert all(value not in result + logs for value in ("private-token", "private.pdf", str(tmp_path)))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["upload_group_file", "upload_private_file"])
+async def test_upload_valid_base64_keeps_original_payload(file_bot, tool_name):
+    milky_file, bot = file_bot
+
+    result = await getattr(milky_file, tool_name)(
+        file_uri="base64://aGVsbG8=", file_name="hello.txt", config=_config(),
+    )
+
+    assert "已上传" in result
+    assert len(bot.calls) == 1 and bot.calls[0][1]["base64"] == "aGVsbG8="
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["upload_group_file", "upload_private_file"])
+async def test_upload_platform_value_error_still_propagates(file_bot, tmp_path, monkeypatch, tool_name):
+    milky_file, _bot = file_bot
+    (tmp_path / "report.pdf").write_bytes(b"pdf")
+    calls = []
+
+    async def fail(**kwargs):
+        calls.append(kwargs)
+        raise ValueError("private platform failure")
+
+    monkeypatch.setattr(milky_file, "get_bot", lambda: types.SimpleNamespace(**{tool_name: fail}))
+    with pytest.raises(ValueError, match="private platform failure"):
+        await getattr(milky_file, tool_name)(file_uri="/report.pdf", config=_config(workspace_dir=str(tmp_path)))
+    assert len(calls) == 1

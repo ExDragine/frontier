@@ -1,3 +1,5 @@
+import base64
+import logging
 from pathlib import Path
 from typing import cast
 
@@ -8,6 +10,7 @@ from nonebot import get_bot
 
 from utils.agent_context import FrontierRuntimeContext
 from utils.milky_tools import (
+    ToolInputError,
     binary_kwargs_from_uri,
     configurable,
     format_files_info,
@@ -18,15 +21,29 @@ from utils.milky_tools import (
 
 _DEFAULT_CONFIG = cast(RunnableConfig, None)
 _DEFAULT_RUNTIME = cast(ToolRuntime[FrontierRuntimeContext, dict], None)
+logger = logging.getLogger(__name__)
 
 
-def _file_name_from_uri(file_uri: str, file_name: str | None, root_dir: str | None = None) -> str | None:
-    if file_name:
-        return file_name
-    kwargs = binary_kwargs_from_uri(file_uri, root_dir=root_dir)
-    if path := kwargs.get("path"):
-        return Path(path).name
-    return None
+def _prepare_upload(file_uri: str, file_name: str | None, config: RunnableConfig) -> tuple[dict[str, str], str | None]:
+    settings = configurable(config)
+    workspace_dir = settings.get("workspace_dir")
+    virtual_roots = settings.get("virtual_roots")
+    if not isinstance(virtual_roots, dict):
+        virtual_roots = {"/": workspace_dir} if workspace_dir else None
+    try:
+        kwargs = binary_kwargs_from_uri(file_uri, root_dir=workspace_dir, virtual_roots=virtual_roots)
+        if not kwargs or ("path" in kwargs and not Path(kwargs["path"]).is_file()):
+            raise ValueError("file source is unavailable")
+        if "base64" in kwargs and not base64.b64decode(kwargs["base64"], validate=True):
+            raise ValueError("empty file content")
+    except (ValueError, OSError) as exc:
+        logger.warning("File upload input rejected code=invalid_file_source error_type=%s", type(exc).__name__)
+        raise ToolInputError(
+            "文件上传未执行（invalid_file_source）：文件不存在、超出当前会话挂载范围，或文件 URI/URL/base64 无效。"
+            "请先确认文件已创建，并使用当前工作区路径或 /memory/... 附件路径后再试。"
+        ) from None
+    resolved_name = file_name or (Path(kwargs["path"]).name if "path" in kwargs else None)
+    return kwargs, resolved_name
 
 
 @tool(response_format="content")
@@ -39,14 +56,12 @@ async def upload_private_file(
 ) -> str:
     """上传私聊文件。
     Args:
-        file_uri: 文件 URI，支持 file://、http(s)://、base64:// 或本地文件路径
+        file_uri: 已存在的工作区虚拟路径或 /memory/... 附件路径，也支持 file://、http(s)://、base64://
         file_name: 文件名；使用 URL/base64 时建议显式提供
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
     """
     resolved_user_id = require_user_id(user_id, config)
-    workspace_dir = configurable(config).get("workspace_dir")
-    kwargs = binary_kwargs_from_uri(file_uri, root_dir=workspace_dir)
-    resolved_file_name = _file_name_from_uri(file_uri, file_name, root_dir=workspace_dir)
+    kwargs, resolved_file_name = _prepare_upload(file_uri, file_name, config)
     if not resolved_file_name:
         return "请提供 file_name。"
     file_id = await get_bot().upload_private_file(user_id=resolved_user_id, **kwargs, file_name=resolved_file_name)
@@ -64,15 +79,13 @@ async def upload_group_file(
 ) -> str:
     """上传群文件。
     Args:
-        file_uri: 文件 URI，支持 file://、http(s)://、base64:// 或本地文件路径
+        file_uri: 已存在的工作区虚拟路径或 /memory/... 附件路径，也支持 file://、http(s)://、base64://
         file_name: 文件名；使用 URL/base64 时建议显式提供
         parent_folder_id: 可选父文件夹 ID
         group_id: 可选群号，未传时使用当前群聊
     """
     resolved_group_id = require_group_id(group_id, config)
-    workspace_dir = configurable(config).get("workspace_dir")
-    kwargs = binary_kwargs_from_uri(file_uri, root_dir=workspace_dir)
-    resolved_file_name = _file_name_from_uri(file_uri, file_name, root_dir=workspace_dir)
+    kwargs, resolved_file_name = _prepare_upload(file_uri, file_name, config)
     if not resolved_file_name:
         return "请提供 file_name。"
     file_id = await get_bot().upload_group_file(

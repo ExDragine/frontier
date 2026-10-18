@@ -10,6 +10,7 @@ def test_real_media_tools_preserve_artifacts_and_platform_write_boundaries(tmp_p
     script = r'''
 import asyncio
 import io
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,7 +24,7 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 from PIL import Image
-from tools import adapter, paint as paint_tool, video as video_tool
+from tools import adapter, milky_file, paint as paint_tool, video as video_tool
 from utils.agents import cognitive
 from utils.configs import EnvConfig
 
@@ -31,6 +32,15 @@ buffer = io.BytesIO()
 Image.new('RGB', (4, 4), 'blue').save(buffer, format='PNG')
 png = buffer.getvalue()
 calls = []
+progress_warnings = []
+
+class CaptureProgress(logging.Handler):
+    def emit(self, record):
+        progress_warnings.append(record.getMessage())
+
+progress_logger = logging.getLogger('utils.agents.progress')
+progress_logger.setLevel(logging.WARNING)
+progress_logger.addHandler(CaptureProgress())
 
 async def synthetic_paint(prompt, refs):
     calls.append('paint')
@@ -44,6 +54,7 @@ cognitive.detect_browser_capture_intent = no_capture
 def forbidden_platform():
     raise AssertionError('Media artifact builders must not call QQ APIs')
 adapter.get_bot = forbidden_platform
+milky_file.get_bot = forbidden_platform
 
 @tool
 async def platform_write() -> str:
@@ -69,7 +80,7 @@ async def run(extra=None):
     agent = object.__new__(cognitive.FrontierCognitive)
     agent.tools = [paint_tool.get_paint, platform_write, *[
         getattr(adapter, name) for name in ('send_image', 'send_audio', 'send_voice', 'send_video')
-    ]]
+    ], milky_file.upload_group_file, milky_file.upload_private_file]
     agent.document_subagent = None
     agent.working_dir = str(Path.cwd() / 'sandbox')
     agent.load_system_prompt = lambda group_id: 'Return the requested image.'
@@ -106,14 +117,18 @@ async def main():
         ('send_image', {'source': 'data:image/png;base64,private-image'}),
         ('send_image', {}),
         ('send_image', {'source': 42}),
+        ('upload_group_file', {'file_uri': '/missing-private-file.pdf', 'group_id': 123}),
+        ('upload_private_file', {'file_uri': '/missing-private-file.pdf', 'user_id': 456}),
     ]
     for extra in invalid_calls:
         calls.clear()
+        progress_warnings.clear()
         result = await run(extra)
         assert result['status'] == 'success', (extra, result)
         assert result['usage']['model_calls'] == 3, (extra, result)
         assert len(result['artifacts']) == 1 and result['artifacts'][0].data == png, (extra, result)
         assert calls == ['paint'], (extra, calls)
+        assert not progress_warnings, progress_warnings
 
     # Existing files on both mounts remain real Path-backed artifacts all the way
     # through the graph and neutral conversion, with no immediate platform sends.
@@ -135,6 +150,38 @@ async def main():
             assert result['artifacts'][1].kind == kind, result
             assert result['artifacts'][1].path == str(path), result
             assert calls == ['paint'], calls
+
+    uploads = []
+    class UploadBot:
+        async def upload_group_file(self, **kwargs):
+            calls.append('upload')
+            uploads.append(kwargs)
+            return 'file-id'
+        upload_private_file = upload_group_file
+
+    milky_file.get_bot = lambda: UploadBot()
+    for name, target in (('upload_group_file', {'group_id': 123}), ('upload_private_file', {'user_id': 456})):
+        calls.clear()
+        uploads.clear()
+        result = await run((name, {'file_uri': f'/memory/{workspace_key}/existing.png', **target}))
+        assert result['status'] == 'success', result
+        assert len(result['artifacts']) == 1 and result['artifacts'][0].data == png, result
+        assert calls == ['paint', 'upload'] and len(uploads) == 1, (calls, uploads)
+        assert uploads[0]['path'] == str(path) and uploads[0]['file_name'] == 'existing.png', uploads
+
+    class FailingUploadBot:
+        async def upload_group_file(self, **kwargs):
+            calls.append('upload')
+            raise ValueError('private failure after upload may have taken effect')
+
+    milky_file.get_bot = lambda: FailingUploadBot()
+    calls.clear()
+    progress_warnings.clear()
+    result = await run(('upload_group_file', {'file_uri': f'/memory/{workspace_key}/existing.png', 'group_id': 123}))
+    assert result['error_code'] == 'tool_execution_uncertain', result
+    assert result['usage']['model_calls'] == 2 and calls == ['paint', 'upload'], (result, calls)
+    assert 'private failure' not in str(result), result
+    assert len(progress_warnings) == 1, progress_warnings
 
     # Do not generalize recoverability to writes or restart the graph after them.
     calls.clear()

@@ -1,4 +1,5 @@
 import functools
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
@@ -83,7 +84,7 @@ def validate_url(url: str) -> None:
         raise ValueError(f"无效的 URL：{url!r}，仅支持 http/https")
 
 
-def configurable(config: dict | None) -> dict:
+def configurable(config: Mapping[str, Any] | None) -> dict:
     """取出 RunnableConfig 中的 ``configurable`` 段。
 
     缺失或显式为 ``None`` 时返回空字典，调用方可以直接 ``.get(...)``。
@@ -103,7 +104,7 @@ def _coerce_id(raw: Any, *, label: str) -> tuple[int | None, str | None]:
         return None, f"{label}：{raw!r}"
 
 
-def resolve_group_id(group_id: int | str | None = None, config: dict | None = None) -> tuple[int | None, str | None]:
+def resolve_group_id(group_id: int | str | None = None, config: Mapping[str, Any] | None = None) -> tuple[int | None, str | None]:
     raw_group_id: int | str | None = group_id
     if raw_group_id is None:
         raw_group_id = configurable(config).get("group_id")
@@ -112,7 +113,7 @@ def resolve_group_id(group_id: int | str | None = None, config: dict | None = No
     return _coerce_id(raw_group_id, label="群号格式错误")
 
 
-def resolve_user_id(user_id: int | str | None = None, config: dict | None = None) -> tuple[int | None, str | None]:
+def resolve_user_id(user_id: int | str | None = None, config: Mapping[str, Any] | None = None) -> tuple[int | None, str | None]:
     raw_user_id: int | str | None = user_id
     if raw_user_id is None:
         raw_user_id = configurable(config).get("user_id")
@@ -124,7 +125,7 @@ def resolve_user_id(user_id: int | str | None = None, config: dict | None = None
 def resolve_peer(
     message_scene: str,
     peer_id: int | str | None = None,
-    config: dict | None = None,
+    config: Mapping[str, Any] | None = None,
 ) -> tuple[int | None, str | None]:
     if message_scene not in SCENES:
         return None, "message_scene 仅支持 friend、group 或 temp。"
@@ -139,7 +140,7 @@ class ToolInputError(Exception):
     """工具入参或权限校验失败；文案可直接作为工具返回值给模型。"""
 
 
-def require_group_id(group_id: int | str | None = None, config: dict | None = None) -> int:
+def require_group_id(group_id: int | str | None = None, config: Mapping[str, Any] | None = None) -> int:
     """解析群号，失败时抛出 :class:`ToolInputError`。
 
     :func:`resolve_group_id` 在所有失败路径上都会给出 ``error``，因此原先
@@ -151,7 +152,7 @@ def require_group_id(group_id: int | str | None = None, config: dict | None = No
     return cast("int", resolved_group_id)
 
 
-def require_user_id(user_id: int | str | None = None, config: dict | None = None) -> int:
+def require_user_id(user_id: int | str | None = None, config: Mapping[str, Any] | None = None) -> int:
     """解析用户号，失败时抛出 :class:`ToolInputError`。"""
     resolved_user_id, error = resolve_user_id(user_id, config)
     if error:
@@ -159,7 +160,7 @@ def require_user_id(user_id: int | str | None = None, config: dict | None = None
     return cast("int", resolved_user_id)
 
 
-def require_peer(message_scene: str, peer_id: int | str | None = None, config: dict | None = None) -> int:
+def require_peer(message_scene: str, peer_id: int | str | None = None, config: Mapping[str, Any] | None = None) -> int:
     """解析会话 ID，失败时抛出 :class:`ToolInputError`。"""
     resolved_peer_id, error = resolve_peer(message_scene, peer_id, config)
     if error:
@@ -184,7 +185,12 @@ def input_error_text(func):
     return wrapper
 
 
-def binary_kwargs_from_uri(uri: str | None, root_dir: str | None = None) -> dict[str, str]:  # noqa: C901
+def binary_kwargs_from_uri(  # noqa: C901
+    uri: str | None,
+    root_dir: str | None = None,
+    *,
+    virtual_roots: dict[str, str] | None = None,
+) -> dict[str, str]:
     raw = (uri or "").strip()
     if not raw:
         return {}
@@ -199,6 +205,10 @@ def binary_kwargs_from_uri(uri: str | None, root_dir: str | None = None) -> dict
             path = unquote(parsed.netloc)
         if not path:
             raise ValueError(f"无效的文件 URI：{uri!r}")
+        if virtual_roots is not None:
+            if resolved := resolve_virtual_path(path, virtual_roots):
+                return {"path": str(resolved)}
+            raise ValueError("文件路径不存在或不在允许的挂载范围内")
         if root_dir is None:
             return {"path": path}
         root = Path(root_dir).resolve()
@@ -213,7 +223,8 @@ def binary_kwargs_from_uri(uri: str | None, root_dir: str | None = None) -> dict
         if not encoded:
             raise ValueError(f"无效的文件 URI：{uri!r}")
         return {"base64": encoded}
-    if resolved := resolve_local_path(raw, root_dir):
+    resolved = resolve_virtual_path(raw, virtual_roots) if virtual_roots is not None else resolve_local_path(raw, root_dir)
+    if resolved is not None:
         return {"path": str(resolved)}
 
     raise ValueError(f"无效的文件 URI：{uri!r}，仅支持 file://、http(s)://、base64:// 或本地文件路径")
