@@ -33,12 +33,22 @@ class ToolStateView:
             if isinstance(message, dict):
                 role = message.get("role")
                 content = message.get("content")
+                metadata = message.get("additional_kwargs", {})
             else:
                 role = getattr(message, "role", None) or getattr(message, "type", None)
                 content = getattr(message, "content", None)
+                metadata = getattr(message, "additional_kwargs", {})
+            if isinstance(metadata, dict) and metadata.get("lc_source") == "pinned_skill":
+                continue
             if role in {"user", "human"}:
                 return content
         return None
+
+    def binary_inputs(self, key: str) -> list[bytes]:
+        """Return the current request's originals, independent of model history."""
+        if not isinstance(self.state, dict) or not isinstance(self.state.get(key), list):
+            return []
+        return [item for item in self.state[key] if isinstance(item, bytes) and item]
 
     def latest_binary(self, key: str, mime_type: str) -> MediaReference | None:
         if not isinstance(self.state, dict) or not isinstance(self.state.get(key), list):

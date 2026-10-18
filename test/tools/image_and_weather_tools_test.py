@@ -95,6 +95,78 @@ async def test_get_paint_edit_uses_images_from_latest_user_message(load_tool_mod
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("injected", [False, True])
+async def test_get_paint_automatically_edits_attached_images(load_tool_module, monkeypatch, injected):
+    mod = load_tool_module("paint")
+    references = [b"current-original", b"quoted-original"]
+    state = {"user_id": "10001", "messages": [{"role": "user", "content": [
+        {"type": "image_url", "image_url": {"url": _tiny_png_data_url(raw)}} for raw in references
+    ]}]}
+    if injected:
+        # The model history can contain only blob references or omitted-image
+        # notices; originals remain available in the separate runtime field.
+        state["image_inputs"] = references
+        state["messages"] = [{"role": "user", "content": "image stored as a blob"}]
+    state["messages"].append({
+        "role": "user", "content": "composition instructions", "additional_kwargs": {"lc_source": "pinned_skill"},
+    })
+    captured = []
+
+    async def fake_paint(prompt, reference_images):
+        captured.append((prompt, reference_images))
+        return b"edited"
+
+    monkeypatch.setattr(mod, "paint", fake_paint)
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_MODULE_ENABLED", True)
+
+    text, artifact = await mod.get_paint("change only the background", state=state)
+
+    assert captured == [("change only the background", references)]
+    assert "成功编辑图片" in text and artifact[0].raw == b"edited"
+
+
+@pytest.mark.asyncio
+async def test_get_paint_explicit_edit_prefers_all_original_inputs(load_tool_module, monkeypatch):
+    mod = load_tool_module("paint")
+    captured = []
+
+    async def fake_paint(_prompt, reference_images):
+        captured.extend(reference_images)
+        return b"edited"
+
+    monkeypatch.setattr(mod, "paint", fake_paint)
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_MODULE_ENABLED", True)
+    text, artifact = await mod.get_paint("edit", mode="edit", state={
+        "image_inputs": [b"current-original", b"quoted-original"],
+        "messages": [{"role": "user", "content": [{
+            "type": "image_url", "image_url": {"url": _tiny_png_data_url(b"converted-preview")},
+        }]}],
+    })
+
+    assert captured == [b"current-original", b"quoted-original"]
+    assert "成功编辑图片" in text and artifact is not None
+
+
+@pytest.mark.asyncio
+async def test_get_paint_explicit_generation_can_ignore_attachments(load_tool_module, monkeypatch):
+    mod = load_tool_module("paint")
+    captured = []
+
+    async def fake_paint(_prompt, reference_images):
+        captured.append(reference_images)
+        return b"new"
+
+    monkeypatch.setattr(mod, "paint", fake_paint)
+    monkeypatch.setattr(mod.EnvConfig, "PAINT_MODULE_ENABLED", True)
+    text, artifact = await mod.get_paint("a separate new image", mode="generate", state={
+        "image_inputs": [b"attachment"], "messages": [],
+    })
+
+    assert captured == [[]]
+    assert "成功生成图片" in text and artifact[0].raw == b"new"
+
+
+@pytest.mark.asyncio
 async def test_get_paint_edit_without_images_fails_before_service_call(load_tool_module, monkeypatch):
     mod = load_tool_module("paint")
 
