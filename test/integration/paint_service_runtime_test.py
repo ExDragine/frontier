@@ -69,7 +69,7 @@ async def main():
                         fields[name] = part.get_payload(decode=True).decode()
                 assert files == ["reference-1.png", "reference-2.png"]
                 assert fields["model"] == "contract-image" and fields["prompt"] == "a blue circle"
-                assert fields["size"] == "1536x1024" and fields["quality"] == "high"
+                assert fields["size"] == "auto" and fields["quality"] == "high"
             else:
                 body = json.loads(request.content)
                 assert body["model"] == "contract-image"
@@ -77,12 +77,14 @@ async def main():
                     assert request.url.path == "/v1/responses" and "prompt" not in body
                     assert body["tool_choice"] == {"type": "image_generation"}
                     assert body["tools"][0]["action"] == ("edit" if case == "responses_edit" else "generate")
+                    assert body["tools"][0]["size"] == "auto"
                     return Response(200, json={"id": "resp-test", "output": [{
                         "type": "image_generation_call", "id": "ig-test", "result": encoded,
                     }]})
                 assert request.url.path == "/v1/images/generations" and "input" not in body
                 assert body["prompt"] == "a blue circle" and body["n"] == 1
                 assert body["output_format"] == "png" and "response_format" not in body
+                assert body["size"] == "auto"
             if case in {"url", "bad_url_body", "private_url"}:
                 url = "http://127.0.0.1/private" if case == "private_url" else "https://cdn.example/image.png?sig=signed"
                 return Response(200, json={"created": 1, "data": [{"url": url}]})

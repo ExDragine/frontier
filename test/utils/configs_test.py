@@ -60,7 +60,7 @@ def test_env_config_defaults(monkeypatch):
     assert "paint" not in EnvConfig.LLM_PROVIDERS
     assert "video" not in EnvConfig.LLM_PROVIDERS
     assert EnvConfig.VIDEO_MODEL == "sora-2"
-    assert EnvConfig.PAINT_SIZE == "1024x1024"
+    assert EnvConfig.PAINT_SIZE == "auto"
     assert EnvConfig.PAINT_QUALITY == "auto"
     assert EnvConfig.VIDEO_SIZE == "1280x720"
     assert EnvConfig.VIDEO_SECONDS == "8"
@@ -435,7 +435,7 @@ def test_env_toml_example_is_valid_v2_config():
     assert settings.platforms.feishu.path == "/feishu/events"
     assert settings.models.daily_news.provider == "deepseek_responses"
     assert settings.models.paint.provider == "openai"
-    assert settings.models.paint.size == "1024x1024"
+    assert settings.models.paint.size == "auto"
     assert settings.models.video.provider == "openai"
     assert settings.models.video.model == "sora-2"
 

@@ -59,7 +59,8 @@ class MediaModelConfig(_FrozenConfig):
 
 
 class PaintModelConfig(MediaModelConfig):
-    size: str = "1024x1024"
+    # Accepted for existing v2 files; image generation always uses automatic sizing.
+    size: str = "auto"
     quality: str = "auto"
 
 

@@ -87,9 +87,8 @@ def _image_generation_tool(reference_images: list[bytes]) -> ImageGeneration:
         "action": "edit" if reference_images else "generate",
         "model": EnvConfig.PAINT_MODEL,
         "output_format": "png",
+        "size": "auto",
     }
-    if size := str(EnvConfig.PAINT_SIZE).strip():
-        tool["size"] = size
     if quality := str(EnvConfig.PAINT_QUALITY).strip():
         tool["quality"] = cast(Literal["low", "medium", "high", "auto"], quality)
     return tool
@@ -169,10 +168,8 @@ async def _image_bytes_from_images_response(response: Any) -> bytes | None:
 
 async def _paint_images(client: AsyncOpenAI, prompt: str, reference_images: list[bytes]) -> bytes | None:
     params = ImageGenerateParamsNonStreaming(
-        model=EnvConfig.PAINT_MODEL, prompt=prompt, n=1, output_format="png", stream=False,
+        model=EnvConfig.PAINT_MODEL, prompt=prompt, n=1, output_format="png", stream=False, size="auto",
     )
-    if size := str(EnvConfig.PAINT_SIZE).strip():
-        params["size"] = size
     if quality := str(EnvConfig.PAINT_QUALITY).strip():
         params["quality"] = cast(Literal["low", "medium", "high", "auto", "xhigh", "max"], quality)
     if reference_images:

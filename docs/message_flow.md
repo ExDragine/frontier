@@ -35,6 +35,8 @@ Agent 先用 `get_recent_conversation` 或 `search_messages` 确定消息和发�
 
 ## 投递结果
 
+绘图生成和编辑请求统一使用 `size="auto"`，分辨率与横竖比例由图片模型结合提示词和参考图选择。旧配置中的 `paint_size` 仅保留加载兼容，不再限制生成尺寸。
+
 `get_paint` / `get_video` 成功返回的工件在本轮 Agent 完成后统一投递，模型无需再调用媒体发送工具。`send_image` / `send_audio` / `send_voice` / `send_video` 只构建待投递工件，接受当前 workspace 与 `/memory/{workspace_key}/` 挂载中的虚拟路径，或 HTTP(S) URL；不会在工具执行时调用 Milky。路径越界、文件不存在、无效 URL 等发送前校验失败会返回错误说明和空工件，本轮可继续使用先前生成的工件，不会因此中止或重新生成媒体。工具内部的未知异常及真实平台写操作失败仍遵守原有中止规则，不自动重试。
 
 `send_artifacts()` 只接收可发送的 `UniMessage`，结构化 MCP 字典不会进入发送路径。多媒体工件拆分后保留所有文本说明和原有顺序，串行发送，遇到失败停止剩余工件。

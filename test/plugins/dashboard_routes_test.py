@@ -443,7 +443,7 @@ jwt_secret = "secret"
     paint_profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.PAINT_MODEL_PROVIDER]
     assert paint_profile["base_url"] == "https://global.example.com/v1"
     assert paint_profile["api_key"] == "sk-global"
-    assert configs.EnvConfig.PAINT_SIZE == "1024x1024"
+    assert configs.EnvConfig.PAINT_SIZE == "auto"
     assert configs.EnvConfig.PAINT_QUALITY == "auto"
     assert configs.EnvConfig.VIDEO_MODEL == "alibaba/happyhorse-1.0"
     video_profile = configs.EnvConfig.LLM_PROVIDERS[configs.EnvConfig.VIDEO_MODEL_PROVIDER]

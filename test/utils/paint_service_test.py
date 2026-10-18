@@ -82,7 +82,7 @@ async def test_paint_generates_with_responses_image_tool(monkeypatch):
                 "action": "generate",
                 "model": "gpt-image-test",
                 "output_format": "png",
-                "size": "1536x1024",
+                "size": "auto",
                 "quality": "high",
             }
         ],
@@ -130,7 +130,7 @@ async def test_paint_edits_multiple_reference_images(monkeypatch):
             "action": "edit",
             "model": "gpt-image-test",
             "output_format": "png",
-            "size": "1536x1024",
+            "size": "auto",
             "quality": "high",
         }
     ]
@@ -274,7 +274,7 @@ async def test_images_api_generates_without_responses_or_legacy_fields(monkeypat
     assert await paint_service.paint("a fox") == _tiny_png_bytes()
     assert calls["generate"] == {
         "model": "gpt-image-test", "prompt": "a fox", "n": 1, "output_format": "png",
-        "stream": False, "size": "1536x1024", "quality": "high",
+        "stream": False, "size": "auto", "quality": "high",
     }
     assert "edit" not in calls
     assert calls["closed"] is True
@@ -289,7 +289,7 @@ async def test_images_api_edits_all_references_as_png_files(monkeypatch):
     assert await paint_service.paint("watercolor", [_tiny_png_bytes(), _tiny_png_bytes()]) == _tiny_png_bytes()
     params = calls["edit"]
     assert params["prompt"] == "watercolor" and params["model"] == "gpt-image-test"
-    assert params["size"] == "1536x1024" and params["quality"] == "high"
+    assert params["size"] == "auto" and params["quality"] == "high"
     assert "response_format" not in params and "input" not in params
     assert len(params["image"]) == 2
     for index, (name, raw, mime) in enumerate(params["image"], start=1):
@@ -300,13 +300,14 @@ async def test_images_api_edits_all_references_as_png_files(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_images_api_omits_blank_size_and_quality(monkeypatch):
+async def test_images_api_keeps_auto_size_with_blank_legacy_size_and_quality(monkeypatch):
     calls = _install_images_client(monkeypatch, result={"data": []})
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_SIZE", " ")
     monkeypatch.setattr(paint_service.EnvConfig, "PAINT_QUALITY", "")
 
     assert await paint_service.paint("a fox") is None
-    assert "size" not in calls["generate"] and "quality" not in calls["generate"]
+    assert calls["generate"]["size"] == "auto"
+    assert "quality" not in calls["generate"]
 
 
 @pytest.mark.asyncio
