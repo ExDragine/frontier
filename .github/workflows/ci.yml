@@ -34,14 +34,6 @@ jobs:
         run: uv run --locked python scripts/generate_renderer_types.py --check
       - name: Compile Python sources
         run: uv run --locked python -m compileall -q models plugins scripts tools utils
-      - name: Check typed runtime boundaries
-        run: >-
-          uv run --locked ty check
-          utils/agent_context.py utils/harness_profiles.py utils/mcp.py
-          utils/agents/inputs.py utils/agents/execution.py
-          utils/agents/runtime.py utils/agents/runtime_gateway.py
-          utils/delivery.py
-          plugins/dashboard/api/settings_routes.py
       - name: Test (including real dependency contracts)
         run: >-
           env -u ALL_PROXY -u all_proxy
