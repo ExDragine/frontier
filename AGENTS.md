@@ -113,7 +113,7 @@ Milky `light_app` / `xml` 卡片通过 `utils/card_message.py` 本地解析常�
 
 ### `models/` — 模型目录
 
-`models/catalog.py` 读取 `models/data/catalog.json`、`models/data/providers/*.json` 和 lobehub 名称表，
+`models/catalog.py` 读取 `models/data/catalog.json`、`models/data/providers/*.json` 和 OpenRouter / LobeHub 本地名称快照，
 提供供应商/模型的规范化查询与显示名。`utils/llm_factory.py` 把命中的条目转换为 LangChain
 `ModelProfile` 注入模型实例，为 Deep Agents 提供上下文窗口、输出上限和能力元数据；目录外模型按未知模型降级。
 

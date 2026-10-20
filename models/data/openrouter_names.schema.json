@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/exdragine/frontier-model-catalog/openrouter_names.schema.json",
+  "title": "Frontier OpenRouter Display Name Overlay",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source", "model_count", "models"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "fetched_at", "response_sha256"],
+      "properties": {
+        "url": {"const": "https://openrouter.ai/api/v1/models?output_modalities=all"},
+        "fetched_at": {"type": "string", "format": "date-time"},
+        "response_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "model_count": {"type": "integer", "minimum": 1},
+    "models": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^~?[a-z0-9_-]+/[^\\s]+$"},
+      "additionalProperties": {"type": "string", "minLength": 1}
+    }
+  }
+}

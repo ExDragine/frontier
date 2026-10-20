@@ -372,11 +372,11 @@ async def test_set_wake_add_rejects_group_member(monkeypatch, unimessage_text_se
     assert sent == ["⚠️ 只有群主或管理员才能修改唤醒词。"]
 
 
-def test_model_display_name_uses_model_bank_and_falls_back(monkeypatch):
+def test_model_display_name_uses_catalog_and_name_overlays_and_falls_back(monkeypatch):
     monkeypatch.setattr(toolbox, "get_provider_profile", lambda _provider: {"type": "openai"})
 
     assert toolbox._model_display_name("deepseek-v4-flash", "relay") == "DeepSeek V4 Flash"
-    assert toolbox._model_display_name("gpt-image-2", "relay") == "GPT Image 2"
+    assert toolbox._model_display_name("gpt-image-2", "relay") == "OpenAI: GPT Image 2"
     assert toolbox._model_display_name("custom-model", "relay") == "custom-model"
 
 

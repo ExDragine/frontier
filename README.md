@@ -193,7 +193,7 @@ frontier/
 │   └── wolfx/          # CENC 地震预警 WebSocket 监听与推送
 ├── tools/              # LangChain Agent 工具
 ├── utils/              # agents/ 包、agent_protocol/、消息、DB、LLM、渲染、HTTP、Milky helper
-├── models/             # 供应商模型目录与 lobehub 名称表
+├── models/             # 供应商模型目录与 OpenRouter / LobeHub 名称表
 ├── skills/             # 只读内置 Skill，运行时挂载到 /skills
 ├── prompts/            # 共享 Agent 提示词；插件专属提示词随插件保存
 ├── renderer/           # Markdown 本地图表/公式/代码高亮前端源码

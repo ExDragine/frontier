@@ -2,7 +2,20 @@
 
 `models` 是 Frontier 内置的模型元数据模块。它只描述已核验的官方模型，不参与模型路由，也不把目录外模型判定为“不支持”。
 
-`data/lobehub_names.json` 是独立的友好名称覆盖层，来自 LobeHub 发布的
+友好名称按“已核验的本地模型卡 → OpenRouter → LobeHub → 原始 ID”解析，
+只读取本地文件，运行时不访问外部模型列表。名称层不会改变模型路由、能力、
+上下文窗口、生命周期或 API 协议；目录外模型仍可照常配置使用。
+
+`data/openrouter_names.json` 来自 [OpenRouter Models API](https://openrouter.ai/docs/guides/overview/models)，
+只保存完整 `author/model` ID 与上游 `name`，并记录来源 URL、抓取时间和原始响应 SHA-256。
+完整 ID 优先确定作者，支持代理前缀（例如 `gateway/openai/...`）；已知作者别名
+（如 `moonshotai` → `moonshot`、`z-ai` → `zhipu`、`xiaomi` → `xiaomimimo`）
+仅用于名称查找，不参与请求路由。裸 ID 优先在指定作者下查询，再使用唯一归属的结果；
+多个 OpenRouter 作者共用同一裸 ID 时不猜测归属。保留 `:free` 等变体，
+也不会自动改写 Claude 等模型 ID 的点号、连字符或日期，`~author/...` 路由条目也保留独立身份。名称保留上游的作者前缀。
+缺少 OpenRouter 快照时继续使用本地目录和 LobeHub。
+
+`data/lobehub_names.json` 是补充名称层，来自 LobeHub 发布的
 [`model-bank`](https://www.npmjs.com/package/model-bank) NPM 包。它只参与界面名称展示，
 不会覆盖 Frontier 核验的能力、上下文窗口、生命周期或 API 协议。快照保留上游版本、
 完整性哈希、Git commit 和许可证链接；上游数据遵循
@@ -18,7 +31,7 @@ from models import ModelFeature, get_model, get_model_display_name, list_models
 model = get_model("openai", "gpt-6.1-sol")
 assert model is not None
 print(model.display_name)
-print(get_model_display_name("openai", "gpt-image-2"))  # GPT Image 2
+print(get_model_display_name("openai", "gpt-image-2"))  # OpenAI: GPT Image 2
 
 tool_models = list_models(feature=ModelFeature.TOOL_CALLING)
 google_previews = list_models(provider="google", status="preview")
@@ -51,7 +64,21 @@ assert get_model("my-provider", "custom-model") is None
 
 目录不收录价格、基准分数、推荐排名，也不为聚合平台或兼容端点复制模型记录。
 
-LobeHub model-bank 等第三方目录只能用于友好名称展示、发现候选模型和待核对字段，不能作为模型卡的最终事实来源。模型 ID、生命周期、能力和技术限制必须回到开发商官方文档核验，并在 `sources` 中记录官方页面与核验日期。模型描述需要根据官方信息重新撰写。
+OpenRouter、LobeHub model-bank 等第三方目录只能用于友好名称展示、发现候选模型和待核对字段，不能作为模型卡的最终事实来源。模型 ID、生命周期、能力和技术限制必须回到开发商官方文档核验，并在 `sources` 中记录官方页面与核验日期。模型描述需要根据官方信息重新撰写。
+
+## 同步 OpenRouter 名称
+
+```bash
+uv run --locked python scripts/sync_openrouter_model_names.py
+uv run --locked python scripts/sync_openrouter_model_names.py --check
+```
+
+脚本匿名读取 `https://openrouter.ai/api/v1/models?output_modalities=all`，包含非文本输出模型，
+无需配置 OpenRouter provider 或 API key。完整校验响应后原子更新快照；下载失败、空列表、
+重复 ID、无效名称或意外分页均不会覆盖已有文件。`--output` 可指定其他输出文件，
+`--input response.json` 可导入事先保存的完整 API 响应，离线生成或核对同一份名称快照。
+`--check` 只比较名称集合，不写文件；响应顺序、价格和抓取时间变化不会导致过期，
+名称集合未变时同步也保留原文件。快照在进程中缓存，更新后重启应用生效。
 
 ## 同步 LobeHub 名称
 

@@ -58,6 +58,16 @@ def test_lobehub_names_match_json_schema_and_counts() -> None:
     assert names["model_count"] == sum(len(models) for models in names["providers"].values())
 
 
+def test_openrouter_names_match_json_schema_and_counts() -> None:
+    names = _load_resource("openrouter_names.json")
+    schema = _load_resource("openrouter_names.schema.json")
+
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(names)
+    assert names["model_count"] == len(names["models"])
+    assert list(names["models"]) == sorted(names["models"])
+    assert all(key == key.casefold() for key in names["models"])
+
+
 def test_catalog_invariants() -> None:
     catalog = _load_resource("catalog.json")
     identities: set[tuple[str, str]] = set()
@@ -137,9 +147,9 @@ def test_get_model_and_unknown_model() -> None:
     assert get_model("custom", "private-model") is None
 
 
-def test_get_model_display_name_uses_lobehub_overlay_without_affecting_unknown_models() -> None:
-    assert get_model_display_name("openai", "gpt-image-2") == "GPT Image 2"
-    assert get_model_display_name("openai", "gateway/openai/gpt-image-2") == "GPT Image 2"
+def test_get_model_display_name_uses_local_overlays_without_affecting_unknown_models() -> None:
+    assert get_model_display_name("openai", "gpt-image-2") == "OpenAI: GPT Image 2"
+    assert get_model_display_name("openai", "gateway/openai/gpt-image-2") == "OpenAI: GPT Image 2"
     assert get_model_display_name("openai", "gpt-5.6-sol") == "GPT-5.6 Sol"
     assert get_model_display_name("private", "custom-model") == "custom-model"
 
