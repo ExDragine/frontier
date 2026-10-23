@@ -33,7 +33,7 @@ def _tool_text_message(bot: object, text: str) -> Message | str:
         return text
 
     try:
-        sender_id = int(getattr(bot, "self_id"))
+        sender_id = int(getattr(bot, "self_id", None))
     except (AttributeError, TypeError, ValueError) as exc:
         raise ToolInputError("无法确认机器人 QQ 号，长文本未发送。") from exc
     if sender_id <= 0:
