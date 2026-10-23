@@ -35,6 +35,9 @@ Agent 先用 `get_recent_conversation` 或 `search_messages` 确定消息和发�
 
 ## 投递结果
 
+`send_plain_text`、`send_group_message` 和 `send_private_message` 这三个 QQ 工具直接调用 Milky。它们发送的文本达到 `[agent].tool_long_text_forward_threshold`（默认 500 字符）时，自动包装成单节点合并转发，以便在 QQ 中展开查看；短文本沿用原消息类型，配置为 `0` 时关闭包装。文本与换行原样保留，`send_plain_text` 仍先通过输出内容安全检查。发送失败不自动重复发送。该设置不影响 `send_messages()` 的最终回复和 Markdown 转图，也不修改显式的 `send_forwarded_message` 工具。
+
+
 绘图生成和编辑请求统一使用 `size="auto"`，分辨率与横竖比例由图片模型结合提示词和参考图选择。旧配置中的 `paint_size` 仅保留加载兼容，不再限制生成尺寸。
 
 `get_paint` / `get_video` 成功返回的工件在本轮 Agent 完成后统一投递，模型无需再调用媒体发送工具。`send_image` / `send_audio` / `send_voice` / `send_video` 只构建待投递工件，接受当前 workspace 与 `/memory/{workspace_key}/` 挂载中的虚拟路径，或 HTTP(S) URL；不会在工具执行时调用 Milky。路径越界、文件不存在、无效 URL 等发送前校验失败会返回错误说明和空工件，本轮可继续使用先前生成的工件，不会因此中止或重新生成媒体。工具内部的未知异常及真实平台写操作失败仍遵守原有中止规则，不自动重试。
