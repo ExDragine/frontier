@@ -36,7 +36,7 @@ Frontier 的配置分为四类文件：NoneBot 启动参数在 `.env`，Frontier
 | `[key]` | NASA、GitHub 等非模型服务密钥 | 本页 |
 | `[features]` | 功能开关与可选 Laya 候选预筛 | 本页 |
 | `[platforms.feishu]` | 飞书接入的非敏感配置（生产入口默认关闭） | 本页 |
-| `[agent]` | 推理等级、长文转图阈值、Fake-IP 媒体回退 | [消息媒体网络](message-media-network.md) |
+| `[agent]` | 推理等级、长文转图阈值、消息工具长文本转合并转发阈值、Fake-IP 媒体回退 | [消息媒体网络](message-media-network.md) |
 | `[speech_recognition]` | 本地 SenseVoice 语音识别 | [本地语音识别](local-speech.md) |
 | `[speech_synthesis]` | 本地 MOSS-TTS-Nano 语音合成 | [本地语音合成](local-tts.md) |
 | `[agent_policy]` / `[auto_reply_policy]` / `[paint_policy]` | 访问名单与主动回复、绘画权限 | 本页 |
