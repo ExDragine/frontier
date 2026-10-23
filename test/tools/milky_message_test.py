@@ -28,6 +28,9 @@ async def test_plain_text_preserves_long_markdown_without_rendering(
     monkeypatch.setattr(delivery, "markdown_to_text", fail_render)
     message = load_tool_module("milky_message")
     bot = install_milky_bot(message, {method: types.SimpleNamespace(message_seq=7, time=123)})
+    bot.self_id = "999"
+    monkeypatch.setattr(message.EnvConfig, "TOOL_LONG_TEXT_FORWARD_THRESHOLD", 500)
+    monkeypatch.setattr(message.EnvConfig, "BOT_NAME", "Frontier")
     text = "  ```python\nprint('hello')\n```\nhttps://example.com\n" + "长文本\n" * 1000
 
     result = await message.send_plain_text(text, config=_config(group_id=group_id))
@@ -38,8 +41,69 @@ async def test_plain_text_preserves_long_markdown_without_rendering(
     assert called_method == method
     assert {key: value for key, value in kwargs.items() if key != "message"} == target
     assert len(kwargs["message"]) == 1
-    assert kwargs["message"][0].type == "text"
-    assert kwargs["message"][0].data == {"text": text}
+    forward = kwargs["message"][0]
+    assert forward.type == "forward"
+    assert forward.data["title"] == "长文本"
+    assert forward.data["summary"] == "查看完整内容"
+    node, = forward.data["messages"]
+    assert node.user_id == 999
+    assert node.sender_name == "Frontier"
+    assert len(node.segments) == 1
+    assert node.segments[0].type == "text"
+    assert node.segments[0].data == {"text": text}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text, threshold, is_forward", [
+    ("x" * 499, 500, False),
+    ("x" * 500, 500, True),
+    ("x" * 1000, 0, False),
+])
+async def test_plain_text_forward_threshold(load_tool_module, install_milky_bot, monkeypatch, text, threshold, is_forward):
+    from utils import message as delivery
+
+    message = load_tool_module("milky_message")
+    bot = install_milky_bot(message, {"send_group_message": types.SimpleNamespace(message_seq=7, time=123)})
+    bot.self_id = "999"
+    monkeypatch.setattr(message.EnvConfig, "TOOL_LONG_TEXT_FORWARD_THRESHOLD", threshold)
+    monkeypatch.setattr(delivery.EnvConfig, "CONTENT_CHECK_ENABLED", False)
+
+    await message.send_plain_text(text, config=_config())
+    outgoing = bot.calls[0][1]["message"]
+    assert len(outgoing) == 1
+    assert outgoing[0].type == ("forward" if is_forward else "text")
+    actual_text = outgoing[0].data["messages"][0].segments[0].data["text"] if is_forward else outgoing[0].data["text"]
+    assert actual_text == text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["send_private_message", "send_group_message"])
+async def test_other_send_tools_forward_long_text(load_tool_module, install_milky_bot, monkeypatch, method):
+    message = load_tool_module("milky_message")
+    bot = install_milky_bot(message, {method: types.SimpleNamespace(message_seq=7, time=123)})
+    bot.self_id = "999"
+    monkeypatch.setattr(message.EnvConfig, "TOOL_LONG_TEXT_FORWARD_THRESHOLD", 500)
+    content = "长" * 600
+
+    if method == "send_private_message":
+        result = await message.send_private_message(message_text=content, user_id=456)
+    else:
+        result = await message.send_group_message(message_text=content, config=_config())
+    assert "message_seq=7" in result
+    assert len(bot.calls) == 1
+    sent = bot.calls[0][1]["message"]
+    assert len(sent) == 1 and sent[0].type == "forward"
+    assert sent[0].data["messages"][0].segments[0].data["text"] == content
+
+
+@pytest.mark.asyncio
+async def test_missing_bot_identity_prevents_long_text_delivery(load_tool_module, install_milky_bot, monkeypatch):
+    message = load_tool_module("milky_message")
+    bot = install_milky_bot(message)
+    monkeypatch.setattr(message.EnvConfig, "TOOL_LONG_TEXT_FORWARD_THRESHOLD", 500)
+    result = await message.send_group_message(message_text="x" * 500, config=_config())
+    assert "无法确认机器人 QQ 号" in result
+    assert bot.calls == []
 
 
 @pytest.mark.asyncio
