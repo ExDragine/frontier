@@ -152,6 +152,7 @@ class PlatformsConfig(_FrozenConfig):
 class AgentConfig(_FrozenConfig):
     reasoning_effort: str = "medium"
     message_image_text_threshold: int = Field(default=500, ge=1)
+    tool_long_text_forward_threshold: int = Field(default=500, ge=0)
     message_media_fake_ip_fallback: bool = True
 
 
@@ -605,6 +606,7 @@ class EnvConfig:
     LAYA_CANDIDATE_API_KEY: ClassVar[SecretStr]
     AGENT_CAPABILITY: ClassVar[str]
     MESSAGE_MEDIA_FAKE_IP_FALLBACK: ClassVar[bool]
+    TOOL_LONG_TEXT_FORWARD_THRESHOLD: ClassVar[int]
     AGENT_WHITELIST_MODE: ClassVar[bool]
     AGENT_WHITELIST_PERSON_LIST: ClassVar[list[int | str]]
     AGENT_WHITELIST_GROUP_LIST: ClassVar[list[int | str]]
@@ -715,6 +717,7 @@ class EnvConfig:
             "LAYA_CANDIDATE_API_KEY": SecretStr(os.getenv("LAYA_API_KEY", "")),
             "AGENT_CAPABILITY": settings.agent.reasoning_effort,
             "MESSAGE_IMAGE_TEXT_THRESHOLD": settings.agent.message_image_text_threshold,
+            "TOOL_LONG_TEXT_FORWARD_THRESHOLD": settings.agent.tool_long_text_forward_threshold,
             "MESSAGE_MEDIA_FAKE_IP_FALLBACK": settings.agent.message_media_fake_ip_fallback,
             "SPEECH_RECOGNITION": settings.speech_recognition,
             "SPEECH_SYNTHESIS": settings.speech_synthesis,
