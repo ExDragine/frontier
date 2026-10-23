@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from utils.agent_context import FrontierRuntimeContext
 from utils.agents.runtime import conversation_workspace_key
+from utils.configs import EnvConfig
 from utils.milky_tools import (
     ToolInputError,
     configurable,
@@ -23,6 +24,23 @@ from utils.milky_tools import (
 
 _DEFAULT_CONFIG = cast(RunnableConfig, None)
 _DEFAULT_RUNTIME = cast(ToolRuntime[FrontierRuntimeContext, dict], None)
+
+
+def _tool_text_message(bot: object, text: str) -> Message | str:
+    """Wrap tool-sent long text in an expandable QQ forward, preserving source text."""
+    threshold = EnvConfig.TOOL_LONG_TEXT_FORWARD_THRESHOLD
+    if threshold == 0 or len(text) < threshold:
+        return text
+
+    try:
+        sender_id = int(getattr(bot, "self_id"))
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ToolInputError("无法确认机器人 QQ 号，长文本未发送。") from exc
+    if sender_id <= 0:
+        raise ToolInputError("机器人 QQ 号无效，长文本未发送。")
+
+    node = MessageSegment.node(sender_id, EnvConfig.BOT_NAME, Message(text))
+    return Message(MessageSegment.forward([node], title="长文本", summary="查看完整内容"))
 
 
 class ForwardMessageNode(BaseModel):
@@ -85,7 +103,7 @@ async def send_plain_text(
     用于用户要求可复制的文字、代码、链接或明确要求不要图片的最终内容。
     保留原文和换行，Markdown 标记也按文字发送；不要用来发送思考或过程状态。
     目标由运行时会话决定，不能指定其他群或用户。成功后不要在最终回复中重复正文。
-    平台拒绝超长消息时不会转图或自动重试。
+    长文本达到配置阈值时自动使用可展开的合并转发消息，仍保留原文；失败不自动重试。
 
     Args:
         text: 要发送的完整纯文本正文
@@ -103,14 +121,16 @@ async def send_plain_text(
     content = await sanitize_outgoing_text(text)
     if not content or not content.strip():
         raise ToolInputError("纯文本消息经内容检查后为空，未发送。")
-    message = [MessageSegment.text(content)]
     bot = get_bot()
+    outgoing = _tool_text_message(bot, content)
+    message = [MessageSegment.text(content)] if isinstance(outgoing, str) else outgoing
     response = (
         await bot.send_group_message(group_id=target, message=message)
         if is_group
         else await bot.send_private_message(user_id=target, message=message)
     )
-    return f"已向当前会话发送纯文本消息，{_format_message_response(response)}。不要重复发送正文。"
+    label = "合并转发长文本" if not isinstance(outgoing, str) else "纯文本"
+    return f"已向当前会话发送{label}消息，{_format_message_response(response)}。不要重复发送正文。"
 
 
 @tool(response_format="content")
@@ -120,13 +140,14 @@ async def send_private_message(
     user_id: int | None = None,
     config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
-    """发送私聊文本消息。
+    """发送私聊文本消息；长文本自动包装为可展开的合并转发。
     Args:
         message_text: 消息文本
         user_id: 可选好友 QQ 号，未传时使用当前用户上下文
     """
     resolved_user_id = require_user_id(user_id, config)
-    response = await get_bot().send_private_message(user_id=resolved_user_id, message=message_text)
+    bot = get_bot()
+    response = await bot.send_private_message(user_id=resolved_user_id, message=_tool_text_message(bot, message_text))
     return _format_message_response(response)
 
 
@@ -137,13 +158,14 @@ async def send_group_message(
     group_id: int | None = None,
     config: RunnableConfig = _DEFAULT_CONFIG,
 ) -> str:
-    """发送群文本消息。
+    """发送群文本消息；长文本自动包装为可展开的合并转发。
     Args:
         message_text: 消息文本
         group_id: 可选群号，未传时使用当前群聊
     """
     resolved_group_id = require_group_id(group_id, config)
-    response = await get_bot().send_group_message(group_id=resolved_group_id, message=message_text)
+    bot = get_bot()
+    response = await bot.send_group_message(group_id=resolved_group_id, message=_tool_text_message(bot, message_text))
     return _format_message_response(response)
 
 
