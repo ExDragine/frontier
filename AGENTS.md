@@ -79,7 +79,7 @@ Milky `light_app` / `xml` 卡片通过 `utils/card_message.py` 本地解析常�
 `plugins/agent/adapters/` 提供 QQ 与飞书适配器；`adapters/__init__.py` 只加载纯 facade，不注册 matcher，
 `plugins/agent/__init__.py` 也明确不挂载飞书 lifecycle（`register_feishu_lifecycle` 目前只有测试引用）。
 `plugins/toolbox` 分为 `settings.py`、`update.py`、`menu.py`，专属菜单位于其 `templates/`。
-`plugins/news` 的日报模板位于插件自己的 `templates/`（`daily_news.html` / `daily_news.css`），编辑提示词是 `editor.py` 中的常量。
+`plugins/news` 的日报模板位于插件自己的 `templates/`（`daily_news.html` / `daily_news.css`），研究与编辑提示词是 `editor.py` 中的常量。
 `plugins/news` 由 Clockwork 的 `daily_news` 任务驱动：任务不存在时注册，已存在时只把处理器迁移到
 `plugins.news.scheduler:daily_news`，保留原有时间、启停状态和目标群。
 插件包入口只在 NoneBot 加载时注册事件；引用纯组件不应触发注册。
@@ -170,7 +170,7 @@ Prompt 加载链：
 - 框架注入的技能 HumanMessage 带 `lc_source=pinned_skill`，属于操作说明；历史裁剪将它与原始用户问题、工具交换和回复保留为同一轮，不把它当成新的聊天请求。
 - `/skills/rich-markdown/SKILL.md` 定义内容关系与基本 Markdown 组件语法；正文直接写 Markdown，按需插入 `::card`、分区、分栏、步骤或媒体，基本卡片无需先读取参考文件。详细字段、数据与媒体契约位于其 `references/`；旧 ui JSON 契约位于 `references/legacy-ui.md`。短聊天与需要复制的回复保持文字，500 字转图规则只控制发送方式。
 - `plugins/agent/prompts/reply_check.md` 用于群聊是否应主动回复的 Decision LLM 判断。
-- 每日新闻不使用独立的 prompt 文件：编辑提示词是 `plugins/news/editor.py` 中的 `PROMPT` 常量，模板位于 `plugins/news/templates/daily_news.html` 和 `daily_news.css`。
+- 每日新闻使用 `plugins/news/editor.py` 中的研究 Agent：先调用独立 `deepseek_web_search` / `deepseek_web_fetch`，再按证据约束生成 `NewsPayload`；模板位于 `plugins/news/templates/daily_news.html` 和 `daily_news.css`。
 - ENS 详细工作流位于只读内置 Skill `/skills/ens-weather/SKILL.md`；主提示词只保留加载入口。
 
 ---
