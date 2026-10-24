@@ -56,6 +56,22 @@ async def test_rejected_draft_is_reedited_and_ready_report_reused(repo, edition)
 
 
 @pytest.mark.asyncio
+async def test_agent_draft_below_minimum_is_not_archived(repo, edition):
+    svc = service(repo, drafts=[])
+    svc.editor.research_agent = True
+    svc.editor.research_and_edit = AsyncMock(
+        return_value=([article(str(i)) for i in range(2)], payload(1)),
+    )
+
+    with pytest.raises(InsufficientEvidence, match="too few supported stories"):
+        await svc.generate_report(edition)
+
+    row = await repo.get(edition.report_id)
+    assert row["status"] == "failed"
+    assert row["payload"] is None
+
+
+@pytest.mark.asyncio
 async def test_exhausted_attempts_fail_and_next_run_recollects(repo, edition):
     svc = service(repo, drafts=[payload(1), payload(1)], attempts=2)
     with pytest.raises(InsufficientEvidence):

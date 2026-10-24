@@ -95,7 +95,7 @@ class Article(BaseModel):
 
 class Support(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    article_id: str = Field(min_length=1, max_length=64)
+    article_id: str = Field(min_length=1, max_length=2048)
     quote: str = Field(min_length=15, max_length=700, description="Verbatim passage from the supplied evidence text")
 
 

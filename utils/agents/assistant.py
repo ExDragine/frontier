@@ -78,7 +78,7 @@ def parse_structured_response_from_messages(messages: list, response_format):
     raise KeyError("structured_response")
 
 
-async def assistant_agent(
+async def assistant_agent(  # noqa: C901
     system_prompt: str = "",
     user_prompt: str = "",
     use_model: str | None = None,
@@ -90,16 +90,23 @@ async def assistant_agent(
     reasoning_effort: str | None = None,
     temperature: float | None = None,
     model_kwargs: dict | None = None,
+    invoke_config: dict | None = None,
+    return_result: bool = False,
+    model_provider: str | None = None,
+    model_timeout: int = 300,
+    model_extra_body: dict | None = None,
 ) -> Any:
     if use_model is None:
         use_model = EnvConfig.BASIC_MODEL
         model_role = model_role or "basic"
     route = configured_model_route(use_model, model_role)
+    if model_provider is not None:
+        route = {"provider": model_provider}
     llm_kwargs: dict[str, Any] = {
         "model": use_model,
         "streaming": False,
         "max_retries": 2,
-        "timeout": 300,
+        "timeout": model_timeout,
         "tags": ["frontier:assistant"],
         **route,
     }
@@ -109,6 +116,8 @@ async def assistant_agent(
         llm_kwargs["temperature"] = temperature
     if model_kwargs is not None:
         llm_kwargs["model_kwargs"] = model_kwargs
+    if model_extra_body:
+        llm_kwargs["extra_body"] = model_extra_body
     model = create_llm(**llm_kwargs)
     agent = create_agent(
         model=model,
@@ -118,20 +127,24 @@ async def assistant_agent(
         response_format=response_format,
         debug=EnvConfig.AGENT_DEBUG_MODE,
     )
-    result = await agent.ainvoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": build_user_content(
-                        user_prompt,
-                        images,
-                        supports_vision=model_supports(use_model, "vision", role=model_role),
-                    ),
-                }
-            ]
-        }
-    )
+    request = {
+        "messages": [
+            {
+                "role": "user",
+                "content": build_user_content(
+                    user_prompt,
+                    images,
+                    supports_vision=model_supports(use_model, "vision", role=model_role),
+                ),
+            }
+        ]
+    }
+    if invoke_config is None:
+        result = await agent.ainvoke(request)
+    else:
+        result = await agent.ainvoke(request, config=invoke_config)
+    if return_result:
+        return result
     if response_format:
         if "structured_response" in result:
             return result["structured_response"]

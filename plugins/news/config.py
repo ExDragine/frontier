@@ -29,6 +29,7 @@ class NewsConfig(BaseModel):
     max_generation_attempts: int = Field(default=3, ge=1, le=5)
     retention_days: int = Field(default=30, ge=2, le=365)
     bot_id: str = ""
+    workspace_dir: str = "cache/sandbox/workspaces/news"
 
     @field_validator("timezone")
     @classmethod

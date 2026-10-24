@@ -29,18 +29,29 @@ class NewsService:
             raise GenerationBusy(edition.report_id)
         try:
             async with asyncio.timeout(self.cfg.generation_timeout):
-                articles = eligible(await self.sources.collect(edition, set()), edition)
-                if len(articles) < self.cfg.min_stories:
-                    stats = getattr(self.sources, "stats", {})
-                    errors = getattr(self.sources, "errors", [])
-                    raise InsufficientEvidence(
-                        f"insufficient dated evidence: eligible={len(articles)}/{self.cfg.min_stories}; "
-                        f"received={stats.get('received', 0)}, undated={stats.get('undated', 0)}, "
-                        f"outside_window={stats.get('outside_window', 0)}; "
-                        f"window={edition.start.isoformat()}..{edition.scheduled_at.isoformat()}; "
-                        f"sources={','.join(errors) or 'ok'}"
-                    )
-                payload = await self._edited_payload(edition, articles)
+                if getattr(self.editor, "research_agent", False):
+                    articles, payload = await self.editor.research_and_edit(edition)
+                    if len(articles) < self.cfg.min_stories:
+                        raise InsufficientEvidence(
+                            f"insufficient agent evidence: eligible={len(articles)}/{self.cfg.min_stories}; "
+                            f"window={edition.start.isoformat()}..{edition.scheduled_at.isoformat()}"
+                        )
+                    validate_evidence(payload, articles)
+                    if len(payload.stories) < self.cfg.min_stories:
+                        raise InsufficientEvidence("too few supported stories")
+                else:
+                    articles = eligible(await self.sources.collect(edition, set()), edition)
+                    if len(articles) < self.cfg.min_stories:
+                        stats = getattr(self.sources, "stats", {})
+                        errors = getattr(self.sources, "errors", [])
+                        raise InsufficientEvidence(
+                            f"insufficient dated evidence: eligible={len(articles)}/{self.cfg.min_stories}; "
+                            f"received={stats.get('received', 0)}, undated={stats.get('undated', 0)}, "
+                            f"outside_window={stats.get('outside_window', 0)}; "
+                            f"window={edition.start.isoformat()}..{edition.scheduled_at.isoformat()}; "
+                            f"sources={','.join(errors) or 'ok'}"
+                        )
+                    payload = await self._edited_payload(edition, articles)
                 status = "ready" if len(payload.stories) >= self.cfg.target_stories else "degraded"
                 await self.repo.complete(edition.report_id, token, status, articles, payload)
             return await self.repo.get(edition.report_id)

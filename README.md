@@ -24,7 +24,7 @@ Frontier 是一个基于 [NoneBot2](https://nonebot.dev/) 与 Milky 适配器的
 | `plugins/clockwork` | APScheduler 定时任务：内置任务、用户自动任务、任务命令和执行历史；`daily_news` 只注册任务，处理器位于 `plugins/news` |
 | `plugins/dashboard` | FastAPI Dashboard：JWT 鉴权、状态/消息/设置/任务管理 API 与 `/dashboard` 静态前端 |
 | `plugins/events` | Milky 申请事件：独立持久化收件箱、规则/受限决策、执行校验与恢复；默认只记录，`/events` 仅超级用户私聊管理 |
-| `plugins/news` | 独立新闻管线：Exa MCP 或 Exa/Tavily REST 检索 → 证据约束编辑 → `news.db` 归档 → 渲染 → 逐目标投递 |
+| `plugins/news` | 独立新闻管线：研究 Agent 调用 DeepSeek Search/Fetch → 证据约束编辑 → `news.db` 归档 → 渲染 → 逐目标投递 |
 | `plugins/playground` | `/paint`、`/video` 命令和戳一戳响应，复用共享图片/视频服务 |
 | `plugins/toolbox` | `/update`、`/restart`、`/model`、`/set wake`、`/vehelp` 等管理命令 |
 | `plugins/wolfx` | Wolfx CENC 地震预警：WebSocket 长连接、事件去重、渲染与推送 |
