@@ -1,4 +1,4 @@
-"""Single-shot news generation with local evidence checks; delivery is a separate concern."""
+"""Bounded news generation with local evidence checks and draft repair."""
 
 import asyncio
 
@@ -36,9 +36,7 @@ class NewsService:
                             f"insufficient agent evidence: eligible={len(articles)}/{self.cfg.min_stories}; "
                             f"window={edition.start.isoformat()}..{edition.scheduled_at.isoformat()}"
                         )
-                    validate_evidence(payload, articles)
-                    if len(payload.stories) < self.cfg.min_stories:
-                        raise InsufficientEvidence("too few supported stories")
+                    payload = await self._edited_payload(edition, articles, initial_payload=payload)
                 else:
                     articles = eligible(await self.sources.collect(edition, set()), edition)
                     if len(articles) < self.cfg.min_stories:
@@ -62,15 +60,22 @@ class NewsService:
             await self.repo.fail(edition.report_id, token, type(exc).__name__)
             raise
 
-    async def _edited_payload(self, edition, articles):
-        """Edit with local evidence checks; content rejections retry with a fresh draft."""
+    async def _edited_payload(self, edition, articles, *, initial_payload=None):
+        """Count the Agent draft toward the same bounded, evidence-preserving retries."""
         last = None
-        for _ in range(self.cfg.max_generation_attempts):
+        for attempt in range(self.cfg.max_generation_attempts):
             try:
-                payload = await self.editor.edit(edition, articles)
+                if attempt == 0 and initial_payload is not None:
+                    payload = initial_payload
+                else:
+                    payload = await self.editor.edit(
+                        edition, articles, validation_error=str(last) if last else None,
+                    )
                 validate_evidence(payload, articles)
                 if len(payload.stories) < self.cfg.min_stories:
-                    raise InsufficientEvidence("too few supported stories")
+                    raise InsufficientEvidence(
+                        f"too few supported stories: {len(payload.stories)}/{self.cfg.min_stories}"
+                    )
                 return payload
             except (ValueError, InsufficientEvidence) as exc:
                 last = exc

@@ -144,3 +144,47 @@ async def test_daily_news_full_pipeline(news_e2e, tmp_path):
     assert result.status == "success"
     assert result.messages_sent == 0
     assert len(FakeUniMessage.recorded) == 1
+
+
+@pytest.mark.asyncio
+async def test_daily_news_repairs_shared_article_before_archiving_and_delivering(news_e2e, tmp_path, monkeypatch):
+    from plugins.news import editor
+
+    async def duplicated_draft(**kwargs):
+        result = await fake_assistant_agent(**kwargs)
+        draft = result["structured_response"]
+        draft.worth_reading = [draft.top_stories[0].model_copy(update={"title": "流动性支持信号"})]
+        return result
+
+    async def corrected_draft(_self, schema, system, user):
+        data = json.loads(user)
+        assert data["validation_error"] == "the same article cannot fill multiple news slots"
+        assert len(data["articles"]) == 1
+        assert data["min_stories"] == 1
+        return NewsPayload(
+            top_stories=[{
+                "title": "央行启用新型货币政策工具",
+                "category": "财经",
+                "summary": ARTICLE_TEXT[:60],
+                "evidence": [{
+                    "article_id": data["articles"][0]["article_id"],
+                    "quote": ARTICLE_TEXT[5:35],
+                }],
+            }],
+            worth_reading=[],
+        )
+
+    research = AsyncMock(side_effect=duplicated_draft)
+    monkeypatch.setattr(editor, "assistant_agent", research)
+    monkeypatch.setattr(editor.NewsEditor, "call", corrected_draft)
+
+    result = await news_e2e.daily_news(job_id="daily_news")
+
+    assert result.status == "success"
+    assert result.messages_sent == 1
+    research.assert_awaited_once()
+    report = await NewsRepository(tmp_path / "news.db").latest("general")
+    assert report["status"] == "ready"
+    assert report["payload"]["worth_reading"] == []
+    assert len(report["payload"]["top_stories"]) == 1
+    assert FakeUniMessage.recorded == [("image", "123", b"png-bytes")]
