@@ -18,7 +18,7 @@ class SourceError(RuntimeError):
         self.retryable = retryable
 
 
-def publication_time(value):
+def publication_time(value, default_timezone=None):
     if not isinstance(value, str):
         return None
     try:
@@ -27,8 +27,19 @@ def publication_time(value):
         try:
             parsed = parsedate_to_datetime(value)
         except (TypeError, ValueError, OverflowError):
+            parsed = None
+    if parsed is None and default_timezone is not None:
+        try:
+            parsed = dt.datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=default_timezone)
+        except (TypeError, ValueError):
             return None
-    return parsed.astimezone(dt.UTC) if parsed.tzinfo else None
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        if default_timezone is None:
+            return None
+        parsed = parsed.replace(tzinfo=default_timezone)
+    return parsed.astimezone(dt.UTC)
 
 
 def _mcp_value(value):
@@ -191,6 +202,68 @@ def _mcp_articles(value, *, provider="exa"):
     return output
 
 
+class DeepSeekSource:
+    """Collect bounded evidence through DeepSeek's standalone Search API."""
+
+    name = "deepseek"
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+    async def search(self, query, edition):
+        from utils.deepseek_web import search_web
+
+        end_date = (edition.scheduled_at + dt.timedelta(days=1)).date().isoformat()
+        scoped_query = f"{query} after:{edition.start.date().isoformat()} before:{end_date}"
+        result = await search_web(
+            scoped_query,
+            count=self.cfg.source_results,
+            need_content=True,
+            workspace_dir=self.cfg.workspace_dir,
+        )
+        if result.get("status") == "error":
+            error = result.get("error") or {}
+            raise SourceError(
+                f"deepseek_{error.get('code', 'error')}",
+                retryable=bool(error.get("retryable")),
+            )
+        return _deepseek_articles(result, edition)
+
+
+def _deepseek_articles(value, edition):
+    now = dt.datetime.now(dt.UTC)
+    output = []
+    for item in value.get("results", []):
+        if not isinstance(item, dict):
+            continue
+        try:
+            url = canonical_url(str(item.get("url") or ""))
+        except (TypeError, ValueError):
+            continue
+        title = compact(str(item.get("title") or ""))[:300]
+        text = compact(str(item.get("content") or item.get("summary") or ""))[:6000]
+        if len(title) < 1 or len(text) < 40:
+            continue
+        fingerprint = hashlib.sha256((title + "\n" + text).encode()).hexdigest()
+        output.append(
+            Article(
+                article_id=hashlib.sha256((url + fingerprint).encode()).hexdigest()[:32],
+                url=url,
+                title=title,
+                text=text,
+                source=str(item.get("site_name") or urlsplit(url).hostname or "deepseek"),
+                provider="deepseek",
+                published_at=publication_time(
+                    item.get("date"),
+                    default_timezone=edition.scheduled_at.tzinfo,
+                ),
+                fetched_at=now,
+                fingerprint=fingerprint,
+            )
+        )
+    return output
+
+
 class ExaMcpSource:
     """Use the configured public Exa MCP endpoint when no REST key is set."""
 
@@ -283,4 +356,4 @@ class SourcePool:
 
 
 def configured_sources(cfg):
-    return SourcePool([ExaMcpSource(cfg)], cfg)
+    return SourcePool([DeepSeekSource(cfg)], cfg)
