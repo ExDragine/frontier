@@ -11,7 +11,7 @@ from utils.agents import assistant_agent
 from utils.agents.assistant import parse_structured_response_from_messages
 from utils.structured_llm import structured_call
 
-from .schemas import Article, Edition, NewsPayload, canonical_url, compact, validate_evidence
+from .schemas import Article, Edition, NewsPayload, canonical_url, compact, eligible, validate_evidence
 from .sources import publication_time
 
 AGENT_PROMPT = """你是 Frontier 的每日新闻研究编辑。你必须先调用 deepseek_web_search 搜索最近 24 小时内的中国和全球重要新闻；
@@ -179,7 +179,7 @@ class NewsEditor:
         payload = result.get("structured_response")
         if not isinstance(payload, NewsPayload):
             payload = parse_structured_response_from_messages(result.get("messages", []), NewsPayload)
-        articles = _articles_from_messages(result.get("messages", []), edition)
+        articles = eligible(_articles_from_messages(result.get("messages", []), edition), edition)
         payload = _bind_evidence(payload, articles)
         validate_evidence(payload, articles)
         return articles, payload
