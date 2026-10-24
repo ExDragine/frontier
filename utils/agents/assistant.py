@@ -90,6 +90,8 @@ async def assistant_agent(
     reasoning_effort: str | None = None,
     temperature: float | None = None,
     model_kwargs: dict | None = None,
+    invoke_config: dict | None = None,
+    return_result: bool = False,
 ) -> Any:
     if use_model is None:
         use_model = EnvConfig.BASIC_MODEL
@@ -130,8 +132,11 @@ async def assistant_agent(
                     ),
                 }
             ]
-        }
+        },
+        config=invoke_config,
     )
+    if return_result:
+        return result
     if response_format:
         if "structured_response" in result:
             return result["structured_response"]
