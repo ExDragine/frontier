@@ -1,4 +1,4 @@
-"""News collection through the configured public Exa MCP endpoint."""
+"""News collection through DeepSeek Search, with the legacy Exa adapter retained for compatibility."""
 
 import asyncio
 import datetime as dt
