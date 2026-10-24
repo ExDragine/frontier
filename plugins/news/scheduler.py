@@ -42,7 +42,7 @@ def context():
             update={"model": EnvConfig.DAILY_NEWS_MODEL, "provider": EnvConfig.DAILY_NEWS_MODEL_PROVIDER}
         )
     repo = NewsRepository(Path(os.getenv("FRONTIER_NEWS_DB", "news.db")))
-    service = NewsService(repo, configured_sources(cfg), NewsEditor(cfg), cfg)
+    service = NewsService(repo, configured_sources(cfg), NewsEditor(cfg, research_agent=True), cfg)
     return cfg, repo, service
 
 
