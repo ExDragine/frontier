@@ -1,11 +1,6 @@
 # ruff: noqa: S101
 
-"""End-to-end wiring: daily_news runs collect → edit → render → deliver.
-
-Only the external boundaries are faked: the Exa MCP tool, the structured LLM
-call, the HTML renderer, and QQ delivery. The repository is a real SQLite file
-and the scheduler/service/delivery code paths are the real ones.
-"""
+"""End-to-end wiring for the agent-led DeepSeek news pipeline."""
 
 import datetime as dt
 import json
@@ -19,36 +14,55 @@ import pytest
 
 from plugins.news.config import NewsConfig
 from plugins.news.repository import NewsRepository
+from plugins.news.schemas import NewsPayload
 
 ARTICLE_TEXT = "央行今日宣布启用新型货币政策工具，受访市场人士普遍认为这释放了明确的流动性支持信号，后续观察落地节奏。"
 
 
-class FakeExaTool:
-    name = "web_search_exa"
-    args_schema = {
-        "type": "object",
-        "properties": {"query": {}, "numResults": {}, "startPublishedDate": {}, "endPublishedDate": {}},
+async def fake_assistant_agent(*, user_prompt, **_kwargs):
+    window = json.loads(user_prompt)["window"]
+    published = dt.datetime.fromisoformat(window[1]) - dt.timedelta(hours=1)
+    payload = NewsPayload(
+        top_stories=[
+            {
+                "title": "央行启用新型货币政策工具",
+                "category": "财经",
+                "summary": ARTICLE_TEXT[:60],
+                "evidence": [
+                    {
+                        "article_id": "https://example.com/news/1",
+                        "quote": ARTICLE_TEXT[5:35],
+                    }
+                ],
+            }
+        ],
+        worth_reading=[],
+    )
+    tool_result = {
+        "status": "ok",
+        "query": "news",
+        "count": 1,
+        "results": [
+            {
+                "title": "央行启用新型货币政策工具",
+                "url": "https://example.com/news/1",
+                "summary": ARTICLE_TEXT,
+                "content": ARTICLE_TEXT,
+                "date": published.isoformat(),
+                "site_name": "example.com",
+            }
+        ],
     }
-
-    async def ainvoke(self, args):
-        end = dt.datetime.fromisoformat(args["endPublishedDate"])
-        published = end - dt.timedelta(hours=1)
-        return {"results": [{
-            "title": "央行启用新型货币政策工具",
-            "url": "https://example.com/news/1",
-            "text": ARTICLE_TEXT,
-            "publishedDate": published.isoformat(),
-        }]}
-
-
-async def fake_structured_call(*, schema, user_prompt, **_kwargs):
-    article = json.loads(user_prompt)["articles"][0]
-    return schema(top_stories=[{
-        "title": article["title"],
-        "category": "财经",
-        "summary": article["text"][:60],
-        "evidence": [{"article_id": article["article_id"], "quote": article["text"][5:35]}],
-    }], worth_reading=[])
+    return {
+        "messages": [
+            SimpleNamespace(
+                type="tool",
+                name="deepseek_web_search",
+                content=json.dumps(tool_result, ensure_ascii=False),
+            )
+        ],
+        "structured_response": payload,
+    }
 
 
 class _Sent:
@@ -76,21 +90,21 @@ def news_e2e(monkeypatch, tmp_path):
     from plugins.news import delivery, editor, scheduler
 
     monkeypatch.setenv("FRONTIER_NEWS_DB", str(tmp_path / "news.db"))
-    monkeypatch.setattr(scheduler, "load_news_config", lambda: NewsConfig(
-        model="fake", provider="fake", min_stories=1, target_stories=1, queries=("news",),
-    ))
+    monkeypatch.setattr(
+        scheduler,
+        "load_news_config",
+        lambda: NewsConfig(
+            model="fake",
+            provider="fake",
+            min_stories=1,
+            target_stories=1,
+            queries=("news",),
+        ),
+    )
     monkeypatch.setattr(scheduler, "render_image", AsyncMock(return_value=b"png-bytes"))
-    monkeypatch.setattr(editor, "structured_call", fake_structured_call)
+    monkeypatch.setattr(editor, "assistant_agent", fake_assistant_agent)
     FakeUniMessage.recorded = []
     monkeypatch.setattr(delivery, "UniMessage", FakeUniMessage)
-
-    mcp_client = types.ModuleType("tools.mcp_client")
-
-    async def fake_discovery():
-        return [FakeExaTool()]
-
-    mcp_client.mcp_get_tools_async = fake_discovery
-    monkeypatch.setitem(sys.modules, "tools.mcp_client", mcp_client)
 
     clockwork_pkg = sys.modules.get("plugins.clockwork")
     if clockwork_pkg is None:
