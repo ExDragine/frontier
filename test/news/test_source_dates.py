@@ -8,6 +8,7 @@ import pytest
 from plugins.news.config import NewsConfig
 from plugins.news.schemas import Edition
 from plugins.news.sources import (
+    DeepSeekSource,
     ExaMcpSource,
     _mcp_articles,
     configured_sources,
@@ -87,9 +88,9 @@ async def test_exa_mcp_is_used_when_rest_key_is_missing(monkeypatch, dictionary_
     assert calls[0]["startPublishedDate"] == "2026-09-18T01:00:00+00:00"
 
 
-def test_configured_sources_always_uses_exa_mcp():
+def test_configured_sources_uses_deepseek():
     sources = configured_sources(NewsConfig()).sources
-    assert [type(source) for source in sources] == [ExaMcpSource]
+    assert [type(source) for source in sources] == [DeepSeekSource]
 
 
 def test_exa_mcp_markdown_keeps_publication_date():
