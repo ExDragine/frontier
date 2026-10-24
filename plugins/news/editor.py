@@ -52,7 +52,7 @@ def _decode_tool_payload(message) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
-def _article_records(messages) -> dict[str, dict]:
+def _article_records(messages) -> dict[str, dict]:  # noqa: C901
     records: dict[str, dict] = {}
     for message in messages:
         if getattr(message, "type", None) != "tool":
