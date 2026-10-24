@@ -57,7 +57,7 @@ async def test_rejected_draft_is_reedited_and_ready_report_reused(repo, edition)
 
 @pytest.mark.asyncio
 async def test_agent_draft_below_minimum_is_not_archived(repo, edition):
-    svc = service(repo, drafts=[])
+    svc = service(repo, drafts=[], attempts=1)
     svc.editor.research_agent = True
     svc.editor.research_and_edit = AsyncMock(
         return_value=([article(str(i)) for i in range(2)], payload(1)),
@@ -69,6 +69,87 @@ async def test_agent_draft_below_minimum_is_not_archived(repo, edition):
     row = await repo.get(edition.report_id)
     assert row["status"] == "failed"
     assert row["payload"] is None
+    svc.editor.edit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rejection", ["shared_article", "duplicate_title", "fabricated_quote", "too_few"])
+async def test_agent_draft_repaired_with_existing_evidence(repo, edition, rejection):
+    draft = payload(2)
+    if rejection == "shared_article":
+        draft.worth_reading = [draft.top_stories.pop()]
+        draft.worth_reading[0].evidence = draft.top_stories[0].evidence
+        error = "the same article cannot fill multiple news slots"
+    elif rejection == "duplicate_title":
+        draft.top_stories[1].title = draft.top_stories[0].title
+        error = "duplicate story title"
+    elif rejection == "fabricated_quote":
+        draft.top_stories[0].evidence[0].quote = "fabricated evidence passage"
+        error = "missing or fabricated evidence quote"
+    else:
+        draft = payload(1)
+        error = "too few supported stories: 1/2"
+    svc = service(repo, drafts=[payload(2)])
+    articles = [article(str(i)) for i in range(2)]
+    svc.editor.research_agent = True
+    svc.editor.research_and_edit = AsyncMock(return_value=(articles, draft))
+
+    report = await svc.generate_report(edition)
+
+    assert report["status"] == "ready"
+    svc.editor.research_and_edit.assert_awaited_once_with(edition)
+    svc.sources.collect.assert_not_awaited()
+    svc.editor.edit.assert_awaited_once_with(edition, articles, validation_error=error)
+    assert len(report["payload"]["top_stories"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_valid_agent_draft_is_archived_without_reediting(repo, edition):
+    svc = service(repo, drafts=[])
+    svc.editor.research_agent = True
+    svc.editor.research_and_edit = AsyncMock(
+        return_value=([article(str(i)) for i in range(2)], payload(2)),
+    )
+    assert (await svc.generate_report(edition))["status"] == "ready"
+    svc.editor.edit.assert_not_awaited()
+    svc.sources.collect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_agent_repair_budget_includes_initial_draft_and_failure_can_retry(repo, edition):
+    draft = payload(2)
+    draft.top_stories[1].evidence = draft.top_stories[0].evidence
+    svc = service(repo, drafts=[draft, draft], attempts=3)
+    svc.editor.research_agent = True
+    svc.editor.research_and_edit = AsyncMock(
+        return_value=([article(str(i)) for i in range(2)], draft),
+    )
+
+    with pytest.raises(ValueError, match="the same article cannot fill multiple news slots"):
+        await svc.generate_report(edition)
+
+    assert svc.editor.edit.await_count == 2
+    svc.editor.research_and_edit.assert_awaited_once()
+    row = await repo.get(edition.report_id)
+    assert row["status"] == "failed"
+    assert row["payload"] is None
+    svc.editor.research_and_edit.return_value = ([article(str(i)) for i in range(2)], payload(2))
+    assert (await svc.generate_report(edition))["status"] == "ready"
+    assert svc.editor.research_and_edit.await_count == 2
+    assert svc.editor.edit.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_agent_repair_timeout_is_not_retried(repo, edition):
+    svc = service(repo, drafts=[TimeoutError()])
+    svc.editor.research_agent = True
+    svc.editor.research_and_edit = AsyncMock(
+        return_value=([article(str(i)) for i in range(2)], payload(1)),
+    )
+    with pytest.raises(TimeoutError):
+        await svc.generate_report(edition)
+    svc.editor.edit.assert_awaited_once()
+    assert (await repo.get(edition.report_id))["status"] == "failed"
 
 
 @pytest.mark.asyncio
@@ -239,3 +320,21 @@ async def test_editor_receives_configured_story_target(monkeypatch, edition):
     data = json.loads(call.call_args.args[2])
     assert data["target_stories"] == 14
     assert len(data["articles"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_editor_receives_validation_feedback(monkeypatch, edition):
+    import json
+
+    from plugins.news.editor import NewsEditor
+
+    editor = NewsEditor(NewsConfig(min_stories=2, target_stories=2))
+    call = AsyncMock(return_value=payload(2))
+    monkeypatch.setattr(editor, "call", call)
+    await editor.edit(
+        edition, [article(str(i)) for i in range(2)],
+        validation_error="the same article cannot fill multiple news slots",
+    )
+    data = json.loads(call.call_args.args[2])
+    assert data["validation_error"] == "the same article cannot fill multiple news slots"
+    assert data["min_stories"] == 2

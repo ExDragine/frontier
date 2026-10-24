@@ -18,7 +18,7 @@ A report is archived before delivery. Each QQ group has its own state. `sent` is
 
 ## Recovery and retention
 
-The generation lease covers the complete Agent research and editing turn. If the Agent returns invalid evidence or too few dated sources, the report is marked failed and the next invocation may recollect. Retention removes inactive reports and delivery rows after `retention_days`.
+The generation lease and `generation_timeout` cover research and all editing attempts. Each source article may support only one story across both sections, including supplementary citations. If an Agent draft repeats a source, contains invalid evidence, or has too few supported stories, the editor receives the validation error and reuses the collected, dated evidence to produce a corrected draft. `max_generation_attempts` bounds the total number of drafts, including the initial Agent draft; it does not rerun searches on each editing attempt. Valid drafts are archived immediately. Too few dated sources, an exhausted draft budget, or a timeout marks the report failed, and the next invocation may recollect. Retention removes inactive reports and delivery rows after `retention_days`.
 
 ## Operator commands
 
