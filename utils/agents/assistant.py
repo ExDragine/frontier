@@ -78,7 +78,7 @@ def parse_structured_response_from_messages(messages: list, response_format):
     raise KeyError("structured_response")
 
 
-async def assistant_agent(
+async def assistant_agent(  # noqa: C901
     system_prompt: str = "",
     user_prompt: str = "",
     use_model: str | None = None,
