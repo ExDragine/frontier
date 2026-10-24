@@ -68,7 +68,7 @@ Milky MessageEvent → NoneBot on_message(priority=10)
 | `plugins/acp` | ACP v1/v2 客户端与服务端、`/acp` 命令、子代理桥接和进程维护；`/acp` 仅超级用户可用 |
 | `plugins/clockwork` | APScheduler 定时任务系统：内置任务、用户自动任务、任务命令、执行历史；只负责注册 `daily_news` 任务，处理器位于 `plugins.news` |
 | `plugins/dashboard` | FastAPI Dashboard：`/api/dashboard/*` API、`/dashboard` 静态前端、JWT 鉴权、状态/消息/设置/任务管理 |
-| `plugins/news` | 独立新闻管线：Exa MCP 或 Exa/Tavily REST 检索 → 证据约束编辑 → `news.db` 归档 → 渲染 → 逐目标投递；`/news` 仅超级用户可用 |
+| `plugins/news` | 独立新闻管线：研究 Agent 调用 DeepSeek Search/Fetch → 证据约束编辑 → `news.db` 归档 → 渲染 → 逐目标投递；`/news` 仅超级用户可用 |
 | `plugins/playground` | `/paint`、`/video` 命令和戳一戳响应；直接调用共享图片/视频服务 |
 | `plugins/toolbox` | 工具箱命令：`/update`、`/restart`、`/model`、`/set wake`、`/vehelp`，以及技能沙箱初始化；`/update`、`/restart` 仅超级用户可用，`/model` 向所有用户开放以查看当前模型配置 |
 | `plugins/wolfx` | Wolfx CENC 地震预警：`cenc_client.py` 维护 WebSocket 长连接与重连，`cenc_handler.py` 去重、渲染并推送 |
