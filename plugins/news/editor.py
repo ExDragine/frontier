@@ -177,6 +177,8 @@ class NewsEditor:
             return_result=True,
         )
         payload = result.get("structured_response")
+        if isinstance(payload, dict):
+            payload = NewsPayload.model_validate(payload)
         if not isinstance(payload, NewsPayload):
             payload = parse_structured_response_from_messages(result.get("messages", []), NewsPayload)
         articles = eligible(_articles_from_messages(result.get("messages", []), edition), edition)
