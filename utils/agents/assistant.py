@@ -92,16 +92,21 @@ async def assistant_agent(  # noqa: C901
     model_kwargs: dict | None = None,
     invoke_config: dict | None = None,
     return_result: bool = False,
+    model_provider: str | None = None,
+    model_timeout: int = 300,
+    model_extra_body: dict | None = None,
 ) -> Any:
     if use_model is None:
         use_model = EnvConfig.BASIC_MODEL
         model_role = model_role or "basic"
     route = configured_model_route(use_model, model_role)
+    if model_provider is not None:
+        route = {"provider": model_provider}
     llm_kwargs: dict[str, Any] = {
         "model": use_model,
         "streaming": False,
         "max_retries": 2,
-        "timeout": 300,
+        "timeout": model_timeout,
         "tags": ["frontier:assistant"],
         **route,
     }
@@ -111,6 +116,8 @@ async def assistant_agent(  # noqa: C901
         llm_kwargs["temperature"] = temperature
     if model_kwargs is not None:
         llm_kwargs["model_kwargs"] = model_kwargs
+    if model_extra_body:
+        llm_kwargs["extra_body"] = model_extra_body
     model = create_llm(**llm_kwargs)
     agent = create_agent(
         model=model,

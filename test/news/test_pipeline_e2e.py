@@ -17,9 +17,12 @@ from plugins.news.repository import NewsRepository
 from plugins.news.schemas import NewsPayload
 
 ARTICLE_TEXT = "央行今日宣布启用新型货币政策工具，受访市场人士普遍认为这释放了明确的流动性支持信号，后续观察落地节奏。"
+ARTICLE_URL = "https://example.com/news/2026/10/24/central-bank-announces-new-policy-tool.html"
 
 
 async def fake_assistant_agent(*, user_prompt, **_kwargs):
+    assert _kwargs["model_provider"] == "fake"
+    assert _kwargs["model_timeout"] == 90
     window = json.loads(user_prompt)["window"]
     published = dt.datetime.fromisoformat(window[1]) - dt.timedelta(hours=1)
     payload = NewsPayload(
@@ -30,7 +33,7 @@ async def fake_assistant_agent(*, user_prompt, **_kwargs):
                 "summary": ARTICLE_TEXT[:60],
                 "evidence": [
                     {
-                        "article_id": "https://example.com/news/1",
+                        "article_id": ARTICLE_URL,
                         "quote": ARTICLE_TEXT[5:35],
                     }
                 ],
@@ -45,7 +48,7 @@ async def fake_assistant_agent(*, user_prompt, **_kwargs):
         "results": [
             {
                 "title": "央行启用新型货币政策工具",
-                "url": "https://example.com/news/1",
+                "url": ARTICLE_URL,
                 "summary": ARTICLE_TEXT,
                 "content": ARTICLE_TEXT,
                 "date": published.isoformat(),
@@ -86,8 +89,10 @@ class FakeUniMessage:
 
 
 @pytest.fixture
-def news_e2e(monkeypatch, tmp_path):
+def news_e2e(monkeypatch, tmp_path, load_tool_module):
     from plugins.news import delivery, editor, scheduler
+
+    load_tool_module("deepseek_search")
 
     monkeypatch.setenv("FRONTIER_NEWS_DB", str(tmp_path / "news.db"))
     monkeypatch.setattr(
@@ -132,6 +137,8 @@ async def test_daily_news_full_pipeline(news_e2e, tmp_path):
     story = report["payload"]["top_stories"][0]
     assert story["title"] == "央行启用新型货币政策工具"
     assert report["evidence"][0]["text"] == ARTICLE_TEXT
+    assert story["evidence"][0]["article_id"] == report["evidence"][0]["article_id"]
+    assert len(story["evidence"][0]["article_id"]) == 32
 
     result = await scheduler.daily_news(job_id="daily_news")
     assert result.status == "success"

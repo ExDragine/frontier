@@ -36,6 +36,9 @@ class NewsService:
                             f"insufficient agent evidence: eligible={len(articles)}/{self.cfg.min_stories}; "
                             f"window={edition.start.isoformat()}..{edition.scheduled_at.isoformat()}"
                         )
+                    validate_evidence(payload, articles)
+                    if len(payload.stories) < self.cfg.min_stories:
+                        raise InsufficientEvidence("too few supported stories")
                 else:
                     articles = eligible(await self.sources.collect(edition, set()), edition)
                     if len(articles) < self.cfg.min_stories:

@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from tools.deepseek_search import deepseek_web_fetch, deepseek_web_search
 from utils.agents import assistant_agent
 from utils.agents.assistant import parse_structured_response_from_messages
 from utils.structured_llm import structured_call
@@ -153,6 +152,8 @@ class NewsEditor:
         )
 
     async def research_and_edit(self, edition: Edition):
+        from tools.deepseek_search import deepseek_web_fetch, deepseek_web_search
+
         if not self.research_agent:
             raise RuntimeError("agent research is disabled")
         workspace = Path(self.cfg.workspace_dir).resolve()
@@ -171,6 +172,9 @@ class NewsEditor:
             user_prompt=user_prompt,
             use_model=self.cfg.model,
             model_role="daily_news",
+            model_provider=self.cfg.provider,
+            model_timeout=self.cfg.model_timeout,
+            model_extra_body=self.cfg.model_extra_body,
             tools=[deepseek_web_search, deepseek_web_fetch],
             response_format=NewsPayload,
             invoke_config={"configurable": {"workspace_dir": str(workspace)}},
