@@ -120,21 +120,22 @@ async def assistant_agent(
         response_format=response_format,
         debug=EnvConfig.AGENT_DEBUG_MODE,
     )
-    result = await agent.ainvoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": build_user_content(
-                        user_prompt,
-                        images,
-                        supports_vision=model_supports(use_model, "vision", role=model_role),
-                    ),
-                }
-            ]
-        },
-        config=invoke_config,
-    )
+    request = {
+        "messages": [
+            {
+                "role": "user",
+                "content": build_user_content(
+                    user_prompt,
+                    images,
+                    supports_vision=model_supports(use_model, "vision", role=model_role),
+                ),
+            }
+        ]
+    }
+    if invoke_config is None:
+        result = await agent.ainvoke(request)
+    else:
+        result = await agent.ainvoke(request, config=invoke_config)
     if return_result:
         return result
     if response_format:
