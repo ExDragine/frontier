@@ -1,29 +1,32 @@
 # News plugin operations
 
-The production path is now: Clockwork -> plugins.news.scheduler -> Exa MCP or direct Exa/Tavily search -> evidence-bounded editor -> archive -> render -> per-target delivery.
+The production path is:
+
+Clockwork -> `plugins.news.scheduler` -> research Agent -> DeepSeek Search/Fetch tools -> evidence validation -> `news.db` archive -> render -> per-target delivery.
+
+The research Agent owns search planning and source selection. It receives only the configured edition window, calls `deepseek_web_search` first, fetches important pages with `deepseek_web_fetch`, and returns structured stories whose evidence points to the original source URL. The scheduler still keeps the durable archive, image rendering, per-group delivery state, and explicit retry behavior from the standalone pipeline.
 
 ## Configuration
-Copy news.toml.example to news.toml when overrides are needed. Without it, the plugin reuses env.toml's daily_news model/provider. Tavily and direct Exa REST search use the `TAVILY_API_KEY` and `EXA_API_KEY` environment variables. When `EXA_API_KEY` is absent, the Exa source automatically uses the configured `mcp.json` `web_search_advanced_exa` or `web_search_exa` tool, so the public Exa MCP endpoint does not need an Exa REST key. The example MCP URL enables the advanced tool so publication dates can be returned. MCP results are normalized into dated evidence before editing; if the MCP service is unavailable, the run fails rather than inventing publication dates.
+
+Copy `news.toml.example` to `news.toml` when overrides are needed. If `model` and `provider` are empty, the plugin reuses `env.toml`'s `daily_news_model` and `daily_news_model_provider`. The Agent's search tools use the independent `[search]` configuration and its provider API key; they do not depend on Exa MCP or the main model's built-in `web_search`.
+
+`workspace_dir` is used for bounded DeepSeek page previews and must point to a writable Frontier workspace. Search and fetch failures are returned as errors and are not treated as an empty evidence set. Results outside the edition window or without a usable date are excluded before the report is archived.
 
 ## Delivery semantics
-A report is archived before delivery. Each QQ group has its own state. sent is terminal; failed may be retried explicitly; a timed-out/in-flight delivery becomes unknown and is never automatically retried because the platform may already have accepted it.
 
-If sending succeeds but recording the receipt fails, the delivery remains in-flight and becomes unknown when its lease expires. It never becomes a retryable failure. `/news retry` only requeues existing failed targets; it does not create a first delivery to a new group. Clockwork records a failed result when any requested target lacks a confirmed sent state, preserving the actual send count and per-target summary. A previously sent edition succeeds without sending again.
+A report is archived before delivery. Each QQ group has its own state. `sent` is terminal; `failed` may be retried explicitly. A previously sent edition is reused without sending it again. Clockwork records a failed task result when any requested target lacks a confirmed `sent` state.
 
 ## Recovery and retention
-Search results are merged and deduplicated before deciding whether to consult the next provider, up to target_stories. Each provider/query makes at most two attempts on retryable failures.
 
-The normal path uses one model call to edit the collected evidence, with an explicit target_stories goal (default 14). Local checks validate article references, exact quotes, duplicates and minimum count; there is no second model verification call. These checks do not prove every summary claim is supported. max_generation_attempts (default 3) bounds retries for invalid output, including validation of a recovered draft. Content rejection clears the draft and permits re-editing; a transport failure preserves evidence and any saved draft for the next invocation. The overall generation_timeout still bounds the entire operation. Generation checkpoints retain the original lease deadline.
-
-Before generation, retention_days (default 30) removes inactive archives and their delivery rows after that many days without updates. Active generation/delivery leases and recently updated deliveries are protected. Images and text show the archived edition time in Beijing time.
-
-Ready and degraded editions are reused within the same scheduled slot to avoid duplicate delivery. Updating the editor does not regenerate an already archived edition. `/news preview` uses a separate preview archive without sending to subscribed groups; previews are also reused within the same slot.
+The generation lease covers the complete Agent research and editing turn. If the Agent returns invalid evidence or too few dated sources, the report is marked failed and the next invocation may recollect. Retention removes inactive reports and delivery rows after `retention_days`.
 
 ## Operator commands
+
+```
 /news latest
 /news status
 /news preview
 /news retry <group-id>
+```
 
-## Rollback
-Point the daily_news task handler back to plugins.clockwork.task_handlers/daily_news only after reverting the compatibility wrapper. The new news.db is independent and may be retained for audit.
+The `/news preview` command uses a separate preview archive and does not deliver to subscribed groups.
