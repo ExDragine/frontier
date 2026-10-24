@@ -1,6 +1,6 @@
 # 默认网页搜索与正文读取
 
-主 Agent 默认使用内置 `deepseek_web_search` 和 `deepseek_web_fetch`，直接调用 DeepSeek 的独立 Search / Fetch API。两者使用主 Agent 工具预算，不额外调用一个模型，也不需要安装 MCP 服务。每日新闻仍使用原有独立检索管线。
+主 Agent 默认使用内置 `deepseek_web_search` 和 `deepseek_web_fetch`，直接调用 DeepSeek 的独立 Search / Fetch API。两者使用主 Agent 工具预算，不额外调用一个模型，也不需要安装 MCP 服务。每日新闻也通过研究 Agent 使用同一套独立搜索工具，但保留单独的新闻证据和归档约束。
 
 ## 配置
 
@@ -20,7 +20,7 @@ max_content_chars = 24000
 
 `base_url` 是独立搜索服务地址，不从模型 API 地址推断；官方地址可带 `/v1`，工具会避免重复拼接。兼容网关需要明确实现 `POST /v1/tools/search` 和 `/v1/tools/fetch`，仅支持模型请求不足以提供搜索能力。
 
-开启且端点、密钥配置可用时，两个工具加入主 Agent 的直接工具集，原生 `web_search` 优先提示及自动挂载让位于独立搜索。关闭或未配置密钥时，保留原生搜索及现有 Exa / Tavily 路径。默认策略不依赖主模型名称，配置热更新后下一轮重新装配。
+开启且端点、密钥配置可用时，两个工具加入主 Agent 和每日新闻研究 Agent 的工具集，原生 `web_search` 优先提示及自动挂载让位于独立搜索。关闭或未配置密钥时，普通主 Agent 才考虑原生搜索或其他后端；每日新闻应直接报告搜索不可用，不把失败伪装成空结果。默认策略不依赖主模型名称，配置热更新后下一轮重新装配。
 
 DeepSeek Responses 内置 `web_search` 的支持取决于模型，Flash 会忽略它。确认模型支持时可在其供应商 profile 设置 `native_web_search = true`；独立搜索可用时仍优先使用独立工具。
 
