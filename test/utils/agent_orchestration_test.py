@@ -330,3 +330,23 @@ async def test_session_turn_is_forwarded_to_agent_request(message):
 
     assert outcome.status is TurnStatus.DELIVERED
     assert core.requests[0].session_turn is session_turn
+
+
+@pytest.mark.asyncio
+async def test_partial_delivery_persists_only_confirmed_text_and_still_reports_failure(message):
+    class PartialDelivery:
+        async def send(self, _target, _response):
+            return DeliveryReceipt(
+                DeliveryStatus.PARTIAL,
+                errors=("image_failed",),
+                delivered_text="confirmed text",
+            )
+
+    history = FakeHistory()
+    outcome = await ConversationOrchestrator(FakeCore()).handle(
+        message, policy=FakePolicy(True), history=history, delivery=PartialDelivery(),
+    )
+    assert outcome.status == TurnStatus.DELIVERY_FAILED
+    assert outcome.history_appended
+    assert history.appended[0].content == "confirmed text"
+    assert len(outcome.receipt.errors) == 1

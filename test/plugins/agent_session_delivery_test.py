@@ -93,7 +93,7 @@ async def test_session_lease_covers_qq_delivery_and_failure_cleanup(monkeypatch,
     assert captured["query"]["bot_user_id"] == 99
     assert captured["lease"].finished
     assert captured["sends"] == (0 if outcome in {"cancel", "silent"} else 1)
-    if outcome in {"success", "partial_artifacts", "db_failure", "silent"}:
+    if outcome in {"success", "db_failure", "silent"}:
         assert len(manager.entries) == 1
         assert next(iter(manager.entries.values())).state == "idle"
         if outcome != "silent":
@@ -101,6 +101,9 @@ async def test_session_lease_covers_qq_delivery_and_failure_cleanup(monkeypatch,
             assert captured["stored"] == "audited"
     else:
         assert not manager.entries
+        if outcome == "partial_artifacts":
+            assert captured["stored"] == "audited"
+            assert not captured["updates"]
     await manager.close()
 
 

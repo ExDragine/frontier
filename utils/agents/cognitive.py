@@ -731,6 +731,7 @@ class FrontierCognitive:
                 "user_id": user_id,
                 "group_id": group_id,
                 "group_member_role": group_member_role,
+                **({"bot_user_id": conversation.account_id} if conversation is not None and conversation.platform == "qq" else {}),
                 "workspace_dir": workspace_dir,
                 "virtual_roots": {
                     f"/memory/{workspace_key}/": memory_dir,

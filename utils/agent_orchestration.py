@@ -65,6 +65,7 @@ class TurnOutcome:
     receipt: DeliveryReceipt | None = None
     history_appended: bool = False
     error: str | None = None
+    persisted_message: ChatMessage | None = None
 
 
 def workspace_key_for(conversation: ConversationRef) -> str:
@@ -109,7 +110,7 @@ def _assistant_message(
     }
     return ChatMessage(
         role="assistant",
-        content=response.text,
+        content=receipt.delivered_text if receipt.delivered_text is not None else response.text,
         message_id=message_id,
         conversation=message.conversation,
         created_at=datetime.now(UTC),
@@ -121,7 +122,7 @@ class ConversationOrchestrator:
     """Run the shared application flow for one normalized inbound message.
 
     The orchestrator owns ordering and persistence semantics.  In particular,
-    an assistant message is appended only after ``DeliveryStatus.DELIVERED``;
+    an assistant message is appended only after confirmed text delivery;
     a transport failure never causes an Agent retry or a false history entry.
     """
 
@@ -264,7 +265,7 @@ class ConversationOrchestrator:
                 response=response,
                 error=_failure_text(error),
             )
-        if receipt.status != DeliveryStatus.DELIVERED:
+        if receipt.status != DeliveryStatus.DELIVERED and not receipt.delivered_text:
             return TurnOutcome(
                 request_id=request_id,
                 status=TurnStatus.DELIVERY_FAILED,
@@ -287,11 +288,12 @@ class ConversationOrchestrator:
             )
 
         try:
-            await history.append(_assistant_message(message, response, receipt))
+            persisted_message = await history.append(_assistant_message(message, response, receipt))
         except Exception as error:
             return TurnOutcome(
                 request_id=request_id,
-                status=TurnStatus.HISTORY_APPEND_FAILED,
+                status=TurnStatus.HISTORY_APPEND_FAILED
+                if receipt.status == DeliveryStatus.DELIVERED else TurnStatus.DELIVERY_FAILED,
                 history=loaded_history,
                 gate=gate,
                 request=request,
@@ -301,13 +303,15 @@ class ConversationOrchestrator:
             )
         return TurnOutcome(
             request_id=request_id,
-            status=TurnStatus.DELIVERED,
+            status=TurnStatus.DELIVERED
+            if receipt.status == DeliveryStatus.DELIVERED else TurnStatus.DELIVERY_FAILED,
             history=loaded_history,
             gate=gate,
             request=request,
             response=response,
             receipt=receipt,
             history_appended=True,
+            persisted_message=persisted_message,
         )
 
 

@@ -164,7 +164,7 @@ async def test_neutral_path_delivers_only_final_reply(agent, monkeypatch, group_
 async def test_session_neutral_forwards_lease_and_settles_after_delivery(agent, monkeypatch):
     seen = []
     settled = []
-    session = SimpleNamespace(current_id="qq:42:message:9")
+    session = SimpleNamespace(current_id="qq:42:message:9", entry=SimpleNamespace(key=SimpleNamespace(bot_id="42")))
 
     class Core:
         async def run(self, request, *, tools=(), progress_reporter=None):
@@ -179,7 +179,7 @@ async def test_session_neutral_forwards_lease_and_settles_after_delivery(agent, 
 
     class Database:
         async def insert(self, **kwargs):
-            return None
+            return SimpleNamespace(message_id=10)
 
     monkeypatch.setattr(agent, "FrontierAgentCore", lambda *_args, **_kwargs: Core())
     monkeypatch.setattr(agent, "send_messages", send_messages)
@@ -192,7 +192,7 @@ async def test_session_neutral_forwards_lease_and_settles_after_delivery(agent, 
     assert seen == [session]
     assert settled[0][0] is session
     assert settled[0][1]["delivered"] is True
-    assert settled[0][1]["message_id"] == 123
+    assert settled[0][1]["message_id"] == 10
     assert settled[0][1]["content"] == "session reply"
 
 
@@ -449,3 +449,28 @@ async def test_artifact_response_is_handled_without_legacy_retry(agent, monkeypa
     assert len(sent) == 2
     assert sent[0][0] == "artifacts"
     assert sent[1][0][2]["messages"][0].content == "generated image"
+
+
+@pytest.mark.asyncio
+async def test_qq_orchestrator_honors_configured_history_limit(agent, monkeypatch):
+    seen = []
+
+    class Core:
+        async def run(self, request, *, tools=()):
+            seen.extend(item.content for item in request.history)
+            return AgentResponse(text="done")
+
+    class Database:
+        async def insert(self, **kwargs):
+            return None
+
+    async def send(*args, **kwargs):
+        return DeliveryResult(attempted=1, sent=1)
+
+    monkeypatch.setattr(agent.EnvConfig, "QUERY_MESSAGE_NUMBERS", 100)
+    monkeypatch.setattr(agent, "FrontierAgentCore", lambda *_args: Core())
+    monkeypatch.setattr(agent, "messages_db", Database())
+    monkeypatch.setattr(agent, "send_messages", send)
+    history = [{"role": "user", "content": str(index)} for index in range(100)]
+    assert await agent._run_qq_neutral(_context(agent), history)
+    assert seen == [str(index) for index in range(100)]

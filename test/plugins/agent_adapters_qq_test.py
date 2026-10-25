@@ -112,7 +112,7 @@ def test_qq_message_adapter_maps_current_file_refs_to_file_parts():
         ),
     )
 
-    assert [type(part) for part in message.parts] == [TextPart, FilePart]
+    assert [type(part) for part in message.parts] == [TextPart, TextPart, FilePart]
     assert message.parts[-1].url == "/memory/report.txt"
 
 
@@ -132,6 +132,7 @@ def test_qq_message_adapter_maps_serialized_history_envelope_to_chat_message():
 
     assert message.role == "user"
     assert message.message_id == "99"
+    assert message.state_id == "legacy-row"
     assert message.content == raw
     assert message.conversation == _group()
     assert message.sender == Participant(id="7", display_name="Alice", role="user")
@@ -198,9 +199,11 @@ async def test_qq_history_store_maps_opaque_group_ids_and_appends_legacy_rows():
     store = QqHistoryStore(database)
     messages = await store.load(HistoryQuery(conversation=_group(), limit=3))
     assert messages == [
-        ChatMessage(role="user", content="hello", message_id="7", conversation=_group())
+        ChatMessage(role="user", content="hello", message_id="7", conversation=_group(), state_id="7")
     ]
-    assert database.prepare_calls == [{"user_id": None, "group_id": 100, "query_numbers": 3, "before_time": None}]
+    assert database.prepare_calls == [{
+        "user_id": None, "group_id": 100, "query_numbers": 3, "before_time": None, "bot_user_id": 42,
+    }]
 
     await store.append(
         ChatMessage(
@@ -277,8 +280,9 @@ async def test_qq_delivery_uses_injected_senders_and_reports_partial_artifact_fa
             artifacts=(AgentArtifact(kind="image", data=b"x", mime_type="image/png"),),
         ),
     )
-    assert receipt.status == DeliveryStatus.DELIVERED
+    assert receipt.status == DeliveryStatus.PARTIAL
     assert receipt.errors == ("media_failed",)
+    assert receipt.delivered_text == "done"
     assert [call[0] for call in calls] == ["artifacts", "text"]
 
 
@@ -310,7 +314,8 @@ async def test_qq_delivery_does_not_commit_when_final_text_fails_after_artifact(
         ),
     )
 
-    assert receipt.status is DeliveryStatus.FAILED
+    assert receipt.status is DeliveryStatus.PARTIAL
+    assert receipt.delivered_text is None
     assert receipt.errors == ("text_failed",)
 
 
@@ -389,3 +394,27 @@ def test_qq_tool_provider_requires_platform_capability_and_filters_modules():
     assert provider.tools(frozenset({"qq:message"})) == (qq_tool,)
     assert provider.tools(frozenset({"qq"})) == (qq_tool, group_tool)
     assert provider.tools(frozenset({"platform:qq"})) == (qq_tool, group_tool)
+
+
+@pytest.mark.asyncio
+async def test_history_limit_keeps_newest_messages_in_chronological_order():
+    store = QqHistoryStore(loader=lambda _query: [
+        {"role": "user", "content": str(index)} for index in range(100)
+    ])
+    messages = await store.load(HistoryQuery(conversation=_group(), limit=50))
+    assert [message.content for message in messages] == [str(index) for index in range(50, 100)]
+
+
+@pytest.mark.asyncio
+async def test_artifact_only_partial_send_preserves_partial_status():
+    from utils.delivery import DeliveryResult
+
+    async def send_artifacts(_target, _artifacts):
+        return DeliveryResult(attempted=2, sent=1, errors=("second_image_failed",))
+
+    receipt = await QqDelivery(artifact_sender=send_artifacts).send(
+        _group(), AgentResponse(text="", artifacts=(AgentArtifact("image", b"x", "image/png"),)),
+    )
+    assert receipt.status == DeliveryStatus.PARTIAL
+    assert receipt.delivered_text is None
+    assert receipt.errors == ("second_image_failed",)

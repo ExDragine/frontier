@@ -202,12 +202,25 @@ async def _settle_session(lease: TurnLease | None, **kwargs) -> None:
 def _qq_neutral_eligible(context: AgentRequestContext) -> bool:
     """Return whether the normalized QQ event contains an Agent turn.
 
-    Media, files and quotes are carried by the neutral message contract, so a
-    turn exists as soon as the event has text, a resolved quote or a direct
-    mention.
+    The reply gateway has already authorized the turn. Persisting an image can
+    remove its text placeholder, so media and attachment payloads must also
+    count as input here.
     """
 
-    return bool(context.text.strip() or context.reply_seq is not None or context.direct_mention)
+    return bool(
+        context.text.strip()
+        or context.reply_seq is not None
+        or context.reply_to
+        or context.direct_mention
+        or context.images
+        or context.quoted_images
+        or context.recent_images
+        or context.audio
+        or context.videos
+        or context.attachments
+        or context.current_attachments
+        or context.recent_attachments
+    )
 
 
 class _QqNeutralCore:
@@ -289,12 +302,16 @@ async def _settle_qq_neutral_session(lease: TurnLease | None, outcome) -> None:
     receipt = outcome.receipt
     if receipt is None or receipt.status != DeliveryStatus.DELIVERED:
         return
+    # Platform sequences in the delivery receipt are not database primary keys.
     message_id = None
-    if receipt.message_refs:
-        try:
-            message_id = int(receipt.message_refs[-1].message_id)
-        except (TypeError, ValueError):
-            message_id = None
+    persisted = outcome.persisted_message
+    if persisted is not None and persisted.state_id is not None:
+        prefix = f"qq:{lease.entry.key.bot_id}:message:"
+        if persisted.state_id.startswith(prefix):
+            try:
+                message_id = int(persisted.state_id.removeprefix(prefix))
+            except ValueError:
+                pass
     await _settle_session(
         lease,
         delivered=True,
@@ -352,7 +369,8 @@ async def _run_qq_neutral(
         )
 
     outcome = await ConversationOrchestrator(
-        _QqNeutralCore(FrontierAgentCore(FrontierAgentRuntime(cognitive=f_cognitive)))
+        _QqNeutralCore(FrontierAgentCore(FrontierAgentRuntime(cognitive=f_cognitive))),
+        history_limit=EnvConfig.QUERY_MESSAGE_NUMBERS,
     ).handle(
         message,
         policy=QqReplyPolicy(allow_gateway_result),
@@ -384,7 +402,10 @@ async def _run_qq_neutral(
             else "本轮处理失败，请稍后重试。"
         )
         return await _send_qq_neutral_notice(context, notice)
-    logger.warning("QQ 中立路径投递失败: {}", outcome.error or outcome.status)
+    logger.warning(
+        "QQ 中立路径投递失败: {} {}", outcome.error or outcome.status,
+        outcome.receipt.errors if outcome.receipt is not None else (),
+    )
     return False
 
 
@@ -678,6 +699,7 @@ async def handle_common(event: MessageEvent):  # noqa: C901
         group_id,
         query_numbers=EnvConfig.QUERY_MESSAGE_NUMBERS,
         before_time=msg_time,
+        bot_user_id=int(event.self_id),
     )
 
     if not await message_gateway(event, gateway_messages):

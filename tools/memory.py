@@ -71,6 +71,22 @@ def _current_scope(config: RunnableConfig | None) -> tuple[int | None, int | Non
     return user_id, group_id, None
 
 
+def _current_bot_id(config: RunnableConfig | None) -> tuple[int | None, str | None]:
+    """Read the account bound by the trusted runtime, never a tool argument."""
+    raw = configurable(config).get("bot_user_id")
+    if raw is None:
+        return None, None
+    try:
+        if isinstance(raw, bool):
+            raise ValueError("invalid bot identity")
+        bot_id = int(raw)
+        if bot_id <= 0:
+            raise ValueError("invalid bot identity")
+    except TypeError, ValueError:
+        return None, "机器人上下文错误，无法读取聊天记忆。"
+    return bot_id, None
+
+
 def _truncate_content(content: str, limit: int) -> str:
     cleaned = " ".join(content.split())
     if len(cleaned) <= limit:
@@ -151,6 +167,9 @@ async def get_recent_conversation(
     user_id, group_id, context_error = _current_scope(config)
     if context_error:
         return context_error
+    bot_user_id, context_error = _current_bot_id(config)
+    if context_error:
+        return context_error
     query_limit = max(1, min(limit, 100))
     max_chars = max(_MIN_CONTENT_CHARS, min(content_max_chars, _MAX_CONTENT_CHARS))
     try:
@@ -167,6 +186,7 @@ async def get_recent_conversation(
             limit=query_limit,
             offset=0,
             sort="time",
+            **({"bot_user_id": bot_user_id} if bot_user_id is not None else {}),
         )
     except Exception as exc:
         logger.error(f"最近对话读取失败: {type(exc).__name__}: {exc}")
@@ -234,6 +254,9 @@ async def search_messages(  # noqa: C901
     current_user_id, group_id, context_error = _current_scope(config)
     if context_error:
         return context_error
+    bot_user_id, context_error = _current_bot_id(config)
+    if context_error:
+        return context_error
 
     query_limit = max(1, min(limit, _MAX_PAGE_SIZE))
     query_offset = max(0, min(offset, _MAX_OFFSET))
@@ -257,6 +280,7 @@ async def search_messages(  # noqa: C901
             limit=query_limit,
             offset=query_offset,
             sort=resolved_sort,
+            **({"bot_user_id": bot_user_id} if bot_user_id is not None else {}),
         )
     except Exception as exc:
         logger.error(f"消息搜索失败: {type(exc).__name__}: {exc}")
@@ -288,10 +312,14 @@ async def get_history_messages(
     user_id, group_id, context_error = _current_scope(config)
     if context_error:
         return context_error
+    bot_user_id, context_error = _current_bot_id(config)
+    if context_error:
+        return context_error
     message_scene = "group" if group_id is not None else "friend"
     peer_id = group_id if group_id is not None else user_id
     try:
-        messages, next_message_seq = await get_bot().get_history_messages(
+        bot = get_bot(str(bot_user_id)) if bot_user_id is not None else get_bot()
+        messages, next_message_seq = await bot.get_history_messages(
             message_scene=message_scene,
             peer_id=peer_id,
             start_message_seq=start_message_seq,

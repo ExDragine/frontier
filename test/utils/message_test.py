@@ -382,7 +382,7 @@ async def test_send_messages_fallback_to_text(monkeypatch):
         return None
 
     monkeypatch.setattr(message_module, "markdown_to_image", fake_markdown_to_image)
-    response = {"messages": [types.SimpleNamespace(content=str({"content": "hello"}))]}
+    response = {"messages": [types.SimpleNamespace(content={"content": "hello"})]}
     await message_module.send_messages(group_id=None, message_id=1, response=response)
 
 
@@ -406,7 +406,7 @@ async def test_send_messages_retries_image_render(monkeypatch):
     monkeypatch.setattr(message_module, "markdown_to_image", fake_markdown_to_image)
     monkeypatch.setattr(message_module.asyncio, "sleep", fake_sleep)
 
-    response = {"messages": [types.SimpleNamespace(content=str({"content": "x" * 500}))]}
+    response = {"messages": [types.SimpleNamespace(content={"content": "x" * 500})]}
     await message_module.send_messages(group_id=None, message_id=1, response=response)
 
     assert calls == 2
@@ -508,9 +508,48 @@ def test_outgoing_message_content_reads_llm_content_blocks():
 
 
 def test_outgoing_message_content_reads_wrapped_content_blocks():
-    raw = types.SimpleNamespace(content=str({"content": [{"type": "text", "text": "hello"}]}))
+    raw = types.SimpleNamespace(content={"content": [{"type": "text", "text": "hello"}]})
 
     assert message_module.outgoing_message_content(raw) == "hello"
+
+
+@pytest.mark.parametrize("text", [
+    '{"content":"正文","title":"标题"}',
+    '{"content":null,"title":"保留所有字段"}',
+    "{'content': [{'type': 'text', 'text': 'hello'}]}",
+])
+@pytest.mark.parametrize("wrapper", [str, lambda value: types.SimpleNamespace(content=value),
+                                    lambda value: types.SimpleNamespace(text=value)])
+def test_outgoing_message_content_preserves_literal_text(text, wrapper):
+    assert message_module.outgoing_message_content(wrapper(text)) == text
+
+
+@pytest.mark.asyncio
+async def test_send_messages_preserves_json_with_content_field(monkeypatch):
+    text = '{"content":"正文","title":"标题"}'
+    sent = []
+
+    class TextMessage:
+        async def send(self):
+            sent.append(text)
+
+    class Messages:
+        @staticmethod
+        def text(value):
+            assert value == text
+            return TextMessage()
+
+    async def plain_markdown(value):
+        return value
+
+    monkeypatch.setattr(message_module, "UniMessage", Messages)
+    monkeypatch.setattr(message_module, "markdown_to_text", plain_markdown)
+    result = await message_module.send_messages(
+        None, None, {"messages": [types.SimpleNamespace(content=text)]},
+    )
+
+    assert result.successful
+    assert sent == [text]
 
 
 def test_message_text_extractors_handle_text_methods():

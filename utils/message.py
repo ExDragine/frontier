@@ -1,4 +1,3 @@
-import ast
 import asyncio
 import re
 import time
@@ -316,6 +315,7 @@ async def send_artifacts(artifacts: list[object]) -> DeliveryResult:
 
 
 def outgoing_message_content(raw: Any) -> str:
+    """Read message objects and content blocks without interpreting final text."""
     text_attr = getattr(raw, "text", None)
     if text_attr is not None and not callable(text_attr):
         content = text_attr
@@ -323,15 +323,6 @@ def outgoing_message_content(raw: Any) -> str:
         content = raw.content
     else:
         content = raw
-    if isinstance(content, str) and content:
-        try:
-            parsed = ast.literal_eval(content)
-            if isinstance(parsed, dict) and "content" in parsed:
-                content = parsed["content"]
-        except (ValueError, SyntaxError) as e:
-            logger.debug(f"消息内容不是字典字面量，使用原始内容: {type(e).__name__}")
-        except Exception as e:
-            logger.warning(f"解析消息内容时出现意外错误: {type(e).__name__}: {e}")
     return extract_message_text(content)
 
 

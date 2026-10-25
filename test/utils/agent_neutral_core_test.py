@@ -2,6 +2,7 @@
 
 # ruff: noqa: S101
 
+import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -121,7 +122,7 @@ async def test_bridge_keeps_media_nested_in_current_quote(agent_request):
     assert runtime_request.prompt == "follow up[引用: quoted]"
     assert runtime_request.image_inputs == (b"quoted-image",)
     current_blocks = runtime_request.messages[-1]["content"]
-    assert [block["type"] for block in current_blocks] == ["text", "text", "image"]
+    assert [block["type"] for block in current_blocks] == ["text", "text", "text", "image"]
 
 
 @pytest.mark.asyncio
@@ -272,3 +273,20 @@ async def test_bridge_keeps_failed_status_visible_to_orchestrator(agent_request)
 
     assert response.status == "failed"
     assert response.should_reply is True
+
+
+@pytest.mark.asyncio
+async def test_current_sender_and_timestamp_reach_model_without_changing_tool_principal(agent_request):
+    runtime = FakeRuntime()
+    for sender in (Participant("alice", "Alice"), Participant("bob", "Bob")):
+        current = replace(agent_request.current, sender=sender, parts=(TextPart("who am I?"),))
+        await FrontierAgentCore(runtime).run(replace(agent_request, current=current))
+    first, second = runtime.requests
+    assert first.messages[-1] != second.messages[-1]
+    for sent, sender in zip(runtime.requests, ("alice", "bob"), strict=True):
+        context = json.loads(sent.messages[-1]["content"][0]["text"])
+        assert context["sender"]["user_id"] == sender
+        assert context["time"] == agent_request.current.created_at.isoformat()
+        assert context["chat"]["id"] == "chat-1"
+        assert sent.principal.id == sender
+        assert sent.prompt == "who am I?"

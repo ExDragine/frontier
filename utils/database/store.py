@@ -125,6 +125,8 @@ class MessageDatabase(_MessageAttachmentFacadeMixin, _MessageSearchMixin):
         group_id: int | None = None,
         query_numbers: int = 20,
         before_time: int | None = None,
+        *,
+        bot_user_id: int | None = None,
     ):
         def _do():
             with Session(self.engine) as session:
@@ -139,6 +141,8 @@ class MessageDatabase(_MessageAttachmentFacadeMixin, _MessageSearchMixin):
                 else:
                     return None
                 statement = statement.where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                if bot_user_id is not None:
+                    statement = statement.where(Message.bot_user_id == bot_user_id)
                 if before_time is not None:
                     statement = statement.where(Message.time < before_time)
                 statement = statement.order_by(desc(Message.time), desc(Message.id)).limit(query_numbers)
@@ -392,12 +396,15 @@ class MessageDatabase(_MessageAttachmentFacadeMixin, _MessageSearchMixin):
         group_id: int | None = None,
         query_numbers: int = 20,
         before_time: int | None = None,
+        *,
+        bot_user_id: int | None = None,
     ):
         messages = await self.select(
             user_id=user_id,
             group_id=group_id,
             query_numbers=query_numbers,
             before_time=before_time,
+            bot_user_id=bot_user_id,
         )
         if not messages:
             return []

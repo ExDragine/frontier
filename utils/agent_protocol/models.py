@@ -131,6 +131,8 @@ class ChatMessage:
     sender: Participant | None = None
     created_at: datetime | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
+    # Execution-state identity is independent of the platform message reference.
+    state_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +196,7 @@ class DeliveryStatus(StrEnum):
     DELIVERED = "delivered"
     FAILED = "failed"
     UNKNOWN = "unknown"
+    PARTIAL = "partial"
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +206,7 @@ class DeliveryReceipt:
     status: DeliveryStatus
     message_refs: tuple[MessageRef, ...] = ()
     errors: tuple[str, ...] = ()
+    delivered_text: str | None = None
 
 
 __all__ = [

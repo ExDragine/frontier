@@ -56,7 +56,9 @@ class HistoryStore(Protocol):
 
     async def load(self, query: HistoryQuery) -> list[ChatMessage]: ...
 
-    async def append(self, message: ChatMessage) -> None: ...
+    async def append(self, message: ChatMessage) -> ChatMessage | None:
+        """Return the persisted message, including its state identity if known."""
+        ...
 
 
 @runtime_checkable

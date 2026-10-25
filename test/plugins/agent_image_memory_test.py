@@ -26,10 +26,19 @@ async def _delivered(*_args, **_kwargs):
     return DeliveryResult(attempted=1, sent=1)
 
 
+def _body_blocks(content) -> list[dict]:
+    assert isinstance(content, list)
+    assert content[0]["type"] == "text"
+    metadata = json.loads(content[0]["text"])
+    assert metadata["schema"] == "frontier.message_context.v1"
+    assert metadata["sender"]["user_id"] == "456"
+    return content[1:]
+
+
 def _first_text(content) -> str:
     if isinstance(content, str):
         return content
-    return str(content[0]["text"])
+    return str(_body_blocks(content)[0]["text"])
 
 
 class _NoopBot:
@@ -348,10 +357,19 @@ async def test_agent_image_placeholders_follow_persistence(  # noqa: C901
     assert captured["image_inputs"] == [b"image-bytes"]
     assert captured["audio_inputs"] == [b"audio-bytes"]
     assert captured["video_inputs"] == [b"video-bytes"]
-    assert captured["user_text"] == expected_user_text
-    current_content = captured["messages"][-1]["content"]
+    expected_refs = [
+        {"kind": kind, "file_name": name, "path": f"/memory/group-123/{kind}/{name}"}
+        for kind, name in [("image", "1_0.jpg"), ("audio", "1_1.bin"), ("video", "1_2.bin")]
+    ] if persist_media else []
+    expected_ref_blocks = [
+        {"type": "text", "text": json.dumps({"attachment": ref}, ensure_ascii=False)}
+        for ref in expected_refs
+    ]
+    assert captured["user_text"] == expected_user_text + "".join(block["text"] for block in expected_ref_blocks)
+    current_content = _body_blocks(captured["messages"][-1]["content"])
     assert ("[图片]" in current_content[0]["text"]) is (not persist_media)
-    assert [block["type"] for block in current_content] == ["text", "image", "audio", "video"]
+    assert [block["type"] for block in current_content[:4]] == ["text", "image", "audio", "video"]
+    assert current_content[4:] == expected_ref_blocks
 
 
 @pytest.mark.asyncio
@@ -451,7 +469,7 @@ async def test_agent_lazily_hydrates_recent_media_followup(monkeypatch):  # noqa
     assert captured["hydrate"]["group_id"] == 123
     assert captured["image_inputs"] == [b"recent-image"]
     assert len(captured["messages"]) == 2
-    current_content = captured["messages"][-1]["content"]
+    current_content = _body_blocks(captured["messages"][-1]["content"])
     assert current_content[0]["text"] == "帮我分析一下\n[以上附件来自用户刚才发送的历史消息]"
     assert any(
         block.get("text") == "[文件: recent.txt] (/memory/group-123/files/recent.txt)"
@@ -580,7 +598,7 @@ async def test_agent_injects_staged_file_memory_path_even_if_indexing_fails(  # 
     assert captured["workspace_key"] == "group-123"
     assert isinstance(captured["message_time"], int)
     assert captured["message_time"] > 0
-    current_content = captured["messages"][-1]["content"]
+    current_content = _body_blocks(captured["messages"][-1]["content"])
     assert current_content[0]["text"] == "[文件:report.txt (4字节)]"
     assert any(
         "/memory/group-123/files/report.txt" in block.get("text", "")
@@ -1033,7 +1051,7 @@ async def test_agent_appends_local_quoted_text_to_current_message(monkeypatch): 
     stored_reply = json.loads(captured["stored_reply_context"])
     assert stored_reply["sender"]["user_id"] == "111"
     assert stored_reply["content"] == "原始消息内容"
-    current = captured["messages"][-1]["content"]
+    current = _body_blocks(captured["messages"][-1]["content"])
     assert current == [
         {"type": "text", "text": "这是什么意思？"},
         {"type": "text", "text": "[引用: 原始消息内容]"},
@@ -1274,7 +1292,7 @@ async def test_agent_fetches_unindexed_quoted_image_from_milky(monkeypatch):  # 
 
     assert captured["restored_images"][0]["msg_time"] == 500
     assert captured["restored_images"][0]["images"] == [b"quoted-image"]
-    current_content = captured["messages"][-1]["content"]
+    current_content = _body_blocks(captured["messages"][-1]["content"])
     assert current_content[0]["type"] == "text"
     assert "[图片]" not in current_content[0]["text"]
     assert current_content[1]["type"] == "text"
@@ -1344,7 +1362,16 @@ async def test_process_agent_request_adds_current_chat_metadata(monkeypatch, gro
 
     assert captured["messages"][:-1] == history
     assert len(captured["messages"]) == 3
-    assert captured["messages"][-1]["content"] == [{"type": "text", "text": "hi"}]
+    current_content = captured["messages"][-1]["content"]
+    assert _body_blocks(current_content) == [{"type": "text", "text": "hi"}]
+    assert json.loads(current_content[0]["text"]) == {
+        "schema": "frontier.message_context.v1",
+        "time": "1970-01-01T00:00:01+00:00",
+        "message_id": "1",
+        "sender": {"user_id": "456", "display_name": "项目经理" if group_id is not None else "Bob"},
+        "chat": {"platform": "qq", "type": expected_chat_type, "id": str(group_id) if group_id is not None else "456"},
+        "directly_mentioned": group_id is not None,
+    }
     conversation = captured["kwargs"]["conversation"]
     assert conversation.kind == expected_chat_type
     assert conversation.conversation_id == (str(group_id) if group_id is not None else "456")
@@ -1456,7 +1483,7 @@ async def test_process_agent_request_inlines_recent_history_image(monkeypatch):
 
     await agent._process_agent_request(context)
 
-    content = captured["messages"][-1]["content"]
+    content = _body_blocks(captured["messages"][-1]["content"])
     assert content[1] == {"type": "text", "text": "[以下媒体来自用户刚才发送的历史消息]"}
     assert content[2]["type"] == "image"
     assert captured["image_inputs"] == [b"recent-image"]
@@ -1497,7 +1524,7 @@ async def test_process_agent_request_interprets_empty_text_as_user_calling_bot(m
 
     await agent._process_agent_request(context)
 
-    assert captured["messages"][-1]["content"] == [{"type": "text", "text": "[用户叫了你一声]"}]
+    assert _body_blocks(captured["messages"][-1]["content"]) == [{"type": "text", "text": "[用户叫了你一声]"}]
 
 
 @pytest.mark.asyncio

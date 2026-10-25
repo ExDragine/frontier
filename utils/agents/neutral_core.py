@@ -9,6 +9,7 @@ NoneBot, Milky, or other platform SDK types are imported here.
 from __future__ import annotations
 
 import inspect
+import json
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -155,13 +156,29 @@ def _history_message(message: ChatMessage) -> dict[str, Any]:
         "role": message.role,
         "content": _content_for_message(message.content),
     }
-    if message.message_id is not None:
-        result["id"] = message.message_id
+    if identifier := message.state_id or message.message_id:
+        result["id"] = identifier
     return result
 
 
 def _current_content(request: AgentRequest) -> list[object]:
-    return _content_blocks(request.current.parts)
+    current = request.current
+    context = {
+        "schema": "frontier.message_context.v1",
+        "time": current.created_at.isoformat(),
+        "message_id": current.message_id,
+        "sender": {"user_id": current.sender.id, "display_name": current.sender.display_name},
+        "chat": {
+            "platform": current.conversation.platform,
+            "type": current.conversation.kind,
+            "id": current.conversation.conversation_id,
+        },
+        "directly_mentioned": current.mentions_agent,
+    }
+    return [
+        {"type": "text", "text": json.dumps(context, ensure_ascii=False, separators=(",", ":"))},
+        *_content_blocks(current.parts),
+    ]
 
 
 def _current_message(request: AgentRequest) -> dict[str, Any]:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import inspect
 import json
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
@@ -144,14 +145,27 @@ class QqMessageAdapter:
         )
 
     @staticmethod
-    def _file_parts(attachments: Sequence[Mapping[str, object]]) -> list[FilePart]:
-        parts: list[FilePart] = []
+    def _file_parts(attachments: Sequence[Mapping[str, object]]) -> list[TextPart | FilePart]:
+        """Keep durable media references separate from already inlined bytes."""
+
+        parts: list[TextPart | FilePart] = []
         for item in attachments:
-            if not isinstance(item, Mapping) or str(item.get("kind", "")).lower() != "file":
+            if not isinstance(item, Mapping):
+                continue
+            kind = str(item.get("kind", "")).lower()
+            if kind not in {"file", "image", "audio", "video"}:
                 continue
             path = item.get("path")
             name = item.get("file_name") or item.get("name")
             if path is None and name is None:
+                continue
+            if kind != "file":
+                reference = {"kind": kind}
+                if name is not None:
+                    reference["file_name"] = str(name)
+                if path is not None:
+                    reference["path"] = str(path)
+                parts.append(TextPart(json.dumps({"attachment": reference}, ensure_ascii=False)))
                 continue
             parts.append(
                 FilePart(
@@ -329,8 +343,10 @@ def _as_chat_message(item: object, conversation: ConversationRef | None = None) 
             sender=item.sender,
             created_at=item.created_at,
             metadata=item.metadata,
+            state_id=item.state_id,
         )
     if isinstance(item, Mapping):
+        state_id = item.get("state_id", item.get("id"))
         role = _normalize_role(item.get("role", item.get("type", "user")))
         content = item.get("content", "")
         message_id = item.get("message_id", item.get("id"))
@@ -338,6 +354,7 @@ def _as_chat_message(item: object, conversation: ConversationRef | None = None) 
         created_at = item.get("created_at", item.get("time"))
         sender_value = item.get("sender")
     else:
+        state_id = getattr(item, "state_id", None) or getattr(item, "id", None)
         role = _normalize_role(getattr(item, "role", getattr(item, "type", "user")))
         content = getattr(item, "content", "")
         message_id = getattr(item, "message_id", getattr(item, "id", None))
@@ -365,6 +382,7 @@ def _as_chat_message(item: object, conversation: ConversationRef | None = None) 
         sender=_as_sender(sender_value, role=role),
         created_at=_coerce_datetime(created_at),
         metadata=metadata,
+        state_id=None if state_id is None else str(state_id),
     )
 
 
@@ -407,6 +425,7 @@ class QqHistoryStore:
                 group_id=group_id,
                 query_numbers=query.limit,
                 before_time=before_time,
+                bot_user_id=_qq_account_id(query.conversation),
             )
         messages = [_as_chat_message(record, query.conversation) for record in records]
         if query.before is not None:
@@ -415,14 +434,14 @@ class QqHistoryStore:
                 for message in messages
                 if message.created_at is None or message.created_at < query.before
             ]
-        return messages[: query.limit]
+        return messages[-query.limit :]
 
-    async def append(self, message: ChatMessage) -> None:
+    async def append(self, message: ChatMessage) -> ChatMessage | None:
         if self._appender is not None:
             result = self._appender(message)
             if inspect.isawaitable(result):
-                await result
-            return
+                result = await result
+            return result if isinstance(result, ChatMessage) else None
         if message.conversation is None:
             raise ValueError("QQ history messages require a conversation")
         insert = getattr(self.database, "insert", None)
@@ -447,7 +466,7 @@ class QqHistoryStore:
             msg_id = int(message.message_id) if message.message_id is not None else None
         except (TypeError, ValueError):
             msg_id = None
-        await insert(
+        result = await insert(
             time=int(message.created_at.timestamp() * 1000) if message.created_at else 0,
             msg_id=msg_id,
             user_id=db_user_id,
@@ -459,6 +478,14 @@ class QqHistoryStore:
             sender_user_id=account_id if message.role == "assistant" else db_user_id,
             normalized_status="complete",
         )
+        return _persisted_message(message, account_id, result)
+
+
+def _persisted_message(message: ChatMessage, account_id: int | None, result: object) -> ChatMessage | None:
+    database_id = getattr(result, "message_id", None)
+    if account_id is not None and isinstance(database_id, int) and not isinstance(database_id, bool):
+        return replace(message, state_id=f"qq:{account_id}:message:{database_id}")
+    return None
 
 
 def _message_refs(target: ConversationRef, result: object) -> tuple[MessageRef, ...]:
@@ -502,7 +529,9 @@ def _legacy_receipt(target: ConversationRef, result: object) -> DeliveryReceipt:
     if isinstance(raw_errors, (str, bytes, bytearray)):
         raw_errors = (raw_errors,)
     errors = tuple(str(error) for error in (raw_errors or ()))
-    return DeliveryReceipt(DeliveryStatus.FAILED, _message_refs(target, result), errors or ("delivery_failed",))
+    sent = result.get("sent", 0) if isinstance(result, Mapping) else getattr(result, "sent", 0)
+    status = DeliveryStatus.PARTIAL if isinstance(sent, int) and sent > 0 else DeliveryStatus.FAILED
+    return DeliveryReceipt(status, _message_refs(target, result), errors or ("delivery_failed",))
 
 
 def qq_artifact_messages(artifacts: Sequence[AgentArtifact]):
@@ -606,20 +635,21 @@ class QqDelivery:
                 receipts.append(text_receipt)
         if not receipts:
             return DeliveryReceipt(DeliveryStatus.DELIVERED)
-        if text_receipt is not None:
-            status = text_receipt.status
+        statuses = {receipt.status for receipt in receipts}
+        if statuses == {DeliveryStatus.DELIVERED}:
+            status = DeliveryStatus.DELIVERED
+        elif DeliveryStatus.PARTIAL in statuses or DeliveryStatus.DELIVERED in statuses:
+            status = DeliveryStatus.PARTIAL
+        elif DeliveryStatus.UNKNOWN in statuses:
+            status = DeliveryStatus.UNKNOWN
         else:
-            artifact_statuses = [receipt.status for receipt in receipts]
-            if any(status == DeliveryStatus.FAILED for status in artifact_statuses):
-                status = DeliveryStatus.FAILED
-            elif any(status == DeliveryStatus.UNKNOWN for status in artifact_statuses):
-                status = DeliveryStatus.UNKNOWN
-            else:
-                status = DeliveryStatus.DELIVERED
+            status = DeliveryStatus.FAILED
         return DeliveryReceipt(
             status=status,
             message_refs=tuple(ref for receipt in receipts for ref in receipt.message_refs),
             errors=tuple(error for receipt in receipts for error in receipt.errors),
+            delivered_text=response.text
+            if text_receipt is not None and text_receipt.status == DeliveryStatus.DELIVERED else None,
         )
 
 

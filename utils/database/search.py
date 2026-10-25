@@ -22,6 +22,10 @@ class _MessageSearchMixin:
         escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         return f"%{escaped}%"
 
+    @staticmethod
+    def _bot_scope_conditions(bot_user_id: int | None):
+        return [Message.bot_user_id == bot_user_id] if bot_user_id is not None else []
+
     def _can_use_fts(self, content_query: str | None) -> bool:
         if not content_query or len(content_query.strip()) < MESSAGE_FTS_MIN_QUERY_LENGTH:
             return False
@@ -49,6 +53,7 @@ class _MessageSearchMixin:
         limit: int,
         offset: int,
         sort: str,
+        bot_user_id: int | None = None,
     ) -> list[MessageSearchResult]:
         params: dict[str, object] = {
             "fts_query": _fts_query(content_query),
@@ -56,6 +61,7 @@ class _MessageSearchMixin:
             "scope": "private" if group_id is None else "group",
             "group_id": group_id,
             "user_id": user_id,
+            "bot_user_id": bot_user_id,
             "target_user_id_enabled": 0,
             "target_user_id": target_user_id,
             "target_user_name": self._like_pattern(target_user_name) if target_user_name else None,
@@ -88,6 +94,7 @@ class _MessageSearchMixin:
                 OR (:scope = 'private' AND m.user_id = :user_id AND m.group_id IS NULL)
               )
               AND m.source_type = 'message'
+              AND (:bot_user_id IS NULL OR m.bot_user_id = :bot_user_id)
               AND (:target_user_id_enabled = 0 OR m.user_id = :target_user_id)
               AND (:target_user_name IS NULL OR m.user_name LIKE :target_user_name ESCAPE '\\')
               AND (:msg_id IS NULL OR m.msg_id = :msg_id)
@@ -112,6 +119,7 @@ class _MessageSearchMixin:
                 OR (:scope = 'private' AND m.user_id = :user_id AND m.group_id IS NULL)
               )
               AND m.source_type = 'message'
+              AND (:bot_user_id IS NULL OR m.bot_user_id = :bot_user_id)
               AND (:target_user_id_enabled = 0 OR m.user_id = :target_user_id)
               AND (:target_user_name IS NULL OR m.user_name LIKE :target_user_name ESCAPE '\\')
               AND (:msg_id IS NULL OR m.msg_id = :msg_id)
@@ -159,6 +167,7 @@ class _MessageSearchMixin:
         limit: int = 50,
         offset: int = 0,
         sort: str = "time",
+        bot_user_id: int | None = None,
     ) -> list[Message]:
         def _do():  # noqa: C901
             with Session(self.engine) as session:
@@ -178,11 +187,15 @@ class _MessageSearchMixin:
                             limit=limit,
                             offset=offset,
                             sort=sort,
+                            bot_user_id=bot_user_id,
                         )
                     except Exception as exc:
                         logger.warning("FTS5 message search failed; falling back to LIKE: %s: %s", type(exc).__name__, exc)
 
-                statement = select(Message).where(Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL)
+                statement = select(Message).where(
+                    Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL,
+                    *self._bot_scope_conditions(bot_user_id),
+                )
                 if group_id is None:
                     if user_id is None:
                         return []
@@ -235,6 +248,7 @@ class _MessageSearchMixin:
         limit: int = 50,
         offset: int = 0,
         sort: str = "relevance",
+        bot_user_id: int | None = None,
     ) -> list[MessageSearchResult]:
         """Search messages while retaining FTS score and a display snippet.
 
@@ -268,10 +282,14 @@ class _MessageSearchMixin:
                             limit=limit,
                             offset=offset,
                             sort=sort,
+                            bot_user_id=bot_user_id,
                         )
                     except Exception as exc:
                         logger.warning("FTS5 message detail search failed; falling back to LIKE: %s: %s", type(exc).__name__, exc)
-                conditions = [Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL]
+                conditions = [
+                    Message.source_type == MESSAGE_SOURCE_TYPE_NORMAL,
+                    *self._bot_scope_conditions(bot_user_id),
+                ]
                 if group_id is None:
                     conditions.extend((Message.group_id.is_(None), Message.user_id == user_id))
                 else:
