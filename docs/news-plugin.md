@@ -2,13 +2,13 @@
 
 The production path is:
 
-Clockwork -> `plugins.news.scheduler` -> research Agent -> DeepSeek Search/Fetch tools -> evidence validation -> `news.db` archive -> render -> per-target delivery.
+Clockwork -> `plugins.news.scheduler` -> standalone research Agent -> Tavily -> Exa -> DeepSeek Search fallback -> evidence validation -> `news.db` archive -> render -> per-target delivery.
 
-The research Agent owns search planning and source selection. It receives only the configured edition window, calls `deepseek_web_search` first, fetches important pages with `deepseek_web_fetch`, and returns structured stories whose evidence points to the original source URL. The scheduler still keeps the durable archive, image rendering, per-group delivery state, and explicit retry behavior from the standalone pipeline.
+The research Agent owns search planning and source selection. It receives only the configured edition window, tries the configured Tavily tools first, then Exa MCP tools, and finally the standalone DeepSeek Search/Fetch tools. It returns structured stories whose evidence points to the original source URL. The scheduler still keeps the durable archive, image rendering, per-group delivery state, and explicit retry behavior from the standalone pipeline.
 
 ## Configuration
 
-Copy `news.toml.example` to `news.toml` when overrides are needed. If `model` and `provider` are empty, the plugin reuses `env.toml`'s `daily_news_model` and `daily_news_model_provider`. The Agent's search tools use the independent `[search]` configuration and its provider API key; they do not depend on Exa MCP or the main model's built-in `web_search`.
+Copy `news.toml.example` to `news.toml` when overrides are needed. If `model` and `provider` are empty, the plugin reuses `env.toml`'s `daily_news_model` and `daily_news_model_provider`. Tavily and Exa are discovered from the configured `mcp.json`; if either is unavailable, the Agent proceeds to the next source. DeepSeek Search uses the independent `[search]` configuration and its provider API key.
 
 `workspace_dir` is used for bounded DeepSeek page previews and must point to a writable Frontier workspace. Search and fetch failures are returned as errors and are not treated as an empty evidence set. Results outside the edition window or without a usable date are excluded before the report is archived.
 

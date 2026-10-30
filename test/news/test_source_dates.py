@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from plugins.news.config import NewsConfig
+from plugins.news.editor import AGENT_PROMPT, _article_records, _articles_from_messages
 from plugins.news.schemas import Edition
 from plugins.news.sources import (
     DeepSeekSource,
@@ -91,6 +92,27 @@ async def test_exa_mcp_is_used_when_rest_key_is_missing(monkeypatch, dictionary_
 def test_configured_sources_uses_deepseek():
     sources = configured_sources(NewsConfig()).sources
     assert [type(source) for source in sources] == [DeepSeekSource]
+
+
+def test_agent_prompt_prioritizes_tavily_exa_before_deepseek():
+    assert AGENT_PROMPT.index("tavily_search") < AGENT_PROMPT.index("web_search_exa")
+    assert AGENT_PROMPT.index("web_search_exa") < AGENT_PROMPT.index("deepseek_web_search")
+
+
+def test_agent_mcp_evidence_is_retained():
+    message = SimpleNamespace(
+        type="tool",
+        name="tavily_search",
+        content='{"results":[{"title":"标题","url":"https://example.com/news",'
+        '"text":"这是一段足够长的新闻正文，用于验证 Tavily MCP 结果可以进入日报证据。",'
+        '"publishedDate":"2026-09-18T12:00:00Z"}]}',
+    )
+    records = _article_records([message])
+    assert records["https://example.com/news"]["provider"] == "tavily"
+    articles = _articles_from_messages(
+        [message], Edition("general", dt.datetime(2026, 9, 19, 1, tzinfo=dt.UTC))
+    )
+    assert articles[0].provider == "tavily"
 
 
 def test_exa_mcp_markdown_keeps_publication_date():
